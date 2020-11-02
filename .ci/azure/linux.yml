@@ -1,3 +1,10 @@
+resources:
+  repositories:
+  - repository: openvino
+    type: github
+    endpoint: openvinotoolkit
+    name: openvino
+
 jobs:
 - job: Lin
   # About 150% of total time
@@ -17,13 +24,6 @@ jobs:
     OPENVINO_REPO_DIR: $(WORK_DIR)/openvino
     BUILD_DIR: $(WORK_DIR)/build
     BUILD_OPENVINO_DIR: $(WORK_DIR)/build_openvino
-
-  resources:
-    repositories:
-    - repository: openvino
-      type: github
-      endpoint: openvinotoolkit
-      name: openvino
 
   steps:
   - script: |
