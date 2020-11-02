@@ -3,7 +3,7 @@ resources:
   - repository: openvino
     type: github
     endpoint: openvinotoolkit
-    name: openvino
+    name: openvinotoolkit/openvino
 
 jobs:
 - job: Lin
