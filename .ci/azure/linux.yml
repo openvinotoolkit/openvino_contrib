@@ -1,6 +1,5 @@
 jobs:
 - job: Lin
-
   # About 150% of total time
   timeoutInMinutes: 60
 
@@ -18,6 +17,13 @@ jobs:
     OPENVINO_REPO_DIR: $(WORK_DIR)/openvino
     BUILD_DIR: $(WORK_DIR)/build
     BUILD_OPENVINO_DIR: $(WORK_DIR)/build_openvino
+
+  resources:
+    repositories:
+    - repository: openvino
+      type: github
+      endpoint: openvinotoolkit
+      name: openvino
 
   steps:
   - script: |
@@ -51,7 +57,7 @@ jobs:
     submodules: recursive
     path: openvino_contrib
 
-  - checkout: git://openvinotoolkit/openvino@master
+  - checkout: openvino
     clean: true
     lfs: false
     submodules: recursive
