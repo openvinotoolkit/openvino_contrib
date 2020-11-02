@@ -61,7 +61,7 @@ jobs:
     clean: true
     lfs: false
     submodules: recursive
-    path: $(OPENVINO_REPO_DIR)
+    path: openvino
 
   - script: |
       sudo apt --assume-yes install libusb-1.0-0-dev
