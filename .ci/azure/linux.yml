@@ -23,7 +23,7 @@ jobs:
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
-    BUILD_OPENVINO_DIR: $(WORK_DIR)/build_openvino
+    BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
 
   steps:
   - script: |
@@ -48,7 +48,6 @@ jobs:
   - script: |
       rm -rf $(WORK_DIR) ; mkdir $(WORK_DIR)
       rm -rf $(BUILD_DIR) ; mkdir $(BUILD_DIR)
-      rm -rf $(BUILD_OPENVINO_DIR) ; mkdir $(BUILD_OPENVINO_DIR)
     displayName: 'Make dir'
 
   - checkout: self
@@ -65,21 +64,21 @@ jobs:
 
   - script: |
       sudo apt --assume-yes install libusb-1.0-0-dev
-    displayName: 'Install dependencies'
-
-  - script: |
+      # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/
     workingDirectory: $(WORK_DIR)
-    displayName: 'Install Ninja'
+    displayName: 'Install dependencies'
 
   - task: CMake@1
     inputs:
-      cmakeArgs: -GNinja -DVERBOSE_BUILD=ON -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(OPENVINO_REPO_DIR)
-      workingDirectory: $(BUILD_OPENVINO_DIR)
+      cmakeArgs: -GNinja -DVERBOSE_BUILD=ON -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DENABLE_JAVA=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
+      workingDirectory: $(BUILD_DIR)
 
   - script: ninja
-    workingDirectory: $(BUILD_OPENVINO_DIR)
-    displayName: 'Build OpenVINO'
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Build Lin'
 
+  - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
+    displayName: 'List files'
