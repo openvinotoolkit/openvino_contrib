@@ -28,3 +28,5 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessInfo_SetResizeAlgorithm
         throwJavaException(env, 0, method_name);
     }
 }
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessInfo_delete(JNIEnv *env, jobject obj, jlong addr) {}

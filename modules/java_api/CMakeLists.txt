@@ -9,7 +9,9 @@ include(UseJava)
 
 set(JAVA_AWT_INCLUDE_PATH NotNeeded)
 
-find_package(JNI REQUIRED)
+if (NOT CMAKE_CROSSCOMPILING)
+    find_package(JNI REQUIRED)
+endif()
 
 # Build native part
 

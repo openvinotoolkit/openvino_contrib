@@ -132,3 +132,5 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_InputInfo_GetTensorDesc(JNIEnv *
     }
     return 0;
 }
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_InputInfo_delete(JNIEnv *env, jobject obj, jlong addr) {}

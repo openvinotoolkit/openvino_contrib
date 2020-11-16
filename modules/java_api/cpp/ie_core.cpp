@@ -108,6 +108,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_IECore_LoadNetwork(JNIEnv *env, 
         CNNNetwork *network = (CNNNetwork *)netAddr;
 
         ExecutableNetwork *executable_network = new ExecutableNetwork();
+
         *executable_network = core->LoadNetwork(*network, n_device);
 
         return (jlong)executable_network;

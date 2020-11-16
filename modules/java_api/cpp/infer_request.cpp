@@ -211,7 +211,6 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_InferRequest_GetPerformanceCou
             env->CallObjectMethod(hashMap_object, put_method_id, env->NewStringUTF(itr.first.c_str()), IEProfileInfo);
         }
 
-        env->PopLocalFrame(hashMap_object);
         return hashMap_object;
     }
     catch (const std::exception &e)
