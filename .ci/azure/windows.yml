@@ -20,7 +20,7 @@ jobs:
     WORKERS_NUMBER: 8
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
-    OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
+    OPENVINO_REPO_DIR: $(REPO_DIR)\..\penvino
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64
@@ -91,5 +91,6 @@ jobs:
   - script: echo Stop IncrediBuild_Agent && net stop IncrediBuild_Agent
     displayName: Stop IncrediBuild
     continueOnError: true
+
   - script: dir $(OPENVINO_REPO_DIR)\bin\ /s
     displayName: 'List files'
