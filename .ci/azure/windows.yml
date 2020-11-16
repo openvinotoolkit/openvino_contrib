@@ -20,7 +20,7 @@ jobs:
     WORKERS_NUMBER: 8
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
-    OPENVINO_REPO_DIR: $(REPO_DIR)\..\penvino
+    OPENVINO_REPO_DIR: $(REPO_DIR)\..\openvino
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64
