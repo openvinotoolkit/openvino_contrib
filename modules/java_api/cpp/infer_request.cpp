@@ -1,5 +1,5 @@
 #include <inference_engine.hpp>
-#include <mutex>  
+#include <mutex>
 
 #include "openvino_java.hpp"
 #include "enum_mapping.hpp"
@@ -96,15 +96,19 @@ JNIEXPORT jint JNICALL Java_org_intel_openvino_InferRequest_SetCompletionCallbac
                     JNIEnv* myNewEnv;
                     JavaVMAttachArgs args;
                     args.version = version;
-                    args.name = NULL; 
+                    args.name = NULL;
                     args.group = NULL;
+#ifdef _JAVASOFT_JNI_H_
                     jvm->AttachCurrentThread((void**)&myNewEnv, &args);
+#else
+                    jvm->AttachCurrentThread(&myNewEnv, &args);
+#endif
 
                     jclass runnable_class = myNewEnv->GetObjectClass(runnable_glob);
                     jmethodID run_method_id = myNewEnv->GetMethodID(runnable_class, "run","()V");
                     myNewEnv->CallNonvirtualVoidMethod(runnable_glob, runnable_class, run_method_id);
 
-                    jvm->DetachCurrentThread();     
+                    jvm->DetachCurrentThread();
         });
     }
     catch (const std::exception &e)
@@ -149,7 +153,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetBlob(JNIEnv *env,
     try
     {
         InferRequest *infer_request = (InferRequest *)addr;
-        
+
         Blob::Ptr *blob = reinterpret_cast<Blob::Ptr *>(blobAddr);
 
         std::string n_input_name = jstringToString(env, input_name);
@@ -199,11 +203,11 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_InferRequest_GetPerformanceCou
 
             std::string layer_type(ie_prof_info.layer_type);
             std::string exec_type(ie_prof_info.exec_type);
-            
-            jobject IEProfileInfo = env->NewObject(IEProfileInfo_class, IEProfileInfo_init_id, layer_status, 
-                                                    ie_prof_info.realTime_uSec, ie_prof_info.cpu_uSec, env->NewStringUTF(exec_type.c_str()), 
+
+            jobject IEProfileInfo = env->NewObject(IEProfileInfo_class, IEProfileInfo_init_id, layer_status,
+                                                    ie_prof_info.realTime_uSec, ie_prof_info.cpu_uSec, env->NewStringUTF(exec_type.c_str()),
                                                     env->NewStringUTF(layer_type.c_str()), static_cast<jint>(ie_prof_info.execution_index));
-                                
+
             env->CallObjectMethod(hashMap_object, put_method_id, env->NewStringUTF(itr.first.c_str()), IEProfileInfo);
         }
 
@@ -222,12 +226,12 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_InferRequest_GetPerformanceCou
 }
 
 JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *env, jobject, jlong addr)
-{   
+{
     auto it = runnable_glob_map.find(addr);
     if (it != runnable_glob_map.end()) {
         env->DeleteGlobalRef(it->second);
     }
-    
+
     InferRequest *infer_request = (InferRequest *)addr;
     delete infer_request;
 }
