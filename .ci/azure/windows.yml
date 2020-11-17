@@ -5,6 +5,11 @@ resources:
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
 
+  - repository: testdata
+    type: github
+    endpoint: openvinotoolkit
+    name: openvinotoolkit/testdata
+
 jobs:
 - job: Win
   # About 150% of total time
@@ -21,6 +26,7 @@ jobs:
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)\..\openvino
+    MODELS_PATH: $(REPO_DIR)\..\testdata
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
     BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64
@@ -59,6 +65,11 @@ jobs:
     submodules: recursive
     path: openvino
 
+  - checkout: testdata
+    clean: true
+    lfs: true
+    path: testdata
+
   - script: |
       certutil -urlcache -split -f https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-win.zip ninja-win.zip
       powershell -command "Expand-Archive -Force ninja-win.zip"
@@ -78,7 +89,7 @@ jobs:
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DENABLE_JAVA=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" $(OPENVINO_REPO_DIR)
+      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DENABLE_JAVA=OFF -DENABLE_TESTS=ON -DIE_EXTRA_MODULES=$(REPO_DIR)/modules -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake'
 

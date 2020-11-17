@@ -5,6 +5,11 @@ resources:
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
 
+  - repository: testdata
+    type: github
+    endpoint: openvinotoolkit
+    name: openvinotoolkit/testdata
+
 jobs:
 - job: Lin
   # About 150% of total time
@@ -21,6 +26,7 @@ jobs:
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
+    MODELS_PATH: $(REPO_DIR)/../testdata
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
@@ -62,6 +68,11 @@ jobs:
     submodules: recursive
     path: openvino
 
+  - checkout: testdata
+    clean: true
+    lfs: true
+    path: testdata
+
   - script: |
       sudo apt --assume-yes install libusb-1.0-0-dev
       # Speed up build
@@ -73,7 +84,7 @@ jobs:
 
   - task: CMake@1
     inputs:
-      cmakeArgs: -GNinja -DVERBOSE_BUILD=ON -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DENABLE_JAVA=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
+      cmakeArgs: -GNinja -DVERBOSE_BUILD=ON -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DENABLE_JAVA=OFF -DENABLE_TESTS=ON -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
   - script: ninja
@@ -82,3 +93,9 @@ jobs:
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List files'
+
+  - script: java -cp "*" OpenVinoTestRunner
+    workingDirectory: $(BIN_DIR)/lib
+    env:
+      LD_LIBRARY_PATH: $(BIN_DIR)/lib
+    displayName: 'Java tests'

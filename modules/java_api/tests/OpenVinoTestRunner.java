@@ -16,5 +16,8 @@ public class OpenVinoTestRunner {
         for (Failure failure : result.getFailures()) {
             System.out.println(failure.toString());
         }
+        if (!result.wasSuccessful()) {
+            System.exit(1);
+        }
     }
 }
