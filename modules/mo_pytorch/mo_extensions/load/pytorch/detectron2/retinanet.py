@@ -22,9 +22,11 @@ def inference(model, func, anchors, pred_logits, pred_anchor_deltas, image_sizes
             super().__init__()
             self.anchors = anchors
             self.variance_encoded_in_target = True
-            self.nms_threshold = model.nms_threshold
-            self.confidence_threshold = model.score_threshold
-            self.top_k = model.topk_candidates * len(model.in_features)
+            self.nms_threshold = model.nms_threshold if hasattr(model, 'nms_threshold') else model.test_nms_thresh
+            self.confidence_threshold = model.score_threshold if hasattr(model, 'score_threshold') else model.test_score_thresh
+            in_features = model.in_features if hasattr(model, 'in_features') else model.head_in_features
+            top_k_candidates = model.topk_candidates if hasattr(model, 'topk_candidates') else model.test_topk_candidates
+            self.top_k = top_k_candidates * len(in_features)
             self.keep_top_k = self.top_k
             self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
 

@@ -16,7 +16,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends intel-openvino-dev-ubuntu18-2021.1.110 python3-setuptools
 
       - name: Install dependencies
-        run: python3 -m pip install \
+        run: |
+          git clone --depth 1 https://github.com/openvinotoolkit/testdata
+          python3 -m pip install \
                  numpy \
                  defusedxml \
                  networkx \
@@ -24,8 +26,12 @@ jobs:
                  torch \
                  torchvision
 
+          git clone --depth 1 https://github.com/facebookresearch/detectron2
+          python3 -m pip install -e detectron2
+
       - name: Run tests
         run: |
           source /opt/intel/openvino_2021/bin/setupvars.sh
           export PYTHONPATH=./modules/mo_pytorch:$PYTHONPATH
+          export MODELS_PATH=./testdata
           python3 ./modules/mo_pytorch/test.py
