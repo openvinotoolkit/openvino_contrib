@@ -51,7 +51,6 @@ class PyTorchLoader(Loader):
     enabled = True
 
     def load(self, graph: Graph):
-        print('~~~~~~~~~~~~~`````````')
         argv = graph.graph['cmd_params']
         graph.graph['fw'] = 'pytorch'
         graph.graph['layout'] = 'NCHW'

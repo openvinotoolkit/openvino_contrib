@@ -1,0 +1,31 @@
+name: PyTorch
+on: [push, pull_request]
+
+jobs:
+  convert:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Intel OpenVINO
+        run: |
+          sudo curl -o GPG-PUB-KEY-INTEL-OPENVINO-2021 https://apt.repos.intel.com/openvino/2021/GPG-PUB-KEY-INTEL-OPENVINO-2021
+          sudo apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2021
+          sudo echo "deb https://apt.repos.intel.com/openvino/2021 all main" | sudo tee - a /etc/apt/sources.list.d/intel-openvino-2021.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends intel-openvino-dev-ubuntu18-2021.1.110 python3-setuptools
+
+      - name: Install dependencies
+        run: python3 -m pip install \
+                 numpy \
+                 defusedxml \
+                 networkx \
+                 test-generator==0.1.1 \
+                 torch \
+                 torchvision
+
+      - name: Run tests
+        run: |
+          source /opt/intel/openvino_2021/bin/setupvars.sh
+          export PYTHONPATH=./modules/mo_pytorch:$PYTHONPATH
+          python3 ./modules/mo_pytorch/test.py

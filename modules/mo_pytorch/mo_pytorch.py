@@ -101,9 +101,6 @@ def _prepare_ir(argv):
     argv.freeze_placeholder_with_value, argv.input = get_freeze_placeholder_values(argv.input,
                                                                                    argv.freeze_placeholder_with_value)
 
-
-    # from . import mo
-    # from .mo.front.pytorch.register_custom_ops import get_front_classes
     import_extensions.load_dirs(argv.framework, extensions, get_front_classes)
 
     graph = unified_pipeline(argv)
