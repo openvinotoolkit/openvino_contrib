@@ -81,7 +81,7 @@ java -cp ".:${OpenCV_DIR}/share/java/opencv4/*:${IE_PATH}/inference_engine_java_
 
 * For OpenCV build path
 ```bash
-    export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:/${IE_PATH}:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:/${IE_PATH}:$LD_LIBRARY_PATH
 ```
 To run sample use:
 ```bash

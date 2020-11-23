@@ -49,7 +49,6 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CNNNetwork_GetInputsInfo(JNIEn
     try
     {
         CNNNetwork *network = (CNNNetwork *)addr;
-
         const InputsDataMap &inputs_map = network->getInputsInfo();
 
         jclass hashMapClass = env->FindClass("java/util/HashMap");
