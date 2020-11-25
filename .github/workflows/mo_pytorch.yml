@@ -1,4 +1,4 @@
-name: PyTorch
+name: PyTorch Conversion
 on: [push, pull_request]
 
 jobs:
@@ -7,13 +7,27 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install Intel OpenVINO
+      - name: Clone OpenVINO
         run: |
-          sudo curl -o GPG-PUB-KEY-INTEL-OPENVINO-2021 https://apt.repos.intel.com/openvino/2021/GPG-PUB-KEY-INTEL-OPENVINO-2021
-          sudo apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2021
-          sudo echo "deb https://apt.repos.intel.com/openvino/2021 all main" | sudo tee - a /etc/apt/sources.list.d/intel-openvino-2021.list
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends intel-openvino-dev-ubuntu18-2021.1.110 python3-setuptools
+          git clone --depth 1 https://github.com/openvinotoolkit/openvino/
+
+      - name: Build OpenVINO
+        run: |
+          cd openvino
+          git submodule update --init --recursive
+          mkdir build && cd build
+          python3 -m pip install cython
+          cmake \
+            -DENABLE_CLDNN=OFF \
+            -DENABLE_VPU=OFF \
+            -DENABLE_TESTS=OFF \
+            -DENABLE_OPENCV=OFF \
+            -DENABLE_SAMPLES=OFF \
+            -DENABLE_PYTHON=ON \
+            -DPYTHON_EXECUTABLE=`which python3` \
+            -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so \
+            -DPYTHON_INCLUDE_DIR=/usr/include/python3.6 ..
+          make -j$(nproc)
 
       - name: Install dependencies
         run: |
@@ -31,7 +45,9 @@ jobs:
 
       - name: Run tests
         run: |
-          source /opt/intel/openvino_2021/bin/setupvars.sh
+          export LD_LIBRARY_PATH=./openvino/bin/intel64/Release/lib:$LD_LIBRARY_PATH
+          export PYTHONPATH=./openvino/bin/intel64/Release/lib/python_api/python3.6:$PYTHONPATH
+          export PYTHONPATH=./openvino/model-optimizer:$PYTHONPATH
           export PYTHONPATH=./modules/mo_pytorch:$PYTHONPATH
           export MODELS_PATH=./testdata
           python3 ./modules/mo_pytorch/test.py
