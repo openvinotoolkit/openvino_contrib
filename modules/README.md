@@ -7,3 +7,4 @@ $ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_<module name>=OFF 
 ```
 
 * [**java_api**](./java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
+* [**mo_pytorch**](./mo_pytorch): PyTorch extensions for Model Optimizer -- native PyTorch to OpenVINO IR converter

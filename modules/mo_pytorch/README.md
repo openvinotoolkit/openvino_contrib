@@ -13,7 +13,7 @@ This module let you convert PyTorch models directly to OpenVINO IR without using
 2. Setup environment
 
     ```bash
-    source /opt/intel/openvino_2021/bin/setupvars.sh
+    source /opt/intel/openvino_<VERSION>/bin/setupvars.sh
     export PYTHONPATH=openvino_contrib/modules/mo_pytorch:$PYTHONPATH
     ```
 
