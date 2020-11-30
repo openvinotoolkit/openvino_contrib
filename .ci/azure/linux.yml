@@ -79,12 +79,23 @@ jobs:
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/
+      python3 -m pip install --upgrade pip
+      python3 -m pip install cython
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
   - task: CMake@1
     inputs:
-      cmakeArgs: -GNinja -DVERBOSE_BUILD=ON -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
+      cmakeArgs: >
+        -GNinja
+        -DVERBOSE_BUILD=ON
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
+        -DENABLE_PYTHON=ON
+        -DPYTHON_EXECUTABLE=/usr/bin/python3
+        -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so
+        -DPYTHON_INCLUDE_DIR=/usr/include/python3.6
+        $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
   - script: ninja
@@ -99,3 +110,16 @@ jobs:
     env:
       LD_LIBRARY_PATH: $(BIN_DIR)/lib
     displayName: 'Java tests'
+
+  - script: |
+      sudo apt-get install -y python3-setuptools
+      python3 -m pip install -r requirements.txt
+    workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+    displayName: 'Install PyTorch tests dependencies'
+
+  - script: python3 run_tests.py
+    env:
+      LD_LIBRARY_PATH: $(BIN_DIR)/lib
+      PYTHONPATH: "$(OPENVINO_REPO_DIR)/model-optimizer:$(BIN_DIR)/lib/python_api/python3.6:$(REPO_DIR)/modules/mo_pytorch"
+    workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+    displayName: 'PyTorch conversion tests'

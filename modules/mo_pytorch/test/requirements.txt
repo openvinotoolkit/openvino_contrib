@@ -1,0 +1,9 @@
+defusedxml>=0.5.0
+networkx>=1.11
+test-generator==0.1.1
+torch==1.7.0
+torchvision==0.8.1
+opencv-python==4.4.0.46
+--find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.7/index.html
+detectron2==0.3
+pyyaml>=5.1
