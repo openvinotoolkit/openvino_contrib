@@ -50,7 +50,7 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CNNNetwork_GetInputsInfo(JNIEn
     {
         CNNNetwork *network = (CNNNetwork *)addr;
         const InputsDataMap &inputs_map = network->getInputsInfo();
- 
+
         jclass hashMapClass = env->FindClass("java/util/HashMap");
         jmethodID hashMapInit = env->GetMethodID(hashMapClass, "<init>", "()V");
         jobject hashMapObj = env->NewObject(hashMapClass, hashMapInit);
@@ -64,8 +64,6 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CNNNetwork_GetInputsInfo(JNIEn
             jobject inputInfoObj = env->NewObject(inputInfoClass, inputInfoConstructor, (jlong)(item.second.get()));
             env->CallObjectMethod(hashMapObj, hashMapPut, env->NewStringUTF(item.first.c_str()), inputInfoObj);
         }
-
-        env->PopLocalFrame(hashMapObj);
 
         return hashMapObj;
     }
@@ -101,8 +99,6 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CNNNetwork_GetOutputsInfo(JNIE
             jobject outputInfoObj = env->NewObject(outputInfoClass, outputInfoConstructor, (jlong)(item.second.get()));
             env->CallObjectMethod(hashMapObj, hashMapPut, env->NewStringUTF(item.first.c_str()), outputInfoObj);
         }
-
-        env->PopLocalFrame(hashMapObj);
 
         return hashMapObj;
     }
@@ -159,8 +155,6 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_CNNNetwork_getInputShapes(JNIE
             env->ReleaseIntArrayElements(result, arr, 0);
             env->CallObjectMethod(hashMapObj, hashMapPut, env->NewStringUTF(item.first.c_str()), result);
         }
-
-        env->PopLocalFrame(hashMapObj);
 
         return hashMapObj;
     }

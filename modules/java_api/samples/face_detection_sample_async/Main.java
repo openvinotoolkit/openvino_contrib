@@ -206,7 +206,6 @@ public class Main {
                     // Drawing only objects with >70% probability
                     if (confidence < CONFIDENCE_THRESHOLD) continue;
 
-                    int label = (int) (detection[curProposal * 7 + 1]);
                     int xmin = (int) (detection[curProposal * 7 + 3] * img.cols());
                     int ymin = (int) (detection[curProposal * 7 + 4] * img.rows());
                     int xmax = (int) (detection[curProposal * 7 + 5] * img.cols());

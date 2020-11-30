@@ -84,11 +84,13 @@ JNIEXPORT jint JNICALL Java_org_intel_openvino_InputInfo_getLayout(JNIEnv *, job
 JNIEXPORT void JNICALL Java_org_intel_openvino_InputInfo_SetPrecision(JNIEnv *, jobject, jlong, jint);
 JNIEXPORT jint JNICALL Java_org_intel_openvino_InputInfo_getPrecision(JNIEnv *, jobject, jlong);
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_InputInfo_GetTensorDesc(JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL Java_org_intel_openvino_InputInfo_delete(JNIEnv *, jobject, jlong);
 
 //
 // PreProcessInfo
 //
 JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessInfo_SetResizeAlgorithm(JNIEnv *, jobject, jlong, jint);
+JNIEXPORT void JNICALL Java_org_intel_openvino_PreProcessInfo_delete(JNIEnv *, jobject, jlong);
 
 //
 // TensorDesc
@@ -105,6 +107,11 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_TensorDesc_delete(JNIEnv *, jobje
 JNIEXPORT jstring JNICALL Java_org_intel_openvino_Parameter_asString(JNIEnv *, jobject, jlong);
 JNIEXPORT jint JNICALL Java_org_intel_openvino_Parameter_asInt(JNIEnv *, jobject, jlong);
 JNIEXPORT void JNICALL Java_org_intel_openvino_Parameter_delete(JNIEnv *, jobject, jlong);
+
+//
+// Data
+//
+JNIEXPORT void JNICALL Java_org_intel_openvino_Data_delete(JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus
 }

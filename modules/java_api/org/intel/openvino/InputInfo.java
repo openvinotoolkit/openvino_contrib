@@ -42,4 +42,7 @@ public class InputInfo extends IEWrapper {
     private static native int getPrecision(long addr);
 
     private native long GetTensorDesc(long addr);
+
+    @Override
+    protected native void delete(long nativeObj);
 }

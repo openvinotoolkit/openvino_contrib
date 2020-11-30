@@ -12,4 +12,7 @@ public class PreProcessInfo extends IEWrapper {
 
     /*----------------------------------- native methods -----------------------------------*/
     private static native void SetResizeAlgorithm(long addr, int resizeAlgorithm);
+
+    @Override
+    protected native void delete(long nativeObj);
 }
