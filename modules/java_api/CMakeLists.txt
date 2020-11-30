@@ -27,9 +27,7 @@ add_jar(inference_engine_jar ${java_source}
         OUTPUT_NAME ${PROJECT_NAME} 
         OUTPUT_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
-if(ENABLE_TESTS)
-    add_subdirectory(tests)
-endif()
+add_subdirectory(tests)
 
 if(ENABLE_SAMPLES) 
     add_subdirectory(samples)
