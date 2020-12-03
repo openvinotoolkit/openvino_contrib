@@ -100,13 +100,23 @@ public class Main {
                 new Runnable() {
                     @Override
                     public void run() {
-                        VideoCapture cam = new VideoCapture();
-                        cam.open(imgsPath);
                         Mat frame = new Mat();
+
+                        VideoCapture cam = new VideoCapture();
+                        try {
+                            int idx = Integer.valueOf(imgsPath);
+                            cam.open(idx);
+                        } catch (NumberFormatException exception) {
+                            cam.open(imgsPath);
+                        }
 
                         while (cam.read(frame)) {
                             framesCounter++;
                             framesQueue.add(frame.clone());
+                        }
+                        if (framesCounter == 0) {
+                            System.err.println("ERROR: Can't get any video frame!");
+                            System.exit(1);
                         }
                     }
                 };
@@ -232,12 +242,13 @@ public class Main {
                     Imgproc.putText(img, label1, new Point(10, 80), 0, 0.7, color, 1);
                 }
                 HighGui.imshow("Detection", img);
+
+                if (HighGui.waitKey(1) != -1) break;
             }
 
             captureThread.join();
             inferThread.join();
 
-            HighGui.waitKey(0);
             HighGui.destroyAllWindows();
 
         } catch (InterruptedException e) {
