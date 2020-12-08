@@ -53,6 +53,9 @@ class MaxPool2dFrontExtractor(FrontExtractorOp):
             'layout': 'NCHW',
         }
 
+        if (node.module.ceil_mode): 
+            attrs['rounding_type'] = 'ceil'
+
         # update the attributes of the node
         Pooling.update_node_stat(node, attrs)
         return cls.enabled

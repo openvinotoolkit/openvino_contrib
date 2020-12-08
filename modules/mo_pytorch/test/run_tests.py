@@ -89,6 +89,8 @@ class TestModels(unittest.TestCase):
             diff = np.max(np.abs(out0 - ref0.detach().numpy()))
             self.assertLessEqual(diff, threshold)
 
+    def test_squeezenet1_1(self):
+        self.check_torchvision_model(models.squeezenet1_1, (227, 227))
 
     def test_alexnet(self):
         self.check_torchvision_model(models.alexnet, (227, 227))
