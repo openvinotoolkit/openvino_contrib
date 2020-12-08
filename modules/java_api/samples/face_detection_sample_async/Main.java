@@ -155,8 +155,10 @@ public class Main {
                             boolean isRunning = true;
 
                             while (captureThread.isAlive() || !framesQueue.isEmpty()) {
-                                processInferRequets(WaitMode.STATUS_ONLY);
+                                if (Thread.interrupted())
+                                    break;
 
+                                processInferRequets(WaitMode.STATUS_ONLY);
                                 for (int i = 0; i < inferRequestsSize; i++) {
                                     if (!asyncInferIsFree.get(i)) continue;
 
@@ -243,14 +245,18 @@ public class Main {
                 }
                 HighGui.imshow("Detection", img);
 
-                if (HighGui.waitKey(1) != -1) break;
+                if (HighGui.waitKey(1) != -1) {
+                    inferThread.interrupt();
+                    captureThread.interrupt();
+                    break;
+                }
             }
+
+            HighGui.waitKey(1);
+            HighGui.destroyAllWindows();
 
             captureThread.join();
             inferThread.join();
-
-            HighGui.destroyAllWindows();
-
         } catch (InterruptedException e) {
             e.printStackTrace();
             for (Thread t : Thread.getAllStackTraces().keySet())
