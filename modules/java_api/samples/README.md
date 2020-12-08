@@ -12,10 +12,11 @@ Create an environment variable with Inference Engine installation path:
 export IE_PATH=/path/to/openvino/bin/intel64/Release/lib
 ```
 
-To create java library and java samples for Inference Engine add `-DENABLE_JAVA=ON` flag in cmake command while building dldt:
+To create java library and java samples for Inference Engine add `-DIE_EXTRA_MODULES` flag in cmake command while building `openvino`:
+
 ```bash
 cd /openvino/build
-cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_JAVA=ON -DENABLE_SAMPLES=ON ..
+cmake -DCMAKE_BUILD_TYPE=Release -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DENABLE_SAMPLES=ON -DENABLE_OPENCV=OFF ..
 make
 ```
 
@@ -25,12 +26,12 @@ Add library path for openvino java library before running:
 export LD_LIBRARY_PATH=${IE_PATH}:$LD_LIBRARY_PATH
 ```
 
-To get ```benchmark_app``` help use:
+To get `benchmark_app` help use:
 ```bash
 java -cp ".:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/benchmark_app.jar" Main --help
 ```
 
-To run ```benchmark_app`` use:
+To run `benchmark_app` use:
 ```bash
 java -cp ".:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/benchmark_app.jar" Main -m /path/to/model
 ```
@@ -62,7 +63,7 @@ https://download.01.org/opencv/2019/open_model_zoo/R1/models_bin/face-detection-
 
 ## Build and run
 
-Build and run steps are similar to ```benchmark_app```, but you need to add an environment variable with OpenCV installation or build path before building:
+Build and run steps are similar to `benchmark_app`, but you need to add an environment variable with OpenCV installation or build path before building:
 ```bash
 export OpenCV_DIR=/path/to/opencv/
 ```

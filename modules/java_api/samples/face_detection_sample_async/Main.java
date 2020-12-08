@@ -100,13 +100,23 @@ public class Main {
                 new Runnable() {
                     @Override
                     public void run() {
-                        VideoCapture cam = new VideoCapture();
-                        cam.open(imgsPath);
                         Mat frame = new Mat();
 
-                        while (cam.read(frame)) {
+                        VideoCapture cam = new VideoCapture();
+                        try {
+                            int idx = Integer.valueOf(imgsPath);
+                            cam.open(idx);
+                        } catch (NumberFormatException exception) {
+                            cam.open(imgsPath);
+                        }
+
+                        while (cam.read(frame) && !Thread.interrupted()) {
                             framesCounter++;
                             framesQueue.add(frame.clone());
+                        }
+                        if (framesCounter == 0) {
+                            System.err.println("ERROR: Can't get any video frame!");
+                            System.exit(1);
                         }
                     }
                 };
@@ -145,8 +155,9 @@ public class Main {
                             boolean isRunning = true;
 
                             while (captureThread.isAlive() || !framesQueue.isEmpty()) {
-                                processInferRequets(WaitMode.STATUS_ONLY);
+                                if (Thread.interrupted()) break;
 
+                                processInferRequets(WaitMode.STATUS_ONLY);
                                 for (int i = 0; i < inferRequestsSize; i++) {
                                     if (!asyncInferIsFree.get(i)) continue;
 
@@ -232,14 +243,19 @@ public class Main {
                     Imgproc.putText(img, label1, new Point(10, 80), 0, 0.7, color, 1);
                 }
                 HighGui.imshow("Detection", img);
+
+                if (HighGui.waitKey(1) != -1) {
+                    inferThread.interrupt();
+                    captureThread.interrupt();
+                    break;
+                }
             }
+
+            HighGui.waitKey(1);
+            HighGui.destroyAllWindows();
 
             captureThread.join();
             inferThread.join();
-
-            HighGui.waitKey(0);
-            HighGui.destroyAllWindows();
-
         } catch (InterruptedException e) {
             e.printStackTrace();
             for (Thread t : Thread.getAllStackTraces().keySet())
