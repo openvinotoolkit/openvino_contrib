@@ -110,7 +110,7 @@ public class Main {
                             cam.open(imgsPath);
                         }
 
-                        while (cam.read(frame)) {
+                        while (cam.read(frame) && !Thread.interrupted()) {
                             framesCounter++;
                             framesQueue.add(frame.clone());
                         }
