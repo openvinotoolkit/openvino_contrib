@@ -155,8 +155,7 @@ public class Main {
                             boolean isRunning = true;
 
                             while (captureThread.isAlive() || !framesQueue.isEmpty()) {
-                                if (Thread.interrupted())
-                                    break;
+                                if (Thread.interrupted()) break;
 
                                 processInferRequets(WaitMode.STATUS_ONLY);
                                 for (int i = 0; i < inferRequestsSize; i++) {
