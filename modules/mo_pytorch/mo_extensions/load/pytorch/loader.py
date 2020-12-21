@@ -24,6 +24,8 @@ import torch
 from torch.autograd import Variable
 
 from extensions.load.loader import Loader
+from extensions.middle.ConvertGroupedStridedSlice import ConvertGroupedStridedSlice
+ConvertGroupedStridedSlice.enabled = False
 from mo.front.common.register_custom_ops import update_extractors_with_extensions, check_for_duplicates
 from mo.front.extractor import extract_node_attrs
 from mo.graph.graph import Node, Graph

@@ -96,11 +96,30 @@ class OpenVINOTensor(object):
         return forward_hook(Add(), (self, a), output)
 
     def __add__(self, a):
-        res = self._value + a._value
-        class Add(nn.Module):
-            pass
-        return forward_hook(Add(), (self, a), res)
+        if isinstance(a, OpenVINOTensor):
+            class Add(nn.Module):
+                pass
+            res = self._value + a._value
+            return forward_hook(Add(), (self, a), res)
 
+        elif isinstance(a, float):
+            class Add(nn.Module):
+                def __init__(self, value):
+                    super().__init__()
+                    self.register_buffer('add', torch.tensor(value))
+
+            res = self._value + a
+            return forward_hook(Add(a), (self,), res)
+
+    def __getitem__(self, n):
+        class StridedSlice(nn.Module):
+            def __init__(self, index):
+                super().__init__()                
+                self.register_buffer('begin_id', torch.tensor([0, index, 0, 0]))
+                self.register_buffer('end_id', torch.tensor([0, index+1, 0, 0]))
+
+        res = self._value[n]
+        return forward_hook(StridedSlice(n[1]), (self,), res)
 
     def __rmul__(self, a):
         class Mul(nn.Module):
@@ -111,6 +130,14 @@ class OpenVINOTensor(object):
         res = self._value * a
         return forward_hook(Mul(a), (self,), res)
 
+    def __mul__(self, a):
+        class Mul(nn.Module):
+            def __init__(self, value):
+                super().__init__()
+                self.register_buffer('mul', torch.tensor(value))
+
+        res = self._value * a
+        return forward_hook(Mul(a), (self,), res)
 
     def view(self, *shape):
         res = self._value.view(shape)
@@ -205,6 +232,19 @@ def function_hook(input, *args, **kwargs):
     return forward_hook(MaxPool2d(*args, **kwargs), (input,), output)
 
 
+@implements(F.avg_pool2d)
+def function_hook(input, *args, **kwargs):
+    class AvgPool2d(nn.Module):
+        def __init__(self, kernel_size, stride, padding):
+            super().__init__()
+            self.kernel_size = kernel_size
+            self.stride = stride
+            self.padding = padding
+
+    output = F.avg_pool2d(input.tensor(), *args, **kwargs)
+    return forward_hook(AvgPool2d(*args, **kwargs), (input,), output)
+
+
 @implements(torch.relu_)
 def function_hook(input, *args, **kwargs):
 
@@ -214,6 +254,18 @@ def function_hook(input, *args, **kwargs):
 
     output = torch.relu_(input.tensor(), *args, **kwargs)
     return forward_hook(ReLU(*args, **kwargs), (input,), output)
+
+
+@implements(torch.unsqueeze)
+def unsqueeze(input, dim):
+    class Unsqueeze(nn.Module):
+        def __init__(self, dim):
+            super().__init__()
+            self.register_buffer('unsqueeze_dims', torch.tensor(dim))
+
+    output = torch.unsqueeze(input._value, dim)
+    forward_hook(Unsqueeze(dim), (input,), output)
+    return forward_hook(Unsqueeze(dim), (input,), output)
 
 
 @implements(F.relu)

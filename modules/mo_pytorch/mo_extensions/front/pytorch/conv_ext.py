@@ -29,15 +29,16 @@ class Conv2dFrontExtractor(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         # Extract pads attribute
-        pads = np.array(node.module.padding, dtype=np.int64).reshape(1, 2)
-        pads = np.repeat(pads, 2, axis=0)
-        final_pads = np.array([[0, 0], [0, 0], *pads], dtype=np.int64)
+        pads = []
+        for pad in node.module.padding:
+            pads.append([pad,pad])
+        final_pads = np.array([*pads, *pads], dtype=np.int64)
 
         # Extract strides attribute
         strides = node.module.stride
         final_strides = np.array([1, 1, *strides], dtype=np.int64)
 
-        # Extract strides attribute
+        # Extract dilations attribute
         dilations = node.module.dilation
         if isinstance(dilations, int):
             dilations = [dilations, dilations]
