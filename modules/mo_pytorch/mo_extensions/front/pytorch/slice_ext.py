@@ -23,11 +23,10 @@ class StridedSliceFrontExtractor(FrontExtractorOp):
 
     @classmethod
     def extract(cls, node: Node):
-        mask = node.module.mask
         attrs = {
-            'begin_mask': mask,
-            'end_mask': mask,
-            'shrink_axis_mask': mask,
+            'begin_mask': node.module.begin_mask,
+            'end_mask': node.module.end_mask,
+            'shrink_axis_mask': node.module.shrink_axis_mask,
             'new_axis_mask': [0],
             'ellipsis_mask': [0],
         }

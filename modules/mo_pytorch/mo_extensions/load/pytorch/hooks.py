@@ -115,25 +115,54 @@ class OpenVINOTensor(object):
         import numpy as np
 
         value_ndim = self._value.ndim
-        begin_id = np.zeros(value_ndim, dtype=int)
-        end_id = np.zeros(value_ndim, dtype=int)
-        mask_arr = np.zeros(value_ndim, dtype=int)
+        begin_id = []
+        end_id = []
+        begin_mask = []
+        end_mask = []
+        shrink_axis_mask = []
 
-        for i in range(len(n)):
-            if isinstance(n[i], int):
-                begin_id[i] = n[i]
-                end_id[i] = n[i] + 1
-                mask_arr[i] = 1
+        for item in n:
+            if isinstance(item, int):
+                begin_id.append(item)
+                end_id.append(item + 1)
+
+                shrink_axis_mask.append(1)
+                begin_mask.append(1)
+                end_mask.append(1)
+
+            elif isinstance(item, slice):
+                if item.start is not None:
+                    begin_id.append(item.start)
+                    begin_mask.append(1)
+                else:
+                    begin_id.append(0)
+                    begin_mask.append(0)
+
+                if item.stop is not None:
+                    end_id.append(item.stop)
+                    end_mask.append(1)
+                else:
+                    end_id.append(0)
+                    end_mask.append(0)
+
+                if (end_id[-1] - begin_id[-1] != 1):
+                    shrink_axis_mask.append(0)
+                else:
+                    shrink_axis_mask[i].append(1)
 
         class StridedSlice(nn.Module):
-            def __init__(self, begin, end, mask):
-                super().__init__()  
-                self.mask = mask
+            def __init__(self, begin, end, begin_mask, end_mask, shrink_mask):
+                super().__init__() 
+                self.begin_mask = begin_mask
+                self.end_mask = end_mask 
+                self.shrink_axis_mask = shrink_mask
                 self.register_buffer('begin_id', torch.tensor(begin))
                 self.register_buffer('end_id', torch.tensor(end))
 
-        res = self._value[n]
-        return forward_hook(StridedSlice(begin_id, end_id, mask_arr), (self,), res)
+        res = self._value[n] 
+        sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
+        
+        return forward_hook(sslice, (self,), res)
 
     def __rmul__(self, a):
         class Mul(nn.Module):

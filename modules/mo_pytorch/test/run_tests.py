@@ -80,7 +80,6 @@ class TestModels(unittest.TestCase):
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
-
         exec_net = self.ie.load_network(net, 'CPU')
         out = exec_net.infer({'input': inp.detach().numpy()})
 
@@ -149,6 +148,14 @@ class TestModels(unittest.TestCase):
 
         self.normAssertDetections(ref['pred_classes'], ref['scores'], ref_boxes,
                                   ie_detections[:, 1], ie_detections[:, 2], ie_detections[:, 3:])
+
+    def test_strided_slice(self):
+        import torch.nn as nn
+        class SSlice(nn.Module):
+            def forward(self, x):
+                return x[:, 1:, :2, 3]
+
+        self.check_torchvision_model(lambda **args: SSlice(), (299, 299), 4e-5)
 
 if __name__ == '__main__':
     unittest.main()

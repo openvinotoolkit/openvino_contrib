@@ -11,3 +11,6 @@ def get_pads(padding):
         pads = np.array([padding, padding], dtype=np.int64).reshape(1, 2)
         pads = np.repeat(pads, 2, axis=0)
         return np.array([[0, 0], [0, 0], *pads], dtype=np.int64)
+
+    else:
+        raise Exception("Unsupported type of padding!")
