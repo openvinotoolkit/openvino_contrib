@@ -112,14 +112,28 @@ class OpenVINOTensor(object):
             return forward_hook(Add(a), (self,), res)
 
     def __getitem__(self, n):
+        import numpy as np
+
+        value_ndim = self._value.ndim
+        begin_id = np.zeros(value_ndim, dtype=int)
+        end_id = np.zeros(value_ndim, dtype=int)
+        mask_arr = np.zeros(value_ndim, dtype=int)
+
+        for i in range(len(n)):
+            if isinstance(n[i], int):
+                begin_id[i] = n[i]
+                end_id[i] = n[i] + 1
+                mask_arr[i] = 1
+
         class StridedSlice(nn.Module):
-            def __init__(self, index):
-                super().__init__()                
-                self.register_buffer('begin_id', torch.tensor([0, index, 0, 0]))
-                self.register_buffer('end_id', torch.tensor([0, index+1, 0, 0]))
+            def __init__(self, begin, end, mask):
+                super().__init__()  
+                self.mask = mask
+                self.register_buffer('begin_id', torch.tensor(begin))
+                self.register_buffer('end_id', torch.tensor(end))
 
         res = self._value[n]
-        return forward_hook(StridedSlice(n[1]), (self,), res)
+        return forward_hook(StridedSlice(begin_id, end_id, mask_arr), (self,), res)
 
     def __rmul__(self, a):
         class Mul(nn.Module):
@@ -130,6 +144,7 @@ class OpenVINOTensor(object):
         res = self._value * a
         return forward_hook(Mul(a), (self,), res)
 
+    # a - value
     def __mul__(self, a):
         class Mul(nn.Module):
             def __init__(self, value):

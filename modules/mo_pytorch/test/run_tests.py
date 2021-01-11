@@ -80,6 +80,7 @@ class TestModels(unittest.TestCase):
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
+
         exec_net = self.ie.load_network(net, 'CPU')
         out = exec_net.infer({'input': inp.detach().numpy()})
 

@@ -21,6 +21,7 @@ from mo.front.extractor import FrontExtractorOp
 from mo.ops.convolution import Convolution
 from mo.utils.error import Error
 
+from .common import get_pads
 
 class Conv2dFrontExtractor(FrontExtractorOp):
     op = 'Conv2d'
@@ -28,11 +29,7 @@ class Conv2dFrontExtractor(FrontExtractorOp):
 
     @classmethod
     def extract(cls, node):
-        # Extract pads attribute
-        pads = []
-        for pad in node.module.padding:
-            pads.append([pad,pad])
-        final_pads = np.array([*pads, *pads], dtype=np.int64)
+        final_pads = get_pads(node.module.padding)
 
         # Extract strides attribute
         strides = node.module.stride

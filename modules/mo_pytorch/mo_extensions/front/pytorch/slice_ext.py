@@ -17,18 +17,17 @@ from mo.front.extractor import FrontExtractorOp
 from mo.graph.graph import Node
 from mo.ops.strided_slice import StridedSlice
 
-
 class StridedSliceFrontExtractor(FrontExtractorOp):
     op = 'StridedSlice'
     enabled = True
 
     @classmethod
     def extract(cls, node: Node):
-
+        mask = node.module.mask
         attrs = {
-            'begin_mask': [0,1,0,0],
-            'end_mask': [0,1,0,0],
-            'shrink_axis_mask': [0,1,0,0],
+            'begin_mask': mask,
+            'end_mask': mask,
+            'shrink_axis_mask': mask,
             'new_axis_mask': [0],
             'ellipsis_mask': [0],
         }
