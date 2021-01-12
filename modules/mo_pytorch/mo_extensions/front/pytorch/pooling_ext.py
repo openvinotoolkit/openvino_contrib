@@ -22,6 +22,7 @@ from mo.ops.pooling import Pooling
 from extensions.ops.adaptive_avg_pooling import AdaptiveAvgPooling
 from mo.utils.error import Error
 
+from .common import get_pads
 
 class MaxPool2dFrontExtractor(FrontExtractorOp):
     op = 'MaxPool2d'
@@ -30,9 +31,7 @@ class MaxPool2dFrontExtractor(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         # Extract pads attribute
-        pads = np.array([node.module.padding, node.module.padding], dtype=np.int64).reshape(1, 2)
-        pads = np.repeat(pads, 2, axis=0)
-        final_pads = np.array([[0, 0], [0, 0], *pads], dtype=np.int64)
+        final_pads = get_pads(node.module)
 
         # Extract strides attribute
         strides = [node.module.stride, node.module.stride]
@@ -77,4 +76,38 @@ class AdaptiveAvgPool2dFrontExtractor(FrontExtractorOp):
             'output_size': output_size,
         }
         AdaptiveAvgPooling.update_node_stat(node, data)
+        return cls.enabled
+
+
+class AvgPool2dFrontExtractor(FrontExtractorOp):
+    op = 'AvgPool2d'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        # Extract pads attribute
+        final_pads = get_pads(node.module)
+
+        # Extract strides attribute
+        strides = [node.module.stride, node.module.stride]
+        final_strides = np.array([1, 1, *strides], dtype=np.int64)
+
+        kernel_shape = [node.module.kernel_size, node.module.kernel_size]
+        final_kernel_shape = np.array([1, 1, *kernel_shape], dtype=np.int64)
+
+        attrs = {
+            'op': node.op,
+            'window': final_kernel_shape,
+            'stride': final_strides,
+            'pad': final_pads,
+            'pool_method': 'avg',
+            'exclude_pad': 'false',
+
+            'channel_dims': np.array([1], dtype=np.int64),
+            'batch_dims': np.array([0], dtype=np.int64),
+            'layout': 'NCHW',
+        }
+
+        # update the attributes of the node
+        Pooling.update_node_stat(node, attrs)
         return cls.enabled
