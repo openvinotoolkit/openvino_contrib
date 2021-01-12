@@ -31,7 +31,7 @@ class MaxPool2dFrontExtractor(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         # Extract pads attribute
-        final_pads = get_pads(node.module.padding)
+        final_pads = get_pads(node.module)
 
         # Extract strides attribute
         strides = [node.module.stride, node.module.stride]
@@ -86,7 +86,7 @@ class AvgPool2dFrontExtractor(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         # Extract pads attribute
-        final_pads = get_pads(node.module.padding)
+        final_pads = get_pads(node.module)
 
         # Extract strides attribute
         strides = [node.module.stride, node.module.stride]

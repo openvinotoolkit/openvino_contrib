@@ -111,17 +111,14 @@ class OpenVINOTensor(object):
             res = self._value + a
             return forward_hook(Add(a), (self,), res)
 
-    def __getitem__(self, n):
-        import numpy as np
-
-        value_ndim = self._value.ndim
+    def __getitem__(self, key):
         begin_id = []
         end_id = []
         begin_mask = []
         end_mask = []
         shrink_axis_mask = []
 
-        for item in n:
+        for item in key:
             if isinstance(item, int):
                 begin_id.append(item)
                 end_id.append(item + 1)
@@ -131,24 +128,16 @@ class OpenVINOTensor(object):
                 end_mask.append(1)
 
             elif isinstance(item, slice):
-                if item.start is not None:
-                    begin_id.append(item.start)
-                    begin_mask.append(1)
-                else:
-                    begin_id.append(0)
-                    begin_mask.append(0)
+                begin_id.append(item.start if item.start else 0)
+                begin_mask.append(1 if item.start else 0)
 
-                if item.stop is not None:
-                    end_id.append(item.stop)
-                    end_mask.append(1)
-                else:
-                    end_id.append(0)
-                    end_mask.append(0)
+                end_id.append(item.stop if item.stop else 0)
+                end_mask.append(1 if item.stop else 0)
 
                 if (end_id[-1] - begin_id[-1] != 1):
                     shrink_axis_mask.append(0)
                 else:
-                    shrink_axis_mask[i].append(1)
+                    shrink_axis_mask.append(1)
 
         class StridedSlice(nn.Module):
             def __init__(self, begin, end, begin_mask, end_mask, shrink_mask):
@@ -159,9 +148,9 @@ class OpenVINOTensor(object):
                 self.register_buffer('begin_id', torch.tensor(begin))
                 self.register_buffer('end_id', torch.tensor(end))
 
-        res = self._value[n] 
+        res = self._value[key] 
         sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
-        
+
         return forward_hook(sslice, (self,), res)
 
     def __rmul__(self, a):

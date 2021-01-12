@@ -153,7 +153,7 @@ class TestModels(unittest.TestCase):
         import torch.nn as nn
         class SSlice(nn.Module):
             def forward(self, x):
-                return x[:, 1:, :2, 3]
+                return x[:, :1, 2:, 3]
 
         self.check_torchvision_model(lambda **args: SSlice(), (299, 299), 4e-5)
 

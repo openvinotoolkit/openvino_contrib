@@ -29,7 +29,7 @@ class Conv2dFrontExtractor(FrontExtractorOp):
 
     @classmethod
     def extract(cls, node):
-        final_pads = get_pads(node.module.padding)
+        final_pads = get_pads(node.module)
 
         # Extract strides attribute
         strides = node.module.stride
