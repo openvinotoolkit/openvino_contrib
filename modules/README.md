@@ -6,5 +6,7 @@ This list gives an overview of all modules available inside the contrib reposito
 $ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_<module name>=OFF <openvino_source_directory>
 ```
 
+
+* [**arm_plugin**](./arm_plugin): ARM CPU Plugin -- allows to perform deep neural networks inference on ARM CPUs, using OpenVINO API.
 * [**java_api**](./java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
 * [**mo_pytorch**](./mo_pytorch): PyTorch extensions for Model Optimizer -- native PyTorch to OpenVINO IR converter
