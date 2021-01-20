@@ -1,0 +1,3 @@
+[submodule "thirdparty/ComputeLibrary"]
+	path = thirdparty/ComputeLibrary
+	url = https://github.com/ARM-software/ComputeLibrary.git

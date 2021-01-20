@@ -1,0 +1,145 @@
+FROM debian:9
+MAINTAINER vitaly.tuzov@intel.com
+
+ENV https_proxy=http://proxy-chain.intel.com:912
+ENV http_proxy=http://proxy-chain.intel.com:911
+ENV socks_proxy=http://proxy-us.intel.com:1080
+ENV ftp_proxy=http://proxy-chain.intel.com:911
+ENV no_proxy=localhost,127.0.0.1
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV PAKAGE_UPDATES_OF 20201019_11
+
+RUN apt-get update && apt-get -y upgrade
+
+#Prerequisit installation
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        lsb-release \
+        nano \
+        wget \
+        curl \
+        nano \
+        tar \
+        bzip2 \
+        unzip \
+        cpio \
+        cifs-utils \
+        locales \
+        rsync \
+        apt-transport-https \
+        debian-archive-keyring \
+        sudo \
+        openssh-client \
+        default-jre \
+        p7zip-full \
+        software-properties-common \
+        dirmngr \
+        gnupg \
+        netcat-openbsd \
+        dh-autoreconf \
+        libcurl4-gnutls-dev \
+        libexpat1-dev \
+        gettext \
+        libz-dev \
+        libssl-dev \
+        build-essential \
+    && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN dpkg --add-architecture armhf && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends -f -o Dpkg::Options::="--force-confnew" \
+        build-essential \
+        libusb-1.0-0-dev:armhf \
+        software-properties-common \
+        crossbuild-essential-armhf \
+        zlib1g-dev \
+        libffi-dev \
+        libssl-dev \
+        chrpath \
+        libssl-dev \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        # For ARM CPU plugin
+        scons
+
+RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.3.tar.gz && \
+    tar xf cmake-3.13.3.tar.gz && \
+    (cd cmake-3.13.3 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
+    rm -rf cmake-3.13.3 cmake-3.13.3.tar.gz
+
+RUN curl -sSf "https://packagecloud.io/install/repositories/github/git-lfs/config_file.list?os=debian&dist=stretch&source=script" > "/etc/apt/sources.list.d/github_git-lfs.list"
+RUN curl -L "https://packagecloud.io/github/git-lfs/gpgkey" 2> /dev/null | apt-key add - &>/dev/null && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends  --allow-unauthenticated \
+        git-lfs \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# build and install git 2.22
+RUN wget https://github.com/git/git/archive/v2.22.2.tar.gz && \
+    tar xf v2.22.2.tar.gz && \
+    cd git-2.22.2 && \
+    make configure && \
+    ./configure --prefix=/usr && \
+    make all && \
+    make install && \
+    rm -rf /git-2.22.2 && \
+    rm /v2.22.2.tar.gz
+
+#configure paths
+RUN mkdir -p /armcpu_plugin/armcpu_debian32_rpi
+WORKDIR /armcpu_plugin
+ENV DEV_HOME /armcpu_plugin
+ENV OPENCV_HOME=$DEV_HOME/opencv
+ENV DLDT_HOME $DEV_HOME/openvino
+ENV ARM_PLUGIN_HOME $DEV_HOME/armnn-plugin
+ENV STAGING_DIR $DEV_HOME/armcpu_debian32_rpi
+
+ADD .ssh /root/.ssh
+
+ENV SOURCE_UPDATES_OF 20201019_11
+
+#OpenCV
+RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
+    mkdir $OPENCV_HOME/build && \
+    cd $OPENCV_HOME/build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_LIST=imgcodecs,videoio,highgui \
+             -DCMAKE_TOOLCHAIN_FILE=$OPENCV_HOME/platforms/linux/arm-gnueabi.toolchain.cmake \
+             -DCMAKE_STAGING_PREFIX=$STAGING_DIR && \
+    make -j32 && \
+    make install && \
+    cd $DEV_HOME
+
+#OpenVINO
+RUN git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $DLDT_HOME && \
+    mkdir $DLDT_HOME/build && \
+    cd $DLDT_HOME/build && \
+    cmake -DOpenCV_DIR=$STAGING_DIR/lib/cmake/opencv4 -DENABLE_OPENCV=OFF \
+          -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
+          -DENABLE_SSE42=OFF -DENABLE_MYRIAD=OFF -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_VALIDATION_SET=OFF -DENABLE_MODELS=OFF \
+          -DCMAKE_TOOLCHAIN_FILE="$DLDT_HOME/cmake/arm.toolchain.cmake" \
+          -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
+          $DLDT_HOME && \
+    make -j32 && \
+    cd $DEV_HOME
+
+#ArmCPU plugin
+RUN git clone --recurse-submodules --single-branch --branch=master git@gitlab-icv.inn.intel.com:inference-engine/armnn-plugin.git $ARM_PLUGIN_HOME && \
+    mkdir $ARM_PLUGIN_HOME/build && \
+    cd $ARM_PLUGIN_HOME/build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DInferenceEngineDeveloperPackage_DIR=$DLDT_HOME/build \
+          -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
+          -DCMAKE_TOOLCHAIN_FILE="$DLDT_HOME/cmake/arm.toolchain.cmake" \
+          -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
+          $ARM_PLUGIN_HOME && \
+    make -j8
+
+RUN cp -vr $DLDT_HOME/bin/armv7l/Release/* $STAGING_DIR/ && \
+    cd $STAGING_DIR/ && \
+    tar -czvf ../OV_ARM_package.tar.gz ./*
