@@ -1,14 +1,7 @@
 FROM ubuntu:18.04
-MAINTAINER vitaly.tuzov@intel.com
-
-ENV https_proxy=http://proxy-chain.intel.com:912
-ENV http_proxy=http://proxy-chain.intel.com:911
-ENV socks_proxy=http://proxy-us.intel.com:1080
-ENV ftp_proxy=http://proxy-chain.intel.com:911
-ENV no_proxy=localhost,127.0.0.1
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV PAKAGE_UPDATES_OF 20201019_11
+ENV PAKAGE_UPDATES_OF 20210120_11
 
 RUN apt-get update && apt-get -y upgrade
 
@@ -20,13 +13,12 @@ RUN mkdir -p /armcpu_plugin/armcpu_debian64_rpi
 WORKDIR /armcpu_plugin
 ENV DEV_HOME /armcpu_plugin
 ENV OPENCV_HOME=$DEV_HOME/opencv
-ENV DLDT_HOME $DEV_HOME/openvino
-ENV ARM_PLUGIN_HOME $DEV_HOME/armnn-plugin
+ENV OPENVINO_HOME $DEV_HOME/openvino
+ENV OPENVINO_CONTRIB $DEV_HOME/openvino_contrib
+ENV ARM_PLUGIN_HOME $OPENVINO_CONTRIB/modules/arm_plugin
 ENV STAGING_DIR $DEV_HOME/armcpu_debian64_rpi
 
-ADD .ssh /root/.ssh
-
-ENV SOURCE_UPDATES_OF 20201019_11
+ENV SOURCE_UPDATES_OF 20210120_11
 
 #OpenCV
 RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
@@ -40,31 +32,31 @@ RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
     cd $DEV_HOME
 
 #OpenVINO
-RUN git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $DLDT_HOME && \
-    mkdir $DLDT_HOME/build && \
-    cd $DLDT_HOME/build && \
+RUN git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $OPENVINO_HOME && \
+    mkdir $OPENVINO_HOME/build && \
+    cd $OPENVINO_HOME/build && \
     cmake -DOpenCV_DIR=$STAGING_DIR/lib/cmake/opencv4 -DENABLE_OPENCV=OFF \
           -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
           -DENABLE_SSE42=OFF -DENABLE_MYRIAD=OFF -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_VALIDATION_SET=OFF -DENABLE_MODELS=OFF \
-          -DCMAKE_TOOLCHAIN_FILE="$DLDT_HOME/cmake/arm64.toolchain.cmake" \
+          -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm64.toolchain.cmake" \
           -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
-          $DLDT_HOME && \
+          $OPENVINO_HOME && \
     make -j32 && \
     cd $DEV_HOME
 
 #ArmCPU plugin
-RUN git clone --recurse-submodules --single-branch --branch=master git@gitlab-icv.inn.intel.com:inference-engine/armnn-plugin.git $ARM_PLUGIN_HOME && \
+RUN git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git $OPENVINO_CONTRIB && \
     mkdir $ARM_PLUGIN_HOME/build && \
     cd $ARM_PLUGIN_HOME/build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DInferenceEngineDeveloperPackage_DIR=$DLDT_HOME/build \
+    cmake -DCMAKE_BUILD_TYPE=Release -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
           -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
           -DARM_COMPUTE_TARGET_ARCH=arm64-v8a \
-          -DCMAKE_TOOLCHAIN_FILE="$DLDT_HOME/cmake/arm64.toolchain.cmake" \
+          -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm64.toolchain.cmake" \
           -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
           $ARM_PLUGIN_HOME && \
     make -j8
 
-RUN cp -vr $DLDT_HOME/bin/aarch64/Release/* $STAGING_DIR/ && \
+RUN cp -vr $OPENVINO_HOME/bin/aarch64/Release/* $STAGING_DIR/ && \
     cd $STAGING_DIR/ && \
     tar -czvf ../OV_ARM_package.tar.gz ./*
