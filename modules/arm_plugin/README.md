@@ -128,13 +128,9 @@ By contributing to the project, you agree to the license and copyright terms the
 and release your contribution under these terms.
 
 ## How to Contribute
-We welcome community contributions to the OpenVINO™ ARM CPU plugin repository. If you have an idea how to improve the plugin, please share it with us doing the following steps:
-
-* Make sure you can build the plugin and pass all functional tests with your patch.
-* Submit a pull request at https://github.com/openvinotoolkit/openvino_contrib/pulls
-
-You can find additional information about OpenVINO™ contribution process here.
-We will review your contribution and, if any additional fixes or modifications are needed, may give you feedback to guide you. When accepted, your pull request will be merged into the repository.
+We welcome community contributions to `openvino_contrib` repository. 
+If you have an idea how to improve the modules, please share it with us. 
+All guidelines for contributing to the repository can be found [here](../../CONTRIBUTING.md).
 
 ---
 \* Other names and brands may be claimed as the property of others.
