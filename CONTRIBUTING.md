@@ -10,6 +10,7 @@ To contribute to `openvino_contrib` repository, please do the following steps:
 
 * Make sure you can build the module and pass all functional tests with your patch.
 * Submit a pull request (PR) to `develop` branch at https://github.com/openvinotoolkit/openvino_contrib/pulls
+  * Add a prefix [module name] to PR name, e.g. `[java_api] Versioning support`
 
 All guidelines for contributing to the OpenVINO repositories can be found [here](https://github.com/openvinotoolkit/openvino/wiki/Contribute).
 
