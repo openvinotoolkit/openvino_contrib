@@ -1,7 +1,7 @@
 
 # How to Contribute to OpenVINO&trade; Contrib repository
 
-We appreciate your intention to contribute to already existed modules or to propose a new one. 
+We appreciate your intention to contribute to already existed modules or to propose a new one.
 Contrib modules are licensed under the Apache\* License, Version 2.0. By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms. 
 
 ## Pull Request Requirements
