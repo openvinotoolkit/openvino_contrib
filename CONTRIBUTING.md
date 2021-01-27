@@ -1,13 +1,17 @@
 
 # How to Contribute to OpenVINO&trade; Contrib repository
 
-We appreciate your intention to contribute to already existed modules or to propose a new one. Contrib modules are licensed under the Apache\* License, Version 2.0. By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms. 
+We appreciate your intention to contribute to already existed modules or to propose a new one. 
+Contrib modules are licensed under the Apache\* License, Version 2.0. By contributing to the project, you agree to the license and copyright terms therein and release your contribution under these terms. 
 
 ## Pull Request Requirements
 
-To contribute to `openvino_contrib` repository, create a pull request (PR) in this repository using the `develop` branch.
-All guidelines for contributing to the OpenVINO repositories can be found [here](https://github.com/openvinotoolkit/openvino/wiki/Contribute).
+To contribute to `openvino_contrib` repository, please do the following steps:
 
+* Make sure you can build the module and pass all functional tests with your patch.
+* Submit a pull request (PR) to `develop` branch at https://github.com/openvinotoolkit/openvino_contrib/pulls
+
+All guidelines for contributing to the OpenVINO repositories can be found [here](https://github.com/openvinotoolkit/openvino/wiki/Contribute).
 
 ## Legal Information
 
