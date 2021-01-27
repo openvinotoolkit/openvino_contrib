@@ -5,7 +5,7 @@ We appreciate your intention to contribute to already existed modules or to prop
 
 ## Pull Request Requirements
 
-To contribute to OpenVINO&trade; Contrib, create a pull request (PR) in this repository using the `develop` branch.
+To contribute to `openvino_contrib` repository, create a pull request (PR) in this repository using the `develop` branch.
 All guidelines for contributing to the OpenVINO repositories can be found at [How to contribute guideline](https://github.com/openvinotoolkit/openvino/wiki/Contribute).
 
 
