@@ -14,8 +14,8 @@ Raspberry Pi 4 Model B   | Debian 10.3
 OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVIVO™. To use the plugin, it should be built from source code.
 
 ## How to build
-### Approach #1: build OpenVINO and the plugin using pre-configured Dockerfile (cross compiling)
-Also OpenVINO™ and ARM CPU plugin could be built in Docker container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
+### Approach #1: build OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling)
+OpenVINO™ and ARM CPU plugin could be built in Docker container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
 
 1. Clone `openvino_contrib` repository:
 ```
@@ -29,7 +29,7 @@ cd openvino-contrib/modules/arm-plugin
 ```
 docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
-4. Export archive with artifacts to the current directory:
+4. Export the archive with artifacts to the current directory:
 ```
 docker run -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remote
 ```
@@ -39,16 +39,17 @@ mkdir build && tar -xf OV_ARM_package.tar.gz -C build
 ```
 
 ### Approach #2: build OpenVINO and the plugin simultaneously
-You may build OpenVINO™ with the plugin simultaneously following the guideline with some changes:
 
-1. Clone `openvino_contrib` repository after you cloned `openvino` repository:
+1. Clone `openvino` and `openvino_contrib` repositories:
 ```
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino.git 
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
 ```
-2. Run Docker container with mounted both openvino and openvino_contrib source code. If you're using native compilation just skip this step:
+2. Run Docker container with mounted both `openvino` and `openvino_contrib` repositories if you do cross-compilation. If you do native compilation just skip this step:
 ```
 docker run -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
+The next commands in this procedure need to be run in `ie_cross_armhf` container 
 3. Install scons in the container if you're using cross-compilation. If you do native compilation, install scons on build machine:
 ```
 apt-get install scons
@@ -89,12 +90,12 @@ mkdir build && cd build
 ```
 5.  Build plugin:
 ```
-cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> \  
--DCMAKE_BUILD_TYPE=Release .. && make
+cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release .. && make
 ```
 
 ## Sample
-You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `openvino/bin/armv7l/Release`. Let's try to run [Object Detection for SSD sample].
+You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you built the plugin using the 1st approach) or `openvino/bin/armv7l/Release` directory (if you built the plugin using the 2nd or the 3rd approach). The following procedure assumes the 1st building approach was used.
+Let's try to run [Object Detection for SSD sample].
 ### Model preparation
 To speedup the process you may prepare the model on non-ARM platform.
 
@@ -116,7 +117,7 @@ python3 -mpip install --user -r ./requirements.in
 python3 ./downloader.py --name vehicle-license-plate-detection-barrier-0123 --precisions FP32
 python3 ./converter.py --mo ../../../openvino/model-optimizer/mo.py --name vehicle-license-plate-detection-barrier-0123 --precisions FP32
 ```
-###Model inference on ARM
+### Model inference on ARM
 1. Copy `build` directory with OpenVINO™ and ARM plugin artefacts to ARM platform.
 2. Go to `build` directory:
 ```
