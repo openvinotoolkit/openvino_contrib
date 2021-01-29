@@ -41,10 +41,10 @@ struct Argument {
     Arg _arg;
  };
 
+enum class ArgumentType : bool {Input, Output};
 template<>
 struct Argument<arm_compute::ITensor*> {
-    enum class Type : bool {Input, Output};
-    Argument(arm_compute::ITensor* tensor, Type type) :
+    Argument(arm_compute::ITensor* tensor, ArgumentType type) :
         _type{type},
         _tensor{tensor} {
         if (_tensor->info()->has_padding()) {
@@ -64,11 +64,33 @@ struct Argument<arm_compute::ITensor*> {
     operator const T*() const {
         return const_cast<Argument<arm_compute::ITensor*>*>(this)->operator T*();
     }
-    Type                    _type;
+    ArgumentType            _type;
     arm_compute::ITensor*   _tensor;
     arm_compute::Tensor     _notPaddedTensor;
 };
 
+template<>
+struct Argument<ngraph::HostTensorVector> {
+    Argument(const ngraph::HostTensorVector& hosts, const std::vector<arm_compute::ITensor*>& tensors, ArgumentType type) :
+        _type{type},
+        _tensors(tensors),
+        _hosts{hosts} {
+        _notPaddedTensors.resize(_tensors.size());
+        for (size_t i = 0; i < _tensors.size(); i++) {
+            if (_tensors[i]->info()->has_padding()) {
+                _notPaddedTensors[i].allocator()->init({_tensors[i]->info()->tensor_shape(), 1, _tensors[i]->info()->data_type()});
+            }
+        }
+    }
+    operator ngraph::HostTensorVector() {
+        return _hosts;
+    }
+
+    ArgumentType                       _type;
+    std::vector<arm_compute::ITensor*> _tensors;
+    ngraph::HostTensorVector           _hosts;
+    std::vector<arm_compute::Tensor>   _notPaddedTensors;
+};
 
 struct Converter;
 template<typename Arg>
@@ -211,6 +233,14 @@ struct Converter {
                 }
             }
 
+            void StartArgumentLifeTime(Argument<ngraph::HostTensorVector>& hostsArgument) {
+                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+                    if (hostsArgument._tensors[i]->info()->has_padding()) {
+                        _memoryGroup.manage(&(hostsArgument._notPaddedTensors[i]));
+                    }
+                }
+            }
+
             void StartArgumentLifeTimeImpl() {}
 
             template<typename H, typename ... T>
@@ -230,6 +260,14 @@ struct Converter {
             void EndArgumentLifeTime(Argument<arm_compute::ITensor*>& tensorArgument) {
                 if (tensorArgument._tensor->info()->has_padding()) {
                     tensorArgument._notPaddedTensor.allocator()->allocate();
+                }
+            }
+
+            void EndArgumentLifeTime(Argument<ngraph::HostTensorVector>& hostsArgument) {
+                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+                    if (hostsArgument._tensors[i]->info()->has_padding()) {
+                        hostsArgument._notPaddedTensors[i].allocator()->allocate();
+                    }
                 }
             }
 
@@ -260,32 +298,57 @@ struct Converter {
             }
 
             template<typename T>
-            void CopyArgument(Argument<arm_compute::ITensor*>::Type, T&&) {}
+            void CopyArgument(ArgumentType, T&&) {}
 
-            void CopyArgument(Argument<arm_compute::ITensor*>::Type type, Argument<arm_compute::ITensor*>& tensorArgument) {
+            void CopyArgument(ArgumentType type, Argument<arm_compute::ITensor*>& tensorArgument) {
                 if (tensorArgument._tensor->info()->has_padding()) {
                     if (tensorArgument._type == type) {
                         switch (type) {
-                        case Argument<arm_compute::ITensor*>::Type::Input  : tensorArgument._notPaddedTensor.copy_from(*(tensorArgument._tensor)); break;
-                        case Argument<arm_compute::ITensor*>::Type::Output : tensorArgument._tensor->copy_from(tensorArgument._notPaddedTensor); break;
+                        case ArgumentType::Input  : tensorArgument._notPaddedTensor.copy_from(*(tensorArgument._tensor)); break;
+                        case ArgumentType::Output : tensorArgument._tensor->copy_from(tensorArgument._notPaddedTensor); break;
                         }
                     }
                 }
             }
 
-            void CopyArguments(Argument<arm_compute::ITensor*>::Type type) {}
+            void CopyArgument(ArgumentType type, Argument<ngraph::HostTensorVector>& hostsArgument) {
+                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+                    void* host_ptr = static_cast<void*>(hostsArgument._hosts[i]->get_data_ptr());
+                    void* tensor_ptr = static_cast<void*>(hostsArgument._tensors[i]->buffer());
+                    if (host_ptr != tensor_ptr) {
+                        hostsArgument._hosts[i] = std::make_shared<ngraph::HostTensor>(hostsArgument._hosts[i]->get_element_type(),
+                                                               hostsArgument._hosts[i]->get_shape(),
+                                                               tensor_ptr,
+                                                               hostsArgument._hosts[i]->get_name());
+                    }
+                    if (hostsArgument._tensors[i]->info()->has_padding()) {
+                        if (hostsArgument._type == type) {
+                            switch (type) {
+                            case ArgumentType::Input  :
+                                hostsArgument._notPaddedTensors[i].copy_from(*(hostsArgument._tensors[i]));
+                                break;
+                            case ArgumentType::Output :
+                                hostsArgument._tensors[i]->copy_from(hostsArgument._notPaddedTensors[i]);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            void CopyArguments(ArgumentType type) {}
 
             template<typename H, typename ... T>
-            void CopyArguments(Argument<arm_compute::ITensor*>::Type type, H&& h, T&& ... t) {
+            void CopyArguments(ArgumentType type, H&& h, T&& ... t) {
                 CopyArgument(type, std::forward<H>(h));
                 CopyArguments(type, std::forward<T>(t)...);
             }
 
             template<std::size_t ... I>
             void RunImpl(std::index_sequence<I...>) {
-                CopyArguments(Argument<arm_compute::ITensor*>::Type::Input, std::get<I>(_args)...);
+                CopyArguments(ArgumentType::Input, std::get<I>(_args)...);
                 _callable(std::get<I>(_args)...);
-                CopyArguments(Argument<arm_compute::ITensor*>::Type::Output, std::get<I>(_args)...);
+                CopyArguments(ArgumentType::Output, std::get<I>(_args)...);
             }
             void run() override {
                 RunImpl(std::make_index_sequence<sizeof...(RunArgs)>{});
@@ -317,7 +380,7 @@ struct Converter {
                     << type;
             }
             return {_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()),
-                    Argument<arm_compute::ITensor*>::Type::Input};
+                    ArgumentType::Input};
         }
 
         template<std::size_t I>
@@ -329,7 +392,19 @@ struct Converter {
                     << type;
             }
             return {_converter._layers.at(output.get_node()->get_friendly_name())._outputs.at(output.get_index()).get(),
-                    Argument<arm_compute::ITensor*>::Type::Output};
+                    ArgumentType::Output};
+        }
+
+        template<std::size_t I>
+        Argument<ngraph::HostTensorVector> MakeArgument(ngraph::HostTensorVector& hosts) {
+            std::vector<arm_compute::ITensor*> tensors;
+            for (size_t i = 0; i < hosts.size(); i++) {
+                if (_converter._layers.find(hosts[i]->get_name()) == _converter._layers.end()) {
+                    THROW_IE_EXCEPTION << "Output " << hosts[i]->get_name() << " was not allocated";
+                }
+                tensors.push_back(_converter._layers.at(hosts[i]->get_name())._outputs.at(i).get());
+            }
+            return {hosts, tensors, ArgumentType::Output};
         }
 
         arm_compute::Status Validate() override {

@@ -75,7 +75,7 @@ static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
 
         std::shared_ptr<ngraph::Node> conv_activ;
         if (m_conv->get_input_size() == 2) {
-            conv_activ = std::make_shared<opset::ArmConvolution>(
+            conv_activ = std::make_shared<Conv>(
                     m_conv->input_value(Inputs::Data),
                     m_conv->input_value(Inputs::Weights),
                     m_conv->get_strides(),
@@ -85,7 +85,7 @@ static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
                     m_conv->get_auto_pad(),
                     opset::ActivationInfo{func, a, b});
         } else {
-            conv_activ = std::make_shared<opset::ArmConvolution>(
+            conv_activ = std::make_shared<Conv>(
                     m_conv->input_value(Inputs::Data),
                     m_conv->input_value(Inputs::Weights),
                     m_conv->input_value(Inputs::Bias),

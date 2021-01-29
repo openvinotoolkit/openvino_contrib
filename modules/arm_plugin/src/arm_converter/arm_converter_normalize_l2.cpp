@@ -11,8 +11,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NormalizeL
     auto&& axes = node.get_reduction_axes();
     float eps   = node.get_eps();
 
-    if (node.get_eps_mode() == ngraph::op::EpsMode::MAX) {
-        THROW_IE_EXCEPTION << "Unsupported EpsMode::MAX of NormalizeL2 layer";
+    if (node.get_eps_mode() == ngraph::op::EpsMode::ADD) {
+        THROW_IE_EXCEPTION << "Unsupported EpsMode::ADD of NormalizeL2 layer. Use decomposition transform.";
     }
     int axis = AxisCast(*axes.begin(), node.get_shape().size());
     //  Maximum supported actual reduction axis : 2

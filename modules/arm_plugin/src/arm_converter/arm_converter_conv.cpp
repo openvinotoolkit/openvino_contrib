@@ -80,17 +80,7 @@ static auto MakeWeightsArgument(const opset::GroupConvolution& node) {
             DataTypeCast(node.input(Weights).get_element_type())});
 }
 
-void CheckPad(const opset::GroupConvolution& node) {
-    if (node.get_pads_begin() == ngraph::CoordinateDiff{0, 1} && node.get_pads_end() == ngraph::CoordinateDiff{0, 0}) {
-        THROW_IE_EXCEPTION << "Arm Plugin: unsupported pad configuration for layer: "
-            << node.get_friendly_name() << " "
-            << node.get_type_name() << " "
-            << node.get_pads_begin() << " " << node.get_pads_end();
-    }
-}
-
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupConvolution& node) {
-    CheckPad(node);
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
     std::tie(conv_info, dilation) = ConvParamters(node);

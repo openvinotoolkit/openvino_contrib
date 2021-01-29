@@ -150,6 +150,11 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::ScatterUpdate>();
         Register<opset::ScatterNDUpdate>();
         Register<opset::ScatterElementsUpdate>();
+        Register<opset::GatherTree>();
+        Register<opset::EmbeddingSegmentsSum>();
+        Register<opset::EmbeddingBagPackedSum>();
+        Register<opset::EmbeddingBagOffsetsSum>();
+        Register<opset::NonMaxSuppression>();
     }
     Register<opset::Result>();
 
@@ -160,7 +165,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         }
         for (auto output : node->outputs()) {
             std::unique_ptr<arm_compute::Tensor> tensor(new arm_compute::Tensor);
-            tensor->allocator()->init({ShapeCast(output.get_shape()), 1, DataTypeCast(output.get_element_type())});
+            tensor->allocator()->init({ShapeCast(output.get_partial_shape().get_max_shape()), 1, DataTypeCast(output.get_element_type())});
             layer._outputs.emplace_back(std::move(tensor));
         }
     }

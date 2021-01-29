@@ -31,6 +31,7 @@
 #include "convert_logical.hpp"
 #include "convert_strided_slice.hpp"
 #include "convert_group_conv.hpp"
+#include "convert_grn_to_normalizel2.hpp"
 #include "convert_mat_mul.hpp"
 #include "convert_batchnorm_v0_to_v5.hpp"
 #include "convert_batch_norm.hpp"
@@ -40,8 +41,8 @@
 #include "convert_tile_to_concats.hpp"
 #include "convert_reduce_single_axis.hpp"
 #include "convert_interpolate_v0_to_v4.hpp"
-#include "normalizel2_fusion.hpp"
-#include "decompose_normalizel2_max.hpp"
+#include "normalizel2_max_fusion.hpp"
+#include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
 #include "transformations/convert_reorg.hpp"
 #include "transformations/convert_prior_box_to_const.hpp"
@@ -88,8 +89,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::LSTMCellDecomposition>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
+    manager.register_pass<pass::ConvertGRN>();
     manager.register_pass<pass::NormalizeL2Fusion>();
-    manager.register_pass<pass::DecomposeNormalizeL2Max>();
+    manager.register_pass<pass::DecomposeNormalizeL2Add>();
     manager.register_pass<pass::ConvertSwish>();
     manager.register_pass<pass::DecomposeMish>();
     manager.register_pass<pass::ConvertGroupConvolution>();

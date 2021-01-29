@@ -13,10 +13,10 @@ std::vector<std::string> disabledTestPatterns() {
         ".*Multi.*canSetExclusiveAsyncRequests.*",  // Unsupported topology
         ".*Multi.*withoutExclusiveAsyncRequests.*",  // Unsupported topology
         "ARM/CoreThreadingTests.smoke_QueryNetwork/0", // Used legacy network representation
-        R"(.*GroupConvolutionLayerTest.*PB\(0\.1\)_PE\(0\.0\).*)", // Sporadic test fails
         ".*ExecGraphTests.*", // Not implemented
         R"(.*Interpolate_NearestFloorAsym.*TS=\(1\.1\.2\.2\).*)", // Not supported
         R"(Interpolate.*InterpolateMode=linear_onnx.*)", // Not supported
         R"(.*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*)", // Failed
+        ".*PreprocessTest.*" // Dose not cover all needed cases
     };
 }
