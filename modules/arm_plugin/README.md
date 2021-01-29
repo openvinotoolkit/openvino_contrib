@@ -68,8 +68,7 @@ mkdir build && cd build
        -DCMAKE_TOOLCHAIN_FILE="../cmake/arm.toolchain.cmake" \
        -DTHREADS_PTHREAD_ARG="-pthread" \
        -DIE_EXTRA_MODULES=/openvino_contrib/modules \
-       -DBUILD_java_api=OFF \
-       -DBUILD_mo_pytorch=OFF .. && make
+       -DBUILD_java_api=OFF .. && make
 ```
 
 As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l/Release` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
