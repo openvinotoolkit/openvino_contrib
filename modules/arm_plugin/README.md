@@ -72,7 +72,7 @@ mkdir build && cd build
        -DBUILD_mo_pytorch=OFF .. && make
 ```
 
-As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
+As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l/Release` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
 
 ### Approach #3: build OpenVINO™ and the plugin consequentially (native compiling)
 In order to build the plugin, you must prebuild OpenVINO package from sources using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
