@@ -9,10 +9,10 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::ConvertCeiling::ConvertCeiling() : GraphRewrite() {
+ArmPlugin::pass::ConvertCeiling::ConvertCeiling() {
     auto ceil = std::make_shared<opset::Ceiling>(ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto ceil = std::dynamic_pointer_cast<opset::Ceiling>(m.get_match_root());
         if (!ceil) {
             return false;
@@ -33,5 +33,5 @@ ArmPlugin::pass::ConvertCeiling::ConvertCeiling() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(ceil, "ConvertCeiling");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

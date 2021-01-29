@@ -8,7 +8,7 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertGroupConvolution: public ngraph::pass::GraphRewrite {
+struct ConvertGroupConvolution: public ngraph::pass::MatcherPass {
 public:
     ConvertGroupConvolution();
 };

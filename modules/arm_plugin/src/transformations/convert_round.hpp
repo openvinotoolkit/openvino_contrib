@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertRound: public ngraph::pass::GraphRewrite {
+struct ConvertRound: public ngraph::pass::MatcherPass {
     ConvertRound();
 };
 }  // namespace pass

@@ -8,12 +8,12 @@
 #include <ngraph/rt_info.hpp>
 #include "opset/opset.hpp"
 
-ArmPlugin::pass::ConvertPriorBoxClustered::ConvertPriorBoxClustered() : GraphRewrite() {
+ArmPlugin::pass::ConvertPriorBoxClustered::ConvertPriorBoxClustered() {
     auto prior_box = std::make_shared<opset::PriorBoxClustered>(ngraph::pattern::any_input(),
                                                                 ngraph::pattern::any_input(),
                                                                 ngraph::op::PriorBoxClusteredAttrs{});
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto node = std::dynamic_pointer_cast<opset::PriorBoxClustered>(m.get_match_root());
         if (!node) {
             return false;
@@ -109,5 +109,5 @@ ArmPlugin::pass::ConvertPriorBoxClustered::ConvertPriorBoxClustered() : GraphRew
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(prior_box, "ConvertPriorBoxClustered");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

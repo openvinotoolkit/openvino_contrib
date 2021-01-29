@@ -11,24 +11,22 @@
 #include <ngraph/rt_info.hpp>
 
 
-ArmPlugin::pass::ConvertTile::ConvertTile() : GraphRewrite() {
-    auto input   = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto repeats = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1});
-    auto tile    = std::make_shared<opset::Tile>(input, repeats);
+ArmPlugin::pass::ConvertTile::ConvertTile() {
+    auto tile    = std::make_shared<opset::Tile>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto tile = std::dynamic_pointer_cast<opset::Tile>(m.get_match_root());
         if (!tile) {
             return false;
         }
 
-        auto repeat_node = std::dynamic_pointer_cast<opset::Constant>(tile->input(1).get_source_output().get_node_shared_ptr());
+        auto repeat_node = std::dynamic_pointer_cast<opset::Constant>(tile->input_value(1).get_node_shared_ptr());
         if (!repeat_node) {
             THROW_IE_EXCEPTION << "Unsupported Tile with inconstant repeats.";
         }
 
         ngraph::NodeVector new_ops;
-        auto input = tile->input(0).get_source_output().get_node_shared_ptr();
+        auto input = tile->input_value(0).get_node_shared_ptr();
         auto repeats = repeat_node->cast_vector<int64_t>();
 
         std::vector<size_t> input_shape = tile->get_input_shape(0);
@@ -53,5 +51,5 @@ ArmPlugin::pass::ConvertTile::ConvertTile() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(tile, "ConvertTile");
-    this->add_matcher(m, callback);
+    register_matcher(m, callback);
 }

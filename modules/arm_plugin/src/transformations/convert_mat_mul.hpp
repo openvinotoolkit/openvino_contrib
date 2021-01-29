@@ -8,7 +8,7 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertMatMulToFC: public ngraph::pass::GraphRewrite {
+struct ConvertMatMulToFC: public ngraph::pass::MatcherPass {
 public:
     ConvertMatMulToFC();
 };

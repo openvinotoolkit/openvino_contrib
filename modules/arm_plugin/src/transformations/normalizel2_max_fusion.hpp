@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct NormalizeL2Fusion: public ngraph::pass::GraphRewrite {
+struct NormalizeL2Fusion: public ngraph::pass::MatcherPass {
     NormalizeL2Fusion();
 };
 }  // namespace pass

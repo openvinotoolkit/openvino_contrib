@@ -10,7 +10,7 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Transpose& node) {
     enum {Data, Order};
     auto&& inputOrder = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                    node.input(Order).get_source_output().get_node_shared_ptr())->cast_vector<size_t>();
+                    node.input_value(Order).get_node_shared_ptr())->cast_vector<size_t>();
     arm_compute::PermutationVector order;
     const auto maxSupportedNumOfDimensions = (inputOrder.size() < 4) ? 3u : 4u;
     for (unsigned int i = 0; i < maxSupportedNumOfDimensions; ++i) {

@@ -36,7 +36,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Relu& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::PRelu& node) {
     float a = dynamic_cast<const opset::Constant&>(
-                *(node.input(1).get_source_output().get_node())).get_vector<float>()[0];
+                *(node.input_value(1).get_node())).get_vector<float>()[0];
     arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU, a);
     return ConvertActivation(node, info, this);
 }
@@ -117,9 +117,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
     }
 
     float alpha = dynamic_cast<const opset::Constant&>(
-            *(node.input(1).get_source_output().get_node())).get_vector<float>()[0];
+            *(node.input_value(1).get_node())).get_vector<float>()[0];
     float beta  = dynamic_cast<const opset::Constant&>(
-            *(node.input(2).get_source_output().get_node())).get_vector<float>()[0];
+            *(node.input_value(2).get_node())).get_vector<float>()[0];
     return make(ngraph::runtime::reference::hard_sigmoid<float>, alpha, beta);
 }
 

@@ -11,10 +11,10 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-ArmPlugin::pass::ConvertGroupConvolution::ConvertGroupConvolution() : GraphRewrite() {
+ArmPlugin::pass::ConvertGroupConvolution::ConvertGroupConvolution() {
     auto gconv = ngraph::pattern::wrap_type<opset::GroupConvolution>();
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         enum Inputs {Data, Weights};
         auto gconv = std::dynamic_pointer_cast<opset::GroupConvolution>(m.get_match_root());
         if (!gconv) {
@@ -66,6 +66,6 @@ ArmPlugin::pass::ConvertGroupConvolution::ConvertGroupConvolution() : GraphRewri
         return true;
     };
     auto m = std::make_shared<ngraph::pattern::Matcher>(gconv, "ConvertGroupConvolution");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }
 

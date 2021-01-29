@@ -8,13 +8,12 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() : GraphRewrite() {
-    auto input = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto axes  = opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {1});
-    auto split_lengths = opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {1});
-    auto split = std::make_shared<opset::VariadicSplit>(input, axes, split_lengths);
+ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
+    auto split = std::make_shared<opset::VariadicSplit>(ngraph::pattern::any_input(),
+                                                        ngraph::pattern::any_input(),
+                                                        ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto split = std::dynamic_pointer_cast<opset::VariadicSplit>(m.get_match_root());
         if (!split) {
             return false;
@@ -32,6 +31,10 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() : GraphRewrite
         auto splits = split_lengths->cast_vector<int64_t>();
         auto size = splits.size();
         auto input_shape = input->get_shape();
+
+        if (axis >= input_shape.size()) {
+            THROW_IE_EXCEPTION << "axis should be less than " << input_shape.size();
+        }
 
         auto stride = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, std::vector<int64_t>(size, 1));
         std::vector<int64_t> begin_vec(size, 0);
@@ -59,5 +62,5 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() : GraphRewrite
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(split, "DecomposeVariadicSplit");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

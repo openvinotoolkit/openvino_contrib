@@ -8,7 +8,7 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertTile: public ngraph::pass::GraphRewrite {
+struct ConvertTile: public ngraph::pass::MatcherPass {
     ConvertTile();
 };
 }  // namespace pass

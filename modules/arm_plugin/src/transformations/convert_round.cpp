@@ -8,10 +8,10 @@
 #include <details/ie_exception.hpp>
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::ConvertRound::ConvertRound() : GraphRewrite() {
+ArmPlugin::pass::ConvertRound::ConvertRound() {
     auto round = std::make_shared<opset::Round>(ngraph::pattern::any_input(), ngraph::op::v5::Round::RoundMode::HALF_TO_EVEN);
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto round = std::dynamic_pointer_cast<opset::Round>(m.get_match_root());
 
         if (!round) {
@@ -45,5 +45,5 @@ ArmPlugin::pass::ConvertRound::ConvertRound() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(round, "ConvertRound");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

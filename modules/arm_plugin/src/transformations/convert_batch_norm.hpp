@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertBatchNormInference: public ngraph::pass::GraphRewrite {
+struct ConvertBatchNormInference: public ngraph::pass::MatcherPass {
     ConvertBatchNormInference();
 };
 }  // namespace pass

@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct DecomposeVariadicSplit: public ngraph::pass::GraphRewrite {
+struct DecomposeVariadicSplit: public ngraph::pass::MatcherPass {
     DecomposeVariadicSplit();
 };
 }  // namespace pass

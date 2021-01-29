@@ -11,10 +11,10 @@
 #include <ngraph/rt_info.hpp>
 
 
-ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() : GraphRewrite() {
+ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
     auto matmul = std::make_shared<opset::MatMul>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto matmul = std::dynamic_pointer_cast<opset::MatMul>(m.get_match_root());
         if (!matmul) {
             return false;
@@ -98,5 +98,5 @@ ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() : GraphRewrite() {
         return true;
     };
     auto m = std::make_shared<ngraph::pattern::Matcher>(matmul, "ConvertMatMulToFC");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

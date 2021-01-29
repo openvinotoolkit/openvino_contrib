@@ -7,17 +7,11 @@
 #include "opset/opset.hpp"
 #include "transformations/convert_comparison.hpp"
 
-
 using namespace ArmPlugin;
 
-template<typename T>
-static auto addMatcher(ArmPlugin::pass::ConvertComparison* pass) {
-    auto input0  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto input1  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto comparison = std::make_shared<T>(input0, input1);
-
-    auto m = std::make_shared<ngraph::pattern::Matcher>(comparison, ("Convert" + std::string {T::type_info.name}).c_str());
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template <class T>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvertComparisionBase::convert_comparision() {
+    return [&](ngraph::pattern::Matcher& m) {
         auto comparison = m.get_match_root();
         if (!std::dynamic_pointer_cast<T>(comparison)) {
             return false;
@@ -39,14 +33,53 @@ static auto addMatcher(ArmPlugin::pass::ConvertComparison* pass) {
         ngraph::copy_runtime_info(comparison, new_node);
         ngraph::replace_node(comparison, new_node);
         return true;
-    });
+    };
 }
 
-ArmPlugin::pass::ConvertComparison::ConvertComparison() : GraphRewrite() {
-    addMatcher<opset::Equal>(this);
-    addMatcher<opset::NotEqual>(this);
-    addMatcher<opset::Greater>(this);
-    addMatcher<opset::GreaterEqual>(this);
-    addMatcher<opset::Less>(this);
-    addMatcher<opset::LessEqual>(this);
+ArmPlugin::pass::ConvertEqual::ConvertEqual() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::Equal>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                      ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                      ngraph::pattern::has_static_shape()), "ConvertEqual");
+    register_matcher(m, convert_comparision<opset::Equal>());
+}
+
+ArmPlugin::pass::ConvertNotEqual::ConvertNotEqual() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::NotEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                         ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "ConvertNotEqual");
+    register_matcher(m, convert_comparision<opset::NotEqual>());
+}
+
+ArmPlugin::pass::ConvertGreater::ConvertGreater() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::Greater>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                        ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "ConvertGreater");
+    register_matcher(m, convert_comparision<opset::Greater>());
+}
+
+ArmPlugin::pass::ConvertGreaterEqual::ConvertGreaterEqual() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::GreaterEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                             ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                             ngraph::pattern::has_static_shape()), "ConvertGreaterEqual");
+    register_matcher(m, convert_comparision<opset::GreaterEqual>());
+}
+
+ArmPlugin::pass::ConvertLess::ConvertLess() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::Less>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                     ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                     ngraph::pattern::has_static_shape()), "ConvertLess");
+    register_matcher(m, convert_comparision<opset::Less>());
+}
+
+ArmPlugin::pass::ConvertLessEqual::ConvertLessEqual() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::LessEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                          ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "ConvertLessEqual");
+    register_matcher(m, convert_comparision<opset::LessEqual>());
 }

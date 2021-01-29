@@ -10,7 +10,7 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Split& node) {
     size_t numDimensions = node.get_output_shape(0).size();
     int axis = std::dynamic_pointer_cast<ngraph::op::Constant>(
-        node.input(1).get_source_output().get_node_shared_ptr())->cast_vector<int>()[0];
+        node.input_value(1).get_node_shared_ptr())->cast_vector<int>()[0];
     if (axis < 0) {
         axis += numDimensions;
     }

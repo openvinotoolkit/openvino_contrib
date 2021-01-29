@@ -9,20 +9,25 @@
 #include <ngraph/rt_info.hpp>
 #include "opset/opset.hpp"
 
-ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() : GraphRewrite() {
-    auto input = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto mean  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1});
-    auto var   = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1});
-    auto gamma = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1});
-    auto beta  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1});
-    auto batch_norm = std::make_shared<opset::BatchNormInference>(input, gamma, beta, mean, var, 1e-5);
+ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() {
+    float eps = 1e-5;
+    auto batch_norm = std::make_shared<opset::BatchNormInference>(ngraph::pattern::any_input(),
+                                                                  ngraph::pattern::any_input(),
+                                                                  ngraph::pattern::any_input(),
+                                                                  ngraph::pattern::any_input(),
+                                                                  ngraph::pattern::any_input(),
+                                                                  eps);
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         enum Input {Features, Gamma, Beta, Mean, Variance};
         auto node = std::dynamic_pointer_cast<opset::BatchNormInference>(m.get_match_root());
-        auto inp_shape = node->get_shape();
 
-        if (!node || inp_shape.size() == 4) {
+        if (!node) {
+            return false;
+        }
+
+        auto inp_shape = node->get_shape();
+        if (inp_shape.size() == 4) {
             return false;
         }
 
@@ -56,5 +61,5 @@ ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() : GraphR
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(batch_norm, "ConvertBatchNormInference");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertShuffleChannels: public ngraph::pass::GraphRewrite {
+struct ConvertShuffleChannels: public ngraph::pass::MatcherPass {
     ConvertShuffleChannels();
 };
 }  // namespace pass

@@ -9,18 +9,22 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() : GraphRewrite() {
-    auto input = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto shuffle = std::make_shared<opset::ShuffleChannels>(input, 1, 1);
+ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() {
+    auto shuffle = std::make_shared<opset::ShuffleChannels>(ngraph::pattern::any_input(), 1, 1);
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto shuffle = std::dynamic_pointer_cast<opset::ShuffleChannels>(m.get_match_root());
+
+        if (!shuffle) {
+            return false;
+        }
+
         int axis = shuffle->get_axis();
         if (axis < 0) {
             axis += shuffle->get_input_shape(0).size();
         }
 
-        if (!shuffle || axis == 1) {
+        if (axis == 1) {
             return false;
         }
 
@@ -31,7 +35,7 @@ ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() : GraphRewrite
         auto order = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{input_order.size()}, input_order);
 
         size_t group = shuffle->get_group();
-        auto tr_forward = std::make_shared<opset::Transpose>(shuffle->input(0).get_source_output(), order);
+        auto tr_forward = std::make_shared<opset::Transpose>(shuffle->input_value(0), order);
         auto shuffle_new = std::make_shared<opset::ShuffleChannels>(tr_forward, 1, group);
         auto tr_backward = std::make_shared<opset::Transpose>(shuffle_new, order);
 
@@ -42,5 +46,5 @@ ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() : GraphRewrite
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(shuffle, "ConvertShuffleChannels");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

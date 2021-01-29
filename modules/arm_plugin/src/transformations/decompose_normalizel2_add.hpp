@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct DecomposeNormalizeL2Add: public ngraph::pass::GraphRewrite {
+struct DecomposeNormalizeL2Add: public ngraph::pass::MatcherPass {
     DecomposeNormalizeL2Add();
 };
 }  // namespace pass

@@ -10,11 +10,11 @@
 namespace ArmPlugin {
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::StridedSlice& node) {
     auto&& begin  = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                        node.input(1).get_source_output().get_node_shared_ptr())->cast_vector<int>();
+                        node.input_value(1).get_node_shared_ptr())->cast_vector<int>();
     auto&& end    = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                        node.input(2).get_source_output().get_node_shared_ptr())->cast_vector<int>();
+                        node.input_value(2).get_node_shared_ptr())->cast_vector<int>();
     auto&& stride = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                        node.input(3).get_source_output().get_node_shared_ptr())->cast_vector<int>();
+                        node.input_value(3).get_node_shared_ptr())->cast_vector<int>();
 
     arm_compute::Coordinates starts, finishes, deltas;
     for (size_t i = 0; i < begin.size(); ++i) {

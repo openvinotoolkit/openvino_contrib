@@ -7,22 +7,21 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() : GraphRewrite() {
-    auto input = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
+ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() {
     auto axes  = opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {1});
-    auto normalize_l2 = std::make_shared<opset::NormalizeL2>(input, axes, 1.0f, ngraph::op::EpsMode::ADD);
+    auto normalize_l2 = std::make_shared<opset::NormalizeL2>(ngraph::pattern::any_input(), axes, 1.0f, ngraph::op::EpsMode::ADD);
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto normalize_l2 = std::dynamic_pointer_cast<opset::NormalizeL2>(m.get_match_root());
-        auto input = normalize_l2->input_value(0).get_node_shared_ptr();
-        auto axes = normalize_l2->input_value(1).get_node_shared_ptr();
-
-        if (normalize_l2->get_eps_mode() != ngraph::op::EpsMode::ADD) {
+        if (!normalize_l2) {
             return false;
         }
 
+        auto input = normalize_l2->input_value(0).get_node_shared_ptr();
+        auto axes = normalize_l2->input_value(1).get_node_shared_ptr();
         const auto eps_attr = normalize_l2->get_eps();
-        if (!axes || !eps_attr) {
+
+        if (normalize_l2->get_eps_mode() != ngraph::op::EpsMode::ADD || !axes || !eps_attr) {
             return false;
         }
 
@@ -41,5 +40,5 @@ ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() : GraphRewri
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(normalize_l2, "DecomposeNormalizeL2Add");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

@@ -11,36 +11,34 @@
 
 using namespace ArmPlugin;
 
-ArmPlugin::pass::MatMulBiasFusion::MatMulBiasFusion() : GraphRewrite() {
-    auto input0 = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1, 1});
-    auto input1 = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1, 1});
-    auto matmul = std::make_shared<opset::MatMul>(input0, input1);
-    auto add    = std::make_shared<opset::Add>(matmul, std::make_shared<ngraph::pattern::op::Label>());
+ArmPlugin::pass::MatMulBiasFusion::MatMulBiasFusion() {
+    auto matmul = std::make_shared<opset::MatMul>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
+    auto add    = std::make_shared<opset::Add>(matmul, ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto add    = m.get_match_root();
         enum Inputs {Data, Weights};
-        auto matmul = std::dynamic_pointer_cast<opset::MatMul>(add->input(0).get_source_output().get_node_shared_ptr());
-        auto bias   = std::dynamic_pointer_cast<opset::Constant>(add->input(1).get_source_output().get_node_shared_ptr());
+        auto matmul = std::dynamic_pointer_cast<opset::MatMul>(add->input_value(0).get_node_shared_ptr());
+        auto bias   = std::dynamic_pointer_cast<opset::Constant>(add->input_value(1).get_node_shared_ptr());
 
         if (!matmul) {
-            matmul = std::dynamic_pointer_cast<opset::MatMul>(add->input(1).get_source_output().get_node_shared_ptr());
-            bias   = std::dynamic_pointer_cast<opset::Constant>(add->input(0).get_source_output().get_node_shared_ptr());
+            matmul = std::dynamic_pointer_cast<opset::MatMul>(add->input_value(1).get_node_shared_ptr());
+            bias   = std::dynamic_pointer_cast<opset::Constant>(add->input_value(0).get_node_shared_ptr());
         }
 
         if (!matmul || !bias) {
             return false;
         }
 
-        auto input_a = matmul->input(Inputs::Data).get_source_output().get_node_shared_ptr();
-        auto input_b = matmul->input(Inputs::Weights).get_source_output().get_node_shared_ptr();
-        if (matmul->get_shape().size() != 2 || !std::dynamic_pointer_cast<opset::Constant>(input_b)) {
+        auto input_a = matmul->input_value(Inputs::Data).get_node_shared_ptr();
+        auto input_b = matmul->input_value(Inputs::Weights).get_node_shared_ptr();
+        if (matmul->get_shape().size() != 2) {
             return false;
         }
 
         ngraph::NodeVector new_ops;
         if (matmul->get_transpose_a()) {
-            input_a = std::make_shared<opset::Transpose>(matmul->input(0).get_source_output().get_node_shared_ptr(),
+            input_a = std::make_shared<opset::Transpose>(matmul->input_value(0).get_node_shared_ptr(),
                                                                 opset::Constant::create(ngraph::element::i64, ngraph::Shape{2}, {1, 0}));
             input_a->set_friendly_name(matmul->get_friendly_name() + "/transpose_a");
             new_ops.push_back(input_a);
@@ -55,5 +53,5 @@ ArmPlugin::pass::MatMulBiasFusion::MatMulBiasFusion() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(add, "MatMulBiasFusion");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

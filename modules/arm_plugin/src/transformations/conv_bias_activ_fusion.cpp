@@ -18,13 +18,9 @@ using namespace ArmPlugin;
 enum Layout {N, C, H, W};
 enum Inputs {Data, Weights, Bias};
 
-template<typename Conv, typename Activation>
-static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
-    auto conv = ngraph::pattern::wrap_type<Conv>();
-    auto activation = ngraph::pattern::wrap_type<Activation>({conv});
-    auto m = std::make_shared<ngraph::pattern::Matcher>(activation, (std::string {Conv::type_info.name} + "ActivationFusion"));
-
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template<class Conv, class Activation>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvActivationFusionBase::fuse_conv_with_activation() {
+    return [&](ngraph::pattern::Matcher& m) {
         auto activation = std::dynamic_pointer_cast<Activation>(m.get_match_root());
         if (!activation) {
             return false;
@@ -53,6 +49,9 @@ static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
         } else if (std::is_same<Activation, opset::Elu>()) {
             func = opset::ActivationFunction::ELU;
             auto elu = std::dynamic_pointer_cast<opset::Elu>(activation);
+            if (!elu) {
+                return false;
+            }
             a = elu->get_alpha();
         } else if (std::is_same<Activation, opset::Sqrt>()) {
             func = opset::ActivationFunction::SQRT;
@@ -63,10 +62,16 @@ static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
         } else if (std::is_same<Activation, opset::PRelu>()) {
             func = opset::ActivationFunction::LEAKY_RELU;
             auto prelu = std::dynamic_pointer_cast<opset::PRelu>(activation);
+            if (!prelu) {
+                return false;
+            }
             a = dynamic_cast<const opset::Constant&>(*(prelu->input_value(1).get_node())).get_vector<float>()[0];
         } else if (std::is_same<Activation, opset::Clamp>()) {
             func = opset::ActivationFunction::LU_BOUNDED_RELU;
             auto clamp = std::dynamic_pointer_cast<opset::Clamp>(activation);
+            if (!clamp) {
+                return false;
+            }
             a = clamp->get_max();
             b = clamp->get_min();
         } else {
@@ -101,16 +106,12 @@ static auto addFuseActivationMatcher(pass::ConvBiasActivationFusion* pass) {
         conv_activ->set_friendly_name(activation->get_friendly_name());
         ngraph::replace_node(activation, conv_activ);
         return true;
-    });
+    };
 }
 
-template <typename Conv>
-static auto addFuseBiasMatcher(pass::ConvBiasActivationFusion* pass) {
-    auto conv = ngraph::pattern::wrap_type<Conv>();
-    auto add = ngraph::pattern::wrap_type<opset::Add>({conv,  ngraph::pattern::any_input()});
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, (std::string {Conv::type_info.name} + "BiasFusion"));
-
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template <class Conv>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_with_bias() {
+   return [&](ngraph::pattern::Matcher& m) {
         auto eltwise = std::dynamic_pointer_cast<opset::Add>(m.get_match_root());
         if (!eltwise) {
             return false;
@@ -173,15 +174,12 @@ static auto addFuseBiasMatcher(pass::ConvBiasActivationFusion* pass) {
         new_conv->set_friendly_name(eltwise->get_friendly_name());
         ngraph::replace_node(eltwise, new_conv);
         return true;
-    });
+    };
 }
 
-template <typename Conv, typename ArmConv>
-static auto addConvertConvMatcher(pass::ConvBiasActivationFusion* pass) {
-    auto conv = ngraph::pattern::wrap_type<Conv>();
-    auto m = std::make_shared<ngraph::pattern::Matcher>(conv, (std::string {Conv::type_info.name} + "ConvertToArmConvolution"));
-
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template <class Conv, class ArmConv>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_arm_conv() {
+    return [&](ngraph::pattern::Matcher& m) {
         auto m_conv = std::dynamic_pointer_cast<Conv>(m.get_match_root());
         if (!m_conv) {
             return false;
@@ -204,36 +202,185 @@ static auto addConvertConvMatcher(pass::ConvBiasActivationFusion* pass) {
         conv_arm->set_friendly_name(m_conv->get_friendly_name());
         ngraph::replace_node(m_conv, conv_arm);
         return true;
-    });
+    };
 }
 
-ArmPlugin::pass::ConvBiasActivationFusion::ConvBiasActivationFusion() : GraphRewrite() {
-    // Convert Single Conv to ArmConv to reduce number of matchers below
-    addConvertConvMatcher<opset::Convolution, opset::ArmConvolution>(this);
-    addConvertConvMatcher<opset::GroupConvolution, opset::ArmGroupConvolution>(this);
+// ----------------------------------------ConvertConvolution----------------------------------------
 
-    addFuseBiasMatcher<opset::ArmConvolution>(this);
-    addFuseBiasMatcher<opset::ArmGroupConvolution>(this);
+ArmPlugin::pass::ConvertSingleConvolutionToArm::ConvertSingleConvolutionToArm() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+        ngraph::pattern::wrap_type<opset::Convolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                        ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "ConvertConvolutionToArm");
+    register_matcher(m, convert_conv_to_arm_conv<opset::Convolution, opset::ArmConvolution>());
+}
 
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Sigmoid>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Tanh>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Relu>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Clamp>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Abs>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Elu>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::Sqrt>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::SoftPlus>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::HSwish>(this);
-    addFuseActivationMatcher<opset::ArmConvolution, opset::PRelu>(this);
+ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::GroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                                 ngraph::pattern::wrap_type<opset::Constant>()},
+                                                                 ngraph::pattern::has_static_shape()), "ConvertGroupConvolutionToArm");
+    register_matcher(m, convert_conv_to_arm_conv<opset::GroupConvolution, opset::ArmGroupConvolution>());
+}
 
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Sigmoid>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Tanh>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Relu>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Clamp>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Abs>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Elu>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::Sqrt>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::SoftPlus>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::HSwish>(this);
-    addFuseActivationMatcher<opset::ArmGroupConvolution, opset::PRelu>(this);
+// ------------------------------------------ConvBiasFusion------------------------------------------
+
+ArmPlugin::pass::ConvBiasFusion::ConvBiasFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::ArmConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                               ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                               ngraph::pattern::has_static_shape()), "ConvBiasFusion");
+    register_matcher(m, fuse_conv_with_bias<opset::ArmConvolution>());
+}
+
+ArmPlugin::pass::GroupConvBiasFusion::GroupConvBiasFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::ArmGroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                                        ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                                        ngraph::pattern::has_static_shape()), "GroupConvBiasFusion");
+    register_matcher(m, fuse_conv_with_bias<opset::ArmGroupConvolution>());
+}
+
+// ---------------------------------------ConvActivationFusion---------------------------------------
+
+ArmPlugin::pass::ConvSigmoidFusion::ConvSigmoidFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Sigmoid>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                            ngraph::pattern::has_static_shape()), "ConvSigmoidFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Sigmoid>());
+}
+
+ArmPlugin::pass::ConvTanhFusion::ConvTanhFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Tanh>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "ConvTanhFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Tanh>());
+}
+
+ArmPlugin::pass::ConvReluFusion::ConvReluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Relu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "ConvReluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Relu>());
+}
+
+ArmPlugin::pass::ConvClampFusion::ConvClampFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Clamp>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "ConvClampFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Clamp>());
+}
+
+ArmPlugin::pass::ConvAbsFusion::ConvAbsFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Abs>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "ConvAbsFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Abs>());
+}
+
+ArmPlugin::pass::ConvEluFusion::ConvEluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Elu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "ConvEluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Elu>());
+}
+
+ArmPlugin::pass::ConvSqrtFusion::ConvSqrtFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Sqrt>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "ConvSqrtFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::Sqrt>());
+}
+
+ArmPlugin::pass::ConvSoftPlusFusion::ConvSoftPlusFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::SoftPlus>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                             ngraph::pattern::has_static_shape()), "ConvSoftPlusFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::SoftPlus>());
+}
+
+ArmPlugin::pass::ConvHSwishFusion::ConvHSwishFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::HSwish>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                           ngraph::pattern::has_static_shape()), "ConvHSwishFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::HSwish>());
+}
+
+ArmPlugin::pass::ConvPReluFusion::ConvPReluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::PRelu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                          ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "ConvPReluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmConvolution, opset::PRelu>());
+}
+
+ArmPlugin::pass::GroupConvSigmoidFusion::GroupConvSigmoidFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Sigmoid>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                            ngraph::pattern::has_static_shape()), "GroupConvSigmoidFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Sigmoid>());
+}
+
+ArmPlugin::pass::GroupConvTanhFusion::GroupConvTanhFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Tanh>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "GroupConvTanhFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Tanh>());
+}
+
+ArmPlugin::pass::GroupConvReluFusion::GroupConvReluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Relu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "GroupConvReluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Relu>());
+}
+
+ArmPlugin::pass::GroupConvClampFusion::GroupConvClampFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Clamp>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "GroupConvClampFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Clamp>());
+}
+
+ArmPlugin::pass::GroupConvAbsFusion::GroupConvAbsFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Abs>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "GroupConvAbsFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Abs>());
+}
+
+ArmPlugin::pass::GroupConvEluFusion::GroupConvEluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Elu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "GroupConvEluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Elu>());
+}
+
+ArmPlugin::pass::GroupConvSqrtFusion::GroupConvSqrtFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::Sqrt>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                         ngraph::pattern::has_static_shape()), "GroupConvSqrtFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::Sqrt>());
+}
+
+ArmPlugin::pass::GroupConvSoftPlusFusion::GroupConvSoftPlusFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::SoftPlus>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                             ngraph::pattern::has_static_shape()), "GroupConvSoftPlusFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::SoftPlus>());
+}
+
+ArmPlugin::pass::GroupConvHSwishFusion::GroupConvHSwishFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::HSwish>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                           ngraph::pattern::has_static_shape()), "GroupConvHSwishFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::HSwish>());
+}
+
+ArmPlugin::pass::GroupConvPReluFusion::GroupConvPReluFusion() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+                ngraph::pattern::wrap_type<opset::PRelu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                          ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "GroupConvPReluFusion");
+    register_matcher(m, fuse_conv_with_activation<opset::ArmGroupConvolution, opset::PRelu>());
 }

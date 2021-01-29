@@ -8,7 +8,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct MatMulBiasFusion: public ngraph::pass::GraphRewrite {
+struct MatMulBiasFusion: public ngraph::pass::MatcherPass {
     MatMulBiasFusion();
 };
 }  // namespace pass

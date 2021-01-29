@@ -9,10 +9,10 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() : GraphRewrite() {
+ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() {
     auto reorg = std::make_shared<opset::ReorgYolo>(ngraph::pattern::any_input(), 2);
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto reorg = std::dynamic_pointer_cast<opset::ReorgYolo>(m.get_match_root());
         auto strides = reorg->get_strides();
 
@@ -50,5 +50,5 @@ ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(reorg, "ConvertReorgYolo");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

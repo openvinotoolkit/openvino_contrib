@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertCeiling: public ngraph::pass::GraphRewrite {
+struct ConvertCeiling: public ngraph::pass::MatcherPass {
     ConvertCeiling();
 };
 }  // namespace pass

@@ -10,12 +10,9 @@
 
 using namespace ArmPlugin;
 
-template<typename T>
-static auto addMatcher(ArmPlugin::pass::ConvertLogical* pass) {
-    auto binary_logical = std::make_shared<T>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
-
-    auto m = std::make_shared<ngraph::pattern::Matcher>(binary_logical, ("Convert" + std::string {T::type_info.name}).c_str());
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template <class T>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvertLogicalBase::convert_logical() {
+    return [&](ngraph::pattern::Matcher& m) {
         auto binary_logical = m.get_match_root();
         if (!std::dynamic_pointer_cast<T>(binary_logical)) {
             return false;
@@ -40,14 +37,14 @@ static auto addMatcher(ArmPlugin::pass::ConvertLogical* pass) {
         ngraph::copy_runtime_info(binary_logical, logical);
         ngraph::replace_node(binary_logical, logical);
         return true;
-    });
+    };
 }
 
-template<> auto addMatcher<opset::LogicalNot>(ArmPlugin::pass::ConvertLogical* pass) {
-    auto unary_logical = std::make_shared<opset::LogicalNot>(ngraph::pattern::any_input());
+ArmPlugin::pass::ConvertLogicalNot::ConvertLogicalNot() {
+    auto logical_not = std::make_shared<opset::LogicalNot>(ngraph::pattern::any_input());
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(unary_logical, "ConvertLogicalNot");
-    pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
+        auto logical_not = std::dynamic_pointer_cast<opset::LogicalNot>(m.get_match_root());
         auto unary_logical = m.get_match_root();
         if (!std::dynamic_pointer_cast<opset::LogicalNot>(unary_logical)) {
             return false;
@@ -63,12 +60,32 @@ template<> auto addMatcher<opset::LogicalNot>(ArmPlugin::pass::ConvertLogical* p
         ngraph::copy_runtime_info(unary_logical, logical);
         ngraph::replace_node(unary_logical, logical);
         return true;
-    });
+    };
+
+    auto m = std::make_shared<ngraph::pattern::Matcher>(logical_not, "ConvertLogicalNot");
+    register_matcher(m, callback);
 }
 
-ArmPlugin::pass::ConvertLogical::ConvertLogical() : GraphRewrite() {
-    addMatcher<opset::LogicalNot>(this);
-    addMatcher<opset::LogicalAnd>(this);
-    addMatcher<opset::LogicalOr>(this);
-    addMatcher<opset::LogicalXor>(this);
+ArmPlugin::pass::ConvertLogicalAnd::ConvertLogicalAnd() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::LogicalAnd>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                           ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                           ngraph::pattern::has_static_shape()), "ConvertLogicalAnd");
+    register_matcher(m, convert_logical<opset::LogicalAnd>());
+}
+
+ArmPlugin::pass::ConvertLogicalOr::ConvertLogicalOr() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::LogicalOr>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                          ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                          ngraph::pattern::has_static_shape()), "ConvertLogicalOr");
+    register_matcher(m, convert_logical<opset::LogicalOr>());
+}
+
+ArmPlugin::pass::ConvertLogicalXor::ConvertLogicalXor() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::LogicalXor>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                           ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                           ngraph::pattern::has_static_shape()), "ConvertLogicalXor");
+    register_matcher(m, convert_logical<opset::LogicalXor>());
 }

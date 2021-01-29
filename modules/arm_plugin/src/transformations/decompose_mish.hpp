@@ -7,7 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct DecomposeMish: public ngraph::pass::GraphRewrite {
+struct DecomposeMish: public ngraph::pass::MatcherPass {
     DecomposeMish();
 };
 }  // namespace pass

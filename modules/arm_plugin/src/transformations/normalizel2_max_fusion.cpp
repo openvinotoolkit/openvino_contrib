@@ -9,7 +9,7 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include "transformations/utils/utils.hpp"
 
-ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() : GraphRewrite() {
+ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() {
     auto input = ngraph::pattern::any_input();
     auto exp = ngraph::pattern::wrap_type<opset::Constant>();
     auto pow = std::make_shared<opset::Power>(input, exp);
@@ -20,7 +20,7 @@ ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() : GraphRewrite() {
     auto sqrt_max_eps = std::make_shared<opset::Sqrt>(max_eps);
     auto divide = std::make_shared<opset::Divide>(input, sqrt_max_eps);
 
-    ngraph::graph_rewrite_callback callback = [=](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [=](ngraph::pattern::Matcher& m) {
         auto& pattern_to_output = m.get_pattern_value_map();
 
         const auto data_input = pattern_to_output.at(input);
@@ -61,5 +61,5 @@ ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(divide, "NormalizeL2Fusion");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

@@ -8,12 +8,12 @@
 #include <ngraph/rt_info.hpp>
 #include "opset/opset.hpp"
 
-ArmPlugin::pass::ConvertPriorBox::ConvertPriorBox() : GraphRewrite() {
+ArmPlugin::pass::ConvertPriorBox::ConvertPriorBox() {
     auto prior_box = std::make_shared<opset::PriorBox>(ngraph::pattern::any_input(),
                                                        ngraph::pattern::any_input(),
                                                        ngraph::op::PriorBoxAttrs{});
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto node = std::dynamic_pointer_cast<opset::PriorBox>(m.get_match_root());
         if (!node) {
             return false;
@@ -235,5 +235,5 @@ ArmPlugin::pass::ConvertPriorBox::ConvertPriorBox() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(prior_box, "ConvertPriorBox");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

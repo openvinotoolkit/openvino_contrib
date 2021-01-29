@@ -9,11 +9,10 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 
-ArmPlugin::pass::ConvertSign::ConvertSign() : GraphRewrite() {
-    auto input = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1, 1, 1, 1});
-    auto sign = std::make_shared<opset::Sign>(input);
+ArmPlugin::pass::ConvertSign::ConvertSign() {
+    auto sign = std::make_shared<opset::Sign>(ngraph::pattern::any_input());
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto sign = std::dynamic_pointer_cast<opset::Sign>(m.get_match_root());
 
         if (!sign) {
@@ -40,5 +39,5 @@ ArmPlugin::pass::ConvertSign::ConvertSign() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(sign, "ConvertSign");
-    this->add_matcher(m, callback, ngraph::pass::PassProperty::CHANGE_DYNAMIC_STATE);
+    register_matcher(m, callback);
 }

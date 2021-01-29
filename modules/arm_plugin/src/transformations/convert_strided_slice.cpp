@@ -12,14 +12,15 @@
 
 using namespace ArmPlugin;
 
-ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() : GraphRewrite() {
-    auto input  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::f32, ngraph::Shape{1, 1, 1, 1});
-    auto begin  = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1});
-    auto end    = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1});
-    auto stride = std::make_shared<ngraph::pattern::op::Label>(ngraph::element::i64, ngraph::Shape{1});
-    auto slice  = std::make_shared<opset::StridedSlice>(input, begin, end, stride, std::vector<int64_t>{}, std::vector<int64_t>{});
+ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
+    auto slice  = std::make_shared<opset::StridedSlice>(ngraph::pattern::any_input(),
+                                                        ngraph::pattern::any_input(),
+                                                        ngraph::pattern::any_input(),
+                                                        ngraph::pattern::any_input(),
+                                                        std::vector<int64_t>{},
+                                                        std::vector<int64_t>{});
 
-    ngraph::graph_rewrite_callback callback = [](ngraph::pattern::Matcher& m) {
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto slice = std::dynamic_pointer_cast<opset::StridedSlice>(m.get_match_root());
         if (!slice) {
             return false;
@@ -31,12 +32,17 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() : GraphRewrite() {
             THROW_IE_EXCEPTION << "Unsupported StridedSlice with " << dims << " dimensions.";
         }
 
-        auto&& begin  = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                            slice->input(1).get_source_output().get_node_shared_ptr())->cast_vector<int64_t>();
-        auto&& end    = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                            slice->input(2).get_source_output().get_node_shared_ptr())->cast_vector<int64_t>();
-        auto&& stride = std::dynamic_pointer_cast<ngraph::op::Constant>(
-                            slice->input(3).get_source_output().get_node_shared_ptr())->cast_vector<int64_t>();
+        auto&& begin_node  = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(1).get_node_shared_ptr());
+        auto&& end_node    = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(2).get_node_shared_ptr());
+        auto&& stride_node = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(3).get_node_shared_ptr());
+
+        if (!begin_node || !end_node || !stride_node) {
+            return false;
+        }
+
+        std::vector<int64_t> begin  = begin_node->cast_vector<int64_t>();
+        std::vector<int64_t> end    = end_node->cast_vector<int64_t>();
+        std::vector<int64_t> stride = stride_node->cast_vector<int64_t>();
 
         begin.resize(dims, 0);
         std::copy(inputShape.begin() + end.size(), inputShape.end(), std::back_inserter(end));
@@ -105,11 +111,11 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() : GraphRewrite() {
                 new_stride[i] = stride[i + shift[i]];
             }
         }
-        auto begin_node  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_begin);
-        auto end_node    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_end);
-        auto stride_node = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_stride);
+        begin_node  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_begin);
+        end_node    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_end);
+        stride_node = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_stride);
 
-        auto optimized_slice = std::make_shared<opset::StridedSlice>(slice->input(0).get_source_output(),
+        auto optimized_slice = std::make_shared<opset::StridedSlice>(slice->input_value(0),
                                      begin_node, end_node, stride_node, std::vector<int64_t>{}, std::vector<int64_t>{});
         auto shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
                        ngraph::Shape{slice->get_shape().size()}, std::vector<int64_t>(slice->get_shape().begin(), slice->get_shape().end()));
@@ -122,5 +128,5 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() : GraphRewrite() {
     };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(slice, "ConvertStridedSlice");
-    this->add_matcher(m, callback);
+    register_matcher(m, callback);
 }

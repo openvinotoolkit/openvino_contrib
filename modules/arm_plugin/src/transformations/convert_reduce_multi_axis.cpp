@@ -5,17 +5,14 @@
 #include <details/ie_exception.hpp>
 
 #include "opset/opset.hpp"
-#include "transformations/convert_reduce_single_axis.hpp"
+#include "transformations/convert_reduce_multi_axis.hpp"
 
 
 using namespace ArmPlugin;
 
-template<typename T>
-static auto addMatcher(ArmPlugin::pass::ConvertReduceSingleAxis* pass) {
-    auto reduce = std::make_shared<T>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
-
-    auto m = std::make_shared<ngraph::pattern::Matcher>(reduce, ("Convert" + std::string {T::type_info.name}).c_str());
-        pass->add_matcher(m, [] (ngraph::pattern::Matcher& m) {
+template <class T>
+ngraph::matcher_pass_callback ArmPlugin::pass::ConvertReduceMultiAxisBase::convert_reduce() {
+    return [&](ngraph::pattern::Matcher& m) {
         auto reduce = m.get_match_root();
         if (!std::dynamic_pointer_cast<T>(reduce)) {
             return false;
@@ -47,10 +44,21 @@ static auto addMatcher(ArmPlugin::pass::ConvertReduceSingleAxis* pass) {
         ngraph::copy_runtime_info(reduce, new_ops);
         ngraph::replace_node(reduce, reshape);
         return true;
-    });
+    };
 }
 
-ArmPlugin::pass::ConvertReduceSingleAxis::ConvertReduceSingleAxis() : GraphRewrite() {
-    addMatcher<opset::ReduceProd>(this);
-    addMatcher<opset::ReduceMin>(this);
+ArmPlugin::pass::ConvertReduceProd::ConvertReduceProd() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::ReduceProd>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                           ngraph::pattern::wrap_type<opset::Constant>()},
+                                                           ngraph::pattern::has_static_shape()), "ConvertReduceProd");
+    register_matcher(m, convert_reduce<opset::ReduceProd>());
+}
+
+ArmPlugin::pass::ConvertReduceMin::ConvertReduceMin() {
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+            ngraph::pattern::wrap_type<opset::ReduceMin>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                          ngraph::pattern::wrap_type<opset::Constant>()},
+                                                          ngraph::pattern::has_static_shape()), "ConvertReduceMin");
+    register_matcher(m, convert_reduce<opset::ReduceMin>());
 }
