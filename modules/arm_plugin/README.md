@@ -23,7 +23,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 2.  Go to plugin directory:
  ```
-cd openvino-contrib/modules/arm-plugin
+cd openvino-contrib/modules/arm_plugin
 ```
 3. Build the plugin in Docker container:
 ```
@@ -94,7 +94,7 @@ cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build fold
 ```
 
 ## Sample
-You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you built the plugin using the 1st approach) or `openvino/bin/armv7l/Release` directory (if you built the plugin using the 2nd or the 3rd approach). The following procedure assumes the 1st building approach was used.
+You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you built the plugin using the 1st approach) or `openvino/bin/armv7l/Release` directory (if you built the plugin using the 2nd or the 3rd approach). The following procedure assumes the 1st building approach was used.  
 Let's try to run [Object Detection for SSD sample].
 ### Model preparation
 To speedup the process you may prepare the model on non-ARM platform.
