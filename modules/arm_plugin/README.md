@@ -97,7 +97,7 @@ cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build fold
 You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you built the plugin using the 1st approach) or `openvino/bin/armv7l/Release` directory (if you built the plugin using the 2nd or the 3rd approach). The following procedure assumes the 1st building approach was used.  
 Let's try to run [Object Detection for SSD sample].
 ### Model preparation
-To speedup the process you may prepare the model on non-ARM platform.
+To speed up the process you may prepare the model on non-ARM platform.
 
 1. Install [Model Optimizer]:
 ```
