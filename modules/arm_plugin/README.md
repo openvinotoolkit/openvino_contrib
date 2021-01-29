@@ -23,7 +23,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 2.  Go to plugin directory:
  ```
-cd openvino-contrib/modules/arm_plugin
+cd openvino_contrib/modules/arm_plugin
 ```
 3. Build the plugin in Docker container:
 ```
@@ -82,7 +82,7 @@ Afterwards plugin build procedure is as following:
 1.  Install necessary build dependencies:
 ```
 sudo apt-get update  
-sudo apt-get install -y git cmake  scons build-essentials
+sudo apt-get install -y git cmake  scons build-essential
 ```
 2. Clone `openvino_contrib` repository:
 ```
@@ -90,7 +90,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 3.  Go to plugin directory:
  ```
-cd openvino-contrib/modules/arm-plugin
+cd openvino_contrib/modules/arm_plugin
 ```
 4.  Prepare a build folder:
 ```
