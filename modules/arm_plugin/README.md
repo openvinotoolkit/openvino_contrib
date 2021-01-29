@@ -131,6 +131,7 @@ wget https://raw.githubusercontent.com/openvinotoolkit/openvino/master/scripts/d
 
 5. Run object detection sample on ARM platform:
 ```
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:lib
 ./object_detection_sample_ssd -m vehicle-license-plate-detection-barrier-0123.xml -i car_1.bmp -d ARM
 ```
 
