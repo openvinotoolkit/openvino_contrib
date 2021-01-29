@@ -49,24 +49,32 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 docker run -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
-The next commands in this procedure need to be run in `ie_cross_armhf` container 
+The next commands of the procedure need to be run in `ie_cross_armhf` container.  
 3. Install scons in the container if you're using cross-compilation. If you do native compilation, install scons on build machine:
 ```
 apt-get install scons
 ```
-4. Run cmake with [extra modules flags]:
+4. Go to `openvino` directory:
+```
+cd openvino
+```
+5. Prepare a build folder:
+```
+mkdir build && cd build
+```
+6. Build OpenVINO™ with ARM plugin:
 ```
  cmake -DCMAKE_BUILD_TYPE=Release \
        -DCMAKE_TOOLCHAIN_FILE="../cmake/arm.toolchain.cmake" \
        -DTHREADS_PTHREAD_ARG="-pthread" \
        -DIE_EXTRA_MODULES=/openvino_contrib/modules \
        -DBUILD_java_api=OFF \
-       -DBUILD_mo_pytorch=OFF ..
+       -DBUILD_mo_pytorch=OFF .. && make
 ```
 
-As soon as make command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
+As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
 
-### Approach #3: build OpenVINO and the plugin consequentially (native compiling)
+### Approach #3: build OpenVINO™ and the plugin consequentially (native compiling)
 In order to build the plugin, you must prebuild OpenVINO package from sources using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
 
 Afterwards plugin build procedure is as following:
