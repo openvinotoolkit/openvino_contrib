@@ -14,7 +14,7 @@ Raspberry Pi 4 Model B   | Debian 10.3
 OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVIVO™. To use the plugin, it should be built from source code.
 
 ## How to build
-### Approach #1: build OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling)
+### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling)
 OpenVINO™ and ARM CPU plugin could be built in Docker container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
 
 1. Clone `openvino_contrib` repository:
@@ -75,7 +75,7 @@ mkdir build && cd build
 As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l/Release` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
 
 ### Approach #3: build OpenVINO™ and the plugin consequentially (native compiling)
-In order to build the plugin, you must prebuild OpenVINO package from sources using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+In order to build the plugin, you must prebuild OpenVINO package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
 
 Afterwards plugin build procedure is as following:
 
@@ -102,8 +102,9 @@ cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build fold
 ```
 
 ## Sample
-You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you built the plugin using the 1st approach) or `openvino/bin/armv7l/Release` directory (if you built the plugin using the 2nd or the 3rd approach). The following procedure assumes the 1st building approach was used.  
-Let's try to run [Object Detection for SSD sample].
+You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you build the plugin using approach #1) or `openvino/bin/armv7l/Release` directory (if you build the plugin using approach #2 or #3). The following procedure assumes the approach #1 is used.  
+OpenVINO samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
+Let's try to run [Object Detection for SSD sample].  
 ### Model preparation
 To speed up the process you may prepare the model on non-ARM platform.
 
@@ -201,6 +202,7 @@ All guidelines for contributing to the repository can be found [here](../../CONT
 [ARM Compute Library\*]:https://github.com/ARM-software/ComputeLibrary
 [extra modules flags]:https://github.com/openvinotoolkit/openvino_contrib#how-to-build-openvino-with-extra-modules
 [OpenVINO™ samples]:https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Samples_Overview.html
+[build it from source]:https://docs.opencv.org/master/d7/d9f/tutorial_linux_install.html
 [Object Detection for SSD sample]:https://docs.openvinotoolkit.org/latest/openvino_inference_engine_samples_object_detection_sample_ssd_README.html
 [Model Optimizer]:https://github.com/openvinotoolkit/openvino/tree/master/model-optimizer
 [model downloader]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-downloader-usage
