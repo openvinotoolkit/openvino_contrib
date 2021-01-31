@@ -31,7 +31,7 @@ docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
 4. Export the archive with artifacts to the current directory:
 ```
-docker run -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remote
+docker run --rm -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remote
 ```
 5. Extract the archive to `build` directory
 ```
@@ -47,7 +47,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 2. Run Docker container with mounted both `openvino` and `openvino_contrib` repositories if you do cross-compilation. If you do native compilation just skip this step:
 ```
-docker run -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
+docker run --rm -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
 The next commands of the procedure need to be run in `ie_cross_armhf` container.  
 3. Install scons in the container if you're using cross-compilation. If you do native compilation, install scons on build machine:
@@ -139,7 +139,7 @@ wget https://raw.githubusercontent.com/openvinotoolkit/openvino/master/scripts/d
 
 5. Run object detection sample on ARM platform:
 ```
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/lib
 ./object_detection_sample_ssd -m vehicle-license-plate-detection-barrier-0123.xml -i car_1.bmp -d ARM
 ```
 

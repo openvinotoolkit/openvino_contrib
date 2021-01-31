@@ -1,3 +1,6 @@
+#This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
+#https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
+
 FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -5,8 +8,8 @@ ENV PAKAGE_UPDATES_OF 20210120_11
 
 RUN apt-get update && apt-get -y upgrade
 
-#Prerequisit installation
-RUN apt-get install -y wget git git-lfs scons cmake build-essential crossbuild-essential-arm64 python libprotoc-dev protobuf-compiler
+#Prerequisite installation
+RUN apt-get install -y wget git git-lfs scons cmake build-essential crossbuild-essential-arm64 python libprotoc-dev protobuf-compiler && apt-get clean
 
 #configure paths
 RUN mkdir -p /armcpu_plugin/armcpu_debian64_rpi
@@ -27,7 +30,7 @@ RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_LIST=imgcodecs,videoio,highgui \
              -DCMAKE_TOOLCHAIN_FILE=$OPENCV_HOME/platforms/linux/aarch64-gnu.toolchain.cmake \
              -DCMAKE_STAGING_PREFIX=$STAGING_DIR && \
-    make -j32 && \
+    make -j$(nproc) && \
     make install && \
     cd $DEV_HOME
 
@@ -42,7 +45,7 @@ RUN git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.g
           -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm64.toolchain.cmake" \
           -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
           $OPENVINO_HOME && \
-    make -j32 && \
+    make -j$(nproc) && \
     cd $DEV_HOME
 
 #ArmCPU plugin
@@ -55,7 +58,7 @@ RUN git clone --recurse-submodules --single-branch --branch=master https://githu
           -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm64.toolchain.cmake" \
           -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
           $ARM_PLUGIN_HOME && \
-    make -j8
+    make -j$(nproc)
 
 RUN cp -vr $OPENVINO_HOME/bin/aarch64/Release/* $STAGING_DIR/ && \
     cd $STAGING_DIR/ && \
