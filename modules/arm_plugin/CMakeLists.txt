@@ -11,7 +11,7 @@ set(IE_MAIN_ARM_PLUGIN_SOURCE_DIR ${InferenceEngineArmPlugin_SOURCE_DIR})
 find_package(InferenceEngineDeveloperPackage REQUIRED)
 
 if(NOT ARM AND NOT AARCH64)
-    message(WARNING "ARMNN plugin can be built only for ARM or ARM64 target. Exiting..")
+    message(WARNING "ARM CPU plugin can be built only for ARM or ARM64 target. Exiting..")
     return()
 endif()
 

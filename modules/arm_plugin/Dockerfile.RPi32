@@ -62,8 +62,9 @@ RUN dpkg --add-architecture armhf && \
         protobuf-compiler \
         # For ARM CPU plugin
         scons && \
-	apt-get clean
+        rm -rf /var/lib/apt/lists/*
 
+#cmake 3.13 or higher is required to build OpenVINO
 RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.3.tar.gz && \
     tar xf cmake-3.13.3.tar.gz && \
     (cd cmake-3.13.3 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
@@ -76,17 +77,6 @@ RUN curl -L "https://packagecloud.io/github/git-lfs/gpgkey" 2> /dev/null | apt-k
         git-lfs \
         && \
     rm -rf /var/lib/apt/lists/*
-
-# build and install git 2.22
-RUN wget https://github.com/git/git/archive/v2.22.2.tar.gz && \
-    tar xf v2.22.2.tar.gz && \
-    cd git-2.22.2 && \
-    make configure && \
-    ./configure --prefix=/usr && \
-    make all && \
-    make install && \
-    rm -rf /git-2.22.2 && \
-    rm /v2.22.2.tar.gz
 
 #configure paths
 RUN mkdir -p /armcpu_plugin/armcpu_debian32_rpi
@@ -112,7 +102,7 @@ RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
     cd $DEV_HOME
 
 #OpenVINO
-RUN git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $OPENVINO_HOME && \
+RUN git lfs clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $OPENVINO_HOME && \
     mkdir $OPENVINO_HOME/build && \
     cd $OPENVINO_HOME/build && \
     cmake -DOpenCV_DIR=$STAGING_DIR/lib/cmake/opencv4 -DENABLE_OPENCV=OFF \

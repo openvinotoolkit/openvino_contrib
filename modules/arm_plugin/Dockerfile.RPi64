@@ -11,6 +11,12 @@ RUN apt-get update && apt-get -y upgrade
 #Prerequisite installation
 RUN apt-get install -y wget git git-lfs scons cmake build-essential crossbuild-essential-arm64 python libprotoc-dev protobuf-compiler && apt-get clean
 
+#cmake 3.13 or higher is required to build OpenVINO
+RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.3.tar.gz && \
+    tar xf cmake-3.13.3.tar.gz && \
+    (cd cmake-3.13.3 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
+    rm -rf cmake-3.13.3 cmake-3.13.3.tar.gz
+
 #configure paths
 RUN mkdir -p /armcpu_plugin/armcpu_debian64_rpi
 WORKDIR /armcpu_plugin

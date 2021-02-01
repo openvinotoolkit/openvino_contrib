@@ -14,7 +14,7 @@ Raspberry Pi 4 Model B   | Debian 10.3
 OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVIVO™. To use the plugin, it should be built from source code.
 
 ## How to build
-### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling)
+### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling, the preferred way)
 OpenVINO™ and ARM CPU plugin could be built in Docker container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
 
 1. Clone `openvino_contrib` repository:
@@ -29,6 +29,9 @@ cd openvino_contrib/modules/arm_plugin
 ```
 docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
+> **NOTE**: Docker uses cache when building an image. `arm-plugin` image clones `opencv`, `openvino` and `openvino_contrib` repositories. 
+If you build `arm-plugin` image next time, Docker does not clone repositories, existing image from the cache will be used instead. 
+If you want to clone repositories again to pull the latest changes, you need to add `--no-cache` option on the `docker image build` command.
 4. Export the archive with artifacts to the current directory:
 ```
 docker run --rm -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remote
@@ -145,7 +148,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/lib
 
 On the output image you should see 2 cars enclosed in purple rectangles and a front plate enclosed in grey rectangle:
 
-![](https://user-images.githubusercontent.com/1412335/103134082-83458000-46bf-11eb-90b5-ef3b7ccd23ff.jpg)
+![](docs/img/object_detection_sample_ssd.jpg)
 
 One could try the plugin suitability and performance using not only OpenVINO™ samples but also Open Model Zoo demo applications and corresponding models. Demo applications could be built in accordance with [this guideline].
 
@@ -161,7 +164,7 @@ Parameter name  | Parameter values  | Default  | Description
 `KEY_CPU_THREADS_NUM` | positiv integer values| Limit `#threads` that are used by Inference Engine for inference on the CPU
 
 ## Supported Layers and Limitations
-The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [arm_opset.md](src/arm_converter/arm_opset.md).
+The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [arm_opset.md](docs/arm_opset.md).
 
 ## Supported Model Formats
 * FP32 – Supported and preferred

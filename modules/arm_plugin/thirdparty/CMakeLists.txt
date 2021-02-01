@@ -4,13 +4,13 @@
 
 if(DEFINED ARM_COMPUTE_INCLUDE_DIR OR DEFINED ARM_COMPUTE_LIB_DIR)
     if (NOT DEFINED ARM_COMPUTE_INCLUDE_DIR)
-        message(STATUS "Undefined ARM_COMPUTE_INCLUDE_DIR input variable should be set manually")
+        message(FATAL_ERROR "Undefined ARM_COMPUTE_INCLUDE_DIR input variable should be set manually")
     else()
         message(STATUS "Using ${ARM_COMPUTE_INCLUDE_DIR} to include arm compute library headers")
     endif()
 
     if (NOT DEFINED ARM_COMPUTE_LIB_DIR)
-        message(STATUS "Undefined ARM_COMPUTE_LIB_DIR input variable should be set manually")
+        message(FATAL_ERROR "Undefined ARM_COMPUTE_LIB_DIR input variable should be set manually")
     else()
         find_library(
             ARM_COMPUTE_LIB
