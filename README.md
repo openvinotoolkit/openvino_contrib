@@ -28,6 +28,7 @@ In order to keep a clean overview containing all contributed modules, the follow
 
 * Add a README.md inside your own module folder. This README explains which functionality (separate functions) is available, explains in somewhat more detail what the module is expected to do. If any extra requirements are needed to build the module without problems, add them here also.
 
-## Contributing guidelines
+## How to Contribute
 
-All guidelines for contributing to the OpenVINO repositories can be found at [How to contribute guideline](https://github.com/openvinotoolkit/openvino/wiki/Contribute).
+We welcome community contributions to the `openvino_contrib` repository. If you have an idea how to improve the modules, please share it with us.
+All guidelines for contributing to the repository can be found [here](CONTRIBUTING.md).
