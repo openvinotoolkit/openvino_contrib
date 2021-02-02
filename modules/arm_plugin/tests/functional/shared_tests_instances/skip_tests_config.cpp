@@ -12,7 +12,6 @@ std::vector<std::string> disabledTestPatterns() {
         ".*reusableCPUStreamsExecutor.*",  //  TEST DO not support hetero case when all plugins use executers cache
         ".*Multi.*canSetExclusiveAsyncRequests.*",  // Unsupported topology
         ".*Multi.*withoutExclusiveAsyncRequests.*",  // Unsupported topology
-        "ARM/CoreThreadingTests.smoke_QueryNetwork/0", // Used legacy network representation
         ".*ExecGraphTests.*", // Not implemented
         R"(.*Interpolate_NearestFloorAsym.*TS=\(1\.1\.2\.2\).*)", // Not supported
         R"(Interpolate.*InterpolateMode=linear_onnx.*)", // Not supported
