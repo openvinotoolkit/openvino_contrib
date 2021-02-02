@@ -41,31 +41,32 @@ docker run --rm -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remot
 mkdir build && tar -xf OV_ARM_package.tar.gz -C build
 ```
 
-### Approach #2: build OpenVINO and the plugin simultaneously
+### Approach #2: build OpenVINO and the plugin without OpenCV using Docker (cross-compiling)
 
 1. Clone `openvino` and `openvino_contrib` repositories:
 ```
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino.git 
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
 ```
-2. Run Docker container with mounted both `openvino` and `openvino_contrib` repositories if you do cross-compilation. If you do native compilation just skip this step:
+2. Build `ie_cross_armhf` image by performing the 3rd and the 4th steps of [the guideline].
+3. Run Docker container with mounted both `openvino` and `openvino_contrib` repositories:
 ```
 docker run --rm -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
 The next commands of the procedure need to be run in `ie_cross_armhf` container.  
-3. Install scons in the container if you're using cross-compilation. If you do native compilation, install scons on build machine:
+4. Install scons in the container:
 ```
 apt-get install scons
 ```
-4. Go to `openvino` directory:
+5. Go to `openvino` directory:
 ```
 cd openvino
 ```
-5. Prepare a build folder:
+6. Prepare a build folder:
 ```
 mkdir build && cd build
 ```
-6. Build OpenVINO™ with ARM plugin:
+7. Build OpenVINO™ with ARM plugin:
 ```
  cmake -DCMAKE_BUILD_TYPE=Release \
        -DCMAKE_TOOLCHAIN_FILE="../cmake/arm.toolchain.cmake" \
@@ -76,7 +77,7 @@ mkdir build && cd build
 
 As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l/Release` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
 
-### Approach #3: build OpenVINO™ and the plugin consequentially (native compiling)
+### Approach #3: build OpenVINO™ and the plugin without OpenCV on ARM platform (native compiling)
 In order to build the plugin, you must prebuild OpenVINO package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
 
 Afterwards plugin build procedure is as following:
@@ -212,4 +213,5 @@ All guidelines for contributing to the repository can be found [here](../../CONT
 [model converter]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-converter-usage
 [this image]:https://github.com/openvinotoolkit/openvino/blob/master/scripts/demo/car_1.bmp
 [Intermediate Representation]:https://docs.openvinotoolkit.org/latest/openvino_docs_MO_DG_IR_and_opsets.html#intermediate_representation_used_in_openvino
+[the guideline]:https://github.com/openvinotoolkit/openvino/wiki/BuildingForRaspbianStretchOS#cross-compilation-using-docker
 [this guideline]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/demos/README.md#build-the-demo-applications
