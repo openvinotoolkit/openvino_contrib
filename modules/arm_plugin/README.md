@@ -8,14 +8,14 @@ OpenVINO™ ARM CPU plugin is supported and validated on the following platforms
 
 Host  | OS
 ------------- | -------------
-Raspberry Pi 4 Model B   | Debian 10.3
+Raspberry Pi* 4 Model B   | Debian 10.3
 
 ## Distribution
 OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVIVO™. To use the plugin, it should be built from source code.
 
 ## How to build
 ### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling, the preferred way)
-OpenVINO™ and ARM CPU plugin could be built in Docker container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
+OpenVINO™ and ARM CPU plugin could be built in Docker* container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
 
 1. Clone `openvino_contrib` repository:
 ```
@@ -25,12 +25,12 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
  ```
 cd openvino_contrib/modules/arm_plugin
 ```
-3. Build the plugin in Docker container:
+3. Build the plugin in Docker* container:
 ```
 docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
-> **NOTE**: Docker uses cache when building an image. `arm-plugin` image clones `opencv`, `openvino` and `openvino_contrib` repositories. 
-If you build `arm-plugin` image next time, Docker does not clone repositories, existing image from the cache will be used instead. 
+> **NOTE**: Docker* uses cache when building an image. `arm-plugin` image clones `opencv`, `openvino` and `openvino_contrib` repositories. 
+If you build `arm-plugin` image next time, Docker* does not clone repositories, existing image from the cache will be used instead. 
 If you want to clone repositories again to pull the latest changes, you need to add `--no-cache` option on the `docker image build` command.
 4. Export the archive with artifacts to the current directory:
 ```
@@ -41,31 +41,32 @@ docker run --rm -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remot
 mkdir build && tar -xf OV_ARM_package.tar.gz -C build
 ```
 
-### Approach #2: build OpenVINO and the plugin simultaneously
+### Approach #2: build OpenVINO and the plugin without OpenCV using Docker* (cross-compiling)
 
 1. Clone `openvino` and `openvino_contrib` repositories:
 ```
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino.git 
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
 ```
-2. Run Docker container with mounted both `openvino` and `openvino_contrib` repositories if you do cross-compilation. If you do native compilation just skip this step:
+2. Build `ie_cross_armhf` image by performing the 3rd and the 4th steps of [the guideline].
+3. Run Docker* container with mounted both `openvino` and `openvino_contrib` repositories:
 ```
 docker run --rm -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
 The next commands of the procedure need to be run in `ie_cross_armhf` container.  
-3. Install scons in the container if you're using cross-compilation. If you do native compilation, install scons on build machine:
+4. Install scons in the container:
 ```
 apt-get install scons
 ```
-4. Go to `openvino` directory:
+5. Go to `openvino` directory:
 ```
 cd openvino
 ```
-5. Prepare a build folder:
+6. Prepare a build folder:
 ```
 mkdir build && cd build
 ```
-6. Build OpenVINO™ with ARM plugin:
+7. Build OpenVINO™ with ARM plugin:
 ```
  cmake -DCMAKE_BUILD_TYPE=Release \
        -DCMAKE_TOOLCHAIN_FILE="../cmake/arm.toolchain.cmake" \
@@ -76,8 +77,8 @@ mkdir build && cd build
 
 As soon as `make` command is finished you can find the resulting OpenVINO™ binaries in the `openvino/bin/armv7l/Release` and the plugin `libarmPlugin.so` in `openvino/bin/armv7l/Release/lib`.
 
-### Approach #3: build OpenVINO™ and the plugin consequentially (native compiling)
-In order to build the plugin, you must prebuild OpenVINO package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+### Approach #3: build OpenVINO™ and the plugin without OpenCV on ARM platform (native compiling)
+In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
 
 Afterwards plugin build procedure is as following:
 
@@ -105,7 +106,7 @@ cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build fold
 
 ## Sample
 You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you build the plugin using approach #1) or `openvino/bin/armv7l/Release` directory (if you build the plugin using approach #2 or #3). The following procedure assumes the approach #1 is used.  
-OpenVINO samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
+OpenVINO™ samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
 Let's try to run [Object Detection for SSD sample].  
 ### Model preparation
 To speed up the process you may prepare the model on non-ARM platform.
@@ -160,7 +161,7 @@ The plugin supports the configuration parameters listed below. All parameters mu
 Parameter name  | Parameter values  | Default  | Description
 ------------- | ------------- | ------------- | -------------
 `KEY_CPU_THROUGHPUT_STREAMS`   | `KEY_CPU_THROUGHPUT_NUMA`, `KEY_CPU_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously. All available CPU cores are evenly distributed between the streams.
-`KEY_CPU_BIND_THREAD`   | YES/NUMA/NO  | YES  | Binds inference threads to CPU cores. Enabled only if OpenVINO is built with TBB that supports affinity configuration
+`KEY_CPU_BIND_THREAD`   | YES/NUMA/NO  | YES  | Binds inference threads to CPU cores. Enabled only if OpenVINO™ is built with TBB that supports affinity configuration
 `KEY_CPU_THREADS_NUM` | positiv integer values| Limit `#threads` that are used by Inference Engine for inference on the CPU
 
 ## Supported Layers and Limitations
@@ -212,4 +213,5 @@ All guidelines for contributing to the repository can be found [here](../../CONT
 [model converter]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-converter-usage
 [this image]:https://github.com/openvinotoolkit/openvino/blob/master/scripts/demo/car_1.bmp
 [Intermediate Representation]:https://docs.openvinotoolkit.org/latest/openvino_docs_MO_DG_IR_and_opsets.html#intermediate_representation_used_in_openvino
+[the guideline]:https://github.com/openvinotoolkit/openvino/wiki/BuildingForRaspbianStretchOS#cross-compilation-using-docker
 [this guideline]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/demos/README.md#build-the-demo-applications
