@@ -39,7 +39,7 @@ struct ArmInferRequest : public InferenceEngine::InferRequestInternal {
     ~ArmInferRequest() override;
 
     void InferImpl() override;
-    void GetPerformanceCounts(std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& perfMap) const override;
+    std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
 
     void allocateBlobs();
 
