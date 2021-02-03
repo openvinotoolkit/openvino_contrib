@@ -243,7 +243,8 @@ void ArmInferRequest::InferImpl() {
     }
 }
 
-void ArmInferRequest::GetPerformanceCounts(std::map<std::string, InferenceEngineProfileInfo> &perfMap) const {
+std::map<std::string, InferenceEngineProfileInfo> ArmInferRequest::GetPerformanceCounts() const {
+    std::map<std::string, InferenceEngineProfileInfo> perfMap;
     InferenceEngineProfileInfo info;
     info.execution_index = 0;
     info.status = InferenceEngineProfileInfo::EXECUTED;
@@ -260,4 +261,5 @@ void ArmInferRequest::GetPerformanceCounts(std::map<std::string, InferenceEngine
         }
         perfMap[value.first] = info;
     }
+    return perfMap;
 }
