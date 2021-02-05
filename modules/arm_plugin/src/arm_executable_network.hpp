@@ -19,7 +19,6 @@
 
 #include "arm_config.hpp"
 #include "arm_infer_request.hpp"
-#include "arm_async_infer_request.hpp"
 
 namespace ArmPlugin {
 
