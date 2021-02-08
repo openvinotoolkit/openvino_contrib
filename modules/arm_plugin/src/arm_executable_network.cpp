@@ -54,14 +54,7 @@ ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsData
 }
 
 IInferRequest::Ptr ArmPlugin::ExecutableNetwork::CreateInferRequest() {
-    IInferRequest::Ptr asyncRequest;
-    auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
-    auto asyncThreadSafeImpl = std::make_shared<ArmAsyncInferRequest>(std::static_pointer_cast<ArmInferRequest>(internalRequest),
-                                                                      _taskExecutor, _callbackExecutor);
-    asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl),
-                       [](InferenceEngine::IInferRequest *p) { p->Release(); });
-    asyncThreadSafeImpl->SetPointerToPublicInterface(asyncRequest);
-    return asyncRequest;
+    return CreateAsyncInferRequestFromSync<InferenceEngine::AsyncInferRequestThreadSafeDefault>();
 }
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::string& name) const {
