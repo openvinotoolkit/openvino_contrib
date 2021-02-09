@@ -17,6 +17,7 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*Interpolate_NearestFloorAsym.*TS=\(1\.1\.2\.2\).*)", // Not supported
         R"(Interpolate.*InterpolateMode=linear_onnx.*)", // Not supported
         R"(.*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*)", // Failed
-        ".*PreprocessTest.*" // Dose not cover all needed cases
+        ".*PreprocessTest.*", // Does not cover all needed cases
+        ".*GRUCellTest.*decomposition0.*",  // GruCell should be decomposed
     };
 }

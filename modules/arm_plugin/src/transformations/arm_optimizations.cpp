@@ -17,6 +17,7 @@
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
+#include "transformations/op_conversions/gru_cell_decomposition.hpp"
 #include "transformations/common_optimizations/lin_op_sequence_fusion.hpp"
 #include "transformations/op_conversions/reduce_l1_decomposition.hpp"
 #include "transformations/op_conversions/reduce_l2_decomposition.hpp"
@@ -45,6 +46,7 @@
 #include "normalizel2_max_fusion.hpp"
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
+#include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
 #include "transformations/convert_prior_box_to_const.hpp"
 #include "transformations/convert_prior_box_clustered_to_const.hpp"
@@ -89,6 +91,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::GroupConvolutionBackpropDataMultiplyFusion>();
     manager.register_pass<ngraph::pass::RNNCellDecomposition>();
     manager.register_pass<ngraph::pass::LSTMCellDecomposition>();
+    manager.register_pass<ngraph::pass::GRUCellDecomposition>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<pass::ConvertGRN>();
@@ -121,6 +124,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();
+    manager.register_pass<pass::FinalizeTrailingNodes>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);

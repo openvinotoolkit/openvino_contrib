@@ -197,16 +197,22 @@ void ArmInferRequest::InferImpl() {
                     InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput)->rmap().as<void*>());
             }
         }
-        for (auto&& output : _outputs) {
-            auto outputBlob = output.second;
-            auto networkOutput = _networkOutputBlobs[output.first];
-            if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
-                networkOutput = outputBlob;
-            }
-            auto outputTensor = _outputTensors[output.first];
-            if (!outputTensor->info()->has_padding() && _layerTypes[output.first] != "Constant.0") {
-                static_cast<arm_compute::Tensor*>(outputTensor)->allocator()->import_memory(
-                    InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
+        for (auto output : _outputTensors) {
+            auto outputTensor = output.second;
+            if (_networkOutputBlobs.find(output.first) == _networkOutputBlobs.end()) {
+                if (!outputTensor->info()->has_padding()) {
+                    static_cast<arm_compute::Tensor*>(outputTensor)->allocator()->allocate();
+                }
+            } else {
+                auto networkOutput = _networkOutputBlobs[output.first];
+                auto outputBlob = _outputs[output.first];
+                if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
+                    networkOutput = outputBlob;
+                }
+                if (!outputTensor->info()->has_padding() && _layerTypes[output.first] != "Constant.0") {
+                    static_cast<arm_compute::Tensor*>(outputTensor)->allocator()->import_memory(
+                        InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
+                }
             }
         }
         _durations["Preprocessing"] = Time::now() - start;
