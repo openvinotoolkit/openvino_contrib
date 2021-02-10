@@ -100,7 +100,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                | Supported     |
 | [PriorBoxClustered](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBoxClustered_1.md)                         | Supported     |
 | [PriorBox](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBox_1.md)                                           | Supported     |
-| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Not Supported |
+| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Supported**   |
 | [PSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PSROIPooling_1.md)                                   | Supported**   |
 | [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                | Not Supported |
 | [ReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/ReLU_1.md)                                                  | Supported     |
