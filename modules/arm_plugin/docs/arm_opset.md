@@ -122,7 +122,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [ReverseSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ReverseSequence_1.md)                              | Supported**   |
 | [RNNCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNCell_3.md)                                              | Supported     |
 | [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                      | Not Supported |
-| [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                           | Not Supported |
+| [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                           | Supported**   |
 | [ROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIPooling_1.md)                                       | Supported**   |
 | [Round](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Round_5.md)                                                | Supported*    |
 | [ScatterElementsUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterElementsUpdate_3.md)                  | Supported**   |
