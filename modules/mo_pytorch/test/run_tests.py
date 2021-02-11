@@ -104,7 +104,6 @@ class TestModels(unittest.TestCase):
     def test_deeplabv3_resnet50(self):
         self.check_torchvision_model(models.segmentation.deeplabv3_resnet50, (240, 320), 2e-4)
 
-    @unittest.skip("https://github.com/openvinotoolkit/openvino_contrib/issues/29")
     def test_detectron2_retinanet(self):
         width = 320
         height = 320
