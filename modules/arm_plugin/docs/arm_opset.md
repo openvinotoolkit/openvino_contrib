@@ -22,7 +22,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [BatchNormInference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/BatchNormInference_5.md)                   | Supported     |
 | [BatchToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/BatchToSpace_2.md)                                    | Supported*    |
 | [BinaryConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/BinaryConvolution_1.md)                       | Not Supported |
-| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                          | Not Supported |
+| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                          | Supported     |
 | [Bucketize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Bucketize_3.md)                                         | Not Supported |
 | [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                            | Supported**   |
 | [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Supported**   |

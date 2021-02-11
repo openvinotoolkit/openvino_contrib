@@ -407,6 +407,17 @@ struct Converter {
             return {hosts, tensors, ArgumentType::Output};
         }
 
+        template<std::size_t I>
+        std::vector<Argument<arm_compute::ITensor*>> MakeArgument(std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
+            std::vector<Argument<arm_compute::ITensor*>> input_tensors;
+            for (const auto& input : inputs) {
+                Argument<arm_compute::ITensor*> tensor{_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()),
+                                                        ArgumentType::Input};
+                input_tensors.push_back(std::move(tensor));
+            }
+            return input_tensors;
+        }
+
         arm_compute::Status Validate() override {
             return {};
         }
