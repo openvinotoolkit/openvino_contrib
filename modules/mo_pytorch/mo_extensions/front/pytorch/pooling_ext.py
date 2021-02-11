@@ -101,7 +101,7 @@ class AvgPool2dFrontExtractor(FrontExtractorOp):
             'stride': final_strides,
             'pad': final_pads,
             'pool_method': 'avg',
-            'exclude_pad': 'false',
+            'exclude_pad': False,
 
             'channel_dims': np.array([1], dtype=np.int64),
             'batch_dims': np.array([0], dtype=np.int64),
