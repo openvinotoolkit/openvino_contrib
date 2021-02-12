@@ -155,6 +155,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::EmbeddingBagPackedSum>();
         Register<opset::EmbeddingBagOffsetsSum>();
         Register<opset::NonMaxSuppression>();
+        Register<ngraph::op::v0::Proposal>();
+        Register<opset::Proposal>();
     }
     Register<opset::Result>();
 
