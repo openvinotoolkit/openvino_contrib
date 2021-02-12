@@ -5,11 +5,6 @@ resources:
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
 
-  - repository: testdata
-    type: github
-    endpoint: openvinotoolkit
-    name: openvinotoolkit/testdata
-
 jobs:
 - job: Lin
   # About 150% of total time
@@ -27,7 +22,6 @@ jobs:
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
     OPENCV_REPO_DIR: $(REPO_DIR)/../opencv
-    MODELS_PATH: $(REPO_DIR)/../testdata
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
     BUILD_DIR_ARM: $(WORK_DIR)/build_arm
@@ -68,11 +62,6 @@ jobs:
     lfs: false
     submodules: recursive
     path: openvino
-
-  - checkout: testdata
-    clean: true
-    lfs: true
-    path: testdata
 
   - script: |
       sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
@@ -124,7 +113,7 @@ jobs:
   - script: ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build IE Lin ARM64'
-    
+
   - task: CMake@1
     inputs:
       cmakeArgs: >
