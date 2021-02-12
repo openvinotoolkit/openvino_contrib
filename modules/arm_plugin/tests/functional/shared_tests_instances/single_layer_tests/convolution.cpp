@@ -22,6 +22,51 @@ const InferenceEngine::Precision outPrc = InferenceEngine::Precision::FP32;
 const InferenceEngine::Layout inLayout = InferenceEngine::Layout::NHWC;
 const InferenceEngine::Layout outLayout = InferenceEngine::Layout::NHWC;
 
+
+/* ============= 1D Convolution ============= */
+const std::vector<std::vector<size_t>> kernels1D = {{3}, {5}};
+const std::vector<std::vector<size_t>> strides1D = {{1}, {3}};
+const std::vector<std::vector<ptrdiff_t>> padBegins1D = {{0}, {3}};
+const std::vector<std::vector<ptrdiff_t>> padEnds1D = {{0}, {3}};
+const std::vector<std::vector<size_t>> dilations1D = {{1}, {3}};
+const std::vector<size_t> numOutChannels1D = {1, 5};
+
+const auto conv1DParams_ExplicitPadding = ::testing::Combine(
+    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
+    ::testing::ValuesIn(padBegins1D), ::testing::ValuesIn(padEnds1D),
+    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
+    ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv1DParams_AutoPadValid = ::testing::Combine(
+    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
+    ::testing::Values(std::vector<ptrdiff_t>({0})),
+    ::testing::Values(std::vector<ptrdiff_t>({0})),
+    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
+    ::testing::Values(ngraph::op::PadType::VALID));
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_Convolution1D_ExplicitPadding, ConvolutionLayerTest,
+    ::testing::Combine(
+        conv1DParams_ExplicitPadding, ::testing::ValuesIn(netPrecisions),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(std::vector<size_t>({1, 3, 30})),
+        ::testing::Values("ARM")),
+    ConvolutionLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
+    ::testing::Combine(
+        conv1DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(std::vector<size_t>({1, 3, 30})),
+        ::testing::Values("ARM")),
+    ConvolutionLayerTest::getTestCaseName);
+
 /* ============= 2D Convolution ============= */
 const std::vector<std::vector<size_t >> kernels = {{3, 3},
                                                           {3, 5}};

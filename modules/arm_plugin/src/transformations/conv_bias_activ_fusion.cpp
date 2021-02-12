@@ -218,7 +218,7 @@ ArmPlugin::pass::ConvertSingleConvolutionToArm::ConvertSingleConvolutionToArm() 
 ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::GroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
-                                                                 ngraph::pattern::wrap_type<opset::Constant>()},
+                                                                 ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
                                                                  ngraph::pattern::has_static_shape()), "ConvertGroupConvolutionToArm");
     register_matcher(m, convert_conv_to_arm_conv<opset::GroupConvolution, opset::ArmGroupConvolution>());
 }
