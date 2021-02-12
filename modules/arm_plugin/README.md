@@ -11,7 +11,7 @@ Host  | OS
 Raspberry Pi* 4 Model B   | Debian 10.3
 
 ## Distribution
-OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVIVO™. To use the plugin, it should be built from source code.
+OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
 
 ## How to build
 ### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling, the preferred way)

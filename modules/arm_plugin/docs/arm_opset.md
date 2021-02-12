@@ -22,7 +22,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [BatchNormInference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/BatchNormInference_5.md)                   | Supported     |
 | [BatchToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/BatchToSpace_2.md)                                    | Supported*    |
 | [BinaryConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/BinaryConvolution_1.md)                       | Not Supported |
-| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                          | Not Supported |
+| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                          | Supported     |
 | [Bucketize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Bucketize_3.md)                                         | Not Supported |
 | [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                            | Supported**   |
 | [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Supported**   |
@@ -59,10 +59,10 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Gelu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/GELU_2.md)                                                  | Supported**   |
 | [Greater](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Greater_1.md)                                            | Supported     |
 | [GreaterEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/GreaterEqual_1.md)                                  | Supported     |
-| [GRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/GRN_1.md)                                                 | Supported**   |
+| [GRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/GRN_1.md)                                                 | Supported     |
 | [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                         | Supported***  |
 | [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md) | Not Supported |
-| [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Not Supported |
+| [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Supported     |
 | [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                      | Not Supported |
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Supported**   |
 | [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Supported**   |
@@ -100,7 +100,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                | Supported     |
 | [PriorBoxClustered](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBoxClustered_1.md)                         | Supported     |
 | [PriorBox](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBox_1.md)                                           | Supported     |
-| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Not Supported |
+| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Supported**   |
 | [PSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PSROIPooling_1.md)                                   | Supported**   |
 | [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                | Not Supported |
 | [ReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/ReLU_1.md)                                                  | Supported     |
@@ -182,7 +182,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 * `'LRN'` layer is supported `axes = {1}` or `axes = {2, 3}` only.
 * `'Mod'` layer is supported for FP32 only.
 * `'MVN'` layer is supported via arm_compute library for 2D inputs and `false` value of `'normalize_variance'` and `false` value of `'across_channels'`, for another cases layer is implemented via `ngraph::reference`.
-* `'Normalize'` layer is supported with `MAX` value of `'eps_mode'` and `axes = {2 | 3}` only.
+* `'Normalize'` layer is supported with `MAX` value of `'eps_mode'` and `axes = {2 | 3}`, and for `ADD` value of `'eps_mode'` layer uses `'DecomposeNormalizeL2Add'`.
 * `'NotEqual'`doesn't support `broadcast` for inputs.
 * `'Pad'` layer works with `'pad_mode' = {REFLECT | CONSTANT | SYMMETRIC}` parameters only.
 * `'Round'` layer is supported via arm_compute library with `RoundMode::HALF_AWAY_FROM_ZERO` value of `mode`, for another cases layer is implemented via `ngraph::reference`.

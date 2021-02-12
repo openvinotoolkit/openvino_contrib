@@ -9,10 +9,10 @@ CODEOWNERS  @openvinotoolkit/openvino-admins @openvinotoolkit/openvino_contrib-m
 /.ci/  @openvinotoolkit/openvino-admins
 
 # ARM Plugin:
-/modules/arm_plugin/ @apankratovantonp @l-bat
+/modules/arm_plugin/ @openvinotoolkit/openvino_contrib-arm_plugin-maintainers
 
 # Inference Engine Java API:
-/modules/java_api/ @dkurt
+/modules/java_api/ @openvinotoolkit/openvino_contrib-java_api-maintainers
 
 # PyTorch extension for Model Optimizer:
-/modules/mo_pytorch/ @dkurt
+/modules/mo_pytorch/ @openvinotoolkit/openvino_contrib-mo_pytorch-maintainers

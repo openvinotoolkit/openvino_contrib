@@ -13,6 +13,7 @@
 #include "transformations/op_conversions/convert_negative.hpp"
 #include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
+#include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
@@ -74,6 +75,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertReduceMeanToPooling>();
     manager.register_pass<ngraph::pass::ConvertReduceMaxToPooling>();
     manager.register_pass<ngraph::pass::ConvertReduceSumToPooling>();
+    manager.register_pass<ngraph::pass::ConvertBroadcast3>();
     manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
     manager.register_pass<ngraph::pass::ConvertMod>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
