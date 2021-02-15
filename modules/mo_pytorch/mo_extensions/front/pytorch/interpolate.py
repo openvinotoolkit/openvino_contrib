@@ -67,8 +67,8 @@ class InterpolateReplacer(FrontReplacementOp):
                 assert(node.module.scale_factor)
                 attrs = {
                     'name': node.name,
-                    'height_scale': node.module.scale_factor,
-                    'width_scale': node.module.scale_factor,
+                    'height_scale': np.float(node.module.scale_factor),
+                    'width_scale': np.float(node.module.scale_factor),
                     'mode': mode,
                     'align_corners': node.module.align_corners,
                 }

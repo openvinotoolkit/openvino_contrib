@@ -17,7 +17,6 @@
 from mo.front.common.partial_infer.elemental import copy_shape_infer
 from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
-from mo.ops.const import Const
 from mo.ops.op import Op
 
 
