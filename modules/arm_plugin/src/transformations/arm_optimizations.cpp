@@ -42,6 +42,7 @@
 #include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
+#include "convert_prelu.hpp"
 #include "convert_reduce_multi_axis.hpp"
 #include "convert_interpolate_v0_to_v4.hpp"
 #include "normalizel2_max_fusion.hpp"
@@ -104,6 +105,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvBiasActivationFusion>();
     manager.register_pass<pass::ConvertMatMulToFC>();
     manager.register_pass<pass::ConvertEltwise>();
+    manager.register_pass<pass::BroadcastPRelu>();
     manager.register_pass<pass::ConvertLogical>();
     manager.register_pass<pass::ConvertComparison>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
