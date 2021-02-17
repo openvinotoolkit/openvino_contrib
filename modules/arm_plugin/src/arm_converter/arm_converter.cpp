@@ -159,6 +159,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<ngraph::op::v0::Proposal>();
         Register<opset::Proposal>();
         Register<opset::GroupConvolutionBackpropData>();
+        Register<opset::OneHot>();
     }
     Register<opset::Result>();
 

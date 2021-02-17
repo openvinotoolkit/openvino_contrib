@@ -22,7 +22,7 @@ const std::vector<std::map<std::string, std::string>> configs = {
 
 const std::vector<std::map<std::string, std::string>> multiConfigs = {
         {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , "ARM"}}
-};/**/
+};
 
 INSTANTIATE_TEST_CASE_P(smoke_Hetero_BehaviorTests, CallbackTests,
         ::testing::Combine(
