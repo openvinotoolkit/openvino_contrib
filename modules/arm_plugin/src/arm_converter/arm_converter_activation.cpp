@@ -35,10 +35,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Relu& node
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::PRelu& node) {
-    float a = dynamic_cast<const opset::Constant&>(
-                *(node.input_value(1).get_node())).get_vector<float>()[0];
-    arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU, a);
-    return ConvertActivation(node, info, this);
+    return MakeConversion<arm_compute::NEPReluLayer>(node.input(0), node.input(1), node.output(0));
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Abs& node) {
