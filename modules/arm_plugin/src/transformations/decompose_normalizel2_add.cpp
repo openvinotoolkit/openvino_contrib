@@ -25,8 +25,10 @@ ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() {
             return false;
         }
 
-        auto exp = opset::Constant::create(input->get_element_type(), ngraph::Shape{1}, {2.0f});
-        auto pow = std::make_shared<opset::Power>(input, exp);
+        // FIXME: auto pow = std::make_shared<opset::Power>(input,
+        //                                                  opset::Constant::create(input->get_element_type(), ngraph::Shape{1}, {2.0f}));
+        // produce incorrect result for 3D input
+        auto pow = std::make_shared<opset::Multiply>(input, input);
         auto reduce_sum = std::make_shared<opset::ReduceSum>(pow, axes, true);
         auto eps = opset::Constant::create(input->get_element_type(), ngraph::Shape{1}, {eps_attr});
         auto add_eps = std::make_shared<opset::Add>(reduce_sum, eps);
