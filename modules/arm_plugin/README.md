@@ -15,7 +15,7 @@ OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVINO
 
 ## How to build
 ### Approach #1: build OpenCV, OpenVINO and the plugin using pre-configured Dockerfile (cross-compiling, the preferred way)
-OpenVINO™ and ARM CPU plugin could be built in Docker* container for [32-bit](Dockerfile.RPi32) and [64-bit](Dockerfile.RPi64) Debian:
+OpenVINO™ and ARM CPU plugin could be built in Docker* container for [32-bit](Dockerfile.RPi32) Debian and [64-bit](Dockerfile.RPi64) Ubuntu:
 
 1. Clone `openvino_contrib` repository:
 ```
@@ -25,18 +25,35 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
  ```
 cd openvino_contrib/modules/arm_plugin
 ```
-3. Build the plugin in Docker* container:
+3. Build a Docker* image:
 ```
 docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
-> **NOTE**: Docker* uses cache when building an image. `arm-plugin` image clones `opencv`, `openvino` and `openvino_contrib` repositories. 
-If you build `arm-plugin` image next time, Docker* does not clone repositories, existing image from the cache will be used instead. 
-If you want to clone repositories again to pull the latest changes, you need to add `--no-cache` option on the `docker image build` command.
-4. Export the archive with artifacts to the current directory:
+4. Build the plugin in Docker* container:
+
+Build process is performed by `/armplg_build.sh` script executed inside `/armcpu_plugin` directory(default container command to execute).
+All intermediate results and build artifacts are stored inside working directory.
+
+So one could either mount the whole working directory to get all results stored outside of the container
 ```
-docker run --rm -ti -v $PWD:/remote arm-plugin cp ./OV_ARM_package.tar.gz /remote
+mkdir build
+docker container run --rm -ti -v $PWD/build:/armcpu_plugin arm-plugin
 ```
-5. Extract the archive to `build` directory
+or export only the archive with artifacts
+```
+docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote arm-plugin sh -c "/armplg_build.sh && cp ./OV_ARM_package.tar.gz /remote"
+```
+> **NOTE**: There are a few environment variables that control `/armplg_build.sh` script execution.
+>
+> *BUILD_JOBS* control number of threads for simultaneous compilation
+>
+> *BUILD_TYPE* control Debug/Release configuration (Release by default)
+>
+> *UPDATE_SOURCES* control sources retrievement
+>  - *clean*  - don't reload sources if already loaded, just clean build folders(default)
+>  - *reload* - delete all loaded sources and retrieve them again
+>  - *check*  - don't reload or cleanup sources
+6. Extract the archive to `build` directory
 ```
 mkdir build && tar -xf OV_ARM_package.tar.gz -C build
 ```
@@ -51,7 +68,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 2. Build `ie_cross_armhf` image by performing the 3rd and the 4th steps of [the guideline].
 3. Run Docker* container with mounted both `openvino` and `openvino_contrib` repositories:
 ```
-docker run --rm -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
+docker container run --rm -it -v /absolute/path/to/openvino:/openvino -v /absolute/path/to/openvino_contrib:/openvino_contrib ie_cross_armhf /bin/bash 
 ```
 The next commands of the procedure need to be run in `ie_cross_armhf` container.  
 4. Install scons in the container:
