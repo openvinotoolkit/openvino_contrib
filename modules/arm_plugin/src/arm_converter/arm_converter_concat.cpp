@@ -1,6 +1,8 @@
 // Copyright (C) 2020-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
+#include <details/ie_exception.hpp>
+
 #include <arm_compute/runtime/NEON/functions/NECopy.h>
 #include <arm_compute/runtime/NEON/functions/NEConcatenateLayer.h>
 #include <ngraph/runtime/reference/concat.hpp>
@@ -27,6 +29,9 @@ static void wrap_concat(const std::vector<Argument<arm_compute::ITensor*>>& inpu
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::Concat& node) {
+    if (node.get_shape().size() > 4) {
+        THROW_IE_EXCEPTION << "Unsupported Concat with num dimensions > 4";
+    }
     if (node.get_input_size() == 1) {
         return MakeConversion<arm_compute::NECopy>(node.input(0), node.output(0));
     }

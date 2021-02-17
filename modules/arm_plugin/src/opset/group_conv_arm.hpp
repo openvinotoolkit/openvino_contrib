@@ -13,7 +13,7 @@ namespace opset {
 
 class ArmGroupConvolution : public GroupConvolution {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmFroupConvolution", 0};
+    static constexpr ngraph::NodeTypeInfo type_info{"ArmGroupConvolution", 0};
     const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
     ArmGroupConvolution() = default;
     ~ArmGroupConvolution() override;
