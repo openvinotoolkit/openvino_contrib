@@ -133,5 +133,5 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
 #endif
     manager.run_passes(f);
-    return true;
+    return false;
 }
