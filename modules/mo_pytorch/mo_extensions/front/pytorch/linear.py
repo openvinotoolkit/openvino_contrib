@@ -17,10 +17,8 @@ import numpy as np
 
 from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
-from mo.ops.const import Const
 from extensions.ops.MatMul import MatMul
 from extensions.ops.elementwise import Add
-from mo.ops.reshape import Reshape
 
 
 class Linear(FrontReplacementOp):
