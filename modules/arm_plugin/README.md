@@ -53,10 +53,7 @@ docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote arm-plug
 >  - *clean*  - don't reload sources if already loaded, just clean build folders(default)
 >  - *reload* - delete all loaded sources and retrieve them again
 >  - *check*  - don't reload or cleanup sources
-6. Extract the archive to `build` directory
-```
-mkdir build && tar -xf OV_ARM_package.tar.gz -C build
-```
+6. Extract the archive to target ARM platform
 
 ### Approach #2: build OpenVINO and the plugin without OpenCV using Docker* (cross-compiling)
 

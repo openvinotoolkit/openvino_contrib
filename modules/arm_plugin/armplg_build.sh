@@ -51,7 +51,7 @@ checkSrcTree()
             if [ "$UPDATE_SOURCES" = "clean" ]; then
                 echo "Cleanup of previous build requested"
                 echo "Removing previous build results..."
-                rm -rf $2/build || fail 2 "Failed to cleanup. Stopping"
+                rm -rf $1/build || fail 2 "Failed to cleanup. Stopping"
             fi
         fi
     fi
