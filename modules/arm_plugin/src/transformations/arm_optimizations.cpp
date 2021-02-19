@@ -73,6 +73,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::HSwishFusion>();
 
     manager.register_pass<ngraph::pass::LogSoftmaxDecomposition>();
+    manager.register_pass<pass::ConvertGRN>();
     manager.register_pass<pass::NormalizeL2Fusion>();
     manager.register_pass<pass::DecomposeNormalizeL2Add>();
     manager.register_pass<pass::ConvertReduceMultiAxis>();
@@ -96,7 +97,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::GRUCellDecomposition>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
-    manager.register_pass<pass::ConvertGRN>();
     manager.register_pass<pass::DecomposeSwish>();
     manager.register_pass<pass::DecomposeMish>();
     manager.register_pass<pass::ConvertConv1D>();

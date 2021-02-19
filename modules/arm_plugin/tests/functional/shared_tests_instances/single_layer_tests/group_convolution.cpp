@@ -17,14 +17,34 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 };
 
 /* ============= 1D GroupConvolution ============= */
-const std::vector<std::vector<size_t>> kernels1d = {{3}};
-const std::vector<std::vector<size_t>> strides1d = {{1}};
-const std::vector<std::vector<ptrdiff_t>> padBegins1d = {{0}};
-const std::vector<std::vector<ptrdiff_t>> padEnds1d = {{0}};
-const std::vector<std::vector<size_t>> dilations1d = {{1}};
-const std::vector<size_t> numOutChannels1d = {8, 16};
-const std::vector<size_t> numGroups1d = {2, 8};
-const auto inputShapes1d = std::vector<size_t>({1, 16, 30});
+const std::vector<std::vector<size_t>> kernels1d = {
+        {1},
+        {3},
+};
+const std::vector<std::vector<size_t>> strides1d = {
+        {1},
+        {2},
+};
+const std::vector<std::vector<ptrdiff_t>> padBegins1d = {
+        {0},
+        {1},
+};
+const std::vector<std::vector<ptrdiff_t>> padEnds1d = {
+        {0},
+        {1},
+};
+const std::vector<std::vector<size_t>> dilations1d = {
+        {1},
+        {2},
+};
+const std::vector<size_t> numOutChannels1d = {
+        8,
+        16,
+};
+const std::vector<size_t> numGroups1d = {
+        2,
+        8,
+};
 
 const auto groupConv1DParams_ExplicitPadding = ::testing::Combine(
     ::testing::ValuesIn(kernels1d), ::testing::ValuesIn(strides1d),
@@ -49,7 +69,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>(inputShapes1d)),
+        ::testing::Values(std::vector<size_t>{2, 8, 30}),
         ::testing::Values("ARM")),
     GroupConvolutionLayerTest::getTestCaseName);
 
@@ -61,7 +81,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 16, 30})),
+        ::testing::Values(std::vector<size_t>({2, 8, 30})),
         ::testing::Values("ARM")),
     GroupConvolutionLayerTest::getTestCaseName);
 

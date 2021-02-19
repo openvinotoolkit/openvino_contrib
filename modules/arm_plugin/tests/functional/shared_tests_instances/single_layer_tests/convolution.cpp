@@ -24,18 +24,38 @@ const InferenceEngine::Layout outLayout = InferenceEngine::Layout::NHWC;
 
 
 /* ============= 1D Convolution ============= */
-const std::vector<std::vector<size_t>> kernels1D = {{3}, {5}};
-const std::vector<std::vector<size_t>> strides1D = {{1}, {3}};
-const std::vector<std::vector<ptrdiff_t>> padBegins1D = {{0}, {3}};
-const std::vector<std::vector<ptrdiff_t>> padEnds1D = {{0}, {3}};
-const std::vector<std::vector<size_t>> dilations1D = {{1}, {3}};
-const std::vector<size_t> numOutChannels1D = {1, 5};
+const std::vector<std::vector<size_t>> kernels1D = {
+    {3},
+    {5},
+};
+const std::vector<std::vector<size_t>> strides1D = {
+    {1},
+    {2},
+};
+const std::vector<std::vector<ptrdiff_t>> padBegins1D = {
+    {0},
+    {1},
+};
+const std::vector<std::vector<ptrdiff_t>> padEnds1D = {
+    {0},
+    {1},
+};
+const std::vector<std::vector<size_t>> dilations1D = {
+    {1},
+    {2},
+};
+const std::vector<size_t> numOutChannels1D = {
+    1,
+    3,
+    5,
+};
 
 const auto conv1DParams_ExplicitPadding = ::testing::Combine(
     ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
     ::testing::ValuesIn(padBegins1D), ::testing::ValuesIn(padEnds1D),
     ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
     ::testing::Values(ngraph::op::PadType::EXPLICIT));
+
 const auto conv1DParams_AutoPadValid = ::testing::Combine(
     ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
     ::testing::Values(std::vector<ptrdiff_t>({0})),
@@ -43,8 +63,7 @@ const auto conv1DParams_AutoPadValid = ::testing::Combine(
     ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
     ::testing::Values(ngraph::op::PadType::VALID));
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPadding, ConvolutionLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPadding, ConvolutionLayerTest,
     ::testing::Combine(
         conv1DParams_ExplicitPadding, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -55,8 +74,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values("ARM")),
     ConvolutionLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
     ::testing::Combine(
         conv1DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),

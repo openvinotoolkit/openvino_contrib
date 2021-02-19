@@ -6,6 +6,7 @@
 #include <arm_compute/runtime/NEON/functions/NEActivationLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEElementwiseUnaryLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEFloor.h>
+#include <arm_compute/runtime/NEON/functions/NEPReluLayer.h>
 #include <ngraph/runtime/reference/hsigmoid.hpp>
 #include <ngraph/runtime/reference/hard_sigmoid.hpp>
 #include <ngraph/runtime/reference/selu.hpp>

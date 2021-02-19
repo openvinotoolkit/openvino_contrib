@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <details/ie_exception.hpp>
 #include "conv_bias_activ_fusion.hpp"
 
 #include <memory>
@@ -128,6 +129,14 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_wit
             return false;
         }
 
+        if (m_conv->output(0).get_target_inputs().size() != 1) {
+            return false;
+        }
+
+        if (!std::dynamic_pointer_cast<opset::Constant>(eltwise->input_value(1 - conv_idx).get_node_shared_ptr())) {
+            THROW_IE_EXCEPTION << "Unsupported Convolution with inconstant weights.";
+        }
+
         auto bias = eltwise->input_value(1 - conv_idx);
         // TODO: check that constant can be scalar and do not match [1, C, 1, 1] layout
         const auto bias_shape = bias.get_shape();
@@ -182,9 +191,6 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
     return [&](ngraph::pattern::Matcher& m) {
         auto m_conv = std::dynamic_pointer_cast<Conv>(m.get_match_root());
         if (!m_conv) {
-            return false;
-        }
-        if (m_conv->output(0).get_target_inputs().size() != 1) {
             return false;
         }
 
