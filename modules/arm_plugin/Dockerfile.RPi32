@@ -4,12 +4,11 @@
 FROM debian:9
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV PAKAGE_UPDATES_OF 20210120_11
-
-RUN apt-get update && apt-get -y upgrade
+ENV PAKAGE_UPDATES_OF 20210215
 
 #Prerequisite installation
 RUN apt-get update && \
+    apt-get -y upgrade && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         lsb-release \
@@ -60,72 +59,39 @@ RUN dpkg --add-architecture armhf && \
         libprotobuf-dev \
         libprotoc-dev \
         protobuf-compiler \
+        python3-dev \
+        python3-numpy \
+        python3-pip \
+        libpython3-dev:armhf \
         # For ARM CPU plugin
-        scons && \
-        rm -rf /var/lib/apt/lists/*
-
-#cmake 3.13 or higher is required to build OpenVINO
-RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.3.tar.gz && \
-    tar xf cmake-3.13.3.tar.gz && \
-    (cd cmake-3.13.3 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
-    rm -rf cmake-3.13.3 cmake-3.13.3.tar.gz
+        scons \
+    && \
+    pip3 install cython && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN curl -sSf "https://packagecloud.io/install/repositories/github/git-lfs/config_file.list?os=debian&dist=stretch&source=script" > "/etc/apt/sources.list.d/github_git-lfs.list"
 RUN curl -L "https://packagecloud.io/github/git-lfs/gpgkey" 2> /dev/null | apt-key add - &>/dev/null && \
     apt-get update && \
-    apt-get install -y --no-install-recommends  --allow-unauthenticated \
-        git-lfs \
-        && \
+    apt-get install -y --no-install-recommends  --allow-unauthenticated git-lfs && \
     rm -rf /var/lib/apt/lists/*
 
+#cmake 3.13 or higher is required to build OpenVINO. stretch-backports provide 3.16
+RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/sources.list.d/backports.list && \
+    echo 'deb http://deb.debian.org/debian stretch-backports-sloppy main' >> /etc/apt/sources.list.d/backports.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libarchive13/stretch-backports-sloppy \
+        libuv1/stretch-backports \
+        cmake/stretch-backports \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV ARCH_NAME arm-linux-gnueabihf
+ENV TOOLCHAIN_DEFS arm.toolchain.cmake
+COPY armplg_build.sh /armplg_build.sh
+
 #configure paths
-RUN mkdir -p /armcpu_plugin/armcpu_debian32_rpi
-WORKDIR /armcpu_plugin
-ENV DEV_HOME /armcpu_plugin
-ENV OPENCV_HOME=$DEV_HOME/opencv
-ENV OPENVINO_HOME $DEV_HOME/openvino
-ENV OPENVINO_CONTRIB $DEV_HOME/openvino_contrib
-ENV ARM_PLUGIN_HOME $OPENVINO_CONTRIB/modules/arm_plugin
-ENV STAGING_DIR $DEV_HOME/armcpu_debian32_rpi
+RUN mkdir -p /armcpu_plugin
+WORKDIR /armcpu_plugin/
 
-ENV SOURCE_UPDATES_OF 20210120_11
-
-#OpenCV
-RUN git clone https://github.com/opencv/opencv.git $OPENCV_HOME && \
-    mkdir $OPENCV_HOME/build && \
-    cd $OPENCV_HOME/build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_LIST=imgcodecs,videoio,highgui \
-             -DCMAKE_TOOLCHAIN_FILE=$OPENCV_HOME/platforms/linux/arm-gnueabi.toolchain.cmake \
-             -DCMAKE_STAGING_PREFIX=$STAGING_DIR && \
-    make -j$(nproc) && \
-    make install && \
-    cd $DEV_HOME
-
-#OpenVINO
-RUN git lfs clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git $OPENVINO_HOME && \
-    mkdir $OPENVINO_HOME/build && \
-    cd $OPENVINO_HOME/build && \
-    cmake -DOpenCV_DIR=$STAGING_DIR/lib/cmake/opencv4 -DENABLE_OPENCV=OFF \
-          -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
-          -DENABLE_SSE42=OFF -DENABLE_MYRIAD=OFF -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_VALIDATION_SET=OFF -DENABLE_MODELS=OFF \
-          -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm.toolchain.cmake" \
-          -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
-          $OPENVINO_HOME && \
-    make -j$(nproc) && \
-    cd $DEV_HOME
-
-#ArmCPU plugin
-RUN git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git $OPENVINO_CONTRIB && \
-    mkdir $ARM_PLUGIN_HOME/build && \
-    cd $ARM_PLUGIN_HOME/build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-          -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
-          -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/arm.toolchain.cmake" \
-          -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
-          $ARM_PLUGIN_HOME && \
-    make -j$(nproc)
-
-RUN cp -vr $OPENVINO_HOME/bin/armv7l/Release/* $STAGING_DIR/ && \
-    cd $STAGING_DIR/ && \
-    tar -czvf ../OV_ARM_package.tar.gz ./*
+CMD ["sh", "/armplg_build.sh"]
