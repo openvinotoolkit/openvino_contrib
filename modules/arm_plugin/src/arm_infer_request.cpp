@@ -241,7 +241,8 @@ void ArmInferRequest::InferImpl() {
                 networkOutputTensor.copy_from(*outputTensor);
             }
             auto outputBlob = output.second;
-            if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision()) {
+            if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision() ||
+                _layerTypes[output.first] == "Constant.0") {
                 blobCopy(networkOutput, outputBlob);
             }
         }

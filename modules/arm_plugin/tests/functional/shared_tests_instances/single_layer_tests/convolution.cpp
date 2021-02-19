@@ -68,17 +68,38 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 /* ============= 2D Convolution ============= */
-const std::vector<std::vector<size_t >> kernels = {{3, 3},
-                                                          {3, 5}};
-const std::vector<std::vector<size_t >> strides = {{1, 1},
-                                                          {1, 3}};
-const std::vector<std::vector<ptrdiff_t>> padBegins = {{0, 0},
-                                                       {0, 3}};
-const std::vector<std::vector<ptrdiff_t>> padEnds = {{0, 0},
-                                                     {0, 3}};
-const std::vector<std::vector<size_t >> dilations = {{1, 1},
-                                                            {3, 1}};
-const std::vector<size_t> numOutChannels = {1, 5};
+const std::vector<std::vector<size_t >> kernels = {
+    {2, 2},
+    {3, 3},
+    {3, 5},
+};
+const std::vector<std::vector<size_t >> strides = {
+    {1, 1},
+    {2, 2},
+    {1, 3},
+};
+const std::vector<std::vector<ptrdiff_t>> padBegins = {
+    {0, 0},
+    {1, 1},
+    {0, 3},
+};
+const std::vector<std::vector<ptrdiff_t>> padEnds = {
+    {0, 0},
+    {1, 1},
+    {0, 3},
+};
+const std::vector<std::vector<size_t >> dilations = {
+    {1, 1},
+    {2, 2},
+    {3, 1},
+};
+
+const std::vector<size_t> numOutChannels = {
+    1,
+    3,
+    5,
+};
+
 const std::vector<ngraph::op::PadType> padTypes = {
         ngraph::op::PadType::EXPLICIT,
         ngraph::op::PadType::VALID
