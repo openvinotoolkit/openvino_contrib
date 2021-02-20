@@ -12,6 +12,7 @@ OPENCV_HOME=$DEV_HOME/opencv
 OPENVINO_HOME=$DEV_HOME/openvino
 OPENVINO_CONTRIB=$DEV_HOME/openvino_contrib
 ARM_PLUGIN_HOME=$OPENVINO_CONTRIB/modules/arm_plugin
+OMZ_HOME=$DEV_HOME/open_model_zoo
 STAGING_DIR=$DEV_HOME/armcpu_package
 
 
