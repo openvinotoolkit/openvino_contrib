@@ -1,8 +1,11 @@
 #!/bin/sh
 
+set -x
+
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 BUILD_TYPE=${BUILD_TYPE:-Release}
 UPDATE_SOURCES=${UPDATE_SOURCES:-clean}
+WITH_OMZ_DEMO=${WITH_OMZ_DEMO:-ON}
 
 DEV_HOME=`pwd`
 OPENCV_HOME=$DEV_HOME/opencv
@@ -64,6 +67,7 @@ checkSrcTree()
 checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git OpenCV
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git OpenVINO
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git OpenVINO_contrib
+checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git open_model_zoo
 
 #cleanup package destination folder
 [ -e $STAGING_DIR ] && rm -rf $STAGING_DIR
@@ -96,6 +100,9 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,pyth
       -D CMAKE_INSTALL_PREFIX=install \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR/opencv \
+      -DWITH_GTK_2_X=OFF \
+      -DOPENCV_ENABLE_PKG_CONFIG=ON \
+      -DPKG_CONFIG_EXECUTABLE=/usr/bin/${ARCH_NAME}-pkg-config \
       $OPENCV_HOME && \
 make -j$BUILD_JOBS && \
 make install && \
@@ -160,7 +167,20 @@ cmake -DCOMPONENT=ngraph \
 cp $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib/libinterpreter_backend.so $STAGING_DIR/deployment_tools/ngraph/lib/libinterpreter_backend.so && \
 cd $DEV_HOME || fail 15 "OpenVINO NGraph deployment failed. Stopping"
 
-
+#Open Model Zoo
+if [ "$WITH_OMZ_DEMO" = "ON" ]; then
+  OMZ_DEMOS_BUILD=$OMZ_HOME/build && \
+  mkdir -p $OMZ_DEMOS_BUILD && \
+  cd $OMZ_DEMOS_BUILD && \
+  cmake -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
+        -DInferenceEngine_DIR=$OPENVINO_HOME/build \
+        -DOpenCV_DIR=$OPENCV_HOME/build \
+        -Dngraph_DIR=$OPENVINO_HOME/build/ngraph \
+        $OMZ_HOME/demos && \
+  cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
+  cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
+fi
 
 #Package structure creation
 mkdir -p $STAGING_DIR/deployment_tools/inference_engine/bin/$ARCHDIR && \
@@ -185,6 +205,9 @@ cp -vr $OPENVINO_HOME/scripts/setupvars $STAGING_DIR/bin && \
 cp -vr $OPENVINO_HOME/scripts/demo $STAGING_DIR/deployment_tools/demo && \
 cp -vr $OPENVINO_HOME/scripts/install_dependencies $STAGING_DIR/install_dependencies && \
 cp -vr $OPENVINO_HOME/inference-engine/tools $STAGING_DIR/deployment_tools/python_tools && \
+(![ "$WITH_OMZ_DEMO" = "ON" ] || mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos) && \
+(![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_DEMOS_BUILD/. $STAGING_DIR/deployment_tools/inference_engine/demos) && \
+(![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_HOME/demos/python_demos $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 echo "=================================RPATH cleaning==================================" && \
 find $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR/ -maxdepth 1 -type f -name "*.so" -exec chrpath --delete {} \; && \
 find $STAGING_DIR/deployment_tools/inference_engine/bin/$ARCHDIR/ -maxdepth 1 -type f -exec chrpath --delete {} \; && \

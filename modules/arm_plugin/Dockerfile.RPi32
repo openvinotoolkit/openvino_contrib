@@ -63,6 +63,10 @@ RUN dpkg --add-architecture armhf && \
         python3-numpy \
         python3-pip \
         libpython3-dev:armhf \
+        libgtk-3-dev:armhf \
+        libavcodec-dev:armhf \
+        libavformat-dev:armhf \
+        libswscale-dev:armhf \
         # For ARM CPU plugin
         scons \
     && \
@@ -85,6 +89,13 @@ RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/so
         cmake/stretch-backports \
     && \
     rm -rf /var/lib/apt/lists/*
+
+#python 3.6 or higher is required to build Open Model Zoo python demos
+RUN wget https://www.python.org/ftp/python/3.6.13/Python-3.6.13.tgz 2>/dev/null && \
+    tar -zxvf Python-3.6.13.tgz && \
+    cd Python-3.6.13 && \
+    ./configure && \
+    make altinstall
 
 ENV ARCH_NAME arm-linux-gnueabihf
 ENV TOOLCHAIN_DEFS arm.toolchain.cmake
