@@ -29,11 +29,11 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
 
         auto axis = axes->cast_vector<int64_t>()[0];
         auto splits = split_lengths->cast_vector<int64_t>();
-        auto size = splits.size();
         auto input_shape = input->get_shape();
+        auto size = input_shape.size();
 
         if (axis >= input_shape.size()) {
-            THROW_IE_EXCEPTION << "axis should be less than " << input_shape.size();
+            THROW_IE_EXCEPTION << "axis should be less than " << size;
         }
 
         auto stride = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, std::vector<int64_t>(size, 1));
@@ -44,7 +44,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         ngraph::OutputVector slices;
         ngraph::NodeVector slice_nodes;
         std::string output_name = split->get_friendly_name();
-        for (size_t i = 0; i < size; i++) {
+        for (size_t i = 0; i < splits.size(); i++) {
             begin_vec[axis] = end_vec[axis];
             end_vec[axis]  += splits[i];
 

@@ -8,9 +8,9 @@ using namespace LayerTestsDefinitions;
 
 namespace {
 std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> inputShapes = {
-        {{1}, {{1}}},
-        {{5}, {{5}}},
-        {{2, 200}, {{2, 200}}},
+        {{1}, {{1}, {5}, {2, 3, 4}}},
+        {{5}, {{5}, {2, 5}}},
+        {{2, 200}, {{1}, {2, 200}}},
         {{1, 3, 20}, {{1, 3, 20}}},
         {{2, 17, 3, 4}, {{2, 17, 3, 4}}},
         {{2, 1, 1, 3, 1}, {{2, 1, 1, 3, 1}}},
