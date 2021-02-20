@@ -14,10 +14,22 @@ public class LockedMemory extends IEWrapper {
         asByte(nativeObj, res);
     }
 
+    public void get(long[] res) {
+        asLong(nativeObj, res);
+    }
+
+    public void get(int[] res) {
+        asInt(nativeObj, res);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native void asByte(long addr, byte[] res);
 
     private static native void asFloat(long addr, float[] res);
+
+    private static native void asLong(long addr, long[] res);
+
+    private static native void asInt(long addr, int[] res);
 
     @Override
     protected native void delete(long nativeObj);

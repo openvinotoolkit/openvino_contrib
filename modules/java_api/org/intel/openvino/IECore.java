@@ -1,5 +1,10 @@
 package org.intel.openvino;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Files;
 import java.util.Map;
 
 public class IECore extends IEWrapper {
@@ -11,6 +16,67 @@ public class IECore extends IEWrapper {
 
     public IECore(String xmlConfigFile) {
         super(GetCore1(xmlConfigFile));
+    }
+
+    private static String getLibraryName(String name, String linux_ver) {
+        final String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("win")) {
+            return name + ".dll";
+        } else {
+            name = "lib" + name + ".so";
+            if (linux_ver != null) {
+                name += "." + linux_ver;
+            }
+        }
+        return name;
+    }
+
+    // Use this method to initialize native libraries and other files like
+    // plugins.xml and *.mvcmd in case of the JAR package os OpenVINO.
+    public static void loadNativeLibs() {
+        final String[] nativeFiles = {
+            "plugins.xml",
+            "tbb",
+            "tbbmalloc",
+            "ngraph",
+            "inference_engine_transformations",
+            "inference_engine",
+            "inference_engine_ir_reader",
+            "inference_engine_legacy",
+            "inference_engine_lp_transformations",
+            "onnx_importer",
+            "inference_engine_onnx_reader",
+            "inference_engine_preproc",
+            "MKLDNNPlugin",
+            "inference_engine_java_api" // Should be at the end
+        };
+
+        try {
+            // Create a temporal folder to unpack native files.
+            File tmpDir = Files.createTempDirectory("openvino-native").toFile();
+            for (String file : nativeFiles) {
+                boolean isLibrary = !file.contains(".");
+                if (isLibrary)
+                    // On Linux, TBB libraries has .so.2 soname
+                    file = getLibraryName(file, file.startsWith("tbb") ? "2" : null);
+
+                URL url = IECore.class.getClassLoader().getResource(file);
+                if (url == null) {
+                    System.out.println("Resource not found: " + file);
+                }
+                tmpDir.deleteOnExit();
+                File nativeLibTmpFile = new File(tmpDir, file);
+                nativeLibTmpFile.deleteOnExit();
+                try (InputStream in = url.openStream()) {
+                    Files.copy(in, nativeLibTmpFile.toPath());
+                }
+                String path = nativeLibTmpFile.getAbsolutePath();
+                if (isLibrary) {
+                    System.load(path);
+                }
+            }
+        } catch (IOException ex) {
+        }
     }
 
     public CNNNetwork ReadNetwork(final String modelPath, final String weightPath) {
