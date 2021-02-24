@@ -80,6 +80,7 @@ cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,python3 \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=ON \
+      -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
       -DPYTHON3_INCLUDE_PATH=/usr/include/${PYTHONVER}m \
       -DPYTHON3_LIBRARIES=/usr/lib/$ARCH_NAME/lib${PYTHONVER}m.so \
       -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/lib/python3/dist-packages/numpy/core/include \
@@ -189,7 +190,6 @@ find $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE -maxdepth 1 -type f -exec cp -v {} 
 mkdir -p $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR && \
 find $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib -maxdepth 1 -type f -exec cp -v {} $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR \; && \
 cp -vr $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib/python_api $STAGING_DIR/python && \
-cp -vr $OPENCV_HOME/modules/python/package $STAGING_DIR/python/$PYTHONVER && \
 cp -vr $OPENVINO_HOME/build/share $STAGING_DIR/deployment_tools/inference_engine/ && \
 cp -v $OPENVINO_HOME/inference-engine/scripts/dependencies.* $OPENVINO_HOME/build/dependencies_64.txt $STAGING_DIR/ && \
 mkdir -p $STAGING_DIR/python/${PYTHONVER}/openvino && \
