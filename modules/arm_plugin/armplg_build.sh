@@ -120,7 +120,7 @@ cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
       -DENABLE_DATA=OFF -DENABLE_MODELS=OFF -DENABLE_VALIDATION_SET=OFF -DENABLE_PRIVATE_MODELS=OFF -DENABLE_PROFILING_ITT=OFF \
       -DTHREADS_PTHREAD_ARG="-pthread" -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib -DCMAKE_INSTALL_LIBDIR=lib \
       -DENABLE_SSE42=OFF -DENABLE_MYRIAD=ON -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DENABLE_VALIDATION_SET=OFF -DENABLE_MODELS=OFF \
+      -DTHREADING=SEQ \
       -DENABLE_LTO=ON \
       -DCMAKE_CXX_FLAGS=-latomic -DOPENCV_EXTRA_EXE_LINKER_FLAGS=-latomic \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
@@ -189,6 +189,7 @@ find $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE -maxdepth 1 -type f -exec cp -v {} 
 mkdir -p $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR && \
 find $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib -maxdepth 1 -type f -exec cp -v {} $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR \; && \
 cp -vr $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib/python_api $STAGING_DIR/python && \
+cp -vr $OPENCV_HOME/modules/python/package $STAGING_DIR/python/$PYTHONVER && \
 cp -vr $OPENVINO_HOME/build/share $STAGING_DIR/deployment_tools/inference_engine/ && \
 cp -v $OPENVINO_HOME/inference-engine/scripts/dependencies.* $OPENVINO_HOME/build/dependencies_64.txt $STAGING_DIR/ && \
 mkdir -p $STAGING_DIR/python/${PYTHONVER}/openvino && \
@@ -207,7 +208,7 @@ cp -vr $OPENVINO_HOME/scripts/demo $STAGING_DIR/deployment_tools/demo && \
 cp -vr $OPENVINO_HOME/scripts/install_dependencies $STAGING_DIR/install_dependencies && \
 cp -vr $OPENVINO_HOME/inference-engine/tools $STAGING_DIR/deployment_tools/python_tools && \
 (![ "$WITH_OMZ_DEMO" = "ON" ] || mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos) && \
-(![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_DEMOS_BUILD/. $STAGING_DIR/deployment_tools/inference_engine/demos) && \
+(![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 (![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_HOME/demos/python_demos $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 echo "=================================RPATH cleaning==================================" && \
 find $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR/ -maxdepth 1 -type f -name "*.so" -exec chrpath --delete {} \; && \
