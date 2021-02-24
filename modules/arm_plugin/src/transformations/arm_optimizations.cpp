@@ -77,8 +77,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertReduceMeanToPooling>();
     manager.register_pass<ngraph::pass::ConvertReduceMaxToPooling>();
     manager.register_pass<ngraph::pass::ConvertReduceSumToPooling>();
-    manager.register_pass<ngraph::pass::ConvertBroadcast3>();
-    manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
     manager.register_pass<ngraph::pass::ConvertMod>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
@@ -115,7 +113,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertBatchNormInferenceV0toV5>();
     manager.register_pass<pass::ConvertBatchNormInference>();
     manager.register_pass<pass::ConvertShuffleChannels>();
-    manager.register_pass<pass::ConvertTile>();
     manager.register_pass<pass::ConvertInterpolateV0toV4>();
     manager.register_pass<pass::ConvertReorgYolo>();
 
@@ -124,6 +121,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();
+    manager.register_pass<ngraph::pass::ConvertBroadcast3>();
+    manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
+    manager.register_pass<pass::ConvertTile>();
     manager.register_pass<pass::FinalizeTrailingNodes>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);

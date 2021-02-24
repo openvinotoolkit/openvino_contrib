@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <ngraph/rt_info.hpp>
-#include <details/ie_exception.hpp>
 
 #include "opset/opset.hpp"
 #include "transformations/convert_comparison.hpp"
@@ -17,17 +16,37 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertComparisionBase::convert_c
             return false;
         }
 
-        if (comparison->get_input_shape(0) != comparison->get_input_shape(1)) {
-            THROW_IE_EXCEPTION << std::string(T::type_info.name) + " op doesn't support broadcast";
+        std::vector<ngraph::Shape> shapes{comparison->get_input_shape(0), comparison->get_input_shape(1)};
+        std::shared_ptr<ngraph::Node> comp_copy;
+        if (shapes[0] != shapes[1]) {
+            int brId;
+            std::vector<int64_t> shape;
+            if (shapes[0].size() != shapes[1].size()) {
+                brId = shapes[0].size() < shapes[1].size() ? 0 : 1;
+            } else {
+                brId = ngraph::shape_size(shapes[0]) < ngraph::shape_size(shapes[1]) ? 0 : 1;
+            }
+            auto&& input = comparison->input_value(brId);
+            auto targetShape = std::make_shared<opset::Constant>(ngraph::element::i64,
+                                                                 ngraph::Shape{shapes[1 - brId].size()},
+                                                                 std::vector<int64_t>(shapes[1 - brId].begin(), shapes[1 - brId].end()));
+            auto broadcastedInp = std::make_shared<opset::Broadcast>(input, targetShape);
+            ngraph::OutputVector inputs;
+            if (brId == 0) {
+                inputs = {broadcastedInp, comparison->input_value(1)};
+            } else {
+                inputs = {comparison->input_value(0), broadcastedInp};
+            }
+            comp_copy = comparison->clone_with_new_inputs(inputs);
+        } else {
+            comp_copy = comparison->clone_with_new_inputs(comparison->input_values());
         }
 
         auto out_shape = comparison->get_output_shape(0);
         auto total = ngraph::shape_size(out_shape);
-        auto node_copy = comparison->clone_with_new_inputs(comparison->input_values());
-
-        auto ones = std::make_shared<opset::Constant>(ngraph::element::u8, out_shape, std::vector<std::uint8_t>(total, 1));
-        auto zeros = std::make_shared<opset::Constant>(ngraph::element::u8, out_shape, std::vector<std::uint8_t>(total, 0));
-        auto new_node = std::make_shared<opset::Select>(node_copy, ones, zeros);
+        auto ones  = std::make_shared<opset::Constant>(ngraph::element::boolean, out_shape, std::vector<bool>(total, true));
+        auto zeros = std::make_shared<opset::Constant>(ngraph::element::boolean, out_shape, std::vector<bool>(total, false));
+        auto new_node = std::make_shared<opset::Select>(comp_copy, ones, zeros);
 
         new_node->set_friendly_name(comparison->get_friendly_name());
         ngraph::copy_runtime_info(comparison, new_node);
