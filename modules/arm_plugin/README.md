@@ -31,7 +31,7 @@ docker image build -t arm-plugin -f Dockerfile.RPi32 .
 ```
 4. Build the plugin in Docker* container:
 
-Build process is performed by `/armplg_build.sh` script executed inside `/armcpu_plugin` directory(default container command to execute).
+Build process is performed by `/armplg_build.sh` script executed inside `/armcpu_plugin` directory (default container command to execute).
 All intermediate results and build artifacts are stored inside working directory.
 
 So one could either mount the whole working directory to get all results stored outside of the container
@@ -45,14 +45,16 @@ docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote arm-plug
 ```
 > **NOTE**: There are a few environment variables that control `/armplg_build.sh` script execution.
 >
-> *BUILD_JOBS* control number of threads for simultaneous compilation
+> *BUILD_JOBS* controls number of threads for simultaneous compilation
 >
-> *BUILD_TYPE* control Debug/Release configuration (Release by default)
+> *BUILD_TYPE* controls Debug/Release configuration (Release by default)
 >
-> *UPDATE_SOURCES* control sources retrievement
->  - *clean*  - don't reload sources if already loaded, just clean build folders(default)
+> *UPDATE_SOURCES* controls sources retrievement
+>  - *clean*  - don't reload sources if already loaded, just clean build folders (default)
 >  - *reload* - delete all loaded sources and retrieve them again
 >  - *check*  - don't reload or cleanup sources
+>
+> *WITH_OMZ* builds C++ Open Model Zoo demos (ON by default)
 6. Extract the archive to target ARM platform
 
 ### Approach #2: build OpenVINO and the plugin without OpenCV using Docker* (cross-compiling)
@@ -118,36 +120,88 @@ mkdir build && cd build
 cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release .. && make
 ```
 
-## Sample
-You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `build` directory (if you build the plugin using approach #1) or `openvino/bin/armv7l/Release` directory (if you build the plugin using approach #2 or #3). The following procedure assumes the approach #1 is used.  
-OpenVINO™ samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
-Let's try to run [Object Detection for SSD sample].  
-### Model preparation
+## Demos and Samples
+### Open Model Zoo demos
+By default Open Model Zoo demos are built alongside with the plugin. You can find C++ demos in `deployment_tools/inference_engine/demos/build` directory and Python* demos in `deployment_tools/inference_engine/demos/python_demos` directory. 
+Smoke testing has been done against the following OMZ demos:
+* [Classification C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/blob/master/demos/classification_demo)
+* [Object Detection C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo)
+* [Human Pose Estimation C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/human_pose_estimation_demo)
+* [Image Segmentation C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/segmentation_demo)
+* [Pedestrian Tracker C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/pedestrian_tracker_demo)
+* [Security Barrier Camera C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/security_barrier_camera_demo)
+* [Crossroad Camera C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/crossroad_camera_demo)
+* [Interactive Face Detection C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/interactive_face_detection_demo)
+* [Object Detection Python* Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/python_demos/object_detection_demo)
+Let's try to run [Object Detection demo]:https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo
+#### Model preparation
 To speed up the process you may prepare the model on non-ARM platform.
 
-1. Install [Model Optimizer]:
+1. Install [model downloader] from Open Model Zoo:
+```
+git clone https://github.com/openvinotoolkit/open_model_zoo.git
+cd open_model_zoo/tools/downloader
+python3 -mpip install --user -r ./requirements.in
+```
+3. Download model `ssd_mobilenet_v1_coco` using model downloader:
+```
+python3 ./downloader.py --name ssd_mobilenet_v1_coco --precisions FP32
+```
+#### Samples preparation
+1. Clone video samples repository:
+```
+git clone https://github.com/intel-iot-devkit/sample-videos.git
+```
+#### Model inference on ARM (C++ demo)
+1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
+2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
+```
+cd <package_root>/deployment_tools/inference_engine/demos/build/aarch64/Release
+``` 
+3. Add OpenCV and OpenVINO library directories to `LD_LIBRARY_PATH`:
+```
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_root>/opencv/lib/:<package_root>/deployment_tools/inference_engine/lib/aarch64/
+```
+4. Run object detection C++ demo:
+```
+./object_detection_demo -i <sample_videos_home_dir>/sample-videos/people-detection.mp4 -at ssd -m <model_home_dir>/ssd_mobilenet_v1_coco/tf/FP32/ssd_mobilenet_v1_coco.xml -d ARM
+```
+#### Model inference on ARM (Python demo)
+1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
+2. Go to `deployment_tools/inference_engine/demos/python_demos/object_detection_demo` directory:
+```
+cd <package_root>/deployment_tools/inference_engine/demos/python_demos/object_detection_demo
+``` 
+3. Add OpenCV and OpenVINO Python* packages to `PYTHONPATH`:
+```
+export PYTHONPATH=$PYTHONPATH:<package_root>/opencv/python/:<package_root>/python/python3.6/
+```
+4. Run object detection Python* demo:
+```
+python3 object_detection_demo.py -i <sample_videos_home_dir>/sample-videos/people-detection.mp4 -at ssd -m <model_home_dir>/ssd_mobilenet_v1_coco/tf/FP32/ssd_mobilenet_v1_coco.xml -d ARM
+```
+### OpenVINO samples
+You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `deployment_tools/inference_engine/bin` directory (if you build the plugin using approach #1) or `openvino/bin/armv7l/Release` directory (if you build the plugin using approach #2 or #3). The following procedure assumes the approach #1 is used.  
+OpenVINO™ samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
+Let's try to run [Object Detection for SSD sample].  
+#### Model preparation
+1. Download model `vehicle-license-plate-detection-barrier-0123` using Model Preparation precedure described in Open Model Zoo section. 
+2. Install [Model Optimizer]:
 ```
 git clone https://github.com/openvinotoolkit/openvino.git
 cd openvino/model-optimizer
 pip3 install requirements.txt
 cd ../..
 ```
-2. Install [model downloader] and [model converter] from Open Model Zoo:
+3. Convert the model using model converter:
 ```
-git clone https://github.com/openvinotoolkit/open_model_zoo.git
-cd open_model_zoo/tools/downloader
-python3 -mpip install --user -r ./requirements.in
-```
-3. Download and convert model `vehicle-license-plate-detection-barrier-0123` using model downloader and model converter:
-```
-python3 ./downloader.py --name vehicle-license-plate-detection-barrier-0123 --precisions FP32
 python3 ./converter.py --mo ../../../openvino/model-optimizer/mo.py --name vehicle-license-plate-detection-barrier-0123 --precisions FP32
 ```
-### Model inference on ARM
-1. Copy `build` directory with OpenVINO™ and ARM plugin artefacts to ARM platform.
-2. Go to `build` directory:
+#### Model inference on ARM
+1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
+2. Go to `deployment_tools/inference_engine/bin` directory:
 ```
-cd build
+cd deployment_tools/inference_engine/bin
 ```
 3. Download a vehicle image, for instance, [this image]:
 ```
