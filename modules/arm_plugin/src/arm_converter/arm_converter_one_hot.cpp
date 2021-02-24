@@ -2,16 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <details/ie_exception.hpp>
-
 #include "arm_converter/arm_converter.hpp"
 #include <ngraph/runtime/reference/one_hot.hpp>
 
 namespace ArmPlugin {
     template<> Converter::Conversion::Ptr Converter::Convert(const opset::OneHot& node) {
-        if (node.get_input_size() != 4 || node.get_output_size() != 1)
-            THROW_IE_EXCEPTION << "Invalid number of inputs or outputs. Expected 4 and 1, got " <<
-                                node.get_input_size() << " and " << node.get_output_size();
-
         const auto& out_shape = node.get_output_shape(0);
         const std::int64_t axis = node.get_axis();
         if (axis < 0 || axis >= out_shape.size())
@@ -21,7 +16,7 @@ namespace ArmPlugin {
         const auto depth = depth_const -> cast_vector<int64_t>()[0];
 
         const auto& ind_shape = node.get_input_shape(0);
-        if (shape_size(ind_shape) * depth != shape_size(out_shape))
+        if (ngraph::shape_size(ind_shape) * depth != ngraph::shape_size(out_shape))
             THROW_IE_EXCEPTION << "Incompatible I/O shapes or wrong depth value.";
         if (depth != out_shape[axis])
             THROW_IE_EXCEPTION << "Incompatible depth and axis values.";
