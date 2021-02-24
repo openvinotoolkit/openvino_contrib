@@ -41,8 +41,7 @@ setup(name='openvino-mo-pytorch',
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
       ],
-      # TODO: uncomment after https://github.com/openvinotoolkit/openvino/pull/3123 merged
-    #   install_requires=[
-    #     # 'openvino-mo @ git+git://github.com/openvinotoolkit/openvino.git@mo_pip#subdirectory=model-optimizer'
-    #   ],
+      install_requires=[
+        'openvino-mo @ git+git://github.com/openvinotoolkit/openvino.git#subdirectory=model-optimizer'
+      ],
 )
