@@ -5,23 +5,23 @@
 #include "arm_converter/arm_converter.hpp"
 #include <ngraph/runtime/reference/one_hot.hpp>
 
-template <typename INPUT_TYPE>
-void wrap_one_hot(const INPUT_TYPE* indices,
-             const ngraph::Shape& indices_shape,
-             char* out,
-             const size_t out_elem_size,
-             const size_t depth,
-             const int64_t one_hot_axis,
-             const char* on_value,
-             const char* off_value) {
-    ngraph::runtime::reference::one_hot<INPUT_TYPE>(indices,
-                                            indices_shape,
-                                            out,
-                                            out_elem_size,
-                                            depth,
-                                            one_hot_axis,
-                                            on_value,
-                                            off_value);
+template <typename InputType, typename OutputType>
+void wrap_one_hot(const InputType* indices,
+                  const ngraph::Shape& indices_shape,
+                  OutputType* out,
+                  const size_t out_elem_size,
+                  const std::int64_t depth,
+                  const std::int64_t one_hot_axis,
+                  const OutputType* on_value,
+                  const OutputType* off_value) {
+    ngraph::runtime::reference::one_hot<InputType>(indices,
+                                                   indices_shape,
+                                                   reinterpret_cast<char*>(out),
+                                                   out_elem_size,
+                                                   static_cast<size_t>(depth),
+                                                   one_hot_axis,
+                                                   reinterpret_cast<const char*>(on_value),
+                                                   reinterpret_cast<const char*>(off_value));
 }
 
 namespace ArmPlugin {
@@ -53,19 +53,60 @@ namespace ArmPlugin {
                                   ind_shape,
                                   node.output(0),
                                   node.get_output_element_type(0).size(),
-                                  static_cast<size_t>(depth),
+                                  depth,
                                   axis,
                                   node.input(2),
                                   node.input(3));
         };
         ngraph::element::Type_t inputType = node.get_input_element_type(0);
+        ngraph::element::Type_t outType = node.get_output_element_type(0);
         switch (inputType) {
-            case ngraph::element::Type_t::u8 : return make(wrap_one_hot<std::uint8_t>);
-            case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::int16_t>);
-            case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint16_t>);
-            case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int32_t>);
-            case ngraph::element::Type_t::u32 : return make(wrap_one_hot<std::uint32_t>);
-            default : THROW_IE_EXCEPTION << "Unsupported input type: " << inputType; return {};
+            case ngraph::element::Type_t::u8 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint8_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint8_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint8_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint8_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint8_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                }
+            case ngraph::element::Type_t::i16 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::int16_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::int16_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::int16_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int16_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::int16_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                }
+            case ngraph::element::Type_t::u16 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint16_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint16_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint16_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint16_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint16_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                }
+            case ngraph::element::Type_t::u32 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint32_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint32_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint32_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint32_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint32_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                }
+            case ngraph::element::Type_t::i32 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::int32_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::int32_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::int32_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int32_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::int32_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                }
+            default: THROW_IE_EXCEPTION << "Unsupported Type: " << inputType; return {};
         }
     }
 }  //  namespace ArmPlugin
