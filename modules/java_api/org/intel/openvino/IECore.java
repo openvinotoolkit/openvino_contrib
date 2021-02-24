@@ -22,6 +22,8 @@ public class IECore extends IEWrapper {
         final String osName = System.getProperty("os.name").toLowerCase();
         if (osName.contains("win")) {
             return name + ".dll";
+        } else if (osName.contains("mac")) {
+            return "lib" + name + ".dylib";
         } else {
             name = "lib" + name + ".so";
             if (linux_ver != null) {
