@@ -29,7 +29,7 @@ namespace ArmPlugin {
         const auto& ind_shape = node.get_input_shape(0);
         const auto& out_shape = node.get_output_shape(0);
         std::int64_t axis = node.get_axis();
-        const auto out_rank = out_shape.size();
+        const std::int64_t out_rank = out_shape.size();
         if (axis < -out_rank || axis >= out_rank)
             THROW_IE_EXCEPTION << "Invalid axis value. Expected in [" << -out_rank
                                << ", " << out_rank-1 << "]. Got " << axis;
