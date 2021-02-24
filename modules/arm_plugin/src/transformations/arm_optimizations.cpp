@@ -50,6 +50,7 @@
 #include "normalizel2_max_fusion.hpp"
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
+#include "convert_interpolate_arm.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
 #include "transformations/convert_prior_box_to_const.hpp"
@@ -121,6 +122,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertBatchNormInference>();
     manager.register_pass<pass::ConvertShuffleChannels>();
     manager.register_pass<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
+    manager.register_pass<pass::ConvertInterpolate>();
     manager.register_pass<ngraph::pass::ConvertMVN1ToMVN6>();
     manager.register_pass<pass::ConvertMVN>();
     manager.register_pass<pass::ConvertReorgYolo>();
