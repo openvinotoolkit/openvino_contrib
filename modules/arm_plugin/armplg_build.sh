@@ -130,6 +130,7 @@ cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
       $OPENVINO_HOME && \
 make -j$BUILD_JOBS && \
+make install && \
 ARCHDIR=`ls $OPENVINO_HOME/bin` && \
 cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 

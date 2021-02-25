@@ -133,7 +133,7 @@ Smoke testing has been done against the following OMZ demos:
 * [Crossroad Camera C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/crossroad_camera_demo)
 * [Interactive Face Detection C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/interactive_face_detection_demo)
 * [Object Detection Python* Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/python_demos/object_detection_demo)
-Let's try to run [Object Detection demo]:https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo
+Let's try to run [Object Detection demo]:(https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo) 
 #### Model preparation
 To speed up the process you may prepare the model on non-ARM platform.
 
@@ -143,9 +143,9 @@ git clone https://github.com/openvinotoolkit/open_model_zoo.git
 cd open_model_zoo/tools/downloader
 python3 -mpip install --user -r ./requirements.in
 ```
-3. Download model `ssd_mobilenet_v1_coco` using model downloader:
+2. Download model `yolo_v3_tiny` using model downloader:
 ```
-python3 ./downloader.py --name ssd_mobilenet_v1_coco --precisions FP32
+python3 ./downloader.py --name yolo_v3_tiny --precisions FP32
 ```
 #### Samples preparation
 1. Clone video samples repository:
@@ -156,29 +156,35 @@ git clone https://github.com/intel-iot-devkit/sample-videos.git
 1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
 ```
-cd <package_root>/deployment_tools/inference_engine/demos/build/aarch64/Release
+cd <package_dir>/deployment_tools/inference_engine/demos/build/aarch64/Release
 ``` 
 3. Add OpenCV and OpenVINO library directories to `LD_LIBRARY_PATH`:
 ```
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_root>/opencv/lib/:<package_root>/deployment_tools/inference_engine/lib/aarch64/
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/deployment_tools/inference_engine/lib/aarch64/
 ```
 4. Run object detection C++ demo:
 ```
-./object_detection_demo -i <sample_videos_home_dir>/sample-videos/people-detection.mp4 -at ssd -m <model_home_dir>/ssd_mobilenet_v1_coco/tf/FP32/ssd_mobilenet_v1_coco.xml -d ARM
+./object_detection_demo -i <sample_videos_dir>/sample-videos/people-detection.mp4 \
+                        -at yolo -m <model_dir>/yolo_v3_tiny/tf/FP32/yolo_v3_tiny.xml -d ARM
 ```
-#### Model inference on ARM (Python demo)
+On the output video you should see people enclosed in red rectangles:
+
+![](docs/img/object_detection_demo_yolo.gif)
+
+#### Model inference on ARM (Python* demo)
 1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/demos/python_demos/object_detection_demo` directory:
 ```
-cd <package_root>/deployment_tools/inference_engine/demos/python_demos/object_detection_demo
+cd <package_dir>/deployment_tools/inference_engine/demos/python_demos/object_detection_demo
 ``` 
 3. Add OpenCV and OpenVINO Python* packages to `PYTHONPATH`:
 ```
-export PYTHONPATH=$PYTHONPATH:<package_root>/opencv/python/:<package_root>/python/python3.6/
+export PYTHONPATH=$PYTHONPATH:<package_dir>/opencv/python/:<package_dir>/python/python3.6/
 ```
 4. Run object detection Python* demo:
 ```
-python3 object_detection_demo.py -i <sample_videos_home_dir>/sample-videos/people-detection.mp4 -at ssd -m <model_home_dir>/ssd_mobilenet_v1_coco/tf/FP32/ssd_mobilenet_v1_coco.xml -d ARM
+python3 object_detection_demo.py -i <sample_videos_dir>/sample-videos/people-detection.mp4 \
+                                 -at yolo -m <model_dir>/yolo_v3_tiny/tf/FP32/yolo_v3_tiny.xml -d ARM
 ```
 ### OpenVINO samples
 You could verify the plugin by running [OpenVINO™ samples]. You can find C++ samples in `deployment_tools/inference_engine/bin` directory (if you build the plugin using approach #1) or `openvino/bin/armv7l/Release` directory (if you build the plugin using approach #2 or #3). The following procedure assumes the approach #1 is used.  
