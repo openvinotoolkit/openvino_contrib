@@ -132,8 +132,8 @@ Smoke testing has been done against the following OMZ demos:
 * [Security Barrier Camera C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/security_barrier_camera_demo)
 * [Crossroad Camera C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/crossroad_camera_demo)
 * [Interactive Face Detection C++ Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/interactive_face_detection_demo)
-* [Object Detection Python* Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/python_demos/object_detection_demo)
-Let's try to run [Object Detection demo]:(https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo) 
+* [Object Detection Python* Demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/python_demos/object_detection_demo)  
+Let's try to run [Object Detection demo](https://github.com/openvinotoolkit/open_model_zoo/tree/master/demos/object_detection_demo).
 #### Model preparation
 To speed up the process you may prepare the model on non-ARM platform.
 
