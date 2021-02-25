@@ -154,7 +154,7 @@ python3 ./downloader.py --name yolo_v3_tiny --precisions FP32
 git clone https://github.com/intel-iot-devkit/sample-videos.git
 ```
 #### Model inference on ARM
-1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
+1. Copy OpenVINO™ and ARM plugin artifacts to ARM platform. If you build the plugin using approach #1, all artifacts are packed into `OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
 ```
 cd <package_dir>/deployment_tools/inference_engine/demos/build/aarch64/Release
