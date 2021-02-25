@@ -90,13 +90,6 @@ RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/so
     && \
     rm -rf /var/lib/apt/lists/*
 
-#python 3.6 or higher is required to build Open Model Zoo python demos
-RUN wget https://www.python.org/ftp/python/3.6.13/Python-3.6.13.tgz 2>/dev/null && \
-    tar -zxvf Python-3.6.13.tgz && \
-    cd Python-3.6.13 && \
-    ./configure && \
-    make altinstall
-
 ENV ARCH_NAME arm-linux-gnueabihf
 ENV TOOLCHAIN_DEFS arm.toolchain.cmake
 COPY armplg_build.sh /armplg_build.sh

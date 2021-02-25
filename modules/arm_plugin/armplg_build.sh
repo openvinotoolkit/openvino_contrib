@@ -118,19 +118,15 @@ cd $OPENVINO_HOME/build && \
 cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
       -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
       -DENABLE_GAPI_TESTS=OFF -DENABLE_CLDNN_TESTS=OFF \
-      -DENABLE_DATA=OFF -DENABLE_MODELS=OFF -DENABLE_VALIDATION_SET=OFF -DENABLE_PRIVATE_MODELS=OFF -DENABLE_PROFILING_ITT=OFF \
-      -DTHREADS_PTHREAD_ARG="-pthread" -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib -DCMAKE_INSTALL_LIBDIR=lib \
+      -DENABLE_DATA=OFF -DENABLE_PROFILING_ITT=OFF \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib -DCMAKE_INSTALL_LIBDIR=lib \
       -DENABLE_SSE42=OFF -DENABLE_MYRIAD=ON -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DTHREADING=SEQ \
-      -DENABLE_LTO=ON \
-      -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
-      -DENABLE_PYTHON=ON -DNGRAPH_PYTHON_BUILD_ENABLE=ON -DNGRAPH_ONNX_IMPORT_ENABLE=ON \
-      -DCMAKE_CXX_FLAGS=-latomic -DOPENCV_EXTRA_EXE_LINKER_FLAGS=-latomic \
+      -DTHREADING=SEQ -DENABLE_LTO=ON \
+      -DCMAKE_CXX_FLAGS=-latomic \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
       $OPENVINO_HOME && \
 make -j$BUILD_JOBS && \
-make install && \
 ARCHDIR=`ls $OPENVINO_HOME/bin` && \
 cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 
@@ -139,11 +135,9 @@ cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-      -DENABLE_PYTHON=ON \
-      -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
-      -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DENABLE_DATA=OFF -DENABLE_MODELS=OFF -DENABLE_VALIDATION_SET=OFF -DENABLE_PRIVATE_MODELS=OFF \
-      -DTHREADS_PTHREAD_ARG="-pthread" -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
+      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
+      -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
       $OPENVINO_HOME/inference-engine/ie_bridges/python && \
@@ -178,6 +172,7 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
   mkdir -p $OMZ_DEMOS_BUILD && \
   cd $OMZ_DEMOS_BUILD && \
   cmake -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_PYTHON=OFF \
         -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
         -DInferenceEngine_DIR=$OPENVINO_HOME/build \
         -DOpenCV_DIR=$OPENCV_HOME/build \
@@ -212,7 +207,6 @@ cp -vr $OPENVINO_HOME/scripts/install_dependencies $STAGING_DIR/install_dependen
 cp -vr $OPENVINO_HOME/inference-engine/tools $STAGING_DIR/deployment_tools/python_tools && \
 (![ "$WITH_OMZ_DEMO" = "ON" ] || mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 (![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos) && \
-(![ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_HOME/demos/python_demos $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 echo "=================================RPATH cleaning==================================" && \
 find $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR/ -maxdepth 1 -type f -name "*.so" -exec chrpath --delete {} \; && \
 find $STAGING_DIR/deployment_tools/inference_engine/bin/$ARCHDIR/ -maxdepth 1 -type f -exec chrpath --delete {} \; && \
