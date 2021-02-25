@@ -61,42 +61,6 @@ namespace ArmPlugin {
         ngraph::element::Type_t inputType = node.get_input_element_type(0);
         ngraph::element::Type_t outType = node.get_output_element_type(0);
         switch (inputType) {
-            case ngraph::element::Type_t::u8 :
-                switch (outType) {
-                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint8_t, std::uint8_t>);
-                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint8_t, std::int16_t>);
-                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint8_t, std::uint16_t>);
-                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint8_t, std::int32_t>);
-                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint8_t, float>);
-                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
-                }
-            case ngraph::element::Type_t::i16 :
-                switch (outType) {
-                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::int16_t, std::uint8_t>);
-                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::int16_t, std::int16_t>);
-                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::int16_t, std::uint16_t>);
-                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int16_t, std::int32_t>);
-                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::int16_t, float>);
-                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
-                }
-            case ngraph::element::Type_t::u16 :
-                switch (outType) {
-                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint16_t, std::uint8_t>);
-                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint16_t, std::int16_t>);
-                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint16_t, std::uint16_t>);
-                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint16_t, std::int32_t>);
-                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint16_t, float>);
-                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
-                }
-            case ngraph::element::Type_t::u32 :
-                switch (outType) {
-                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::uint32_t, std::uint8_t>);
-                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::uint32_t, std::int16_t>);
-                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::uint32_t, std::uint16_t>);
-                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::uint32_t, std::int32_t>);
-                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::uint32_t, float>);
-                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
-                }
             case ngraph::element::Type_t::i32 :
                 switch (outType) {
                     case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::int32_t, std::uint8_t>);
@@ -104,9 +68,19 @@ namespace ArmPlugin {
                     case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::int32_t, std::uint16_t>);
                     case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int32_t, std::int32_t>);
                     case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::int32_t, float>);
-                    default: THROW_IE_EXCEPTION << "Unsupported Type: " << outType; return {};
+                    default: THROW_IE_EXCEPTION << "Unsupported Output Type: " << outType; return {};
                 }
-            default: THROW_IE_EXCEPTION << "Unsupported Type: " << inputType; return {};
+            case ngraph::element::Type_t::i64 :
+                switch (outType) {
+                    case ngraph::element::Type_t::u8  : return make(wrap_one_hot<std::int64_t, std::uint8_t>);
+                    case ngraph::element::Type_t::i16 : return make(wrap_one_hot<std::int64_t, std::int16_t>);
+                    case ngraph::element::Type_t::u16 : return make(wrap_one_hot<std::int64_t, std::uint16_t>);
+                    case ngraph::element::Type_t::i32 : return make(wrap_one_hot<std::int64_t, std::int32_t>);
+                    case ngraph::element::Type_t::f32 : return make(wrap_one_hot<std::int64_t, float>);
+                    default: THROW_IE_EXCEPTION << "Unsupported Output Type: " << outType; return {};
+                }
+
+            default: THROW_IE_EXCEPTION << "Unsupported Input Type. Expected int32 or int64, got " << inputType; return {};
         }
     }
 }  //  namespace ArmPlugin
