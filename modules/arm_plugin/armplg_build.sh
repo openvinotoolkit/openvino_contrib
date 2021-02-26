@@ -1,14 +1,18 @@
 #!/bin/sh
 
+set -x
+
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 BUILD_TYPE=${BUILD_TYPE:-Release}
 UPDATE_SOURCES=${UPDATE_SOURCES:-clean}
+WITH_OMZ_DEMO=${WITH_OMZ_DEMO:-ON}
 
 DEV_HOME=`pwd`
 OPENCV_HOME=$DEV_HOME/opencv
 OPENVINO_HOME=$DEV_HOME/openvino
 OPENVINO_CONTRIB=$DEV_HOME/openvino_contrib
 ARM_PLUGIN_HOME=$OPENVINO_CONTRIB/modules/arm_plugin
+OMZ_HOME=$DEV_HOME/open_model_zoo
 STAGING_DIR=$DEV_HOME/armcpu_package
 
 
@@ -27,25 +31,21 @@ fail()
 
 checkSrcTree()
 {
-    [ $# -lt 2 ] && fail
+    [ $# -lt 3 ] && fail
 
-    TEST_DIR_NAME=directory
-    if [ $# -gt 2 ]; then
-        TEST_DIR_NAME="$3 directory"
-    fi
     if ! [ -d $1 ]; then
-        echo "Unable to detect $TEST_DIR_NAME at $1"
-        echo "Cloning master branch only..."
-        git lfs clone --recurse-submodules --single-branch --branch=master $2 $1 || fail 3 "Failed to clone $TEST_DIR_NAME. Stopping"
+        echo "Unable to detect $1"
+        echo "Cloning $2..."
+        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
     else
-        echo "Detected $TEST_DIR_NAME at $1"
+        echo "Detected $1"
         echo "Considering it as source directory"
         if [ "$UPDATE_SOURCES" = "reload" ]; then
             echo "Source reloading requested"
             echo "Removing existing sources..."
             rm -rf $1 || fail 1 "Failed to remove. Stopping"
-            echo "Cloning master branch only..."
-            git lfs clone --recurse-submodules --single-branch --branch=master $2 $1 || fail 3 "Failed to clone $TEST_DIR_NAME. Stopping"
+            echo "Cloning $2..."
+            git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
         elif [ -d $1/build ]; then
             echo "Build directory detected at $1"
             if [ "$UPDATE_SOURCES" = "clean" ]; then
@@ -61,9 +61,12 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git OpenCV
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git OpenVINO
-checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git OpenVINO_contrib
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git master
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
+checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
+if [ "$WITH_OMZ_DEMO" = "ON" ]; then
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git develop
+fi
 
 #cleanup package destination folder
 [ -e $STAGING_DIR ] && rm -rf $STAGING_DIR
@@ -75,6 +78,7 @@ cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,python3 \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=ON \
+      -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
       -DPYTHON3_INCLUDE_PATH=/usr/include/${PYTHONVER}m \
       -DPYTHON3_LIBRARIES=/usr/lib/$ARCH_NAME/lib${PYTHONVER}m.so \
       -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/lib/python3/dist-packages/numpy/core/include \
@@ -96,6 +100,9 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,pyth
       -D CMAKE_INSTALL_PREFIX=install \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR/opencv \
+      -DWITH_GTK_2_X=OFF \
+      -DOPENCV_ENABLE_PKG_CONFIG=ON \
+      -DPKG_CONFIG_EXECUTABLE=/usr/bin/${ARCH_NAME}-pkg-config \
       $OPENCV_HOME && \
 make -j$BUILD_JOBS && \
 make install && \
@@ -109,12 +116,11 @@ cd $OPENVINO_HOME/build && \
 cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
       -DENABLE_TESTS=ON -DENABLE_BEH_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON \
       -DENABLE_GAPI_TESTS=OFF -DENABLE_CLDNN_TESTS=OFF \
-      -DENABLE_DATA=OFF -DENABLE_MODELS=OFF -DENABLE_VALIDATION_SET=OFF -DENABLE_PRIVATE_MODELS=OFF -DENABLE_PROFILING_ITT=OFF \
-      -DTHREADS_PTHREAD_ARG="-pthread" -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib -DCMAKE_INSTALL_LIBDIR=lib \
+      -DENABLE_DATA=OFF -DENABLE_PROFILING_ITT=OFF \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib -DCMAKE_INSTALL_LIBDIR=lib \
       -DENABLE_SSE42=OFF -DENABLE_MYRIAD=ON -DENABLE_GNA=OFF -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DENABLE_VALIDATION_SET=OFF -DENABLE_MODELS=OFF \
-      -DENABLE_LTO=ON \
-      -DCMAKE_CXX_FLAGS=-latomic -DOPENCV_EXTRA_EXE_LINKER_FLAGS=-latomic \
+      -DTHREADING=SEQ -DENABLE_LTO=ON \
+      -DCMAKE_CXX_FLAGS=-latomic \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
       $OPENVINO_HOME && \
@@ -127,11 +133,9 @@ cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-      -DENABLE_PYTHON=ON \
-      -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
-      -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DENABLE_DATA=OFF -DENABLE_MODELS=OFF -DENABLE_VALIDATION_SET=OFF -DENABLE_PRIVATE_MODELS=OFF \
-      -DTHREADS_PTHREAD_ARG="-pthread" -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
+      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
+      -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DCMAKE_STAGING_PREFIX=$STAGING_DIR \
       $OPENVINO_HOME/inference-engine/ie_bridges/python && \
@@ -160,7 +164,21 @@ cmake -DCOMPONENT=ngraph \
 cp $OPENVINO_HOME/bin/$ARCHDIR/$BUILD_TYPE/lib/libinterpreter_backend.so $STAGING_DIR/deployment_tools/ngraph/lib/libinterpreter_backend.so && \
 cd $DEV_HOME || fail 15 "OpenVINO NGraph deployment failed. Stopping"
 
-
+#Open Model Zoo
+if [ "$WITH_OMZ_DEMO" = "ON" ]; then
+  OMZ_DEMOS_BUILD=$OMZ_HOME/build && \
+  mkdir -p $OMZ_DEMOS_BUILD && \
+  cd $OMZ_DEMOS_BUILD && \
+  cmake -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_PYTHON=OFF \
+        -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
+        -DInferenceEngine_DIR=$OPENVINO_HOME/build \
+        -DOpenCV_DIR=$OPENCV_HOME/build \
+        -Dngraph_DIR=$OPENVINO_HOME/build/ngraph \
+        $OMZ_HOME/demos && \
+  cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
+  cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
+fi
 
 #Package structure creation
 mkdir -p $STAGING_DIR/deployment_tools/inference_engine/bin/$ARCHDIR && \
@@ -185,6 +203,8 @@ cp -vr $OPENVINO_HOME/scripts/setupvars $STAGING_DIR/bin && \
 cp -vr $OPENVINO_HOME/scripts/demo $STAGING_DIR/deployment_tools/demo && \
 cp -vr $OPENVINO_HOME/scripts/install_dependencies $STAGING_DIR/install_dependencies && \
 cp -vr $OPENVINO_HOME/inference-engine/tools $STAGING_DIR/deployment_tools/python_tools && \
+(! [ "$WITH_OMZ_DEMO" = "ON" ] || mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos) && \
+(! [ "$WITH_OMZ_DEMO" = "ON" ] || cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos) && \
 echo "=================================RPATH cleaning==================================" && \
 find $STAGING_DIR/deployment_tools/inference_engine/lib/$ARCHDIR/ -maxdepth 1 -type f -name "*.so" -exec chrpath --delete {} \; && \
 find $STAGING_DIR/deployment_tools/inference_engine/bin/$ARCHDIR/ -maxdepth 1 -type f -exec chrpath --delete {} \; && \

@@ -63,6 +63,10 @@ RUN dpkg --add-architecture armhf && \
         python3-numpy \
         python3-pip \
         libpython3-dev:armhf \
+        libgtk-3-dev:armhf \
+        libavcodec-dev:armhf \
+        libavformat-dev:armhf \
+        libswscale-dev:armhf \
         # For ARM CPU plugin
         scons \
     && \
