@@ -53,7 +53,7 @@ docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote \
 >   - *clean*  - don't reload sources if already loaded, just clean build folders (default)
 >   - *reload* - delete all loaded sources and retrieve them again
 >   - *check*  - don't reload or cleanup sources
-> * *WITH_OMZ* builds C++ Open Model Zoo demos (ON by default)
+> * *WITH_OMZ_DEMO* builds C++ Open Model Zoo demos (ON by default)
 6. Extract the archive to target ARM platform
 
 ### Approach #2: build OpenVINO™ and the plugin without OpenCV using Docker* (cross-compiling)
