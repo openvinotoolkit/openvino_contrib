@@ -31,16 +31,12 @@ fail()
 
 checkSrcTree()
 {
-    [ $# -lt 2 ] && fail
+    [ $# -lt 3 ] && fail
 
-    BRANCH_NAME=master
-    if [ $# -gt 2 ]; then
-        BRANCH_NAME=$3
-    fi
     if ! [ -d $1 ]; then
         echo "Unable to detect $1"
         echo "Cloning $2..."
-        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$BRANCH_NAME $2 $1 || fail 3 "Failed to clone $2. Stopping"
+        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
     else
         echo "Detected $1"
         echo "Considering it as source directory"
@@ -49,7 +45,7 @@ checkSrcTree()
             echo "Removing existing sources..."
             rm -rf $1 || fail 1 "Failed to remove. Stopping"
             echo "Cloning $2..."
-            git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$BRANCH_NAME $2 $1 || fail 3 "Failed to clone $2. Stopping"
+            git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
         elif [ -d $1/build ]; then
             echo "Build directory detected at $1"
             if [ "$UPDATE_SOURCES" = "clean" ]; then
@@ -65,9 +61,9 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git
-checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git master
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
+checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
     checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git develop
 fi
