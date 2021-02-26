@@ -33,23 +33,23 @@ checkSrcTree()
 {
     [ $# -lt 2 ] && fail
 
-    TEST_DIR_NAME=directory
+    BRANCH_NAME=master
     if [ $# -gt 2 ]; then
-        TEST_DIR_NAME="$3 directory"
+        BRANCH_NAME=$3
     fi
     if ! [ -d $1 ]; then
-        echo "Unable to detect $TEST_DIR_NAME at $1"
-        echo "Cloning master branch only..."
-        git lfs clone --recurse-submodules --single-branch --branch=master $2 $1 || fail 3 "Failed to clone $TEST_DIR_NAME. Stopping"
+        echo "Unable to detect $1"
+        echo "Cloning $2..."
+        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$BRANCH_NAME $2 $1 || fail 3 "Failed to clone $2. Stopping"
     else
-        echo "Detected $TEST_DIR_NAME at $1"
+        echo "Detected $1"
         echo "Considering it as source directory"
         if [ "$UPDATE_SOURCES" = "reload" ]; then
             echo "Source reloading requested"
             echo "Removing existing sources..."
             rm -rf $1 || fail 1 "Failed to remove. Stopping"
-            echo "Cloning master branch only..."
-            git lfs clone --recurse-submodules --single-branch --branch=master $2 $1 || fail 3 "Failed to clone $TEST_DIR_NAME. Stopping"
+            echo "Cloning $2..."
+            git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$BRANCH_NAME $2 $1 || fail 3 "Failed to clone $2. Stopping"
         elif [ -d $1/build ]; then
             echo "Build directory detected at $1"
             if [ "$UPDATE_SOURCES" = "clean" ]; then
@@ -65,11 +65,11 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git OpenCV
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git OpenVINO
-checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git OpenVINO_contrib
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git
+checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git open_model_zoo
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git develop
 fi
 
 #cleanup package destination folder
