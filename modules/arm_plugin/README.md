@@ -86,7 +86,6 @@ mkdir build && cd build
 ```
  cmake -DCMAKE_BUILD_TYPE=Release \
        -DCMAKE_TOOLCHAIN_FILE="../cmake/arm.toolchain.cmake" \
-       -DTHREADS_PTHREAD_ARG="-pthread" \
        -DTHREADING=SEQ \
        -DIE_EXTRA_MODULES=/openvino_contrib/modules \
        -DBUILD_java_api=OFF .. && make
@@ -157,7 +156,7 @@ git clone https://github.com/intel-iot-devkit/sample-videos.git
 1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
 ```
-cd <package_dir>/deployment_tools/inference_engine/demos/build/aarch64/Release
+cd <package_dir>/deployment_tools/inference_engine/demos/build/<platform_type>/Release
 ``` 
 3. Add OpenCV and OpenVINO library directories to `LD_LIBRARY_PATH`:
 ```

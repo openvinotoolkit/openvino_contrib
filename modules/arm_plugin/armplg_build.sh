@@ -68,7 +68,9 @@ checkSrcTree()
 checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git OpenCV
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git OpenVINO
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git OpenVINO_contrib
-checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git open_model_zoo
+if [ "$WITH_OMZ_DEMO" = "ON" ]; then
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git open_model_zoo
+fi
 
 #cleanup package destination folder
 [ -e $STAGING_DIR ] && rm -rf $STAGING_DIR
