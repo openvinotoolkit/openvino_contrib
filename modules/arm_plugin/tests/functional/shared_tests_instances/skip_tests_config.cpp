@@ -18,5 +18,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*)", // Failed
         ".*PreprocessTest.*", // Does not cover all needed cases
         ".*GRUCellTest.*decomposition0.*",  // GruCell should be decomposed
+        R"(.*ConstantResultSubgraphTest.*inPrc=(I8|U64|I64|BOOL).*)" // Unsupported precisions
     };
 }
