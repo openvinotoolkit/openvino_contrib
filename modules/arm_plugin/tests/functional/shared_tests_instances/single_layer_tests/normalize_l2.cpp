@@ -16,6 +16,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 const std::vector<std::vector<int64_t>> axes2D = {
         {0},
         {1},
+        {0, 1}
 };
 
 const std::vector<float> eps = {
@@ -47,25 +48,29 @@ INSTANTIATE_TEST_CASE_P(
         NormalizeL2LayerTest::getTestCaseName
 );
 
-const std::vector<std::vector<int64_t>> axes4D = {
+const std::vector<std::vector<int64_t>> axesDecompose4D = {
+        {0},
         {1},
         {2},
         {3},
+        {0, 1},
+        {1, 2, 3},
+        {0, 1, 2, 3},
 };
 
-const auto normL2params4D = testing::Combine(
-        testing::ValuesIn(axes4D),
+const auto normL2DecomposeParams4D = testing::Combine(
+        testing::ValuesIn(axesDecompose4D),
         testing::ValuesIn(eps),
-        testing::ValuesIn(epsModes),
-        testing::Values(std::vector<size_t>{1, 3, 10, 5}),
+        testing::Values(ngraph::op::EpsMode::ADD),
+        testing::Values(std::vector<size_t>{2, 3, 10, 5}),
         testing::ValuesIn(netPrecisions),
         testing::Values("ARM")
 );
 
 INSTANTIATE_TEST_CASE_P(
-        NormalizeL2_4D,
+        NormalizeL2Decompose_4D,
         NormalizeL2LayerTest,
-        normL2params4D,
+        normL2DecomposeParams4D,
         NormalizeL2LayerTest::getTestCaseName
 );
 }  // namespace

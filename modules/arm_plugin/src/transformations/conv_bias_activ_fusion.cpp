@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <details/ie_exception.hpp>
 #include "conv_bias_activ_fusion.hpp"
 
 #include <memory>
@@ -128,6 +129,14 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_wit
             return false;
         }
 
+        if (m_conv->output(0).get_target_inputs().size() != 1) {
+            return false;
+        }
+
+        if (!std::dynamic_pointer_cast<opset::Constant>(eltwise->input_value(1 - conv_idx).get_node_shared_ptr())) {
+            THROW_IE_EXCEPTION << "Unsupported Convolution with inconstant weights.";
+        }
+
         auto bias = eltwise->input_value(1 - conv_idx);
         // TODO: check that constant can be scalar and do not match [1, C, 1, 1] layout
         const auto bias_shape = bias.get_shape();
@@ -184,9 +193,6 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
         if (!m_conv) {
             return false;
         }
-        if (m_conv->output(0).get_target_inputs().size() != 1) {
-            return false;
-        }
 
         auto conv_arm = std::make_shared<ArmConv>(
                     m_conv->input_value(Inputs::Data),
@@ -218,7 +224,7 @@ ArmPlugin::pass::ConvertSingleConvolutionToArm::ConvertSingleConvolutionToArm() 
 ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::GroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
-                                                                 ngraph::pattern::wrap_type<opset::Constant>()},
+                                                                 ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
                                                                  ngraph::pattern::has_static_shape()), "ConvertGroupConvolutionToArm");
     register_matcher(m, convert_conv_to_arm_conv<opset::GroupConvolution, opset::ArmGroupConvolution>());
 }

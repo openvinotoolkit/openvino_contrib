@@ -24,6 +24,7 @@
 #include "transformations/op_conversions/log_softmax_decomposition.hpp"
 #include "transformations/common_optimizations/remove_filtering_boxes_by_size.hpp"
 #include "transformations/common_optimizations/hswish_fusion.hpp"
+#include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 
 #include "conv_bias_activ_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -33,6 +34,7 @@
 #include "convert_logical.hpp"
 #include "convert_strided_slice.hpp"
 #include "convert_group_conv.hpp"
+#include "convert_conv1d_to_conv2d.hpp"
 #include "convert_grn_to_normalizel2.hpp"
 #include "convert_mat_mul.hpp"
 #include "convert_batchnorm_v0_to_v5.hpp"
@@ -41,8 +43,8 @@
 #include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
+#include "convert_prelu.hpp"
 #include "convert_reduce_multi_axis.hpp"
-#include "convert_interpolate_v0_to_v4.hpp"
 #include "normalizel2_max_fusion.hpp"
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
@@ -71,6 +73,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::HSwishFusion>();
 
     manager.register_pass<ngraph::pass::LogSoftmaxDecomposition>();
+    manager.register_pass<pass::ConvertGRN>();
+    manager.register_pass<pass::NormalizeL2Fusion>();
+    manager.register_pass<pass::DecomposeNormalizeL2Add>();
     manager.register_pass<pass::ConvertReduceMultiAxis>();
     manager.register_pass<ngraph::pass::ReduceL1Decomposition>();
     manager.register_pass<ngraph::pass::ReduceL2Decomposition>();
@@ -92,15 +97,15 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::GRUCellDecomposition>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
-    manager.register_pass<pass::ConvertGRN>();
-    manager.register_pass<pass::NormalizeL2Fusion>();
-    manager.register_pass<pass::DecomposeNormalizeL2Add>();
     manager.register_pass<pass::DecomposeSwish>();
     manager.register_pass<pass::DecomposeMish>();
+    manager.register_pass<pass::ConvertConv1D>();
+    manager.register_pass<pass::ConvertGroupConv1D>();
     manager.register_pass<pass::ConvertGroupConvolution>();
     manager.register_pass<pass::ConvBiasActivationFusion>();
     manager.register_pass<pass::ConvertMatMulToFC>();
     manager.register_pass<pass::ConvertEltwise>();
+    manager.register_pass<pass::BroadcastPRelu>();
     manager.register_pass<pass::ConvertLogical>();
     manager.register_pass<pass::ConvertComparison>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -113,7 +118,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertBatchNormInferenceV0toV5>();
     manager.register_pass<pass::ConvertBatchNormInference>();
     manager.register_pass<pass::ConvertShuffleChannels>();
-    manager.register_pass<pass::ConvertInterpolateV0toV4>();
+    manager.register_pass<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
     manager.register_pass<pass::ConvertReorgYolo>();
 
     manager.register_pass<pass::ConvertPriorBox>();
