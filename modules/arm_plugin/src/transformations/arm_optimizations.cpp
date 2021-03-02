@@ -47,6 +47,7 @@
 #include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
+#include "convert_transpose_arm.hpp"
 #include "convert_prelu.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
@@ -118,6 +119,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::BroadcastPRelu>();
     manager.register_pass<pass::ConvertLogical>();
     manager.register_pass<pass::ConvertComparison>();
+    manager.register_pass<pass::ConvertTranspose>();
+    manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<pass::ConvertRound>();
     manager.register_pass<pass::ConvertSign>();
