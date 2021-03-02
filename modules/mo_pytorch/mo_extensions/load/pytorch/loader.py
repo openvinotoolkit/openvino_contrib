@@ -42,7 +42,8 @@ def pytorch_op_extractor(node: Node, lowered_keys_map: dict) -> (bool, dict):
     op = node['op'].lower()
     if op in lowered_keys_map:
         op = lowered_keys_map[op]
-        assert op in pytorch_op_extractors
+        if not op in pytorch_op_extractors:
+            raise Error('Op ' + op + ' is not registered')
         attrs = pytorch_op_extractors[op](node)
         if attrs:
             result.update(attrs)

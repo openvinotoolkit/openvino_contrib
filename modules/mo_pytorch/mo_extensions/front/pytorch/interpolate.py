@@ -20,6 +20,7 @@ from extensions.ops.upsample import UpsampleOp
 from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
 from mo.ops.const import Const
+from mo.utils.error import Error
 
 class InterpolateReplacer(FrontReplacementOp):
     op = 'Upsample'
@@ -64,7 +65,8 @@ class InterpolateReplacer(FrontReplacementOp):
                 }
                 interp = Interpolate(graph, attrs).create_node([node.in_node(0)])
             else:
-                assert(node.module.scale_factor)
+                if not node.module.scale_factor:
+                    raise Error('No scale_factor found')
                 attrs = {
                     'name': node.name,
                     'height_scale': np.float(node.module.scale_factor),
