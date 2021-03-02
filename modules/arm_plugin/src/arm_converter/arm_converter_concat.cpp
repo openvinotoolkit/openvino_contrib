@@ -28,14 +28,7 @@ static void wrap_concat(const std::vector<Argument<arm_compute::ITensor*>>& inpu
                                        elem_size);
 }
 
-template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::Concat& node) {
-    if (node.get_shape().size() > 4) {
-        THROW_IE_EXCEPTION << "Unsupported Concat with num dimensions > 4";
-    }
-    if (node.get_input_size() == 1) {
-        return MakeConversion<arm_compute::NECopy>(node.input(0), node.output(0));
-    }
-
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& node) {
     auto make = [&] (auto refFunction) {
         std::vector<ngraph::Shape> in_shapes;
         for (const auto& input : node.inputs()) {
@@ -56,9 +49,19 @@ template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::Conca
         case ngraph::element::Type_t::u16 : return make(wrap_concat<std::uint16_t>);
         case ngraph::element::Type_t::i32 : return make(wrap_concat<std::int32_t>);
         case ngraph::element::Type_t::i64 : return make(wrap_concat<std::int64_t>);
-        default: return MakeConversion<arm_compute::NEConcatenateLayer>(node.inputs(),
-                                                                        node.output(0),
-                                                                        AxisCast(node.get_axis(), node.get_input_shape(0).size()));
+        case ngraph::element::Type_t::f16 : return make(wrap_concat<half_float::half>);
+        case ngraph::element::Type_t::f32 : return make(wrap_concat<float>);
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
     }
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConcat& node) {
+    if (node.get_input_size() == 1) {
+        return MakeConversion<arm_compute::NECopy>(node.input(0), node.output(0));
+    }
+
+    return MakeConversion<arm_compute::NEConcatenateLayer>(node.inputs(),
+                                                           node.output(0),
+                                                           AxisCast(node.get_axis(), node.get_input_shape(0).size()));
 }
 } // namespace ArmPlugin
