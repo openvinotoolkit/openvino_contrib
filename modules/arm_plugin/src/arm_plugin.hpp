@@ -22,7 +22,7 @@ struct Plugin : public InferenceEngine::InferencePluginInternal {
     using Ptr = std::shared_ptr<Plugin>;
 
     Plugin();
-    ~Plugin() override;
+    ~Plugin();
 
     void SetConfig(const std::map<std::string, std::string>& config) override;
     InferenceEngine::QueryNetworkResult
