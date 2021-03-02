@@ -25,6 +25,7 @@
 #include "transformations/common_optimizations/remove_filtering_boxes_by_size.hpp"
 #include "transformations/common_optimizations/hswish_fusion.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
+#include "transformations/op_conversions/convert_mvn1_to_mvn6.hpp"
 
 #include "conv_bias_activ_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -44,6 +45,7 @@
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
 #include "convert_prelu.hpp"
+#include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
 #include "normalizel2_max_fusion.hpp"
 #include "decompose_normalizel2_add.hpp"
@@ -119,6 +121,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertBatchNormInference>();
     manager.register_pass<pass::ConvertShuffleChannels>();
     manager.register_pass<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
+    manager.register_pass<ngraph::pass::ConvertMVN1ToMVN6>();
+    manager.register_pass<pass::ConvertMVN>();
     manager.register_pass<pass::ConvertReorgYolo>();
 
     manager.register_pass<pass::ConvertPriorBox>();

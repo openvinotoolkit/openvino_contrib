@@ -15,9 +15,6 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 };
 
 const std::vector<std::vector<size_t>> inputShapes = {
-    {1, 3},
-    {3, 1},
-    {32, 17},
     {1, 32, 17},
     {1, 37, 9},
     {1, 16, 5, 8},
@@ -42,6 +39,17 @@ const std::vector<double> epsilon = {
     1e-8,
     1e-9,
 };
+
+const auto MvnCases2D = ::testing::Combine(
+    ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 3}, {3, 1}, {32, 17}}),
+    ::testing::ValuesIn(netPrecisions),
+    ::testing::Values(true),
+    ::testing::ValuesIn(normalizeVariance),
+    ::testing::ValuesIn(epsilon),
+    ::testing::Values("ARM")
+);
+
+INSTANTIATE_TEST_CASE_P(TestsMVN2D, MvnLayerTest, MvnCases2D, MvnLayerTest::getTestCaseName);
 
 const auto MvnCases = ::testing::Combine(
     ::testing::ValuesIn(inputShapes),

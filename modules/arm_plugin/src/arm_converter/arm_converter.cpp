@@ -101,7 +101,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::ReduceMin>();
     Register<opset::ReduceMax>();
     Register<opset::Interpolate>();
-    Register<opset::MVN>();
+    Register<opset::ArmMVN>();
     Register<opset::NormalizeL2>();
     Register<opset::DepthToSpace>();
     Register<opset::SpaceToDepth>();
@@ -117,6 +117,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::BatchToSpace>();
     Register<opset::SpaceToBatch>();
     if (ref) {
+        Register<opset::MVN>();
         Register<opset::ROIPooling>();
         Register<opset::PSROIPooling>();
         Register<opset::TopK>();
