@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <ngraph/opsets/opset5.hpp>
+#include <ngraph/opsets/opset6.hpp>
 #include "transformations_visibility.hpp"
 
 namespace ArmPlugin {
 namespace opset {
-    using namespace ::ngraph::opset5;
+    using namespace ::ngraph::opset6;
 }  // namespace opset
 }  // namespace ArmPlugin
