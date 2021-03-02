@@ -135,17 +135,34 @@ Smoke testing has been done against the following OMZ demos:
 
 Let's try to run object detection demo.
 #### Model preparation
-To speed up the process you may prepare the model on non-ARM platform.
-
-1. Install [model downloader] from Open Model Zoo:
+To speed up the process you may prepare the model on non-ARM platform and then copy IR to ARM. 
+1. Install [Model Optimizer] from OpenVINO:
+```
+git clone https://github.com/openvinotoolkit/openvino.git
+cd openvino/model-optimizer
+virtualenv -p /usr/bin/python3.6 .env3 --system-site-packages
+. .env3/bin/activate
+pip3 install -r requirements.txt
+cd ../..
+```
+2. Install [model downloader] from Open Model Zoo:
 ```
 git clone https://github.com/openvinotoolkit/open_model_zoo.git
 cd open_model_zoo/tools/downloader
 python3 -mpip install --user -r ./requirements.in
 ```
-2. Download model `yolo_v3_tiny` using model downloader:
+3. Download model `yolo-v3-tiny-tf` using model downloader:
 ```
-python3 ./downloader.py --name yolo_v3_tiny --precisions FP32
+python3 ./downloader.py --name yolo-v3-tiny-tf --precisions FP32
+```
+3. Convert the model using model converter:
+```
+python3 ./converter.py --mo ../../../openvino/model-optimizer/mo.py \
+                       --name yolo-v3-tiny-tf --precisions FP32
+```
+4. The model was trained on Microsoft\* COCO dataset version with 80 categories of object. Download [class names of the dataset](https://github.com/openvinotoolkit/open_model_zoo/blob/develop/data/dataset_classes/coco_80cl.txt):
+```
+wget https://raw.githubusercontent.com/openvinotoolkit/open_model_zoo/develop/data/dataset_classes/coco_80cl.txt
 ```
 #### Samples preparation
 1. Clone video samples repository:
@@ -164,8 +181,8 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/
 ```
 4. Run object detection C++ demo:
 ```
-./object_detection_demo -i <sample_videos_dir>/sample-videos/people-detection.mp4 \
-                        -at yolo -m <model_dir>/yolo_v3_tiny/tf/FP32/yolo_v3_tiny.xml -d ARM
+./object_detection_demo -i <sample_videos_dir>/sample-videos/people-detection.mp4 -labels <labels_dir>/coco_80cl.txt \
+                        -at yolo -m <model_dir>/yolo-v3-tiny-tf/FP32/yolo-v3-tiny-tf.xml -d ARM
 ```
 On the output video you should see people enclosed in red rectangles:
 
@@ -176,19 +193,7 @@ You could verify the plugin by running [OpenVINO™ samples]. You can find C++ s
 OpenVINO™ samples require OpenCV libraries. If you build the plugin using approach #1 all needed OpenCV libraries are already placed in `build\lib` directory. If you build the plugin using approach #2 or #3 you need to install OpenCV or [build it from source].  
 Let's try to run [Object Detection for SSD sample].  
 #### Model preparation
-1. Download model `vehicle-license-plate-detection-barrier-0123` using Model Preparation precedure described in Open Model Zoo demos section. 
-2. Install [Model Optimizer]:
-```
-git clone https://github.com/openvinotoolkit/openvino.git
-cd openvino/model-optimizer
-pip3 install requirements.txt
-cd ../..
-```
-3. Convert the model using model converter:
-```
-python3 ./converter.py --mo ../../../openvino/model-optimizer/mo.py \
-                       --name vehicle-license-plate-detection-barrier-0123 --precisions FP32
-```
+1. Prepare model `vehicle-license-plate-detection-barrier-0123` using Model Preparation precedure described in Open Model Zoo demos section. 
 #### Model inference on ARM
 1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/bin` directory:
