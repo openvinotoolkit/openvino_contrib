@@ -44,6 +44,7 @@ using namespace ArmPlugin;
 Plugin::Plugin() {
     _pluginName = "ARM";
 #if IE_THREAD == IE_THREAD_SEQ
+    arm_compute::Scheduler::get();  // Init default AC scheduler list
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::CPP);
 #else
     arm_compute::Scheduler::set(std::make_shared<IEScheduler>());
