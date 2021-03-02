@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from mo.utils.error import Error
+
 # Callback which is executed after nn.Module forward
 def forward_hook(self, inputs, output):
     # Skip if we already processed as functional hook
@@ -9,7 +11,8 @@ def forward_hook(self, inputs, output):
         return output
 
     graph = inputs[0].graph
-    assert(graph is not None)
+    if graph is None:
+        raise Error('No graph found')
     layer_type = self.__class__.__name__
 
     # Create a unique name
@@ -20,7 +23,8 @@ def forward_hook(self, inputs, output):
     # Find all inputs
     for idx, inp in enumerate(inputs):
         src_id = inp.node_name
-        assert(src_id is not None)
+        if src_id is None:
+            raise Error('Input not found')
 
         edge_attrs = {
             'out': 0,
@@ -67,7 +71,8 @@ class OpenVINOTensor(object):
         self.node_name = None
         self.shape = value.shape
         self.requires_grad = self._value.requires_grad
-        assert(not self.requires_grad)
+        if self.requires_grad:
+            raise Error('Model in training mode is used')
 
     def __repr__(self):
         return self.node_name
@@ -317,7 +322,8 @@ def function_hook(input, *args, **kwargs):
 
     class BatchNorm2d(nn.BatchNorm2d):
         def __init__(self, running_mean, running_var, weight, bias, training, momentum, eps):
-            assert(not training)
+            if training:
+                raise Error('BatchNorm2d in training mode is not implemented')
             super().__init__(num_features=weight.shape[0],
                              momentum=momentum,
                              eps=eps)

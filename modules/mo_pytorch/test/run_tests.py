@@ -19,7 +19,9 @@ class TestModels(unittest.TestCase):
                                                'validation_set',
                                                '512x512',
                                                'dog.bmp'))
-        assert(self.test_img is not None)
+        if self.test_img is None:
+            tc = unittest.TestCase()
+            tc.fail('No image data found')
 
 
     def get_iou(self, box1, box2):

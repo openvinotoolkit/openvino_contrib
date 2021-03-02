@@ -3,6 +3,7 @@ from collections import namedtuple
 
 from ..hooks import OpenVINOTensor, forward_hook
 
+from mo.utils.error import Error
 
 def inference(model, func, anchors, pred_logits, pred_anchor_deltas, image_sizes):
     # Convert from lists of OpenVINOTensor to torch.tensor and perform origin run
@@ -13,8 +14,8 @@ def inference(model, func, anchors, pred_logits, pred_anchor_deltas, image_sizes
     # Concatenate the inputs (should be tracked)
     logist = torch.cat(pred_logits, dim=1).view(1, -1).sigmoid()
     deltas = torch.cat(pred_anchor_deltas, dim=1).view(1, -1)
-    assert(isinstance(logist, OpenVINOTensor))
-    assert(isinstance(deltas, OpenVINOTensor))
+    if not isinstance(logist, OpenVINOTensor) or not isinstance(deltas, OpenVINOTensor):
+        raise Error('OpenVINOTensor is expected')
 
     # Create an alias
     class DetectionOutput(torch.nn.Module):
