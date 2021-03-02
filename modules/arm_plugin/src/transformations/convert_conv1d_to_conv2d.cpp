@@ -51,6 +51,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConv1DBase::convert_conv1d
         reshape->set_friendly_name(conv->get_friendly_name());
         ngraph::copy_runtime_info(conv, {input2d, weights2d, conv2d, reshape});
         ngraph::replace_node(conv, reshape);
+        return true;
     };
 }
 
