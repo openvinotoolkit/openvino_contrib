@@ -42,6 +42,6 @@ setup(name='openvino-mo-pytorch',
         "Operating System :: OS Independent",
       ],
       install_requires=[
-        'openvino-mo @ git+git://github.com/openvinotoolkit/openvino.git#subdirectory=model-optimizer'
+        'openvino-mo @ git+https://github.com/openvinotoolkit/openvino.git#subdirectory=model-optimizer'
       ],
 )
