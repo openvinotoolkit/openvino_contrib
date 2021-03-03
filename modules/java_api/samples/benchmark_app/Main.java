@@ -1,10 +1,10 @@
 import org.intel.openvino.*;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.Vector;
 
 public class Main {
@@ -24,6 +24,9 @@ public class Main {
                 batchIndex = 0;
             } else if (layout == Layout.CN) {
                 batchIndex = 1;
+            }
+            if (!shapes.containsKey(entry.getKey())) {
+                continue;
             }
             if ((batchIndex != -1) && (shapes.get(entry.getKey())[batchIndex] != batchSize)) {
                 shapes.get(entry.getKey())[batchIndex] = batchSize;
@@ -91,7 +94,7 @@ public class Main {
         }
 
         byte[] buff = new byte[size];
-        Random rand = new Random();
+        SecureRandom rand = new SecureRandom();
         rand.nextBytes(buff);
 
         return new Blob(tDesc, buff);
@@ -108,7 +111,7 @@ public class Main {
         else return (double) arr[arr.length / 2];
     }
 
-    static boolean getApiBoolean(String api) throws RuntimeException {
+    static boolean getApiBoolean(String api) throws Exception {
         if (api.equals("sync")) return false;
         else if (api.equals("async")) return true;
         else throw new RuntimeException("Incorrect argument: '-api'");
@@ -193,7 +196,7 @@ public class Main {
 
         try {
             isAsync = getApiBoolean(api);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             System.out.println(e.getMessage());
             return;
         }
@@ -382,6 +385,10 @@ public class Main {
                 || (durationMs != 0L && execTime < durationMs)
                 || (isAsync && iteration % nireq != 0)) {
             inferRequest = inferRequestsQueue.getIdleRequest();
+            if (inferRequest == null) {
+                System.out.println("No idle Infer Requests!");
+                return;
+            }
 
             if (isAsync) {
                 // As the inference request is currently idle, the wait() adds no additional

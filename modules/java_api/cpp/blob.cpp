@@ -156,8 +156,10 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *env, job
                 *blob = make_shared_blob<short>((*tDesc), data);
                 break;
             }
-            default:
+            default: {
+                delete blob;
                 throw std::runtime_error("Unsupported precision value!");
+            }
         }
 
         return (jlong)blob;
@@ -204,8 +206,13 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_rmap(JNIEnv *env, jobject o
         Blob::Ptr *output = reinterpret_cast<Blob::Ptr *>(addr);
 
         if ((*output)->is<MemoryBlob>()) {
-            LockedMemory<const void> *lmem = new LockedMemory<const void> (as<MemoryBlob>(*output)->rmap());
-            return (jlong)lmem;
+            auto mBlob = as<MemoryBlob>(*output);
+            if (mBlob) {
+                LockedMemory<const void> *lmem = new LockedMemory<const void> (mBlob->rmap());
+                return (jlong)lmem;
+            } else {
+                throw std::runtime_error("Target Blob cannot be cast to the MemoryBlob!");
+            }
         } else {
             throw std::runtime_error("Target Blob cannot be cast to the MemoryBlob!");
         }
