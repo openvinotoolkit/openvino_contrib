@@ -38,18 +38,26 @@ public class IECore extends IEWrapper {
     public static void loadNativeLibs() {
         final String[] nativeFiles = {
             "plugins.xml",
+            "usb-ma2x8x.mvcmd",
+            "pcie-ma2x8x.mvcmd",
             "tbb",
             "tbbmalloc",
             "ngraph",
             "inference_engine_transformations",
             "inference_engine",
             "inference_engine_ir_reader",
+            "inference_engine_ir_v7_reader",
             "inference_engine_legacy",
             "inference_engine_lp_transformations",
             "onnx_importer",
             "inference_engine_onnx_reader",
             "inference_engine_preproc",
             "MKLDNNPlugin",
+            "clDNNPlugin",
+            "GNAPlugin",
+            "HeteroPlugin",
+            "MultiDevicePlugin",
+            "myriadPlugin",
             "inference_engine_java_api" // Should be at the end
         };
 
