@@ -63,6 +63,8 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_GetTensorDesc(JNIEnv *, job
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_GetBlob(JNIEnv *, jobject, jlong);
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobByte(JNIEnv *, jobject, jlong, jbyteArray);
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobFloat(JNIEnv *, jobject, jlong, jfloatArray);
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobInt(JNIEnv *, jobject, jlong, jintArray);
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobLong(JNIEnv *, jobject, jlong, jlongArray);
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *, jobject, jlong, jlong);
 JNIEXPORT jint JNICALL Java_org_intel_openvino_Blob_size(JNIEnv *, jobject ,jlong);
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_rmap(JNIEnv *, jobject, jlong);

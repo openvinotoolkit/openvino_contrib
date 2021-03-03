@@ -105,6 +105,60 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobFloat(JNIEnv *env, jobj
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobInt(JNIEnv *env, jobject obj, jlong tensorDescAddr, jintArray data)
+{
+    static const char method_name[] = "BlobInt";
+    try
+    {
+        TensorDesc *tDesc = (TensorDesc *)tensorDescAddr;
+
+        Blob::Ptr *blob = new Blob::Ptr();
+
+        *blob = make_shared_blob<int32_t>((*tDesc));
+        (*blob)->allocate();
+        env->GetIntArrayRegion(data, 0, (*blob)->size(), (*blob)->buffer());
+
+        return (jlong)blob;
+    }
+    catch (const std::exception &e)
+    {
+        throwJavaException(env, &e, method_name);
+    }
+    catch (...)
+    {
+        throwJavaException(env, 0, method_name);
+    }
+
+    return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobLong(JNIEnv *env, jobject obj, jlong tensorDescAddr, jlongArray data)
+{
+    static const char method_name[] = "BlobLong";
+    try
+    {
+        TensorDesc *tDesc = (TensorDesc *)tensorDescAddr;
+
+        Blob::Ptr *blob = new Blob::Ptr();
+
+        *blob = make_shared_blob<int64_t>((*tDesc));
+        (*blob)->allocate();
+        env->GetLongArrayRegion(data, 0, (*blob)->size(), (*blob)->buffer());
+
+        return (jlong)blob;
+    }
+    catch (const std::exception &e)
+    {
+        throwJavaException(env, &e, method_name);
+    }
+    catch (...)
+    {
+        throwJavaException(env, 0, method_name);
+    }
+
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *env, jobject obj, jlong tensorDescAddr, jlong matDataAddr)
 {
     static const char method_name[] = "BlobCArray";

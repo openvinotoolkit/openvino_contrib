@@ -29,4 +29,36 @@ public class BlobTests extends IETest {
         Assert.assertArrayEquals(blob.getTensorDesc().getDims(), dimsArr);
         Assert.assertArrayEquals(data, detection, 0.0f);
     }
+
+    @Test
+    public void testGetBlobFromInt() {
+        int[] dimsArr = {2, 1, 2, 1};
+        TensorDesc tDesc = new TensorDesc(Precision.I32, dimsArr, Layout.NHWC);
+
+        int[] data = {55, 12, -8, 0};
+
+        Blob blob = new Blob(tDesc, data);
+
+        int[] out = new int[blob.size()];
+        blob.rmap().get(out);
+
+        Assert.assertArrayEquals(blob.getTensorDesc().getDims(), dimsArr);
+        Assert.assertArrayEquals("Data", data, out);
+    }
+
+    @Test
+    public void testGetBlobFromLong() {
+        int[] dimsArr = {1, 2, 1, 2};
+        TensorDesc tDesc = new TensorDesc(Precision.I64, dimsArr, Layout.NHWC);
+
+        long[] data = {-99, 1, 111, -2};
+
+        Blob blob = new Blob(tDesc, data);
+
+        long[] out = new long[blob.size()];
+        blob.rmap().get(out);
+
+        Assert.assertArrayEquals(blob.getTensorDesc().getDims(), dimsArr);
+        Assert.assertArrayEquals("Data", data, out);
+    }
 }

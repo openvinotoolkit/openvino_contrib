@@ -18,6 +18,14 @@ public class Blob extends IEWrapper {
         super(BlobFloat(tensorDesc.getNativeObjAddr(), data));
     }
 
+    public Blob(TensorDesc tensorDesc, int[] data) {
+        super(BlobInt(tensorDesc.getNativeObjAddr(), data));
+    }
+
+    public Blob(TensorDesc tensorDesc, long[] data) {
+        super(BlobLong(tensorDesc.getNativeObjAddr(), data));
+    }
+
     public Blob(TensorDesc tensorDesc, long cArray) {
         super(BlobCArray(tensorDesc.nativeObj, cArray));
     }
@@ -43,11 +51,11 @@ public class Blob extends IEWrapper {
 
     private static native long BlobFloat(long tensorDesc, float[] data);
 
+    private static native long BlobInt(long tensorDesc, int[] data);
+
+    private static native long BlobLong(long tensorDesc, long[] data);
+
     private static native long BlobCArray(long tensorDesc, long cArray);
-
-    private static native byte[] asByte(long addr);
-
-    private static native float[] asFloat(long addr);
 
     private static native int size(long addr);
 
