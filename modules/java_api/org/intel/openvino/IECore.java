@@ -6,9 +6,11 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class IECore extends IEWrapper {
     public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
+    private final static Logger logger = Logger.getLogger(IECore.class.getName());
 
     public IECore() {
         super(GetCore());
@@ -46,7 +48,6 @@ public class IECore extends IEWrapper {
             "inference_engine_transformations",
             "inference_engine",
             "inference_engine_ir_reader",
-            "inference_engine_ir_v7_reader",
             "inference_engine_legacy",
             "inference_engine_lp_transformations",
             "onnx_importer",
@@ -72,7 +73,8 @@ public class IECore extends IEWrapper {
 
                 URL url = IECore.class.getClassLoader().getResource(file);
                 if (url == null) {
-                    System.out.println("Resource not found: " + file);
+                    logger.warning("Resource not found: " + file);
+                    continue;
                 }
                 tmpDir.deleteOnExit();
                 File nativeLibTmpFile = new File(tmpDir, file);
