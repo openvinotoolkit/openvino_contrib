@@ -10,7 +10,7 @@ import java.util.logging.Logger;
 
 public class IECore extends IEWrapper {
     public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
-    private final static Logger logger = Logger.getLogger(IECore.class.getName());
+    private static final Logger logger = Logger.getLogger(IECore.class.getName());
 
     public IECore() {
         super(GetCore());
@@ -42,6 +42,7 @@ public class IECore extends IEWrapper {
             "plugins.xml",
             "usb-ma2x8x.mvcmd",
             "pcie-ma2x8x.mvcmd",
+            "cache.json",
             "tbb",
             "tbbmalloc",
             "ngraph",
@@ -84,7 +85,11 @@ public class IECore extends IEWrapper {
                 }
                 String path = nativeLibTmpFile.getAbsolutePath();
                 if (isLibrary) {
-                    System.load(path);
+                    try {
+                        System.load(path);
+                    } catch (UnsatisfiedLinkError ex) {
+                        logger.warning("Failed to load library " + file + ": " + ex);
+                    }
                 }
             }
         } catch (IOException ex) {
