@@ -91,7 +91,6 @@ class TestModels(unittest.TestCase):
             diff = np.max(np.abs(out0 - ref0.detach().numpy()))
             self.assertLessEqual(diff, threshold)
 
-    @unittest.skip("https://github.com/likholat/openvino/pull/3")
     def test_inception_v3(self):
         self.check_torchvision_model(models.inception_v3, (299, 299), 4e-5)
 
@@ -152,7 +151,6 @@ class TestModels(unittest.TestCase):
         self.normAssertDetections(ref['pred_classes'], ref['scores'], ref_boxes,
                                   ie_detections[:, 1], ie_detections[:, 2], ie_detections[:, 3:])
 
-    @unittest.skip("https://github.com/likholat/openvino/pull/3")
     def test_strided_slice(self):
         import torch.nn as nn
         class SSlice(nn.Module):
