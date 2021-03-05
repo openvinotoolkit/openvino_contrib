@@ -25,24 +25,24 @@ public class ArgumentParser {
     }
 
     public void parseArgs(String[] args) {
-        try {
-            for (int i = 0; i < args.length; i++) {
-                String arg = args[i];
-                if (arg.equals("--help") | arg.equals("-h")) {
-                    printHelp();
-                    System.exit(0);
-                } else {
-                    if (description.containsKey(arg)) {
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if (arg.equals("--help") || arg.equals("-h")) {
+                printHelp();
+                System.exit(0);
+            } else {
+                if (description.containsKey(arg)) {
+                    if (i < args.length - 1) {
                         input.put(arg, args[++i]);
                     } else {
-                        System.out.println("Non-existent key: '" + arg + "'");
+                        System.out.println("Missed value for key: '" + arg + "'");
                         System.exit(0);
                     }
+                } else {
+                    System.out.println("Non-existent key: '" + arg + "'");
+                    System.exit(0);
                 }
             }
-        } catch (ArrayIndexOutOfBoundsException e) {
-            System.out.println("Error: Incorrect number of arguments");
-            System.exit(0);
         }
     }
 
