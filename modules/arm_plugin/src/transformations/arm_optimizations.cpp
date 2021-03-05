@@ -41,6 +41,8 @@
 #include "convert_batchnorm_v0_to_v5.hpp"
 #include "convert_batch_norm.hpp"
 #include "convert_ceiling.hpp"
+#include "convert_convert.hpp"
+#include "convert_concat.hpp"
 #include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
@@ -110,6 +112,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::BroadcastPRelu>();
     manager.register_pass<pass::ConvertLogical>();
     manager.register_pass<pass::ConvertComparison>();
+    manager.register_pass<pass::ConvertArmConvert>();
+    manager.register_pass<pass::ConvertArmConvertLike>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<pass::ConvertRound>();
@@ -133,6 +137,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertBroadcast3>();
     manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
     manager.register_pass<pass::ConvertTile>();
+    manager.register_pass<pass::ConvertConcat>();
     manager.register_pass<pass::FinalizeTrailingNodes>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);

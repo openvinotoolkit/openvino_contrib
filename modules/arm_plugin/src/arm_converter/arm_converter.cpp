@@ -62,7 +62,6 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Add>();
     Register<opset::Subtract>();
     Register<opset::Multiply>();
-    Register<opset::Concat>();
     Register<opset::Reshape>();
     Register<opset::Squeeze>();
     Register<opset::Unsqueeze>();
@@ -116,8 +115,11 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::ReorgYolo>();
     Register<opset::BatchToSpace>();
     Register<opset::SpaceToBatch>();
+    Register<opset::ArmConvert>();
+    Register<opset::ArmConcat>();
     if (ref) {
         Register<opset::MVN>();
+        Register<opset::Concat>();
         Register<opset::ROIPooling>();
         Register<opset::PSROIPooling>();
         Register<opset::TopK>();

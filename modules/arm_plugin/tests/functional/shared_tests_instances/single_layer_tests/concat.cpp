@@ -59,4 +59,21 @@ INSTANTIATE_TEST_CASE_P(Concat2DTest, ConcatLayerTest,
                                 ::testing::Values("ARM")),
                         ConcatLayerTest::getTestCaseName);
 
+std::vector<size_t> axes5D = {0, 1, 2, 3, 4};
+std::vector<std::vector<std::vector<size_t>>> inShapes5D = {
+        {{2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}},
+};
+
+INSTANTIATE_TEST_CASE_P(Concat5DTest, ConcatLayerTest,
+                        ::testing::Combine(
+                                ::testing::ValuesIn(axes5D),
+                                ::testing::ValuesIn(inShapes5D),
+                                ::testing::ValuesIn(netPrecisions),
+                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                ::testing::Values(InferenceEngine::Layout::ANY),
+                                ::testing::Values(InferenceEngine::Layout::ANY),
+                                ::testing::Values("ARM")),
+                        ConcatLayerTest::getTestCaseName);
+
 }  // namespace
