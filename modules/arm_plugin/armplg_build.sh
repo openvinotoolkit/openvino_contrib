@@ -29,6 +29,19 @@ fail()
     exit $retval
 }
 
+cloneSrcTree()
+{
+    DESTDIR=$1
+    shift
+    SRCURL=$1
+    shift
+    while [ "$#" -gt "0" ]; do
+        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
+        shift
+    done
+    return 1
+}
+
 checkSrcTree()
 {
     [ $# -lt 3 ] && fail
@@ -36,7 +49,7 @@ checkSrcTree()
     if ! [ -d $1 ]; then
         echo "Unable to detect $1"
         echo "Cloning $2..."
-        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
+        cloneSrcTree $@ || fail 3 "Failed to clone $2. Stopping"
     else
         echo "Detected $1"
         echo "Considering it as source directory"
@@ -45,7 +58,7 @@ checkSrcTree()
             echo "Removing existing sources..."
             rm -rf $1 || fail 1 "Failed to remove. Stopping"
             echo "Cloning $2..."
-            git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$3 $2 $1 || fail 3 "Failed to clone $2. Stopping"
+            cloneSrcTree $@ || fail 3 "Failed to clone $2. Stopping"
         elif [ -d $1/build ]; then
             echo "Build directory detected at $1"
             if [ "$UPDATE_SOURCES" = "clean" ]; then
