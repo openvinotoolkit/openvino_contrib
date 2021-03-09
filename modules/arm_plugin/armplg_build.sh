@@ -35,7 +35,7 @@ cloneSrcTree()
     shift
     SRCURL=$1
     shift
-    while [ "$#" -gt "0" ]; do
+    while [ $# -gt 0 ]; do
         git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
         shift
     done
