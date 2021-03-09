@@ -108,6 +108,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobFloat(JNIEnv *env, jobj
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *env, jobject obj, jlong tensorDescAddr, jlong matDataAddr)
 {
     static const char method_name[] = "BlobCArray";
+    Blob::Ptr *blob = nullptr;
     try
     {
         TensorDesc *tDesc = (TensorDesc *)tensorDescAddr;
@@ -115,7 +116,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *env, job
         auto precision = tDesc->getPrecision();
 
         std::vector<size_t> dims = tDesc->getDims();
-        Blob::Ptr *blob = new Blob::Ptr();
+        blob = new Blob::Ptr();
 
         switch (precision) {
             case Precision::FP32:
@@ -166,10 +167,16 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Blob_BlobCArray(JNIEnv *env, job
     }
     catch (const std::exception &e)
     {
+        if (blob) {
+            delete blob;
+        }
         throwJavaException(env, &e, method_name);
     }
     catch (...)
     {
+        if (blob) {
+            delete blob;
+        }
         throwJavaException(env, 0, method_name);
     }
 
