@@ -4,93 +4,119 @@
 #include <details/ie_exception.hpp>
 
 #include <arm_compute/runtime/NEON/functions/NEScale.h>
+#include <ngraph/runtime/reference/interpolate.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 
-using Nearest_mode    = ngraph::op::v4::Interpolate::NearestMode;
 using Transform_mode  = ngraph::op::v4::Interpolate::CoordinateTransformMode;
-using InterpolateMode = ngraph::op::v4::Interpolate::InterpolateMode;
-
-
-bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
-    auto& inp_shape = node.get_input_shape(0);
-    auto& out_shape = node.get_output_shape(0);
-
-    float scale_h = out_shape[2] / inp_shape[2];
-    float scale_w = out_shape[3] / inp_shape[3];
-    bool is_upsample = scale_h > 1 && scale_w > 1;
-
-    auto& attrs = node.get_attrs();
-    auto& coord_mode = attrs.coordinate_transformation_mode;
-    auto& nearest_mode = attrs.nearest_mode;
-
-    if (coord_mode == Transform_mode::asymmetric && nearest_mode == Nearest_mode::floor) {
-        return true;
-    }
-
-    if (coord_mode == Transform_mode::align_corners && nearest_mode == Nearest_mode::round_prefer_ceil) {
-        return true;
-    }
-
-    if (is_upsample) {
-        if (coord_mode == Transform_mode::asymmetric && nearest_mode == Nearest_mode::simple) {
-            return true;
-        }
-
-        bool int_factor = scale_h == static_cast<int>(scale_h) && scale_w == static_cast<int>(scale_w);
-        if (int_factor && coord_mode != Transform_mode::asymmetric &&
-            (nearest_mode == Nearest_mode::round_prefer_ceil || nearest_mode == Nearest_mode::round_prefer_floor)) {
-            return true;
-        }
-    } else {
-        float down_scale_h = inp_shape[2] / out_shape[2];
-        float down_scale_w = inp_shape[3] / out_shape[3];
-        bool int_factor = down_scale_h == static_cast<int>(down_scale_h) && down_scale_w == static_cast<int>(down_scale_w);
-
-        if (int_factor && coord_mode != Transform_mode::align_corners && nearest_mode == Nearest_mode::simple) {
-            return true;
-        }
-
-        if (int_factor && nearest_mode == Nearest_mode::round_prefer_ceil &&
-            ((out_shape[2] > 1 && out_shape[3] > 1) || coord_mode != Transform_mode::half_pixel)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 
 namespace ArmPlugin {
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolate& node) {
-    auto& attrs = node.get_attrs();
-    auto& inp_shape = node.get_input_shape(0);
-    auto& out_shape = node.get_output_shape(0);
+static void pad_input_data(const uint8_t* data_ptr,
+                           uint8_t* padded_data_ptr,
+                           size_t type_size,
+                           const ngraph::Shape& input_shape,
+                           const ngraph::Shape& padded_input_shape,
+                           const std::vector<size_t>& pads_begin) {
+    ngraph::CoordinateTransform input_transform(input_shape);
+    ngraph::CoordinateTransform padded_transform(padded_input_shape);
 
-    if (inp_shape.size() != 4 || inp_shape[0] != out_shape[0] || inp_shape[1] != out_shape[1]) {
-        THROW_IE_EXCEPTION << "Unsupported Interpolate op with input shape: " << inp_shape
-                           << " and output shape: " << out_shape;
+    for (const ngraph::Coordinate& input_coord : input_transform) {
+        auto padded_coord = input_coord;
+        size_t i = 0;
+        for (size_t pad : pads_begin) {
+            padded_coord[i] += pad;
+            ++i;
+        }
+        uint8_t* dst_ptr = padded_data_ptr + type_size * padded_transform.index(padded_coord);
+        const uint8_t* src_ptr = data_ptr + type_size * input_transform.index(input_coord);
+        std::memcpy(dst_ptr, src_ptr, type_size);
     }
+}
 
+template <typename T, typename U>
+void wrap_interpolate(const T* input_data,
+                      const ngraph::Shape& input_shape,
+                      const T* scales,
+                      const ngraph::Shape& scales_shape,
+                      const U* axes,
+                      const ngraph::Shape& axes_shape,
+                      T* out,
+                      const ngraph::Shape& out_shape,
+                      const ngraph::op::v4::Interpolate::InterpolateAttrs& attrs) {
     auto& pads_begin = attrs.pads_begin;
     auto& pads_end   = attrs.pads_end;
-    if (!std::all_of(pads_begin.begin(), pads_begin.end(), [](int i){return i == 0;}) ||
-        !std::all_of(pads_end.begin(), pads_end.end(), [](int i){return i == 0;})) {
-        THROW_IE_EXCEPTION << "Unsupported Interpolate op with paddings";
+    ngraph::Shape padded_shape = input_shape;
+    for (size_t i = 0; i < pads_begin.size(); i++) {
+        padded_shape[i] += pads_begin[i] + pads_end[i];
     }
 
-    if (attrs.antialias) {
-        THROW_IE_EXCEPTION << "Unsupported Interpolate op with antialias";
+    auto type_size = sizeof(T);
+    std::vector<uint8_t> padded_input_data(ngraph::shape_size(padded_shape) * type_size, 0);
+    const uint8_t* data_ptr  = reinterpret_cast<const uint8_t*>(input_data);
+    uint8_t* padded_data_ptr = padded_input_data.data();
+
+    pad_input_data(data_ptr, padded_data_ptr, type_size, input_shape, padded_shape, pads_begin);
+
+    auto scales_size = ngraph::shape_size(scales_shape);
+    std::vector<float> scales_vec;
+    if (attrs.shape_calculation_mode == ngraph::op::v4::Interpolate::ShapeCalcMode::sizes) {
+        for (size_t i = 0; i < scales_size; i++) {
+            auto axis = axes[i];
+            scales_vec.push_back(static_cast<float>(out_shape[axis]) / padded_shape[axis]);
+        }
+    } else {
+        scales_vec = std::vector<float>(scales, scales + scales_size);
     }
 
-    auto& nearest_mode = attrs.nearest_mode;
-    auto& coord_mode   = attrs.coordinate_transformation_mode;
-    if (coord_mode == Transform_mode::tf_half_pixel_for_nn) {
-        THROW_IE_EXCEPTION << "Unsupported Interpolate op with Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn";
-    }
+    auto axes_size = ngraph::shape_size(axes_shape);
+    std::vector<int64_t> axes_vec(axes, axes + axes_size);
+    ngraph::runtime::reference::interpolate<T>(reinterpret_cast<T*>(padded_data_ptr),
+                                               padded_shape,
+                                               scales_vec,
+                                               axes_vec,
+                                               out,
+                                               out_shape,
+                                               attrs);
+}
 
-    if (nearest_mode == Nearest_mode::ceil) {
-        THROW_IE_EXCEPTION << "Unsupported Interpolate op with ceil mode";
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolate& node) {
+    auto make = [&] (auto refFunction) {
+        return MakeConversion(refFunction,
+                                node.input(0),
+                                node.get_input_shape(0),
+                                node.input(2),
+                                node.get_input_shape(2),
+                                node.input(3),
+                                node.get_input_shape(3),
+                                node.output(0),
+                                node.get_output_shape(0),
+                                node.get_attrs());
+    };
+
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 :
+            if (node.get_input_element_type(3) == ngraph::element::i32) {
+                return make(wrap_interpolate<half_float::half, std::int32_t>);
+            }
+            return make(wrap_interpolate<half_float::half, std::int64_t>);
+        case ngraph::element::Type_t::f32 :
+            if (node.get_input_element_type(3) == ngraph::element::i32) {
+                return make(wrap_interpolate<float, std::int32_t>);
+            }
+            return make(wrap_interpolate<float, std::int64_t>);
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+    }
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpolate& node) {
+    auto& attrs = node.get_attrs();
+    auto& coord_mode = attrs.coordinate_transformation_mode;
+
+    arm_compute::SamplingPolicy coord = arm_compute::SamplingPolicy::TOP_LEFT;
+    auto& out_shape = node.get_output_shape(0);
+    if ((coord_mode == Transform_mode::pytorch_half_pixel && out_shape[2] > 1 && out_shape[3] > 1) ||
+        coord_mode == Transform_mode::half_pixel) {
+        coord = arm_compute::SamplingPolicy::CENTER;
     }
 
     arm_compute::InterpolationPolicy policy;
@@ -104,16 +130,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
             break;
         default:
             THROW_IE_EXCEPTION << "Unsupported interpolate mode";
-    }
-
-    if (policy == arm_compute::InterpolationPolicy::NEAREST_NEIGHBOR && !isSupportedConfiguration(node)) {
-        THROW_IE_EXCEPTION << "Unsupported combination nearest_mode and coord_mode for Interpolate op";
-    }
-
-    arm_compute::SamplingPolicy coord = arm_compute::SamplingPolicy::TOP_LEFT;
-    if ((coord_mode == Transform_mode::pytorch_half_pixel && out_shape[2] > 1 && out_shape[3] > 1) ||
-        coord_mode == Transform_mode::half_pixel) {
-        coord = arm_compute::SamplingPolicy::CENTER;
     }
 
     return MakeConversion<arm_compute::NEScale>(node.input(0),

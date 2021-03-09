@@ -8,6 +8,7 @@
 #include "conv_arm.hpp"
 #include "convert_arm.hpp"
 #include "group_conv_arm.hpp"
+#include "interpolate_arm.hpp"
 #include "matmul_bias.hpp"
 #include "mvn_arm.hpp"
 #include "ngraph_opset.hpp"
