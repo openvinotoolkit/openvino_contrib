@@ -43,7 +43,7 @@ docker container run --rm -ti -v $PWD/build:/armcpu_plugin arm-plugin
 or export only the archive with artifacts:
 ```
 docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote \
-                     arm-plugin sh -c "/armplg_build.sh && cp ./OV_ARM_package.tar.gz /remote"
+                     arm-plugin sh -c "sh /armplg_build.sh && cp ./OV_ARM_package.tar.gz /remote"
 ```
 > **NOTE**: There are a few environment variables that control `/armplg_build.sh` script execution.
 >
