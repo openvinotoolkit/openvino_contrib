@@ -97,7 +97,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& 
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
     };
     if (node.input(0).get_element_type() != ngraph::element::f32) {
         THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
