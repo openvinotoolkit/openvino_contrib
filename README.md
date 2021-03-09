@@ -29,12 +29,6 @@ As the result, OpenVINO will be built in the <openvino_build_directory> with all
 $ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_java_api=OFF <openvino_source_directory>
 ```
 
-To turn off building one of these module repositories, set the names in bold below to
-
-```sh
-$ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_<module name>=OFF <openvino_source_directory>
-```
-
 Additional build instructions are available for the following modules:
 
 * [**arm_plugin**](./modules/arm_plugin/README.md)
