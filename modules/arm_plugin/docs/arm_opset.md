@@ -55,7 +55,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                | Supported     |
 | [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                          | Supported**   |
 | [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_1.md)                                                | Supported*    |
-| [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                | Not Supported |
+| [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                | Supported**   |
 | [GatherND_5](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherND_5.md)                                          | Supported**   |
 | [GatherTree](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherTree_1.md)                                        | Supported**   |
 | [Gelu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/GELU_7.md)                                                  | Supported**   |
