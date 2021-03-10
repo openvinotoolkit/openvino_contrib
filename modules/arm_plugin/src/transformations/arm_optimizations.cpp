@@ -53,6 +53,7 @@
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
 #include "convert_interpolate_arm.hpp"
+#include "convert_pool1d_to_pool2d.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
 #include "transformations/convert_prior_box_to_const.hpp"
@@ -130,6 +131,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertMVN1ToMVN6>();
     manager.register_pass<pass::ConvertMVN>();
     manager.register_pass<pass::ConvertReorgYolo>();
+    manager.register_pass<pass::ConvertMaxPool1D>();
+    manager.register_pass<pass::ConvertAvgPool1D>();
 
     manager.register_pass<pass::ConvertPriorBox>();
     manager.register_pass<pass::ConvertPriorBoxClustered>();
