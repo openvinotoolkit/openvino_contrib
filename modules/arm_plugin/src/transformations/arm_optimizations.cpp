@@ -56,8 +56,6 @@
 #include "convert_pool1d_to_pool2d.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
-#include "transformations/convert_prior_box_to_const.hpp"
-#include "transformations/convert_prior_box_clustered_to_const.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -133,9 +131,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertReorgYolo>();
     manager.register_pass<pass::ConvertMaxPool1D>();
     manager.register_pass<pass::ConvertAvgPool1D>();
-
-    manager.register_pass<pass::ConvertPriorBox>();
-    manager.register_pass<pass::ConvertPriorBoxClustered>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();
