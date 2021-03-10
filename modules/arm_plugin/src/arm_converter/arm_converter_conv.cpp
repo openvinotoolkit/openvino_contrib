@@ -14,7 +14,7 @@ using FUNC = opset::ActivationFunction;
 
 enum Input {Features, Weights, Bias};
 template<typename Conv>
-static auto ConvParamters(const Conv& node) {
+static auto ConvParameters(const Conv& node) {
     unsigned int pad_l    = node.get_pads_begin().at(D2::W);
     unsigned int pad_r    = node.get_pads_end().at(D2::W);
     unsigned int pad_t    = node.get_pads_begin().at(D2::H);
@@ -52,7 +52,7 @@ static arm_compute::ActivationLayerInfo GetActivation(const Conv& node) {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolution& node) {
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
-    std::tie(conv_info, dilation) = ConvParamters(node);
+    std::tie(conv_info, dilation) = ConvParameters(node);
     auto act_info = GetActivation(node);
     if (node.get_input_size() == 3) {
         return MakeConversion<arm_compute::NEConvolutionLayer>(
@@ -83,7 +83,7 @@ static auto MakeWeightsArgument(const opset::GroupConvolution& node) {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupConvolution& node) {
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
-    std::tie(conv_info, dilation) = ConvParamters(node);
+    std::tie(conv_info, dilation) = ConvParameters(node);
     auto act_info = GetActivation(node);
     if (node.get_input_size() == 3) {
         return MakeConversion<arm_compute::NEDepthwiseConvolutionLayer>(
