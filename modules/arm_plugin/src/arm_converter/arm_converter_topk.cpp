@@ -9,7 +9,7 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::TopK& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.output(1),
                               node.output(0),

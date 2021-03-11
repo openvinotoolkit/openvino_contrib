@@ -13,7 +13,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCLoss& n
     }
 
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.get_input_shape(0),
                               node.input(1),
@@ -25,7 +25,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCLoss& n
                               node.get_unique(),
                               node.output(0));
     };
-        switch (node.get_input_element_type(0)) {
+    switch (node.get_input_element_type(0)) {
         // case ngraph::element::Type_t::f16 :
         //     if (node.get_input_element_type(1) == ngraph::element::i32) {
         //         return make(ngraph::runtime::reference::CTCLoss<half_float::half, std::int32_t>);

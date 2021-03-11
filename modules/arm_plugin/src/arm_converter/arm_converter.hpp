@@ -316,10 +316,12 @@ struct Converter {
                     void* host_ptr = static_cast<void*>(hostsArgument._hosts[i]->get_data_ptr());
                     void* tensor_ptr = static_cast<void*>(hostsArgument._tensors[i]->buffer());
                     if (host_ptr != tensor_ptr) {
+                        IE_SUPPRESS_DEPRECATED_START
                         hostsArgument._hosts[i] = std::make_shared<ngraph::HostTensor>(hostsArgument._hosts[i]->get_element_type(),
                                                                hostsArgument._hosts[i]->get_shape(),
                                                                tensor_ptr,
                                                                hostsArgument._hosts[i]->get_name());
+                        IE_SUPPRESS_DEPRECATED_END
                     }
                     if (hostsArgument._tensors[i]->info()->has_padding()) {
                         if (hostsArgument._type == type) {
@@ -399,10 +401,12 @@ struct Converter {
         Argument<ngraph::HostTensorVector> MakeArgument(ngraph::HostTensorVector& hosts) {
             std::vector<arm_compute::ITensor*> tensors;
             for (size_t i = 0; i < hosts.size(); i++) {
+                IE_SUPPRESS_DEPRECATED_START
                 if (_converter._layers.find(hosts[i]->get_name()) == _converter._layers.end()) {
                     THROW_IE_EXCEPTION << "Output " << hosts[i]->get_name() << " was not allocated";
                 }
                 tensors.push_back(_converter._layers.at(hosts[i]->get_name())._outputs.at(i).get());
+                IE_SUPPRESS_DEPRECATED_END
             }
             return {hosts, tensors, ArgumentType::Output};
         }

@@ -26,7 +26,7 @@ void wrap_one_hot(const Indices* arg,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::OneHot& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.output(0),
                               node.get_input_shape(0),

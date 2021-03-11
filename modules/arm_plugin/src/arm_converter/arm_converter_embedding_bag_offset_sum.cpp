@@ -10,7 +10,7 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingBagOffsetsSum& node) {
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 4) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -20,7 +20,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
                                   ngraph::shape_size(node.get_input_shape(1)),
                                   node.get_shape());
         } else if (node.get_input_size() > 3) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -30,7 +30,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
                                   ngraph::shape_size(node.get_input_shape(1)),
                                   node.get_shape());
         } else {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),

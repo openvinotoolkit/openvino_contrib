@@ -39,7 +39,7 @@ void wrap_scatter_update(const T* input_data,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ScatterUpdate& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.input(2),
