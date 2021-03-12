@@ -26,7 +26,7 @@ void detection_output(const T* _location,
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionOutput& node) {
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() == 3) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -38,7 +38,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionO
                                   node.get_input_shape(2),
                                   node.get_output_shape(0));
         }
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.input(2),

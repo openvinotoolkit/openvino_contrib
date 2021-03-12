@@ -21,7 +21,7 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acos<half_float::half>);
@@ -32,7 +32,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acosh<half_float::half>);
@@ -43,7 +43,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& nod
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asin<half_float::half>);
@@ -54,7 +54,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asinh& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asinh<half_float::half>);
@@ -65,7 +65,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asinh& nod
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atan& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atan<half_float::half>);
@@ -76,7 +76,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atan& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atanh<half_float::half>);
@@ -87,7 +87,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cos<half_float::half>);
@@ -98,7 +98,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node)
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cosh& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cosh<half_float::half>);
@@ -113,7 +113,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sin& node)
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::sinh<half_float::half>);
@@ -124,7 +124,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::tan<half_float::half>);
@@ -135,7 +135,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node)
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Erf& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::erf<half_float::half>);

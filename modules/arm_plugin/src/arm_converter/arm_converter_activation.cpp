@@ -87,7 +87,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Log& node)
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     if (node.input(0).get_element_type() != ngraph::element::f32) {
         THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
@@ -97,7 +97,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& 
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
     };
     if (node.input(0).get_element_type() != ngraph::element::f32) {
         THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
@@ -107,7 +107,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoid& node) {
     auto make = [&] (auto refFunction, auto alpha, auto beta) {
-        return MakeConversion(refFunction, node.input(0), alpha, beta, node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        return this->MakeConversion(refFunction, node.input(0), alpha, beta, node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
 
     if (node.input(0).get_element_type() != ngraph::element::f32) {
@@ -123,7 +123,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.input(2),

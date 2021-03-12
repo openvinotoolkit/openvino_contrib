@@ -13,7 +13,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GroupConvo
         auto out_shape = node.get_shape();
         ngraph::Strides in_dilation(std::vector<size_t>(node.get_input_shape(0).size() - 2));
         std::fill(in_dilation.begin(), in_dilation.end(), 1);
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.output(0),

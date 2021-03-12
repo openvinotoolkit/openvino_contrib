@@ -34,7 +34,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& no
         for (const auto& input : node.inputs()) {
             in_shapes.push_back(input.get_shape());
         }
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.inputs(),
                               node.output(0),
                               in_shapes,

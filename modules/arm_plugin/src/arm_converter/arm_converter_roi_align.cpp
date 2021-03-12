@@ -43,7 +43,7 @@ static void wrapper_roi_align(const T* feature_maps,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIAlign& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.input(2),

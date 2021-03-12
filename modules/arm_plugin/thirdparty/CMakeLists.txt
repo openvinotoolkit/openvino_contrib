@@ -72,6 +72,8 @@ else()
 
     if(ANDROID)
         list(APPEND ARM_COMPUTE_OPTIONS os=android)
+    elseif(APPLE)
+        list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
     if(NOT CMAKE_CROSSCOMPILING)

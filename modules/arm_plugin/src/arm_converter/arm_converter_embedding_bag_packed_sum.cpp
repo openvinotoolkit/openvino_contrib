@@ -10,7 +10,7 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingBagPackedSum& node) {
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 2) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -18,7 +18,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
                                   node.get_input_shape(1),
                                   node.get_shape());
         } else {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   nullptr,

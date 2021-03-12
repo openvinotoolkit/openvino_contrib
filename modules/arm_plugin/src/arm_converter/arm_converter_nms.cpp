@@ -148,7 +148,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSupp
 
         ngraph::element::Type selected_scores_type = node.get_input_size() < 4 ?
                                                      ngraph::element::f32 : node.input(3).get_element_type();
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.get_input_shape(0),
                               node.input(1),

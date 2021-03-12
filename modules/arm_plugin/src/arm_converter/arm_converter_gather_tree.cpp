@@ -32,7 +32,7 @@ void wrap_gather_tree(const T* step_ids,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherTree& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.input(1),
                               node.input(2),

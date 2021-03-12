@@ -13,7 +13,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherND& 
     }
 
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0), node.input(1), node.output(0),
                               node.get_input_shape(0), node.get_input_shape(1), node.get_output_shape(0),
                               static_cast<int>(node.get_batch_dims()));
