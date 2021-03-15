@@ -42,7 +42,7 @@ INSTANTIATE_TEST_CASE_P(MaxPool1D_FloorRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 const auto maxPool1D_CeilRounding_Params = ::testing::Combine(
@@ -66,7 +66,7 @@ INSTANTIATE_TEST_CASE_P(MaxPool1D_CeilRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t>({1, 3, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 //* ========== 1D AvgPooling ========== */
@@ -90,7 +90,7 @@ INSTANTIATE_TEST_CASE_P(AvgPool1D_FloorRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 3, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 const auto avgPool1D_CeilRounding_Params = ::testing::Combine(
@@ -114,7 +114,7 @@ INSTANTIATE_TEST_CASE_P(AvgPool1D_CeilRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 3, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 /* ============= 2D MaxPooling ============= */
@@ -143,7 +143,7 @@ INSTANTIATE_TEST_CASE_P(MaxPool2D_FloorRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 const auto maxPool2D_CeilRounding_Params = ::testing::Combine(
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(MaxPool2D_CeilRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 //* ========== 2D AvgPooling ========== */
@@ -191,7 +191,7 @@ INSTANTIATE_TEST_CASE_P(AvgPool2D_FloorRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 3, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 
 const auto avgPool2D_CeilRounding_Params = ::testing::Combine(
@@ -215,6 +215,6 @@ INSTANTIATE_TEST_CASE_P(AvgPool2D_CeilRounding, PoolingLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 3, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         PoolingLayerTest::getTestCaseName);
 }  // namespace

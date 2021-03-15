@@ -42,7 +42,7 @@ const auto proposalParams = ::testing::Combine(
 INSTANTIATE_TEST_CASE_P(smoke_Proposal_tests, ProposalLayerTest,
                         ::testing::Combine(
                                 proposalParams,
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ProposalLayerTest::getTestCaseName
 );
 }  // namespace

@@ -15,7 +15,7 @@ InferenceEngine::CNNNetwork getTargetNetwork() {
 }
 
 std::vector<addOutputsParams> testCases = {
-        addOutputsParams(getTargetNetwork(), {"Memory_1"}, "ARM")
+        addOutputsParams(getTargetNetwork(), {"Memory_1"}, CommonTestUtils::DEVICE_CPU)
 };
 
 INSTANTIATE_TEST_CASE_P(DISABLED_AddOutputBasic, AddOutputsTest,

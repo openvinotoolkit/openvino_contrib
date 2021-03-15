@@ -36,10 +36,10 @@ ArmPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ngra
 
 void ArmPlugin::ExecutableNetwork::InitExecutor() {
     if (_cfg._exclusiveAsyncRequests) {
-        _taskExecutor = ExecutorManager::getInstance()->getExecutor("ARM");
+        _taskExecutor = ExecutorManager::getInstance()->getExecutor("CPU");
     } else {
         auto streamsExecutorConfig = InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(_cfg._streamsExecutorConfig);
-        streamsExecutorConfig._name = "ArmStreamsExecutor";
+        streamsExecutorConfig._name = "CPUStreamsExecutor";
         _taskExecutor = ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
     }
     _executor = _taskExecutor.get();

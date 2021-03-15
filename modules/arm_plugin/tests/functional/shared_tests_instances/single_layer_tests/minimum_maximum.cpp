@@ -50,7 +50,7 @@ INSTANTIATE_TEST_CASE_P(minmax, MaxMinLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputType),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         MaxMinLayerTest::getTestCaseName);
 
 }  // namespace

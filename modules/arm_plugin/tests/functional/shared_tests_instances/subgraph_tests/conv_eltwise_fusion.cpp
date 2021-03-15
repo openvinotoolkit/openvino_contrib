@@ -33,7 +33,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{20, 3, 3, 3}),
                                     ::testing::ValuesIn(const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_Convolution_2D_4ops, ConvEltwiseFusion,
@@ -44,7 +44,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{20, 3, 3, 3}),
                                     ::testing::Values(ngraph::Shape{1, 20, 22, 22}),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_GroupConvolution_2D, ConvEltwiseFusion,
@@ -55,7 +55,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{4, 5, 3, 5, 5}),
                                     ::testing::ValuesIn(const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_DepthwiseConvolution_2D, ConvEltwiseFusion,
@@ -66,7 +66,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{20, 1, 1, 3, 3}),
                                     ::testing::ValuesIn(const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     const std::vector<ngraph::Shape> neg_const_shapes_2d{
@@ -88,7 +88,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{3, 3, 1, 1}),
                                     ::testing::ValuesIn(neg_const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     const std::vector<ngraph::Shape> fused_neg_const_shapes_2d{
@@ -104,7 +104,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{3, 3, 1, 1}),
                                     ::testing::ValuesIn(fused_neg_const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_GroupConvolution_2D_Negative, ConvEltwiseFusion,
@@ -115,7 +115,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{4, 5, 3, 1, 1}),
                                     ::testing::ValuesIn(neg_const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_DepthwiseConvolution_2D_Negative, ConvEltwiseFusion,
@@ -126,6 +126,6 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(ngraph::Shape{3, 1, 1, 1, 1}),
                                     ::testing::ValuesIn(neg_const_shapes_2d),
                                     ::testing::ValuesIn(types),
-                                    ::testing::Values("ARM")),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 }  // namespace

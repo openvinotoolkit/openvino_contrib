@@ -38,7 +38,7 @@ const auto normL2params2D = testing::Combine(
         testing::ValuesIn(epsModes),
         testing::Values(std::vector<size_t>{10, 5}),
         testing::ValuesIn(netPrecisions),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -64,7 +64,7 @@ const auto normL2DecomposeParams4D = testing::Combine(
         testing::Values(ngraph::op::EpsMode::ADD),
         testing::Values(std::vector<size_t>{2, 3, 10, 5}),
         testing::ValuesIn(netPrecisions),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(

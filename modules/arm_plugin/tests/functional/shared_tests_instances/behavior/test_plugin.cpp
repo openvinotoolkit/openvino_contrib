@@ -18,7 +18,7 @@ namespace {
     };
 
     const std::vector<std::map<std::string, std::string>> MultiConfigs = {
-            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , "ARM"}}
+            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
     };
 
     const std::vector<std::map<std::string, std::string>> configsInput = {
@@ -27,8 +27,8 @@ namespace {
     };
 
     const std::vector<std::map<std::string, std::string>> MultiConfigsInputOutput = {
-            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , "ARM"}},
-            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , "ARM"},
+            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU}},
+            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU},
              {InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS, InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}}
     };
 
@@ -40,7 +40,7 @@ namespace {
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, BehaviorTestOutput,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configsOutput)),
                             BehaviorTestOutput::getTestCaseName);
 
@@ -54,7 +54,7 @@ namespace {
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, BehaviorTests,
                             ::testing::Combine(
                                     ::testing::Values(InferenceEngine::Precision::FP32),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
                             BehaviorTests::getTestCaseName);
 
@@ -68,7 +68,7 @@ namespace {
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, BehaviorTestInput,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configsInput)),
                             BehaviorTestInput::getTestCaseName);
 

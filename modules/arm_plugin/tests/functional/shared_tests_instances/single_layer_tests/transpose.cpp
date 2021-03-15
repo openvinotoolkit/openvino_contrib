@@ -28,7 +28,7 @@ INSTANTIATE_TEST_CASE_P(Transpose2D, TransposeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::ValuesIn(inputShape2D),
-                ::testing::Values("ARM")),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                 TransposeLayerTest::getTestCaseName);
 
 // TODO: fix Transpose for tensors with equal dimensions
@@ -50,6 +50,6 @@ INSTANTIATE_TEST_CASE_P(Transpose4D, TransposeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::ValuesIn(inputShape4D),
-                ::testing::Values("ARM")),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                 TransposeLayerTest::getTestCaseName);
 }  // namespace

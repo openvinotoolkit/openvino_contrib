@@ -37,7 +37,7 @@ INSTANTIATE_TEST_CASE_P(Concat4DTest, ConcatLayerTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConcatLayerTest::getTestCaseName);
 
 
@@ -56,7 +56,7 @@ INSTANTIATE_TEST_CASE_P(Concat2DTest, ConcatLayerTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConcatLayerTest::getTestCaseName);
 
 std::vector<size_t> axes5D = {0, 1, 2, 3, 4};
@@ -73,7 +73,7 @@ INSTANTIATE_TEST_CASE_P(Concat5DTest, ConcatLayerTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConcatLayerTest::getTestCaseName);
 
 }  // namespace

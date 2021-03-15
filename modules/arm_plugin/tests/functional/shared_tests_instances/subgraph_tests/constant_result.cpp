@@ -39,7 +39,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Check, ConstantResultSubgraphTest,
                             ::testing::ValuesIn(types),
                             ::testing::ValuesIn(shapes),
                             ::testing::ValuesIn(precisions),
-                            ::testing::Values("ARM")),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConstantResultSubgraphTest::getTestCaseName);
 
 } // namespace

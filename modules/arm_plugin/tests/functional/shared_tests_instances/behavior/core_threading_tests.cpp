@@ -7,13 +7,13 @@
 namespace {
 
 const Params params[] = {
-    std::tuple<Device, Config> { "ARM", { { CONFIG_KEY(PERF_COUNT), CONFIG_VALUE(YES) } } },
-//   std::tuple<Device, Config> { CommonTestUtils::DEVICE_HETERO, { { "TARGET_FALLBACK", "ARM" } } },
-//   std::tuple<Device, Config> { CommonTestUtils::DEVICE_MULTI, { { MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , "ARM" } } }
+    std::tuple<Device, Config> { CommonTestUtils::DEVICE_CPU, { { CONFIG_KEY(PERF_COUNT), CONFIG_VALUE(YES) } } },
+//   std::tuple<Device, Config> { CommonTestUtils::DEVICE_HETERO, { { "TARGET_FALLBACK", CommonTestUtils::DEVICE_CPU } } },
+//   std::tuple<Device, Config> { CommonTestUtils::DEVICE_MULTI, { { MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU } } }
 };
 
 const Params paramsStreams[] = {
-    std::tuple<Device, Config> { "ARM", { { CONFIG_KEY(CPU_THROUGHPUT_STREAMS), CONFIG_VALUE(CPU_THROUGHPUT_AUTO) } } }
+    std::tuple<Device, Config> { CommonTestUtils::DEVICE_CPU, { { CONFIG_KEY(CPU_THROUGHPUT_STREAMS), CONFIG_VALUE(CPU_THROUGHPUT_AUTO) } } }
 };
 
 

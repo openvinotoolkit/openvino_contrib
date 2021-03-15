@@ -70,7 +70,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>{2, 8, 30}),
-        ::testing::Values("ARM")),
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     GroupConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({2, 8, 30})),
-        ::testing::Values("ARM")),
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     GroupConvolutionLayerTest::getTestCaseName);
 
 /* ============= 2D GroupConvolution ============= */
@@ -124,7 +124,7 @@ INSTANTIATE_TEST_CASE_P(GroupConvolution2D_ExplicitPadding, GroupConvolutionLaye
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 8, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(GroupConvolution2D_AutoPadValid, GroupConvolutionLayerTest,
@@ -136,6 +136,6 @@ INSTANTIATE_TEST_CASE_P(GroupConvolution2D_AutoPadValid, GroupConvolutionLayerTe
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t >({1, 8, 30, 30})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvolutionLayerTest::getTestCaseName);
 } // namespace

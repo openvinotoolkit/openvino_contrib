@@ -182,7 +182,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/
 4. Run object detection C++ demo:
 ```
 ./object_detection_demo -i <sample_videos_dir>/sample-videos/people-detection.mp4 -labels <labels_dir>/coco_80cl.txt \
-                        -at yolo -m <model_dir>/yolo-v3-tiny-tf/FP32/yolo-v3-tiny-tf.xml -d ARM
+                        -at yolo -m <model_dir>/yolo-v3-tiny-tf/FP32/yolo-v3-tiny-tf.xml -d CPU
 ```
 On the output video you should see people enclosed in red rectangles:
 
@@ -209,7 +209,7 @@ wget https://raw.githubusercontent.com/openvinotoolkit/openvino/master/scripts/d
 5. Run object detection sample on ARM platform:
 ```
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD/lib
-./object_detection_sample_ssd -m vehicle-license-plate-detection-barrier-0123.xml -i car_1.bmp -d ARM
+./object_detection_sample_ssd -m vehicle-license-plate-detection-barrier-0123.xml -i car_1.bmp -d CPU
 ```
 
 On the output image you should see 2 cars enclosed in purple rectangles and a front plate enclosed in grey rectangle:
@@ -218,7 +218,7 @@ On the output image you should see 2 cars enclosed in purple rectangles and a fr
 
 One could try the plugin suitability and performance using not only OpenVINO™ samples but also Open Model Zoo demo applications and corresponding models. Demo applications could be built in accordance with [this guideline].
 
-The plugin utilizes standard OpenVINO™ plugin infrastructure so could be tried with any demo based on supported DL model. In order to run the chosen demo with the plugin one should use "–d ARM" command-line parameter.
+The plugin utilizes standard OpenVINO™ plugin infrastructure so could be tried with any demo based on supported DL model. In order to run the chosen demo with the plugin one should use "–d CPU" command-line parameter.
 
 ## Supported Configuration Parameters
 The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
