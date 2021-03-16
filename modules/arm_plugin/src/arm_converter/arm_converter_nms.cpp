@@ -149,20 +149,20 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSupp
         ngraph::element::Type selected_scores_type = node.get_input_size() < 4 ?
                                                      ngraph::element::f32 : node.input(3).get_element_type();
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.get_input_shape(0),
-                              node.input(1),
-                              node.get_input_shape(1),
-                              static_cast<int64_t>(node.max_boxes_output_from_input()),
-                              static_cast<float>(node.iou_threshold_from_input()),
-                              static_cast<float>(node.score_threshold_from_input()),
-                              static_cast<float>(node.soft_nms_sigma_from_input()),
-                              node.get_output_partial_shape(0).get_max_shape(),
-                              node.get_sort_result_descending(),
-                              node.output(0).get_element_type(),
-                              hosts,
-                              selected_scores_type,
-                              node.get_box_encoding());
+                                    node.input(0),
+                                    node.get_input_shape(0),
+                                    node.input(1),
+                                    node.get_input_shape(1),
+                                    static_cast<int64_t>(node.max_boxes_output_from_input()),
+                                    static_cast<float>(node.iou_threshold_from_input()),
+                                    static_cast<float>(node.score_threshold_from_input()),
+                                    static_cast<float>(node.soft_nms_sigma_from_input()),
+                                    node.get_output_partial_shape(0).get_max_shape(),
+                                    node.get_sort_result_descending(),
+                                    node.output(0).get_element_type(),
+                                    hosts,
+                                    selected_scores_type,
+                                    node.get_box_encoding());
     };
     return make(nms5);
 }

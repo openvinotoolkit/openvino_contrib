@@ -10,10 +10,10 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Round& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.output(0),
-                              ngraph::shape_size(node.get_input_shape(0)),
-                              node.get_mode());
+                                    node.input(0),
+                                    node.output(0),
+                                    ngraph::shape_size(node.get_input_shape(0)),
+                                    node.get_mode());
     };
 
     if (node.get_mode() != ngraph::op::v5::Round::RoundMode::HALF_TO_EVEN) {

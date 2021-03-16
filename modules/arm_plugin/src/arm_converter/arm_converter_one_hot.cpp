@@ -42,16 +42,16 @@ namespace ArmPlugin {
         if (axis < 0)
             axis += out_rank;
         auto make = [&] (auto refFunction) {
-            return MakeConversion(refFunction,
-                                  node.input(0),
-                                  ind_shape,
-                                  node.output(0),
-                                  out_shape,
-                                  node.get_output_element_type(0).size(),
-                                  node.input(1),
-                                  axis,
-                                  node.input(2),
-                                  node.input(3));
+            return this->MakeConversion(refFunction,
+                                        node.input(0),
+                                        ind_shape,
+                                        node.output(0),
+                                        out_shape,
+                                        node.get_output_element_type(0).size(),
+                                        node.input(1),
+                                        axis,
+                                        node.input(2),
+                                        node.input(3));
         };
         ngraph::element::Type_t inputType = node.get_input_element_type(0);
         ngraph::element::Type_t depthType = node.get_input_element_type(1);

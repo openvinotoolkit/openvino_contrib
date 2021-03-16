@@ -11,20 +11,20 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 2) {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  node.output(0),
-                                  node.get_input_shape(1),
-                                  node.get_shape());
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        node.output(0),
+                                        node.get_input_shape(1),
+                                        node.get_shape());
         } else {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  nullptr,
-                                  node.output(0),
-                                  node.get_input_shape(1),
-                                  node.get_shape());
+                                        node.input(0),
+                                        node.input(1),
+                                        nullptr,
+                                        node.output(0),
+                                        node.get_input_shape(1),
+                                        node.get_shape());
         }
     };
     ngraph::element::Type_t indicesType = node.get_input_element_type(1);

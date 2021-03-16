@@ -82,15 +82,15 @@ void wrap_interpolate(const T* input_data,
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolate& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                                node.input(0),
-                                node.get_input_shape(0),
-                                node.input(2),
-                                node.get_input_shape(2),
-                                node.input(3),
-                                node.get_input_shape(3),
-                                node.output(0),
-                                node.get_output_shape(0),
-                                node.get_attrs());
+                                    node.input(0),
+                                    node.get_input_shape(0),
+                                    node.input(2),
+                                    node.get_input_shape(2),
+                                    node.input(3),
+                                    node.get_input_shape(3),
+                                    node.output(0),
+                                    node.get_output_shape(0),
+                                    node.get_attrs());
     };
 
     switch (node.get_input_element_type(0)) {

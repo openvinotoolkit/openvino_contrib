@@ -124,13 +124,13 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.input(1),
-                              node.input(2),
-                              node.output(0),
-                              ngraph::shape_size(node.get_input_shape(0)),
-                              ngraph::shape_size(node.get_input_shape(1)),
-                              ngraph::shape_size(node.get_input_shape(2)));
+                                    node.input(0),
+                                    node.input(1),
+                                    node.input(2),
+                                    node.output(0),
+                                    ngraph::shape_size(node.get_input_shape(0)),
+                                    ngraph::shape_size(node.get_input_shape(1)),
+                                    ngraph::shape_size(node.get_input_shape(2)));
     };
     if (node.input(0).get_element_type() != ngraph::element::f32) {
         THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();

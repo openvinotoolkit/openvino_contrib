@@ -10,13 +10,13 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCGreedyDecoder& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.input(1),
-                              node.output(0),
-                              node.get_input_shape(0),
-                              node.get_input_shape(1),
-                              node.get_output_shape(0),
-                              node.get_ctc_merge_repeated());
+                                    node.input(0),
+                                    node.input(1),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_input_shape(1),
+                                    node.get_output_shape(0),
+                                    node.get_ctc_merge_repeated());
     };
     switch (node.input(0).get_element_type()) {
         case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::ctc_greedy_decoder<half_float::half>);
