@@ -20,7 +20,7 @@ namespace {
 
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, HoldersTest,
             ::testing::Combine(
-            ::testing::Values("ARM"),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
             ::testing::ValuesIn(orders)),
             HoldersTest::getTestCaseName);
 

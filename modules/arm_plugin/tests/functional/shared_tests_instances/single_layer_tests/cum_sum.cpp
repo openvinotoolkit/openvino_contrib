@@ -37,7 +37,7 @@ const auto testCasesNegativeAxis = ::testing::Combine(
     ::testing::ValuesIn(negativeAxes),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCasesAxis_0 = ::testing::Combine(
@@ -46,7 +46,7 @@ const auto testCasesAxis_0 = ::testing::Combine(
     ::testing::Values(axes[0]),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCasesAxis_1 = ::testing::Combine(
@@ -55,7 +55,7 @@ const auto testCasesAxis_1 = ::testing::Combine(
     ::testing::Values(axes[1]),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCasesAxis_2 = ::testing::Combine(
@@ -64,7 +64,7 @@ const auto testCasesAxis_2 = ::testing::Combine(
     ::testing::Values(axes[2]),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCasesAxis_3 = ::testing::Combine(
@@ -73,7 +73,7 @@ const auto testCasesAxis_3 = ::testing::Combine(
     ::testing::Values(axes[3]),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCasesAxis_4 = ::testing::Combine(
@@ -82,7 +82,7 @@ const auto testCasesAxis_4 = ::testing::Combine(
     ::testing::Values(axes[4]),
     ::testing::ValuesIn(exclusive),
     ::testing::ValuesIn(reverse),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsCumSum_negative_axis, CumSumLayerTest, testCasesNegativeAxis, CumSumLayerTest::getTestCaseName);

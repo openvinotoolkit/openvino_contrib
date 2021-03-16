@@ -42,7 +42,7 @@ INSTANTIATE_TEST_CASE_P(MatMul, MatMulTest,
                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values("ARM"),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU),
                             ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
@@ -60,7 +60,7 @@ INSTANTIATE_TEST_CASE_P(MatMul2DTransposeA, MatMulTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values("ARM"),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
@@ -85,7 +85,7 @@ INSTANTIATE_TEST_CASE_P(MatMul4D, MatMulTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values("ARM"),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
@@ -104,7 +104,7 @@ INSTANTIATE_TEST_CASE_P(MatMul4DTransposeB, MatMulTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values("ARM"),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
@@ -122,7 +122,7 @@ INSTANTIATE_TEST_CASE_P(MatMul4DTransposeA, MatMulTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values("ARM"),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
@@ -134,7 +134,7 @@ INSTANTIATE_TEST_CASE_P(MatMul4DTransposeAB, MatMulTest,
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values("ARM"),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 

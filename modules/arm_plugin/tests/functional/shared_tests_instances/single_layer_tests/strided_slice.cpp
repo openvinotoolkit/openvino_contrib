@@ -90,7 +90,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP32,
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
             ::testing::Values(InferenceEngine::Layout::ANY),
             ::testing::Values(InferenceEngine::Layout::ANY),
-            ::testing::Values("ARM"),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
             ::testing::Values(std::map<std::string, std::string>())),
         StridedSliceLayerTest::getTestCaseName);
 
@@ -103,7 +103,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP16,
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
             ::testing::Values(InferenceEngine::Layout::ANY),
             ::testing::Values(InferenceEngine::Layout::ANY),
-            ::testing::Values("ARM"),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU),
             ::testing::Values(std::map<std::string, std::string>())),
         StridedSliceLayerTest::getTestCaseName);
 }  // namespace

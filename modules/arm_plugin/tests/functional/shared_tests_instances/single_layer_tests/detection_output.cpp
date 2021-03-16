@@ -47,7 +47,7 @@ const auto params3Inputs = ::testing::Combine(
         ::testing::ValuesIn(specificParams3In),
         ::testing::ValuesIn(numberBatch),
         ::testing::Values(0.0f),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(DetectionOutput3In, DetectionOutputLayerTest, params3Inputs, DetectionOutputLayerTest::getTestCaseName);
@@ -72,7 +72,7 @@ const auto params5Inputs = ::testing::Combine(
         ::testing::ValuesIn(specificParams5In),
         ::testing::ValuesIn(numberBatch),
         ::testing::Values(objectnessScore),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(DetectionOutput5In, DetectionOutputLayerTest, params5Inputs, DetectionOutputLayerTest::getTestCaseName);

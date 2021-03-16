@@ -25,7 +25,7 @@ INSTANTIATE_TEST_CASE_P(Reshape4D, ReshapeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
                 ::testing::Values(std::vector<size_t>({0, 10, 90, 30})),
-                ::testing::Values("ARM"),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
@@ -39,7 +39,7 @@ INSTANTIATE_TEST_CASE_P(Reshape3D, ReshapeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),
                 ::testing::Values(std::vector<size_t>({10, 0, 100})),
-                ::testing::Values("ARM"),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
@@ -53,7 +53,7 @@ INSTANTIATE_TEST_CASE_P(Reshape2D, ReshapeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t>({1, 100, 1, 1})),
                 ::testing::Values(std::vector<size_t>({1, 100})),
-                ::testing::Values("ARM"),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
@@ -67,7 +67,7 @@ INSTANTIATE_TEST_CASE_P(Reshape1D, ReshapeLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t>({1, 100, 1, 1})),
                 ::testing::Values(std::vector<size_t>({100})),
-                ::testing::Values("ARM"),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU),
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 }  // namespace

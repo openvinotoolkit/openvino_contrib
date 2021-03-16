@@ -25,7 +25,7 @@ INSTANTIATE_TEST_CASE_P(ConvertU8, ConvertLayerTest,
                                 ::testing::ValuesIn(targetPrecisionsU8),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvertLayerTest::getTestCaseName);
 
 const std::vector<InferenceEngine::Precision> targetPrecisionsU16 = {
@@ -41,7 +41,7 @@ INSTANTIATE_TEST_CASE_P(ConvertU16, ConvertLayerTest,
                                 ::testing::ValuesIn(targetPrecisionsU16),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvertLayerTest::getTestCaseName);
 
 const std::vector<InferenceEngine::Precision> targetPrecisionsI16 = {
@@ -56,7 +56,7 @@ INSTANTIATE_TEST_CASE_P(ConvertI16, ConvertLayerTest,
                                 ::testing::ValuesIn(targetPrecisionsI16),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvertLayerTest::getTestCaseName);
 
 const std::vector<InferenceEngine::Precision> precisions = {
@@ -73,6 +73,6 @@ INSTANTIATE_TEST_CASE_P(ConvertAll, ConvertLayerTest,
                                 ::testing::ValuesIn(precisions),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvertLayerTest::getTestCaseName);
 }  // namespace

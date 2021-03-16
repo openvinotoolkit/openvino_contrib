@@ -49,7 +49,7 @@ const auto params1 = testing::Combine(
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(InferenceEngine::Layout::ANY),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 INSTANTIATE_TEST_CASE_P(Gather1, GatherLayerTest, params1, GatherLayerTest::getTestCaseName);
 
@@ -74,7 +74,7 @@ const auto params2 = testing::Combine(
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(InferenceEngine::Layout::ANY),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 INSTANTIATE_TEST_CASE_P(Gather2, GatherLayerTest, params2, GatherLayerTest::getTestCaseName);
 
@@ -99,7 +99,7 @@ const auto params4 = testing::Combine(
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(InferenceEngine::Layout::ANY),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(Gather4, GatherLayerTest, params4, GatherLayerTest::getTestCaseName);

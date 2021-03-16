@@ -25,7 +25,7 @@ const auto basicCases = ::testing::Combine(
     ::testing::Values(std::vector<size_t>({ 10, 1, 16 }),
                       std::vector<size_t>({ 20, 2, 8 })),
     ::testing::Values(true, false),
-    ::testing::Values("ARM"));
+    ::testing::Values(CommonTestUtils::DEVICE_CPU));
 
 INSTANTIATE_TEST_CASE_P(CTC_Greedy_decoder_Basic, CTCGreedyDecoderLayerTest,
                         basicCases,

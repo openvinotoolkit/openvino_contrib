@@ -47,7 +47,7 @@ const auto test_ROIPooling_max = ::testing::Combine(
     ::testing::ValuesIn(spatial_scales),
     ::testing::Values(ngraph::helpers::ROIPoolingTypes::ROI_MAX),
     ::testing::ValuesIn(netPRCs),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto test_ROIPooling_bilinear = ::testing::Combine(
@@ -57,7 +57,7 @@ const auto test_ROIPooling_bilinear = ::testing::Combine(
     ::testing::Values(spatial_scales[1]),
     ::testing::Values(ngraph::helpers::ROIPoolingTypes::ROI_BILINEAR),
     ::testing::ValuesIn(netPRCs),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsROIPooling_max, ROIPoolingLayerTest, test_ROIPooling_max, ROIPoolingLayerTest::getTestCaseName);

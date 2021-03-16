@@ -21,7 +21,7 @@ const auto PSROICases_average = ::testing::Combine(
     ::testing::Values(1),
     ::testing::Values("average"),
     ::testing::Values(InferenceEngine::Precision::FP32),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsPSROIPooling_average, PSROIPoolingLayerTest, PSROICases_average, PSROIPoolingLayerTest::getTestCaseName);
@@ -37,7 +37,7 @@ const auto PSROICases_bilinear = ::testing::Combine(
     ::testing::Values(2),
     ::testing::Values("bilinear"),
     ::testing::Values(InferenceEngine::Precision::FP32),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsPSROIPooling_bilinear, PSROIPoolingLayerTest, PSROICases_bilinear, PSROIPoolingLayerTest::getTestCaseName);

@@ -30,7 +30,7 @@ const auto DepthToSpaceBS2 = ::testing::Combine(
         ::testing::ValuesIn(inputPrecisions),
         ::testing::ValuesIn(modes),
         ::testing::Values(2),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(DepthToSpaceBS2Test, DepthToSpaceLayerTest, DepthToSpaceBS2, DepthToSpaceLayerTest::getTestCaseName);
@@ -44,7 +44,7 @@ const auto DepthToSpaceBS3 = ::testing::Combine(
         ::testing::ValuesIn(inputPrecisions),
         ::testing::ValuesIn(modes),
         ::testing::Values(3),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(DepthToSpaceBS3Test, DepthToSpaceLayerTest, DepthToSpaceBS3, DepthToSpaceLayerTest::getTestCaseName);

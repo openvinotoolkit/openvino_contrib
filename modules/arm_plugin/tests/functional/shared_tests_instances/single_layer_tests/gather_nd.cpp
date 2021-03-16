@@ -35,7 +35,7 @@ INSTANTIATE_TEST_CASE_P(GatherND2d, GatherNDLayerTest,
                             gatherNDArgsSubset1,
                             ::testing::ValuesIn(dPrecisions),
                             ::testing::ValuesIn(iPrecisions),
-                            ::testing::Values("ARM"),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU),
                             ::testing::Values<Config>({})),
                         GatherNDLayerTest::getTestCaseName);
 
@@ -51,7 +51,7 @@ INSTANTIATE_TEST_CASE_P(GatherND, GatherNDLayerTest,
                             gatherNDArgsSubset2,
                             ::testing::ValuesIn(dPrecisions),
                             ::testing::ValuesIn(iPrecisions),
-                            ::testing::Values("ARM"),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU),
                             ::testing::Values<Config>({})),
                         GatherNDLayerTest::getTestCaseName);
 }  // namespace

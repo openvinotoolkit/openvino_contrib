@@ -30,7 +30,7 @@ const auto noneCases = ::testing::Combine(
     ::testing::ValuesIn(noneShapes),
     ::testing::ValuesIn(inputPrecision),
     ::testing::Values(ngraph::op::AutoBroadcastSpec::NONE),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(Select_none, SelectLayerTest, noneCases, SelectLayerTest::getTestCaseName);

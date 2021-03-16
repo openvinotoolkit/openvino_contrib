@@ -43,7 +43,7 @@ const auto ComparisonTestParams = ::testing::Combine(
         ::testing::ValuesIn(secondInputTypes),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values("ARM"),
+        ::testing::Values(CommonTestUtils::DEVICE_CPU),
         ::testing::Values(std::map<std::string, std::string>{}));
 
 INSTANTIATE_TEST_CASE_P(Comparison, ComparisonLayerTest, ComparisonTestParams, ComparisonLayerTest::getTestCaseName);

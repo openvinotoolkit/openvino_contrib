@@ -40,7 +40,7 @@ INSTANTIATE_TEST_CASE_P(Basic_smoke, ReverseSequenceLayerTest,
                             ::testing::ValuesIn(reversSeqLengthsVecShapes),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::ValuesIn(netPrecisions),
-                            ::testing::Values("ARM")),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ReverseSequenceLayerTest::getTestCaseName);
 
 }  // namespace

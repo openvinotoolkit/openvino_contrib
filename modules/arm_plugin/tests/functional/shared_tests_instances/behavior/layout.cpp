@@ -27,7 +27,7 @@ namespace {
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, LayoutTest,
             ::testing::Combine(
                     ::testing::Values(InferenceEngine::Precision::FP32),
-                    ::testing::Values("ARM"),
+                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                     ::testing::ValuesIn(configs),
                     ::testing::ValuesIn(Layout),
                     ::testing::ValuesIn(inputShapes)),

@@ -37,7 +37,7 @@ INSTANTIATE_TEST_CASE_P(ShuffleChannels4D, ShuffleChannelsLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t >({6, 6, 6, 6})),
-                ::testing::Values("ARM")),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
         ShuffleChannelsLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(ShuffleChannelsNegativeAxis4D, ShuffleChannelsLayerTest,
@@ -49,6 +49,6 @@ INSTANTIATE_TEST_CASE_P(ShuffleChannelsNegativeAxis4D, ShuffleChannelsLayerTest,
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(InferenceEngine::Layout::ANY),
                 ::testing::Values(std::vector<size_t >({6, 6, 6, 6})),
-                ::testing::Values("ARM")),
+                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
         ShuffleChannelsLayerTest::getTestCaseName);
 }  // namespace

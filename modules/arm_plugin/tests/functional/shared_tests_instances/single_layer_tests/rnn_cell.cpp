@@ -28,7 +28,7 @@ namespace {
             ::testing::ValuesIn(activations),
             ::testing::ValuesIn(clip),
             ::testing::ValuesIn(netPrecisions),
-            ::testing::Values("ARM")),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
             RNNCellTest::getTestCaseName);
 
 }  // namespace

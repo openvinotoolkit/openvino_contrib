@@ -74,7 +74,7 @@ const auto basicCases = ::testing::Combine(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(CommonTestUtils::combineParams(basic)),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto basicPreluCases = ::testing::Combine(
@@ -85,7 +85,7 @@ const auto basicPreluCases = ::testing::Combine(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(CommonTestUtils::combineParams(preluBasic)),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 

@@ -46,7 +46,7 @@ const auto MvnCases2D = ::testing::Combine(
     ::testing::Values(true),
     ::testing::ValuesIn(normalizeVariance),
     ::testing::ValuesIn(epsilon),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsMVN2D, MvnLayerTest, MvnCases2D, MvnLayerTest::getTestCaseName);
@@ -57,7 +57,7 @@ const auto MvnCases = ::testing::Combine(
     ::testing::ValuesIn(acrossChannels),
     ::testing::ValuesIn(normalizeVariance),
     ::testing::ValuesIn(epsilon),
-    ::testing::Values("ARM")
+    ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(TestsMVN, MvnLayerTest, MvnCases, MvnLayerTest::getTestCaseName);

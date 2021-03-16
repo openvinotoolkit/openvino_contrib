@@ -55,7 +55,7 @@ std::vector<InferenceEngine::Precision> netPrecisions = {
             ::testing::ValuesIn(clip),
             ::testing::ValuesIn(linear_before_reset),
             ::testing::ValuesIn(netPrecisions),
-            ::testing::Values("ARM")),
+            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
             GRUCellTest::getTestCaseName);
 
 }  // namespace

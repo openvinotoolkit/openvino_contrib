@@ -38,7 +38,7 @@ const auto batchNormParams = testing::Combine(
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(InferenceEngine::Layout::ANY),
         testing::ValuesIn(inputShapes),
-        testing::Values("ARM")
+        testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(

@@ -22,7 +22,7 @@ const auto ROIAlignCases_average = ::testing::Combine(
         ::testing::Values(2),
         ::testing::Values("avg"),
         ::testing::Values(InferenceEngine::Precision::FP32),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(smoke_TestsROIAlign_average, ROIAlignLayerTest, ROIAlignCases_average, ROIAlignLayerTest::getTestCaseName);
@@ -40,7 +40,7 @@ const auto ROIAlignCases_max = ::testing::Combine(
         ::testing::Values(2),
         ::testing::Values("max"),
         ::testing::Values(InferenceEngine::Precision::FP32),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(smoke_TestsROIAlign_max, ROIAlignLayerTest, ROIAlignCases_max, ROIAlignLayerTest::getTestCaseName);

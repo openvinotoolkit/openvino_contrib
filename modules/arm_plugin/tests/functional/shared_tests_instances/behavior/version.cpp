@@ -13,17 +13,17 @@ namespace {
     };
 
     const std::vector<std::map<std::string, std::string>> Multiconfigs = {
-            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , "ARM"}}
+            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
     };
 
     const std::vector<std::map<std::string, std::string>> Heteroconfigs = {
-            {{ HETERO_CONFIG_KEY(DUMP_GRAPH_DOT) , "ARM"}}
+            {{ HETERO_CONFIG_KEY(DUMP_GRAPH_DOT) , CommonTestUtils::DEVICE_CPU}}
     };
 
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, VersionTest,
                             ::testing::Combine(
                                     ::testing::Values(InferenceEngine::Precision::FP32),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
                             VersionTest::getTestCaseName);
 

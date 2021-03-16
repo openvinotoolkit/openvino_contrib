@@ -59,7 +59,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData1D_ExplicitPadding, GroupConv
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes1D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData1D_AutoPadValid, GroupConvBackpropDataLayerTest,
@@ -71,7 +71,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData1D_AutoPadValid, GroupConvBac
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes1D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 /* ============= 2D GroupConvolution ============= */
@@ -113,7 +113,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData2D_ExplicitPadding, GroupConv
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData2D_AutoPadValid, GroupConvBackpropDataLayerTest,
@@ -125,7 +125,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData2D_AutoPadValid, GroupConvBac
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 /* ============= 3D GroupConvolution ============= */
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData3D_ExplicitPadding, GroupConv
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes3D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData3D_AutoPadValid, GroupConvBackpropDataLayerTest,
@@ -179,7 +179,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvBackpropData3D_AutoPadValid, GroupConvBac
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes3D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 }  // namespace

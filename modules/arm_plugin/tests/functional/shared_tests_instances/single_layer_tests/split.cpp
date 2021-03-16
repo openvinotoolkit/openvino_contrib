@@ -27,6 +27,6 @@ INSTANTIATE_TEST_CASE_P(NumSplitsCheck, SplitLayerTest,
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
                                 ::testing::Values(std::vector<size_t>({})),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         SplitLayerTest::getTestCaseName);
 }  // namespace

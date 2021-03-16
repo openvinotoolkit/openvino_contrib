@@ -32,7 +32,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCellCommon, LSTMCellTest,
                                 ::testing::ValuesIn(activations),
                                 ::testing::ValuesIn(clip),
                                 ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         LSTMCellTest::getTestCaseName);
 
 }  // namespace

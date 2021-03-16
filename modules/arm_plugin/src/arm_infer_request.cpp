@@ -18,7 +18,6 @@
 #include <ie_parallel.hpp>
 #include <ie_memcpy.h>
 #include <precision_utils.h>
-#include <arm_plugin/arm_config.hpp>
 #include <ngraph/function.hpp>
 
 #include "arm_infer_request.hpp"

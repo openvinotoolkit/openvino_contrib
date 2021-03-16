@@ -37,7 +37,7 @@ const auto numpyBroadcastParams1 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::NUMPY),
         ::testing::Values(inShapesNumpy[0]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -53,7 +53,7 @@ const auto numpyBroadcastParams2 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::NUMPY),
         ::testing::Values(inShapesNumpy[1]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -83,7 +83,7 @@ const auto bidirectionalBroadcastParams1 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::BIDIRECTIONAL),
         ::testing::Values(inShapesBidi[0]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -99,7 +99,7 @@ const auto bidirectionalBroadcastParams2 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::BIDIRECTIONAL),
         ::testing::Values(inShapesBidi[1]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -115,7 +115,7 @@ const auto bidirectionalBroadcastParams3 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::BIDIRECTIONAL),
         ::testing::Values(inShapesBidi[2]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -148,7 +148,7 @@ const auto explicitBroadcastParams1 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::EXPLICIT),
         ::testing::Values(inShapesExplicit[0]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(
@@ -164,7 +164,7 @@ const auto explicitBroadcastParams2 = ::testing::Combine(
         ::testing::Values(ngraph::op::BroadcastType::EXPLICIT),
         ::testing::Values(inShapesExplicit[1]),
         ::testing::ValuesIn(inputPrecisions),
-        ::testing::Values("ARM")
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 INSTANTIATE_TEST_CASE_P(

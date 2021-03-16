@@ -71,7 +71,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPadding, ConvolutionLayerTes
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values("ARM")),
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values("ARM")),
+        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     ConvolutionLayerTest::getTestCaseName);
 
 /* ============= 2D Convolution ============= */
@@ -149,7 +149,7 @@ INSTANTIATE_TEST_CASE_P(Convolution2D_ExplicitPadding, ConvolutionLayerTest,
                         ::testing::Values(inPrc), ::testing::Values(outPrc),
                         ::testing::Values(inLayout), ::testing::Values(outLayout),
                         ::testing::Values(InferenceEngine::SizeVector({1, 3, 30, 30})),
-                        ::testing::Values("ARM")),
+                        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(Convolution2D_AutoPadValid, ConvolutionLayerTest,
@@ -159,6 +159,6 @@ INSTANTIATE_TEST_CASE_P(Convolution2D_AutoPadValid, ConvolutionLayerTest,
                         ::testing::Values(inPrc), ::testing::Values(outPrc),
                         ::testing::Values(inLayout), ::testing::Values(outLayout),
                         ::testing::Values(InferenceEngine::SizeVector({1, 3, 30, 30})),
-                        ::testing::Values("ARM")),
+                        ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionLayerTest::getTestCaseName);
 }  // namespace

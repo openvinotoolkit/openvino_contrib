@@ -54,7 +54,7 @@ INSTANTIATE_TEST_CASE_P(ConvolutionBackpropData2D_ExplicitPadding, ConvolutionBa
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackpropDataLayerTest,
@@ -66,6 +66,6 @@ INSTANTIATE_TEST_CASE_P(ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackp
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 }  // namespace

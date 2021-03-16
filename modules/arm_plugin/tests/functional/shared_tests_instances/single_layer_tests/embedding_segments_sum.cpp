@@ -47,6 +47,6 @@ INSTANTIATE_TEST_CASE_P(EmbeddingSegmentsSum, EmbeddingSegmentsSumLayerTest,
                                 embSegmentsSumArgSet,
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::ValuesIn(indPrecisions),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         EmbeddingSegmentsSumLayerTest::getTestCaseName);
 }  // namespace

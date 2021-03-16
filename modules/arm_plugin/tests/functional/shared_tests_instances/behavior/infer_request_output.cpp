@@ -21,15 +21,15 @@ namespace {
     };
 
     const std::vector<std::map<std::string, std::string>> multiConfigs = {
-            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , "ARM"}},
-            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , "ARM"},
+            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU}},
+            {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU},
              {InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS, InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}}
     };
 
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferRequestOutputTests,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
                             InferRequestOutputTests::getTestCaseName);
 

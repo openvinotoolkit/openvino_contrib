@@ -40,6 +40,6 @@ INSTANTIATE_TEST_CASE_P(EmbeddingBagPackedSum, EmbeddingBagPackedSumLayerTest,
                                 embBagPackedSumArgSet,
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::ValuesIn(indPrecisions),
-                                ::testing::Values("ARM")),
+                                ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         EmbeddingBagPackedSumLayerTest::getTestCaseName);
 }  // namespace

@@ -22,13 +22,13 @@ namespace {
     };
 
     const std::vector<std::map<std::string, std::string>> multiConfigs = {
-            {{ InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , "ARM"}}
+            {{ InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU}}
     };
 
     INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, PreprocessTest,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values("ARM"),
+                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
                             PreprocessTest::getTestCaseName);
 

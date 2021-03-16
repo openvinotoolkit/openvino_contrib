@@ -40,7 +40,7 @@ INSTANTIATE_TEST_CASE_P(CTCLoss1, CTCLossLayerTest,
                             ctcLossArgsSubset1,
                             ::testing::ValuesIn(fPrecisions),
                             ::testing::ValuesIn(iPrecisions),
-                            ::testing::Values("ARM")),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         CTCLossLayerTest::getTestCaseName);
 
 const auto ctcLossArgsSubset2 = ::testing::Combine(
@@ -61,6 +61,6 @@ INSTANTIATE_TEST_CASE_P(CTCLoss2, CTCLossLayerTest,
                             ctcLossArgsSubset2,
                             ::testing::ValuesIn(fPrecisions),
                             ::testing::ValuesIn(iPrecisions),
-                            ::testing::Values("ARM")),
+                            ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         CTCLossLayerTest::getTestCaseName);
 }  // namespace
