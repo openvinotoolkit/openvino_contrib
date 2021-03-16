@@ -108,9 +108,11 @@ jobs:
   - script: |
       mkdir native
       cp $(BIN_DIR)/lib/*.so native
+      cp $(BIN_DIR)/lib/cache.json native
       cp $(BIN_DIR)/lib/plugins.xml native
       cp $(BIN_DIR)/lib/*.mvcmd native
       cp $(OPENVINO_REPO_DIR)/inference-engine/temp/tbb/lib/lib* native
+      cp $(OPENVINO_REPO_DIR)/inference-engine/temp/gna_*/linux/x64/lib* native
       gradle build -Prun_tests -PMODELS_PATH=$(MODELS_PATH) --info
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'

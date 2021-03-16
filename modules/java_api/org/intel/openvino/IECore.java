@@ -46,6 +46,7 @@ public class IECore extends IEWrapper {
             "tbb",
             "tbbmalloc",
             "ngraph",
+            "gna",
             "inference_engine_transformations",
             "inference_engine",
             "inference_engine_ir_reader",
@@ -68,9 +69,11 @@ public class IECore extends IEWrapper {
             File tmpDir = Files.createTempDirectory("openvino-native").toFile();
             for (String file : nativeFiles) {
                 boolean isLibrary = !file.contains(".");
-                if (isLibrary)
-                    // On Linux, TBB libraries has .so.2 soname
-                    file = getLibraryName(file, file.startsWith("tbb") ? "2" : null);
+                if (isLibrary) {
+                    // On Linux, TBB and GNA libraries has .so.2 soname
+                    String version = file.startsWith("tbb") || file.equals("gna") ? "2" : null;
+                    file = getLibraryName(file, version);
+                }
 
                 URL url = IECore.class.getClassLoader().getResource(file);
                 if (url == null) {
