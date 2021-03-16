@@ -26,6 +26,7 @@
 #include "transformations/common_optimizations/hswish_fusion.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_mvn1_to_mvn6.hpp"
+#include "transformations/op_conversions/convert_gelu.hpp"
 
 #include "conv_bias_activ_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -99,6 +100,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::RNNCellDecomposition>();
     manager.register_pass<ngraph::pass::LSTMCellDecomposition>();
     manager.register_pass<ngraph::pass::GRUCellDecomposition>();
+    manager.register_pass<ngraph::pass::ConvertGELU>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<pass::DecomposeSwish>();
