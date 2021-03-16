@@ -48,7 +48,7 @@ void wrap_mvn_6(const T* arg,
 
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::MVN& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                                 node.input(0),
                                 node.input(1),
                                 node.output(0),

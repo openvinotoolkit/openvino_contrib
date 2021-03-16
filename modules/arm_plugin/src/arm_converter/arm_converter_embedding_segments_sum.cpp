@@ -10,7 +10,7 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingSegmentsSum& node) {
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 5) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -21,7 +21,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingS
                                   node.get_input_shape(1),
                                   node.get_output_shape(0));
         } else if (node.get_input_size() > 4) {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),
@@ -32,7 +32,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingS
                                   node.get_input_shape(1),
                                   node.get_output_shape(0));
         } else {
-            return MakeConversion(refFunction,
+            return this->MakeConversion(refFunction,
                                   node.input(0),
                                   node.input(1),
                                   node.input(2),

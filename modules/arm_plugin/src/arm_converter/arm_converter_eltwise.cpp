@@ -57,7 +57,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Power& nod
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::FloorMod& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction, node.input(0), node.input(1), node.output(0),
+        return this->MakeConversion(refFunction, node.input(0), node.input(1), node.output(0),
                               node.get_input_shape(0), node.get_input_shape(1), node.get_autob());
     };
     switch (node.input(0).get_element_type()) {

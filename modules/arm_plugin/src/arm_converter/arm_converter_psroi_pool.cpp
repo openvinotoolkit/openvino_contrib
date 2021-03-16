@@ -9,7 +9,7 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::PSROIPooling& node) {
     auto make = [&] (auto refFunction) {
-        return MakeConversion(refFunction,
+        return this->MakeConversion(refFunction,
                               node.input(0),
                               node.get_input_shape(0),
                               node.input(1),
