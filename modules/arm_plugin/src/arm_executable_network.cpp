@@ -15,7 +15,6 @@
 #include <threading/ie_executor_manager.hpp>
 #include <ngraph/function.hpp>
 
-#include "arm_plugin/arm_config.hpp"
 #include "arm_plugin.hpp"
 #include "arm_executable_network.hpp"
 #include "arm_converter/arm_converter.hpp"
@@ -76,7 +75,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
             CONFIG_KEY(PERF_COUNT),
-            ARM_CONFIG_KEY(THROUGHPUT_STREAMS) };
+            CONFIG_KEY(CPU_THROUGHPUT_STREAMS) };
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);

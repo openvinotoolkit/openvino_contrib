@@ -13,8 +13,6 @@
 #include <threading/ie_istreams_executor.hpp>
 
 namespace ArmPlugin {
-template<typename T>
-using IOMap = std::unordered_map<std::string, T>;
 using ConfigMap = std::map<std::string, std::string>;
 struct Configuration {
     Configuration();

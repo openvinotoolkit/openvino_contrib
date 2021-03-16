@@ -12,7 +12,6 @@
 #include <file_utils.h>
 #include <cpp_interfaces/exception2status.hpp>
 
-#include "arm_plugin/arm_config.hpp"
 #include "arm_config.hpp"
 
 using namespace ArmPlugin;
@@ -29,7 +28,7 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         const auto& key = c.first;
         const auto& value = c.second;
 
-        if (ARM_CONFIG_KEY(THROUGHPUT_STREAMS) == key) {
+        if (CONFIG_KEY(CPU_THROUGHPUT_STREAMS) == key) {
             _streamsExecutorConfig.SetConfig(CONFIG_KEY(CPU_THROUGHPUT_STREAMS), value);
         } else if (streamExecutorConfigKeys.end() !=
             std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key)) {
@@ -51,7 +50,7 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
-    } else if (name == ARM_CONFIG_KEY(THROUGHPUT_STREAMS)) {
+    } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
         return {std::to_string(_streamsExecutorConfig._streams)};
     } else {
         THROW_IE_EXCEPTION << NOT_FOUND_str << ": " << name;

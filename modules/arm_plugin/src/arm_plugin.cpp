@@ -21,7 +21,6 @@
 #include <ie_input_info.hpp>
 #include <ie_layouts.h>
 #include <hetero/hetero_plugin_config.hpp>
-#include <arm_plugin/arm_config.hpp>
 
 #include <ngraph/function.hpp>
 #include <ngraph/pass/manager.hpp>
@@ -53,7 +52,7 @@ Plugin::Plugin() {
 
 Plugin::~Plugin() {
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
-    ExecutorManager::getInstance()->clear("ArmStreamsExecutor");
+    ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
 }
 
 static std::shared_ptr<ngraph::Function> Transform(const std::shared_ptr<const ngraph::Function>& function) {
