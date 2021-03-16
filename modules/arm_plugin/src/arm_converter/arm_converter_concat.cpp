@@ -35,12 +35,12 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& no
             in_shapes.push_back(input.get_shape());
         }
         return this->MakeConversion(refFunction,
-                              node.inputs(),
-                              node.output(0),
-                              in_shapes,
-                              node.get_output_shape(0),
-                              node.get_axis(),
-                              node.input(0).get_element_type().size());
+                                    node.inputs(),
+                                    node.output(0),
+                                    in_shapes,
+                                    node.get_output_shape(0),
+                                    node.get_axis(),
+                                    node.input(0).get_element_type().size());
     };
 
     switch (node.get_input_element_type(0)) {

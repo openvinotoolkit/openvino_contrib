@@ -11,37 +11,37 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingS
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 5) {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  node.input(4),
-                                  node.input(5),
-                                  node.output(0),
-                                  node.get_input_shape(0),
-                                  node.get_input_shape(1),
-                                  node.get_output_shape(0));
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        node.input(4),
+                                        node.input(5),
+                                        node.output(0),
+                                        node.get_input_shape(0),
+                                        node.get_input_shape(1),
+                                        node.get_output_shape(0));
         } else if (node.get_input_size() > 4) {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  node.input(4),
-                                  nullptr,
-                                  node.output(0),
-                                  node.get_input_shape(0),
-                                  node.get_input_shape(1),
-                                  node.get_output_shape(0));
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        node.input(4),
+                                        nullptr,
+                                        node.output(0),
+                                        node.get_input_shape(0),
+                                        node.get_input_shape(1),
+                                        node.get_output_shape(0));
         } else {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  nullptr,
-                                  nullptr,
-                                  node.output(0),
-                                  node.get_input_shape(0),
-                                  node.get_input_shape(1),
-                                  node.get_output_shape(0));
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        nullptr,
+                                        nullptr,
+                                        node.output(0),
+                                        node.get_input_shape(0),
+                                        node.get_input_shape(1),
+                                        node.get_output_shape(0));
         }
     };
 

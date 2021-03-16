@@ -10,12 +10,12 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReverseSequence& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.output(0),
-                              node.get_input_shape(0),
-                              node.get_batch_axis(),
-                              node.get_sequence_axis(),
-                              node.input(1));
+                                    node.input(0),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_batch_axis(),
+                                    node.get_sequence_axis(),
+                                    node.input(1));
     };
 
     switch (node.get_input_element_type(0)) {

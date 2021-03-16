@@ -14,16 +14,16 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCLoss& n
 
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.get_input_shape(0),
-                              node.input(1),
-                              node.input(2),
-                              node.input(3),
-                              node.input(4),
-                              node.get_preprocess_collapse_repeated(),
-                              node.get_ctc_merge_repeated(),
-                              node.get_unique(),
-                              node.output(0));
+                                    node.input(0),
+                                    node.get_input_shape(0),
+                                    node.input(1),
+                                    node.input(2),
+                                    node.input(3),
+                                    node.input(4),
+                                    node.get_preprocess_collapse_repeated(),
+                                    node.get_ctc_merge_repeated(),
+                                    node.get_unique(),
+                                    node.output(0));
     };
     switch (node.get_input_element_type(0)) {
         // case ngraph::element::Type_t::f16 :

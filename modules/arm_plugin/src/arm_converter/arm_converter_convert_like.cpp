@@ -13,9 +13,9 @@ namespace ArmPlugin {
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLike& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.output(0),
-                              ngraph::shape_size(node.get_input_shape(0)));
+                                    node.input(0),
+                                    node.output(0),
+                                    ngraph::shape_size(node.get_input_shape(0)));
     };
 
     auto src = node.get_input_element_type(0);

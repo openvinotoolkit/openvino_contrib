@@ -11,34 +11,34 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
     auto make = [&] (auto refFunction) {
         if (node.get_input_size() > 4) {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  node.input(3),
-                                  node.input(4),
-                                  node.output(0),
-                                  ngraph::shape_size(node.get_input_shape(1)),
-                                  node.get_shape());
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        node.input(3),
+                                        node.input(4),
+                                        node.output(0),
+                                        ngraph::shape_size(node.get_input_shape(1)),
+                                        node.get_shape());
         } else if (node.get_input_size() > 3) {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  node.input(3),
-                                  nullptr,
-                                  node.output(0),
-                                  ngraph::shape_size(node.get_input_shape(1)),
-                                  node.get_shape());
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        node.input(3),
+                                        nullptr,
+                                        node.output(0),
+                                        ngraph::shape_size(node.get_input_shape(1)),
+                                        node.get_shape());
         } else {
             return this->MakeConversion(refFunction,
-                                  node.input(0),
-                                  node.input(1),
-                                  node.input(2),
-                                  nullptr,
-                                  nullptr,
-                                  node.output(0),
-                                  ngraph::shape_size(node.get_input_shape(1)),
-                                  node.get_shape());
+                                        node.input(0),
+                                        node.input(1),
+                                        node.input(2),
+                                        nullptr,
+                                        nullptr,
+                                        node.output(0),
+                                        ngraph::shape_size(node.get_input_shape(1)),
+                                        node.get_shape());
         }
     };
 

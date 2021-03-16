@@ -10,15 +10,15 @@ namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::TopK& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                              node.input(0),
-                              node.output(1),
-                              node.output(0),
-                              node.get_input_shape(0),
-                              node.get_output_shape(0),
-                              static_cast<size_t>(node.get_axis()),
-                              node.get_k(),
-                              node.get_mode() == ngraph::op::TopKMode::MAX,
-                              node.get_sort_type());
+                                    node.input(0),
+                                    node.output(1),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_output_shape(0),
+                                    static_cast<size_t>(node.get_axis()),
+                                    node.get_k(),
+                                    node.get_mode() == ngraph::op::TopKMode::MAX,
+                                    node.get_sort_type());
     };
 
     switch (node.input(0).get_element_type()) {

@@ -49,14 +49,14 @@ void wrap_mvn_6(const T* arg,
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::MVN& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
-                                node.input(0),
-                                node.input(1),
-                                node.output(0),
-                                node.get_input_shape(0),
-                                node.get_input_shape(1),
-                                node.get_normalize_variance(),
-                                static_cast<double>(node.get_eps()),
-                                node.get_eps_mode());
+                                    node.input(0),
+                                    node.input(1),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_input_shape(1),
+                                    node.get_normalize_variance(),
+                                    static_cast<double>(node.get_eps()),
+                                    node.get_eps_mode());
     };
 
     if (node.get_input_element_type(0) != ngraph::element::f32) {
