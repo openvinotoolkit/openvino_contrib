@@ -34,7 +34,7 @@ const std::vector<std::vector<size_t>> shapesB2D = {
 
 std::map<std::string, std::string> additionalConfig = {};
 
-INSTANTIATE_TEST_CASE_P(MatMul, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul, MatMulTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(MatMulTest::combineShapes(shapesA2D, shapesB2D, false, false)),
                             ::testing::ValuesIn(netPrecisions),
@@ -52,7 +52,7 @@ const std::vector<std::vector<size_t>> shapesA2DTranspose = {
         {4, 4},
 };
 
-INSTANTIATE_TEST_CASE_P(MatMul2DTransposeA, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul2DTransposeA, MatMulTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(MatMulTest::combineShapes(shapesA2DTranspose, shapesB2D, true, false)),
                                 ::testing::ValuesIn(netPrecisions),
@@ -77,7 +77,7 @@ const std::vector<std::vector<size_t>> shapesB4D = {
         {3, 3, 3, 3},
 };
 
-INSTANTIATE_TEST_CASE_P(MatMul4D, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul4D, MatMulTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4D, shapesB4D, false, false)),
                                 ::testing::ValuesIn(netPrecisions),
@@ -96,7 +96,7 @@ const std::vector<std::vector<size_t>> shapesB4DTranspose = {
         {3, 3, 3, 3},
 };
 
-INSTANTIATE_TEST_CASE_P(MatMul4DTransposeB, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeB, MatMulTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4D, shapesB4DTranspose, false, true)),
                                 ::testing::ValuesIn(netPrecisions),
@@ -114,7 +114,7 @@ const std::vector<std::vector<size_t>> shapesA4DTranspose = {
         {3, 3, 3, 3},
 };
 
-INSTANTIATE_TEST_CASE_P(MatMul4DTransposeA, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeA, MatMulTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4DTranspose, shapesB4D, true, false)),
                                 ::testing::ValuesIn(netPrecisions),
@@ -126,7 +126,7 @@ INSTANTIATE_TEST_CASE_P(MatMul4DTransposeA, MatMulTest,
                                 ::testing::Values(additionalConfig)),
                         MatMulTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(MatMul4DTransposeAB, MatMulTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeAB, MatMulTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4DTranspose, shapesB4DTranspose, true, true)),
                                 ::testing::ValuesIn(netPrecisions),

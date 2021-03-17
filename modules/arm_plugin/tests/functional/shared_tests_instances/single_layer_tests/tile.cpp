@@ -31,7 +31,7 @@ const std::vector<std::vector<size_t>> inputShapes = {
         {1, 2, 3, 4},
 };
 
-INSTANTIATE_TEST_CASE_P(Tile, TileLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Tile, TileLayerTest,
         ::testing::Combine(
                 ::testing::ValuesIn(repeats),
                 ::testing::ValuesIn(netPrecisions),

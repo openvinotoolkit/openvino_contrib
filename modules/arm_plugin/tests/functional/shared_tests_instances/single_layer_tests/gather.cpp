@@ -51,7 +51,7 @@ const auto params1 = testing::Combine(
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
-INSTANTIATE_TEST_CASE_P(Gather1, GatherLayerTest, params1, GatherLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Gather1, GatherLayerTest, params1, GatherLayerTest::getTestCaseName);
 
 
 const std::vector<std::vector<int>> indices2 = {
@@ -76,7 +76,7 @@ const auto params2 = testing::Combine(
         testing::Values(InferenceEngine::Layout::ANY),
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
-INSTANTIATE_TEST_CASE_P(Gather2, GatherLayerTest, params2, GatherLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Gather2, GatherLayerTest, params2, GatherLayerTest::getTestCaseName);
 
 
 const std::vector<std::vector<int>> indices4 = {
@@ -102,5 +102,5 @@ const auto params4 = testing::Combine(
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(Gather4, GatherLayerTest, params4, GatherLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Gather4, GatherLayerTest, params4, GatherLayerTest::getTestCaseName);
 }  // namespace

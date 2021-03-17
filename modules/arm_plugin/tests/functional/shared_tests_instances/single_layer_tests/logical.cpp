@@ -69,7 +69,7 @@ const auto LogicalTestParamsNot = ::testing::Combine(
         ::testing::Values(CommonTestUtils::DEVICE_CPU),
         ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(BinaryLogical, LogicalLayerTest, LogicalTestParams, LogicalLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_BinaryLogical, LogicalLayerTest, LogicalTestParams, LogicalLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(LogicalNot, LogicalLayerTest, LogicalTestParamsNot, LogicalLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_LogicalNot, LogicalLayerTest, LogicalTestParamsNot, LogicalLayerTest::getTestCaseName);
 }  // namespace

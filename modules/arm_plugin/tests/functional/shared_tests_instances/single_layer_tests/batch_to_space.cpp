@@ -49,7 +49,7 @@ batchToSpaceParamsTuple bts_only_test_cases[] = {
                                 CommonTestUtils::DEVICE_CPU),
 };
 
-INSTANTIATE_TEST_CASE_P(BatchToSpace, BatchToSpaceLayerTest, ::testing::ValuesIn(bts_only_test_cases),
+INSTANTIATE_TEST_CASE_P(smoke_BatchToSpace, BatchToSpaceLayerTest, ::testing::ValuesIn(bts_only_test_cases),
                         BatchToSpaceLayerTest::getTestCaseName);
 
 

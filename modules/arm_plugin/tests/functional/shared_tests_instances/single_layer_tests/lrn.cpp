@@ -20,7 +20,7 @@ const std::vector<double> bias   = {0.9, 1, 2};
 const std::vector<size_t> size   = {3, 5};
 const std::vector<std::vector<int64_t>> reduction_axes = {{1}, {2, 3}};
 
-INSTANTIATE_TEST_CASE_P(LrnCheck, LrnLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_LrnCheck, LrnLayerTest,
                         ::testing::Combine(::testing::ValuesIn(alpha),
                                            ::testing::ValuesIn(beta),
                                            ::testing::ValuesIn(bias),

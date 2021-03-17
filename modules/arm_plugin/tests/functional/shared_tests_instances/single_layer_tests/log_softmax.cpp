@@ -39,7 +39,7 @@ const auto params2D = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        LogSoftmax2D,
+        smoke_LogSoftmax2D,
         LogSoftmaxLayerTest,
         params2D,
         LogSoftmaxLayerTest::getTestCaseName
@@ -68,7 +68,7 @@ const auto params4D = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        LogSoftmax4D,
+        smoke_LogSoftmax4D,
         LogSoftmaxLayerTest,
         params4D,
         LogSoftmaxLayerTest::getTestCaseName
