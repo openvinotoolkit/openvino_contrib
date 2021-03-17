@@ -134,7 +134,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_wit
         }
 
         if (!std::dynamic_pointer_cast<opset::Constant>(eltwise->input_value(1 - conv_idx).get_node_shared_ptr())) {
-            THROW_IE_EXCEPTION << "Unsupported Convolution with inconstant weights.";
+            return false; // Unsupported Convolution with inconstant bias
         }
 
         auto bias = eltwise->input_value(1 - conv_idx);
@@ -158,10 +158,6 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_wit
         if (bias_shape.size() > 1) {
             new_bias = std::make_shared<opset::Reshape>(bias,
                     opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {channel_dim}), true);
-        }
-
-        if (m_conv->output(0).get_target_inputs().size() != 1) {
-            return false;
         }
 
         if (m_conv->inputs().size() == 3) {
@@ -192,6 +188,10 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
         auto m_conv = std::dynamic_pointer_cast<Conv>(m.get_match_root());
         if (!m_conv) {
             return false;
+        }
+
+        if (!std::dynamic_pointer_cast<opset::Constant>(m_conv->input_value(Inputs::Weights).get_node_shared_ptr())) {
+            THROW_IE_EXCEPTION << "Unsupported Convolution with inconstant weights.";
         }
 
         auto conv_arm = std::make_shared<ArmConv>(
@@ -233,17 +233,17 @@ ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
 
 ArmPlugin::pass::ConvBiasFusion::ConvBiasFusion() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
-            ngraph::pattern::wrap_type<opset::ArmConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
-                                                               ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
-                                                               ngraph::pattern::has_static_shape()), "ConvBiasFusion");
+            ngraph::pattern::wrap_type<opset::Add>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                    ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                    ngraph::pattern::has_static_shape()), "ConvBiasFusion");
     register_matcher(m, fuse_conv_with_bias<opset::ArmConvolution>());
 }
 
 ArmPlugin::pass::GroupConvBiasFusion::GroupConvBiasFusion() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
-                ngraph::pattern::wrap_type<opset::ArmGroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
-                                                                        ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
-                                                                        ngraph::pattern::has_static_shape()), "GroupConvBiasFusion");
+                ngraph::pattern::wrap_type<opset::Add>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
+                                                        ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+                                                        ngraph::pattern::has_static_shape()), "GroupConvBiasFusion");
     register_matcher(m, fuse_conv_with_bias<opset::ArmGroupConvolution>());
 }
 
