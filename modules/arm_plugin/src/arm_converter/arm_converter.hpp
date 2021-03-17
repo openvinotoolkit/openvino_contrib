@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include <details/ie_exception.hpp>
-
+#include <ie_common.h>
 #include <ngraph/function.hpp>
 
 #include <arm_compute/runtime/IFunction.h>

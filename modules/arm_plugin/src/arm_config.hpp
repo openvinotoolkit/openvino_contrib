@@ -9,6 +9,7 @@
 #include <map>
 #include <unordered_map>
 
+#include <ie_common.h>
 #include <ie_parameter.hpp>
 #include <threading/ie_istreams_executor.hpp>
 

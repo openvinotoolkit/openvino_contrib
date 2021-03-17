@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include <details/ie_exception.hpp>
 
 #include <arm_compute/runtime/NEON/functions/NEMeanStdDevNormalizationLayer.h>
 #include <ngraph/runtime/reference/mvn.hpp>

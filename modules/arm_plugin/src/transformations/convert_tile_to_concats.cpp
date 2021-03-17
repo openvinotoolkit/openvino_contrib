@@ -7,7 +7,6 @@
 
 #include <numeric>
 
-#include <details/ie_exception.hpp>
 #include <ngraph/rt_info.hpp>
 
 
