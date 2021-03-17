@@ -61,7 +61,7 @@ const std::vector<std::vector<int64_t>> axesDecompose4D = {
 const auto normL2DecomposeParams4D = testing::Combine(
         testing::ValuesIn(axesDecompose4D),
         testing::ValuesIn(eps),
-        testing::Values(ngraph::op::EpsMode::ADD),
+        testing::ValuesIn(epsModes),
         testing::Values(std::vector<size_t>{2, 3, 10, 5}),
         testing::ValuesIn(netPrecisions),
         testing::Values(CommonTestUtils::DEVICE_CPU)
