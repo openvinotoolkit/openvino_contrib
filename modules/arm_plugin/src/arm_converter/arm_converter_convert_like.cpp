@@ -111,7 +111,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
             default:
                 THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
             }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 }  //  namespace ArmPlugin

@@ -88,8 +88,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& 
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::hsigmoid<float>);
 }
@@ -98,8 +98,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
     };
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::gelu<float>);
 }
@@ -109,14 +109,14 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
         return this->MakeConversion(refFunction, node.input(0), alpha, beta, node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
 
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     float alpha = dynamic_cast<const opset::Constant&>(
-            *(node.input_value(1).get_node())).get_vector<float>()[0];
+            *(node.input_value(1).get_node())).cast_vector<float>()[0];
     float beta  = dynamic_cast<const opset::Constant&>(
-            *(node.input_value(2).get_node())).get_vector<float>()[0];
+            *(node.input_value(2).get_node())).cast_vector<float>()[0];
     return make(ngraph::runtime::reference::hard_sigmoid<float>, alpha, beta);
 }
 
@@ -131,8 +131,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node
                                     ngraph::shape_size(node.get_input_shape(1)),
                                     ngraph::shape_size(node.get_input_shape(2)));
     };
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::selu<float>);
 }

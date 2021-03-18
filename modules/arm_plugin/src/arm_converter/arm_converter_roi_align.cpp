@@ -59,7 +59,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIAlign& 
                                     node.get_mode());
     };
 
-    if (node.input(0).get_element_type() == ngraph::element::f32) {
+    if (node.get_input_element_type(0) == ngraph::element::f32) {
         switch (node.get_input_element_type(2)) {
             case ngraph::element::Type_t::i8  : return make(wrapper_roi_align<float, std::int8_t>);
             case ngraph::element::Type_t::i16 : return make(wrapper_roi_align<float, std::int16_t>);
@@ -68,7 +68,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIAlign& 
             default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(2); return {};
         }
     } else {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
 }
 }  //  namespace ArmPlugin

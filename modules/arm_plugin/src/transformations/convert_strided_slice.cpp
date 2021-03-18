@@ -8,16 +8,12 @@
 #include <numeric>
 
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 using namespace ArmPlugin;
 
 ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
-    auto slice  = std::make_shared<opset::StridedSlice>(ngraph::pattern::any_input(),
-                                                        ngraph::pattern::any_input(),
-                                                        ngraph::pattern::any_input(),
-                                                        ngraph::pattern::any_input(),
-                                                        std::vector<int64_t>{},
-                                                        std::vector<int64_t>{});
+    auto slice  = ngraph::pattern::wrap_type<opset::StridedSlice>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto slice = std::dynamic_pointer_cast<opset::StridedSlice>(m.get_match_root());
@@ -116,8 +112,9 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
 
         auto optimized_slice = std::make_shared<opset::StridedSlice>(slice->input_value(0),
                                      begin_node, end_node, stride_node, std::vector<int64_t>{}, std::vector<int64_t>{});
+        auto out_shape = slice->get_output_shape(0);
         auto shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
-                       ngraph::Shape{slice->get_shape().size()}, std::vector<int64_t>(slice->get_shape().begin(), slice->get_shape().end()));
+                       ngraph::Shape{out_shape.size()}, std::vector<int64_t>(out_shape.begin(), out_shape.end()));
         auto reshape = std::make_shared<ngraph::op::v1::Reshape>(optimized_slice, shape, true);
 
         reshape->set_friendly_name(slice->get_friendly_name());

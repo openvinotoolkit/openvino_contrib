@@ -6,11 +6,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
-    auto split = std::make_shared<opset::VariadicSplit>(ngraph::pattern::any_input(),
-                                                        ngraph::pattern::any_input(),
-                                                        ngraph::pattern::any_input());
+    auto split = ngraph::pattern::wrap_type<opset::VariadicSplit>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto split = std::dynamic_pointer_cast<opset::VariadicSplit>(m.get_match_root());

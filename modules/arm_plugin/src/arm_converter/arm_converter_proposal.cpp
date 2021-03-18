@@ -8,8 +8,8 @@
 
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Proposal& node) {
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     auto func = ngraph::runtime::reference::proposal_v4<float>;
@@ -28,8 +28,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Proposal& 
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v0::Proposal& node) {
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     auto func = ngraph::runtime::reference::proposal_v0<float>;

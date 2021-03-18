@@ -76,7 +76,7 @@ static auto MakeWeightsArgument(const opset::GroupConvolution& node) {
                 ngraphWeightsShape[4]
             }),
             1,
-            DataTypeCast(node.input(Weights).get_element_type())});
+            DataTypeCast(node.get_input_element_type(Weights))});
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupConvolution& node) {

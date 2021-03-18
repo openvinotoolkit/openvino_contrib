@@ -6,9 +6,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::DecomposeMish::DecomposeMish() {
-    auto mish = std::make_shared<opset::Mish>(ngraph::pattern::any_input());
+    auto mish = ngraph::pattern::wrap_type<opset::Mish>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto mish = std::dynamic_pointer_cast<opset::Mish>(m.get_match_root());
@@ -17,7 +18,7 @@ ArmPlugin::pass::DecomposeMish::DecomposeMish() {
         }
 
         auto exp = std::make_shared<opset::Exp>(mish->input_value(0));
-        auto add = std::make_shared<opset::Add>(exp, opset::Constant::create(mish->get_element_type(), ngraph::Shape{1}, {1.0f}));
+        auto add = std::make_shared<opset::Add>(exp, opset::Constant::create(mish->get_output_element_type(0), ngraph::Shape{1}, {1.0f}));
         auto log = std::make_shared<opset::Log>(add);
         auto tanh = std::make_shared<opset::Tanh>(log);
         auto mul = std::make_shared<opset::Multiply>(mish->input_value(0), tanh);

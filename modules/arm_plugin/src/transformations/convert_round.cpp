@@ -6,9 +6,10 @@
 #include "opset/opset.hpp"
 
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertRound::ConvertRound() {
-    auto round = std::make_shared<opset::Round>(ngraph::pattern::any_input(), ngraph::op::v5::Round::RoundMode::HALF_TO_EVEN);
+    auto round = ngraph::pattern::wrap_type<opset::Round>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto round = std::dynamic_pointer_cast<opset::Round>(m.get_match_root());
@@ -30,7 +31,7 @@ ArmPlugin::pass::ConvertRound::ConvertRound() {
 
         auto out_shape = round->get_output_shape(0);
         auto total = ngraph::shape_size(out_shape);
-        auto thr   = std::make_shared<opset::Constant>(round->get_element_type(), out_shape, std::vector<float>(total, 0.5f));
+        auto thr   = std::make_shared<opset::Constant>(round->get_input_element_type(0), out_shape, std::vector<float>(total, 0.5f));
 
         auto mask = std::make_shared<opset::Less>(floor_diff, thr);
         auto result_positive = std::make_shared<opset::Select>(mask, floor, ceil);

@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertCeiling::ConvertCeiling() {
-    auto ceil = std::make_shared<opset::Ceiling>(ngraph::pattern::any_input());
+    auto ceil = ngraph::pattern::wrap_type<opset::Ceiling>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto ceil = std::dynamic_pointer_cast<opset::Ceiling>(m.get_match_root());
@@ -22,7 +23,7 @@ ArmPlugin::pass::ConvertCeiling::ConvertCeiling() {
         auto floor = std::make_shared<opset::Floor>(input);
         auto greater = std::make_shared<opset::Greater>(input, floor);
 
-        auto ones = std::make_shared<opset::Constant>(ceil->get_element_type(), ngraph::Shape{1}, std::vector<float>{1});
+        auto ones = std::make_shared<opset::Constant>(ceil->get_input_element_type(0), ngraph::Shape{1}, std::vector<float>{1});
         auto add = std::make_shared<opset::Add>(floor, ones);
         auto select = std::make_shared<opset::Select>(greater, add, input);
 

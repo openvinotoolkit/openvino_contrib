@@ -58,7 +58,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReverseSeq
                 return make(ngraph::runtime::reference::reverse_sequence<float, std::int32_t>);
             }
             return make(ngraph::runtime::reference::reverse_sequence<float, std::int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

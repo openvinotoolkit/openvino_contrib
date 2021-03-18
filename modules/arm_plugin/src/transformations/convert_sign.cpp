@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertSign::ConvertSign() {
-    auto sign = std::make_shared<opset::Sign>(ngraph::pattern::any_input());
+    auto sign = ngraph::pattern::wrap_type<opset::Sign>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto sign = std::dynamic_pointer_cast<opset::Sign>(m.get_match_root());
@@ -20,7 +21,7 @@ ArmPlugin::pass::ConvertSign::ConvertSign() {
         }
 
         auto out_shape = sign->get_output_shape(0);
-        auto type = sign->input_value(0).get_element_type();
+        auto type = sign->get_input_element_type(0);
         auto total = ngraph::shape_size(out_shape);
         auto positive = std::make_shared<opset::Constant>(type, out_shape, std::vector<int>(total, 1));
         auto negative = std::make_shared<opset::Constant>(type, out_shape, std::vector<int>(total, -1));

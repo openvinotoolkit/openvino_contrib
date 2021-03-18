@@ -50,13 +50,13 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionO
                                     node.get_output_shape(0));
     };
 
-    switch (node.input(0).get_element_type()) {
+    switch (node.get_input_element_type(0)) {
         // case ngraph::element::Type_t::f16 :
         //     return make(detection_output<half_float::half>);
         case ngraph::element::Type_t::f32 : {
             return make(detection_output<float>);
         }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 }  //  namespace ArmPlugin
