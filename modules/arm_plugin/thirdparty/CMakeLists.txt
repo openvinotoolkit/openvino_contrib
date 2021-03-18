@@ -86,7 +86,12 @@ else()
         if(ARM)
             list(APPEND ARM_COMPUTE_OPTIONS arch=armv7a)
         elseif(AARCH64)
-            list(APPEND ARM_COMPUTE_OPTIONS arch=arm64-v8a)
+            if(APPLE)
+                # Apple M1 is assumed
+                list(APPEND ARM_COMPUTE_OPTIONS arch=arm64-v8.2-a)
+            else()
+                list(APPEND ARM_COMPUTE_OPTIONS arch=arm64-v8a)
+            endif()
         endif()
     endif()
 
@@ -115,6 +120,8 @@ else()
 
         set(extra_link_flags "${extra_link_flags} ${extra_flags}")
         set(extra_cxx_flags "${extra_cxx_flags} ${extra_flags}")
+    elseif(APPLE)
+        set(extra_cxx_flags "${extra_cxx_flags} -Wno-error=return-stack-address")
     endif()
 
     if(ENABLE_LTO)
