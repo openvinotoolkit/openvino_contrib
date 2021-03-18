@@ -1,7 +1,6 @@
 // Copyright (C) 2020-2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
-#include <details/ie_exception.hpp>
 
 #include <arm_compute/runtime/NEON/functions/NEScale.h>
 #include <ngraph/runtime/reference/interpolate.hpp>

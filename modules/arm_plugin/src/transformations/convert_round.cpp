@@ -5,7 +5,6 @@
 #include "transformations/convert_round.hpp"
 #include "opset/opset.hpp"
 
-#include <details/ie_exception.hpp>
 #include <ngraph/rt_info.hpp>
 
 ArmPlugin::pass::ConvertRound::ConvertRound() {

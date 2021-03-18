@@ -6,7 +6,6 @@
 
 #include <numeric>
 
-#include <details/ie_exception.hpp>
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 

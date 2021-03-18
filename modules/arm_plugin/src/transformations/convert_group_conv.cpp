@@ -3,7 +3,6 @@
 
 
 #include "transformations/convert_group_conv.hpp"
-#include <details/ie_exception.hpp>
 
 #include <numeric>
 

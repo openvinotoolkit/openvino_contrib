@@ -38,7 +38,7 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
-            THROW_IE_EXCEPTION << NOT_FOUND_str << ": " << key;
+            THROW_IE_EXCEPTION_WITH_STATUS(NotFound) << ": " << key;
         }
     }
     if (_exclusiveAsyncRequests)
@@ -53,6 +53,6 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
         return {std::to_string(_streamsExecutorConfig._streams)};
     } else {
-        THROW_IE_EXCEPTION << NOT_FOUND_str << ": " << name;
+        THROW_IE_EXCEPTION_WITH_STATUS(NotFound) << ": " << name;
     }
 }

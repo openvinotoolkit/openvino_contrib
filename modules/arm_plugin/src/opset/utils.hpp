@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <ie_common.h>
+
 namespace ArmPlugin {
 namespace opset {
 enum class ActivationFunction {

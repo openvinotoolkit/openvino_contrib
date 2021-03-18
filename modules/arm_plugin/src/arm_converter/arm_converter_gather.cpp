@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include <details/ie_exception.hpp>
 
 #include <arm_compute/runtime/NEON/functions/NEGather.h>
 #include "arm_converter/arm_converter.hpp"

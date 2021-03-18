@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <ngraph/rt_info.hpp>
-#include <details/ie_exception.hpp>
 
 #include "opset/opset.hpp"
 #include "transformations/convert_logical.hpp"
