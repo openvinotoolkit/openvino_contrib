@@ -103,6 +103,7 @@ jobs:
         -DENABLE_OPENCV=OFF
         -DENABLE_MYRIAD=OFF
         -DENABLE_TESTS=ON
+        -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
