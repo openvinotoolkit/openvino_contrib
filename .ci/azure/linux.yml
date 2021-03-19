@@ -90,6 +90,7 @@ jobs:
         -GNinja
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         -DENABLE_PYTHON=ON
         -DPYTHON_EXECUTABLE=/usr/bin/python3
