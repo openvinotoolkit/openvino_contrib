@@ -11,5 +11,6 @@
 #include "interpolate_arm.hpp"
 #include "matmul_bias.hpp"
 #include "mvn_arm.hpp"
+#include "normalizel2_arm.hpp"
 #include "ngraph_opset.hpp"
 #include "utils.hpp"

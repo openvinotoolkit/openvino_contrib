@@ -54,6 +54,7 @@
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
 #include "convert_interpolate_arm.hpp"
+#include "convert_normalizel2_arm.hpp"
 #include "convert_pool1d_to_pool2d.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
@@ -81,6 +82,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertGRN>();
     manager.register_pass<pass::NormalizeL2Fusion>();
     manager.register_pass<pass::DecomposeNormalizeL2Add>();
+    manager.register_pass<pass::ConvertNormalizeL2ToArm>();
     manager.register_pass<pass::ConvertReduceMultiAxis>();
     manager.register_pass<ngraph::pass::ReduceL1Decomposition>();
     manager.register_pass<ngraph::pass::ReduceL2Decomposition>();
