@@ -17,9 +17,11 @@ std::uint32_t IEScheduler::num_threads() const {
     return parallel_get_max_threads();
 }
 
-void IEScheduler::Schedule(arm_compute::ICPPKernel* kernel, const arm_compute::IScheduler::Hints& hints, arm_compute::ITensorPack& tensors) {
+void IEScheduler::Schedule(arm_compute::ICPPKernel* kernel,
+                           const arm_compute::IScheduler::Hints& hints,
+                           const arm_compute::Window& max_window,
+                           arm_compute::ITensorPack& tensors) {
     IE_ASSERT(kernel != nullptr);
-    const auto& max_window   = kernel->window();
 
     auto splitDimension = hints.split_dimension();
 
@@ -73,13 +75,14 @@ void IEScheduler::Schedule(arm_compute::ICPPKernel* kernel, const arm_compute::I
 
 void IEScheduler::schedule(arm_compute::ICPPKernel* kernel, const arm_compute::IScheduler::Hints& hints) {
     arm_compute::ITensorPack tensors;
-    Schedule(kernel, hints, tensors);
+    Schedule(kernel, hints, kernel->window(), tensors);
 }
 
 void IEScheduler::schedule_op(arm_compute::ICPPKernel*  kernel,
                     const arm_compute::IScheduler::Hints&  hints,
+                    const arm_compute::Window&             window,
                     arm_compute::ITensorPack&              tensors) {
-    Schedule(kernel, hints, tensors);
+    Schedule(kernel, hints, window, tensors);
 }
 
 void IEScheduler::run_workloads(std::vector<arm_compute::IScheduler::Workload>& workloads) {

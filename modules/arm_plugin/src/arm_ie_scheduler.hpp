@@ -14,11 +14,15 @@ struct IEScheduler final : public arm_compute::IScheduler {
     ~IEScheduler() override;
     void set_num_threads(unsigned int num_threads) override;
     std::uint32_t num_threads() const override;
-    void Schedule(arm_compute::ICPPKernel* kernel, const arm_compute::IScheduler::Hints& hints, arm_compute::ITensorPack& tensors);
+    void Schedule(arm_compute::ICPPKernel*               kernel,
+                  const arm_compute::IScheduler::Hints&  hints,
+                  const arm_compute::Window&             max_window,
+                  arm_compute::ITensorPack&              tensors);
     void schedule(arm_compute::ICPPKernel* kernel, const arm_compute::IScheduler::Hints& hints) override;
     void schedule_op(arm_compute::ICPPKernel*               kernel,
                      const arm_compute::IScheduler::Hints&  hints,
-                     arm_compute::ITensorPack&              tensors);
+                     const arm_compute::Window&             window,
+                     arm_compute::ITensorPack&              tensors) override;
     void run_workloads(std::vector<arm_compute::IScheduler::Workload>& workloads) override;
 };
 }  //  namespace ArmPlugin
