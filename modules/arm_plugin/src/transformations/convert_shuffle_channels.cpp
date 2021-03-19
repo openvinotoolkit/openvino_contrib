@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() {
-    auto shuffle = std::make_shared<opset::ShuffleChannels>(ngraph::pattern::any_input(), 1, 1);
+    auto shuffle = ngraph::pattern::wrap_type<opset::ShuffleChannels>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto shuffle = std::dynamic_pointer_cast<opset::ShuffleChannels>(m.get_match_root());

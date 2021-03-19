@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertGRN::ConvertGRN() {
-    auto grn = std::make_shared<opset::GRN>(ngraph::pattern::any_input(), 1.f);
+    auto grn = ngraph::pattern::wrap_type<opset::GRN>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto grn = std::dynamic_pointer_cast<opset::GRN>(m.get_match_root());

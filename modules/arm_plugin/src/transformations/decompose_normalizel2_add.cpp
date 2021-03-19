@@ -6,10 +6,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() {
-    auto axes  = opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {1});
-    auto normalize_l2 = std::make_shared<opset::NormalizeL2>(ngraph::pattern::any_input(), axes, 1.0f, ngraph::op::EpsMode::ADD);
+    auto normalize_l2 = ngraph::pattern::wrap_type<opset::NormalizeL2>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto normalize_l2 = std::dynamic_pointer_cast<opset::NormalizeL2>(m.get_match_root());

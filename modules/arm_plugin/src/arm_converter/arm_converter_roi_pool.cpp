@@ -13,8 +13,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIPooling
                                     node.get_spatial_scale(), node.get_method());
     };
 
-    if (node.input(0).get_element_type() != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type();
+    if (node.get_input_element_type(0) != ngraph::element::f32) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::roi_pooling<float>);
 }

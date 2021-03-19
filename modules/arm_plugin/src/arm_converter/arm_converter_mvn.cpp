@@ -64,7 +64,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::MVN& node
     switch (node.get_input_element_type(1)) {
         case ngraph::element::Type_t::i32 : return make(wrap_mvn_6<float, int32_t>);
         case ngraph::element::Type_t::i64 : return make(wrap_mvn_6<float, int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported axes type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported axes type: " << node.get_input_element_type(1); return {};
     }
 }
 

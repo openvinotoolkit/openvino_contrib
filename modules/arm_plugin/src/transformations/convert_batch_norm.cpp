@@ -7,16 +7,11 @@
 #include <numeric>
 
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 #include "opset/opset.hpp"
 
 ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() {
-    float eps = 1e-5;
-    auto batch_norm = std::make_shared<opset::BatchNormInference>(ngraph::pattern::any_input(),
-                                                                  ngraph::pattern::any_input(),
-                                                                  ngraph::pattern::any_input(),
-                                                                  ngraph::pattern::any_input(),
-                                                                  ngraph::pattern::any_input(),
-                                                                  eps);
+    auto batch_norm = ngraph::pattern::wrap_type<opset::BatchNormInference>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         enum Input {Features, Gamma, Beta, Mean, Variance};

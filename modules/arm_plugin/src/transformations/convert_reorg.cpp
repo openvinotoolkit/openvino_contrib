@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() {
-    auto reorg = std::make_shared<opset::ReorgYolo>(ngraph::pattern::any_input(), 2);
+    auto reorg = ngraph::pattern::wrap_type<opset::ReorgYolo>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto reorg = std::dynamic_pointer_cast<opset::ReorgYolo>(m.get_match_root());

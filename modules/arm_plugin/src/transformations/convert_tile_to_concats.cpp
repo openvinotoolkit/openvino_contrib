@@ -8,10 +8,11 @@
 #include <numeric>
 
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 
 ArmPlugin::pass::ConvertTile::ConvertTile() {
-    auto tile    = std::make_shared<opset::Tile>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
+    auto tile = ngraph::pattern::wrap_type<opset::Tile>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto tile = std::dynamic_pointer_cast<opset::Tile>(m.get_match_root());

@@ -18,7 +18,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
                                     ngraph::shape_size(node.get_input_shape(0)));
     };
 
-    auto src = node.input(0).get_element_type();
+    auto src = node.get_input_element_type(0);
     auto dst = node.get_convert_element_type();
 
     switch (src) {
@@ -111,7 +111,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
             default:
                 THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
             }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

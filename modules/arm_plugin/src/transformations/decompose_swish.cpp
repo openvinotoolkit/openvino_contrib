@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
-    auto swish = std::make_shared<opset::Swish>(ngraph::pattern::any_input());
+    auto swish = ngraph::pattern::wrap_type<opset::Swish>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         // Swish(x, 1) = x * sigmoid(1 * x)
@@ -19,7 +20,7 @@ ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
             return false;
         }
 
-        auto beta = opset::Constant::create(swish->get_element_type(), ngraph::Shape{1, 1}, {1.0});
+        auto beta = opset::Constant::create(swish->get_output_element_type(0), ngraph::Shape{1, 1}, {1.0});
 
         auto shape = opset::Constant::create(ngraph::element::i64, ngraph::Shape{1}, {1});
         auto reshape = std::make_shared<opset::Reshape>(beta, shape, true);

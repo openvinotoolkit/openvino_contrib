@@ -66,7 +66,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvActivationFusionBase::fuse_co
             if (!prelu) {
                 return false;
             }
-            a = dynamic_cast<const opset::Constant&>(*(prelu->input_value(1).get_node())).get_vector<float>()[0];
+            a = dynamic_cast<const opset::Constant&>(*(prelu->input_value(1).get_node())).cast_vector<float>()[0];
         } else if (std::is_same<Activation, opset::Clamp>()) {
             func = opset::ActivationFunction::LU_BOUNDED_RELU;
             auto clamp = std::dynamic_pointer_cast<opset::Clamp>(activation);

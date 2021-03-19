@@ -35,7 +35,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Pad& node)
         THROW_IE_EXCEPTION << "Unsupported SYMMETRIC pad mode with a non-zero pads end";
     }
 
-    float value = dynamic_cast<const opset::Constant&>(*(node.input_value(3).get_node())).get_vector<float>()[0];
+    float value = dynamic_cast<const opset::Constant&>(*(node.input_value(3).get_node())).cast_vector<float>()[0];
     auto constant_value = mode == arm_compute::PaddingMode::CONSTANT ?
                           arm_compute::PixelValue(value) :
                           arm_compute::PixelValue();

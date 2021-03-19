@@ -59,14 +59,14 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::FloorMod& 
         return this->MakeConversion(refFunction, node.input(0), node.input(1), node.output(0),
                                     node.get_input_shape(0), node.get_input_shape(1), node.get_autob());
     };
-    switch (node.input(0).get_element_type()) {
+    switch (node.get_input_element_type(0)) {
         case ngraph::element::Type_t::u8  : return make(ngraph::runtime::reference::floor_mod<std::uint8_t>);
         case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::floor_mod<std::int16_t>);
         case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::floor_mod<std::uint16_t>);
         case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::floor_mod<std::int32_t>);
         case ngraph::element::Type_t::i64 : return make(ngraph::runtime::reference::floor_mod<std::int64_t>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::floor_mod<float>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 } // namespace ArmPlugin

@@ -8,9 +8,10 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::BroadcastPRelu::BroadcastPRelu() {
-    auto prelu = std::make_shared<opset::PRelu>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
+    auto prelu = ngraph::pattern::wrap_type<opset::PRelu>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto prelu = std::dynamic_pointer_cast<opset::PRelu>(m.get_match_root());

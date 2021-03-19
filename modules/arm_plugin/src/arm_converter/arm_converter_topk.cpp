@@ -20,7 +20,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::TopK& node
                                     node.get_sort_type());
     };
 
-    switch (node.input(0).get_element_type()) {
+    switch (node.get_input_element_type(0)) {
         case ngraph::element::Type_t::u8 :
             if (node.get_index_element_type() == ngraph::element::i32) {
                 return make(ngraph::runtime::reference::topk<std::uint8_t, std::int32_t>);
@@ -61,7 +61,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::TopK& node
                 return make(ngraph::runtime::reference::topk<float, std::int32_t>);
             }
             return make(ngraph::runtime::reference::topk<float, std::int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_element_type(); return {};
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

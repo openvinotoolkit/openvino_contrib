@@ -8,10 +8,11 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
+#include <ngraph/pattern/op/wrap_type.hpp>
 
 
 ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
-    auto matmul = std::make_shared<opset::MatMul>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
+    auto matmul = ngraph::pattern::wrap_type<opset::MatMul>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto matmul = std::dynamic_pointer_cast<opset::MatMul>(m.get_match_root());
