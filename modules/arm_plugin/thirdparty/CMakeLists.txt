@@ -48,12 +48,13 @@ else()
         message(FATAL_ERROR "Scons tool is not found!")
     endif()
 
+    set(ARM_COMPURE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     file(GLOB_RECURSE SOURCES
-        ComputeLibrary/*.cpp
-        ComputeLibrary/*.hpp
+        ${ARM_COMPURE_SOURCE_DIR}/*.cpp
+        ${ARM_COMPURE_SOURCE_DIR}/*.hpp
     )
 
-    set(extra_cxx_flags "-fPIC")
+    set(extra_cxx_flags "-fPIC ${CMAKE_CXX_FLAGS} -Wno-undef")
 
     set(ARM_COMPUTE_OPTIONS
         neon=1
@@ -151,7 +152,10 @@ else()
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary
         COMMENT "Build Arm Compute Library"
         DEPENDS ${SOURCES}
-    )
+                ${CMAKE_CURRENT_LIST_FILE}
+                ${ARM_COMPURE_SOURCE_DIR}/SConscript
+                ${ARM_COMPURE_SOURCE_DIR}/SConstruct
+                )
 
     # Import targets
 
