@@ -92,7 +92,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
             // if shrinkAxis[i] == 1, then we squeeze corresponding dimension to 1
             // and remove it in reshape after slice
             for (size_t i = 0; i < begin.size(); ++i) {
-                if (shrinkAxis[i] == 1) {
+                if (i < shrinkAxis.size() && shrinkAxis[i] == 1) {
                     if (begin[i] < 0) {
                         begin[i] = inputShape[i] + begin[i];
                     }

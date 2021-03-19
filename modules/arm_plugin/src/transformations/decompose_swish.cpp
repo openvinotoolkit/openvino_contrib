@@ -11,7 +11,7 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 
 ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
-    auto swish = ngraph::pattern::wrap_type<opset::Swish>();
+    auto swish = ngraph::pattern::wrap_type<opset::Swish>({ngraph::pattern::any_input()});
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         // Swish(x, 1) = x * sigmoid(1 * x)
@@ -40,7 +40,7 @@ ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
 }
 
 ArmPlugin::pass::DecomposeSwishWithBeta::DecomposeSwishWithBeta() {
-    auto swish = std::make_shared<opset::Swish>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
+    auto swish = ngraph::pattern::wrap_type<opset::Swish>({ngraph::pattern::any_input(), ngraph::pattern::any_input()});
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         // Swish(x, beta) = x * sigmoid(beta * x)
