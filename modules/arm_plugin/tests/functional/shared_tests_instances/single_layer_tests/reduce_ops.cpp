@@ -57,7 +57,7 @@ const auto paramsOneAxis = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        ReduceOneAxis,
+        smoke_ReduceOneAxis,
         ReduceOpsLayerTest,
         paramsOneAxis,
         ReduceOpsLayerTest::getTestCaseName
@@ -77,7 +77,7 @@ const auto params = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        Reduce,
+        smoke_Reduce,
         ReduceOpsLayerTest,
         params,
         ReduceOpsLayerTest::getTestCaseName

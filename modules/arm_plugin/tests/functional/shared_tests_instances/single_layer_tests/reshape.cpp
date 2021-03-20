@@ -15,7 +15,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
         InferenceEngine::Precision::FP16
 };
 
-INSTANTIATE_TEST_CASE_P(Reshape4D, ReshapeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Reshape4D, ReshapeLayerTest,
         ::testing::Combine(
                 ::testing::Values(true),
                 ::testing::ValuesIn(netPrecisions),
@@ -29,7 +29,7 @@ INSTANTIATE_TEST_CASE_P(Reshape4D, ReshapeLayerTest,
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(Reshape3D, ReshapeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Reshape3D, ReshapeLayerTest,
         ::testing::Combine(
                 ::testing::Values(true),
                 ::testing::ValuesIn(netPrecisions),
@@ -43,7 +43,7 @@ INSTANTIATE_TEST_CASE_P(Reshape3D, ReshapeLayerTest,
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(Reshape2D, ReshapeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Reshape2D, ReshapeLayerTest,
         ::testing::Combine(
                 ::testing::Values(false),
                 ::testing::ValuesIn(netPrecisions),
@@ -57,7 +57,7 @@ INSTANTIATE_TEST_CASE_P(Reshape2D, ReshapeLayerTest,
                 ::testing::Values(std::map<std::string, std::string>({}))),
                 ReshapeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(Reshape1D, ReshapeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Reshape1D, ReshapeLayerTest,
         ::testing::Combine(
                 ::testing::Values(true),
                 ::testing::ValuesIn(netPrecisions),

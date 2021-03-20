@@ -19,7 +19,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 std::vector<std::vector<size_t>> inputShape2D = {{2, 10}, {10, 2}, {10, 10}};
 std::vector<std::vector<size_t>> order2D      = {{0, 1}, {1, 0}, /*{}*/};
 
-INSTANTIATE_TEST_CASE_P(Transpose2D, TransposeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Transpose2D, TransposeLayerTest,
         ::testing::Combine(
                 ::testing::ValuesIn(order2D),
                 ::testing::ValuesIn(netPrecisions),
@@ -41,7 +41,7 @@ std::vector<std::vector<size_t>> order4D      = {
         {3, 0, 1, 2}, {3, 0, 2, 1}, {3, 1, 0, 2}, {3, 1, 2, 0}, {3, 2, 0, 1}, {3, 2, 1, 0}
 };
 
-INSTANTIATE_TEST_CASE_P(Transpose4D, TransposeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Transpose4D, TransposeLayerTest,
         ::testing::Combine(
                 ::testing::ValuesIn(order4D),
                 ::testing::ValuesIn(netPrecisions),

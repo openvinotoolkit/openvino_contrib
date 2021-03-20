@@ -42,7 +42,7 @@ const auto normL2params2D = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        NormalizeL2_2D,
+        smoke_NormalizeL2_2D,
         NormalizeL2LayerTest,
         normL2params2D,
         NormalizeL2LayerTest::getTestCaseName
@@ -68,7 +68,7 @@ const auto normL2DecomposeParams4D = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(
-        NormalizeL2Decompose_4D,
+        smoke_NormalizeL2Decompose_4D,
         NormalizeL2LayerTest,
         normL2DecomposeParams4D,
         NormalizeL2LayerTest::getTestCaseName

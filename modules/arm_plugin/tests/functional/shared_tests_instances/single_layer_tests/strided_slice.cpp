@@ -81,7 +81,7 @@ std::vector<StridedSliceSpecificParams> ss_only_test_cases_fp16 = {
                             {1, 1, 1, 1}, {1, 1, 1, 1},  {},  {},  {} },
         };
 
-INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP32,
+INSTANTIATE_TEST_CASE_P(smoke_StridedSliceTest_FP32,
         StridedSliceLayerTest,
         ::testing::Combine(
             ::testing::ValuesIn(ss_only_test_cases_fp32),
@@ -94,7 +94,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP32,
             ::testing::Values(std::map<std::string, std::string>())),
         StridedSliceLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP16,
+INSTANTIATE_TEST_CASE_P(smoke_StridedSliceTest_FP16,
         StridedSliceLayerTest,
         ::testing::Combine(
             ::testing::ValuesIn(ss_only_test_cases_fp16),

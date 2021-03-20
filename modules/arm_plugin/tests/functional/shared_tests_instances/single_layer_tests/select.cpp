@@ -33,4 +33,4 @@ const auto noneCases = ::testing::Combine(
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(Select_none, SelectLayerTest, noneCases, SelectLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Select_none, SelectLayerTest, noneCases, SelectLayerTest::getTestCaseName);

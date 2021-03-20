@@ -32,7 +32,7 @@ std::vector<std::vector<float>> power = {
 };
 
 
-INSTANTIATE_TEST_CASE_P(Power, PowerLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Power, PowerLayerTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(inShapes),
                                 ::testing::ValuesIn(netPrecisions),
@@ -43,13 +43,4 @@ INSTANTIATE_TEST_CASE_P(Power, PowerLayerTest,
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                 ::testing::ValuesIn(power)),
                         PowerLayerTest::getTestCaseName);
-
-// TODO: Add after fixing tests in OpenVINO
-// INSTANTIATE_TEST_CASE_P(ElementwisePower, PowerLayerTest,
-//                         ::testing::Combine(
-//                                 ::testing::Values(std::vector<std::vector<size_t>>{{{2, 3, 1}}}),
-//                                 ::testing::ValuesIn(netPrecisions),
-//                                 ::testing::Values(CommonTestUtils::DEVICE_CPU),
-//                                 ::testing::Values(std::vector<float>{2.0f, 1.5f, 0.5f, 1.1f, 0.8f, 2.2f})),
-//                         PowerLayerTest::getTestCaseName);
 }  // namespace

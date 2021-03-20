@@ -28,7 +28,7 @@ std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::U8,
 };
 
-INSTANTIATE_TEST_CASE_P(Concat4DTest, ConcatLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Concat4DTest, ConcatLayerTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(axes4D),
                                 ::testing::ValuesIn(inShapes4D),
@@ -47,7 +47,7 @@ std::vector<std::vector<std::vector<size_t>>> inShapes2D = {
         {{2, 2}, {2, 2}},
 };
 
-INSTANTIATE_TEST_CASE_P(Concat2DTest, ConcatLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Concat2DTest, ConcatLayerTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(axes2D),
                                 ::testing::ValuesIn(inShapes2D),
@@ -64,7 +64,7 @@ std::vector<std::vector<std::vector<size_t>>> inShapes5D = {
         {{2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}},
 };
 
-INSTANTIATE_TEST_CASE_P(Concat5DTest, ConcatLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Concat5DTest, ConcatLayerTest,
                         ::testing::Combine(
                                 ::testing::ValuesIn(axes5D),
                                 ::testing::ValuesIn(inShapes5D),

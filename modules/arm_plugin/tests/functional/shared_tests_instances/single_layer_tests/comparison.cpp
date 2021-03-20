@@ -46,6 +46,6 @@ const auto ComparisonTestParams = ::testing::Combine(
         ::testing::Values(CommonTestUtils::DEVICE_CPU),
         ::testing::Values(std::map<std::string, std::string>{}));
 
-INSTANTIATE_TEST_CASE_P(Comparison, ComparisonLayerTest, ComparisonTestParams, ComparisonLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Comparison, ComparisonLayerTest, ComparisonTestParams, ComparisonLayerTest::getTestCaseName);
 
 }  // namespace

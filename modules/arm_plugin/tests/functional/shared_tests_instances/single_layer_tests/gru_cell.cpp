@@ -45,7 +45,7 @@ std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16
 };
 
-    INSTANTIATE_TEST_CASE_P(GRUCellCommon, GRUCellTest,
+    INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon, GRUCellTest,
             ::testing::Combine(
             ::testing::ValuesIn(should_decompose),
             ::testing::ValuesIn(batch),

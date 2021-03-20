@@ -42,7 +42,7 @@ const auto embSegmentsSumArgSet = ::testing::Combine(
         ::testing::ValuesIn(with_default_index)
 );
 
-INSTANTIATE_TEST_CASE_P(EmbeddingSegmentsSum, EmbeddingSegmentsSumLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_EmbeddingSegmentsSum, EmbeddingSegmentsSumLayerTest,
                         ::testing::Combine(
                                 embSegmentsSumArgSet,
                                 ::testing::ValuesIn(netPrecisions),

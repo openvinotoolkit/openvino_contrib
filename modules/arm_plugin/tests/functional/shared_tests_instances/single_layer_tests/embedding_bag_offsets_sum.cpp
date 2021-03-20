@@ -40,7 +40,7 @@ const auto embBagOffsetSumArgSet = ::testing::Combine(
         ::testing::ValuesIn(with_default_index)
 );
 
-INSTANTIATE_TEST_CASE_P(EmbeddingBagOffsetsSum, EmbeddingBagOffsetsSumLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_EmbeddingBagOffsetsSum, EmbeddingBagOffsetsSumLayerTest,
                         ::testing::Combine(
                                 embBagOffsetSumArgSet,
                                 ::testing::ValuesIn(netPrecisions),

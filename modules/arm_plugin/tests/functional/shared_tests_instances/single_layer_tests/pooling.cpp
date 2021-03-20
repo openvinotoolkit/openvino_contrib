@@ -33,7 +33,7 @@ const auto maxPool1D_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(false) // exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_CASE_P(MaxPool1D_FloorRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_MaxPool1D_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 maxPool1D_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -57,7 +57,7 @@ const auto maxPool1D_CeilRounding_Params = ::testing::Combine(
         ::testing::Values(false) // exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_CASE_P(MaxPool1D_CeilRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_MaxPool1D_CeilRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 maxPool1D_CeilRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -81,7 +81,7 @@ const auto AvgPool1D_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(true, false)
 );
 
-INSTANTIATE_TEST_CASE_P(AvgPool1D_FloorRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_AvgPool1D_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 AvgPool1D_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -105,7 +105,7 @@ const auto avgPool1D_CeilRounding_Params = ::testing::Combine(
         ::testing::Values(true, false)
 );
 
-INSTANTIATE_TEST_CASE_P(AvgPool1D_CeilRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_AvgPool1D_CeilRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 avgPool1D_CeilRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -134,7 +134,7 @@ const auto maxPool2D_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(false) // exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_CASE_P(MaxPool2D_FloorRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_MaxPool2D_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 maxPool2D_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -158,7 +158,7 @@ const auto maxPool2D_CeilRounding_Params = ::testing::Combine(
         ::testing::Values(false) // exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_CASE_P(MaxPool2D_CeilRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_MaxPool2D_CeilRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 maxPool2D_CeilRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -182,7 +182,7 @@ const auto AvgPool2D_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(true, false)
 );
 
-INSTANTIATE_TEST_CASE_P(AvgPool2D_FloorRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_AvgPool2D_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 AvgPool2D_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
@@ -206,7 +206,7 @@ const auto avgPool2D_CeilRounding_Params = ::testing::Combine(
         ::testing::Values(true, false)
 );
 
-INSTANTIATE_TEST_CASE_P(AvgPool2D_CeilRounding, PoolingLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_AvgPool2D_CeilRounding, PoolingLayerTest,
                         ::testing::Combine(
                                 avgPool2D_CeilRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),

@@ -56,7 +56,7 @@ spaceToBatchParamsTuple cases[] = {
                                 CommonTestUtils::DEVICE_CPU),
 };
 
-INSTANTIATE_TEST_CASE_P(SpaceToBatch, SpaceToBatchLayerTest, ::testing::ValuesIn(cases), SpaceToBatchLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_SpaceToBatch, SpaceToBatchLayerTest, ::testing::ValuesIn(cases), SpaceToBatchLayerTest::getTestCaseName);
 
 
 }  // namespace

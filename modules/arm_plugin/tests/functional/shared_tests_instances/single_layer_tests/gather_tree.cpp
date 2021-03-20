@@ -24,7 +24,7 @@ const std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
         ngraph::helpers::InputLayerType::PARAMETER
 };
 
-INSTANTIATE_TEST_CASE_P(GatherTree, GatherTreeLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_GatherTree, GatherTreeLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(inputShapes),
                             ::testing::ValuesIn(secondaryInputTypes),
