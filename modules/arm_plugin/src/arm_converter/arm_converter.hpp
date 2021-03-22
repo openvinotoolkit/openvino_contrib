@@ -376,7 +376,7 @@ struct Converter {
         Argument<arm_compute::ITensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
             auto type = ngraph::element::from<std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, Callable>::type>>>>();
             if (input.get_element_type() != type) {
-                THROW_IE_EXCEPTION << "Argument types should be the same "
+                IE_THROW() << "Argument types should be the same "
                     << input.get_element_type() << " "
                     << type;
             }
@@ -388,7 +388,7 @@ struct Converter {
         Argument<arm_compute::ITensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
             auto type = ngraph::element::from<std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, Callable>::type>>>>();
             if (output.get_element_type() != type) {
-                THROW_IE_EXCEPTION << "Argument types should be the same "
+                IE_THROW() << "Argument types should be the same "
                     << output.get_element_type() << " "
                     << type;
             }
@@ -402,7 +402,7 @@ struct Converter {
             for (size_t i = 0; i < hosts.size(); i++) {
                 IE_SUPPRESS_DEPRECATED_START
                 if (_converter._layers.find(hosts[i]->get_name()) == _converter._layers.end()) {
-                    THROW_IE_EXCEPTION << "Output " << hosts[i]->get_name() << " was not allocated";
+                    IE_THROW() << "Output " << hosts[i]->get_name() << " was not allocated";
                 }
                 tensors.push_back(_converter._layers.at(hosts[i]->get_name())._outputs.at(i).get());
                 IE_SUPPRESS_DEPRECATED_END

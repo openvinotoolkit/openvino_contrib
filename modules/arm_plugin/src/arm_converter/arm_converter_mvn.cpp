@@ -16,7 +16,7 @@ ngraph::AxisSet mvn_6_reduction_axes(const U* axes, const ngraph::Shape& axes_sh
     for (int i = 0; i < v.size(); i++) {
         if (v[i] < 0) {
             if (rank + v[i] < 0) {
-                THROW_IE_EXCEPTION << "Unexpected axis";
+                IE_THROW() << "Unexpected axis";
             }
             reduction_axes[i] = rank + static_cast<size_t>(v[i]);
         } else {
@@ -59,12 +59,12 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::MVN& node
     };
 
     if (node.get_input_element_type(0) != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported input type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported input type: " << node.get_input_element_type(0);
     }
     switch (node.get_input_element_type(1)) {
         case ngraph::element::Type_t::i32 : return make(wrap_mvn_6<float, int32_t>);
         case ngraph::element::Type_t::i64 : return make(wrap_mvn_6<float, int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported axes type: " << node.get_input_element_type(1); return {};
+        default: IE_THROW() << "Unsupported axes type: " << node.get_input_element_type(1); return {};
     }
 }
 

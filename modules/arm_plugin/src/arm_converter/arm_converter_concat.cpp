@@ -51,7 +51,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& no
         case ngraph::element::Type_t::i64 : return make(wrap_concat<std::int64_t>);
         case ngraph::element::Type_t::f16 : return make(wrap_concat<half_float::half>);
         case ngraph::element::Type_t::f32 : return make(wrap_concat<float>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
 }
 

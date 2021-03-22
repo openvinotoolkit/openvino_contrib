@@ -12,7 +12,7 @@ template<typename Reduce>
 static auto ConvertReduce(const Reduce& node, const arm_compute::ReductionOperation& op, Converter* converter) {
     auto axes = dynamic_cast<const opset::Constant&>(*(node.input_value(1).get_node())).cast_vector<int64_t>();
     if (axes.size() != 1) {
-        THROW_IE_EXCEPTION << "Multiple reduction axes aren't supported";
+        IE_THROW() << "Multiple reduction axes aren't supported";
     }
     unsigned int axis = AxisCast(axes[0], node.get_input_shape(0).size());
     return converter->MakeConversion<arm_compute::NEReductionOperation>(node.input(0), node.output(0), axis, op, node.get_keep_dims());

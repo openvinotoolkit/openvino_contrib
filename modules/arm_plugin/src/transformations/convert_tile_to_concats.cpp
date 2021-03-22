@@ -22,7 +22,7 @@ ArmPlugin::pass::ConvertTile::ConvertTile() {
 
         auto repeat_node = std::dynamic_pointer_cast<opset::Constant>(tile->input_value(1).get_node_shared_ptr());
         if (!repeat_node) {
-            THROW_IE_EXCEPTION << "Unsupported Tile with inconstant repeats.";
+            IE_THROW() << "Unsupported Tile with inconstant repeats.";
         }
 
         ngraph::NodeVector new_ops;

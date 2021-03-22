@@ -65,10 +65,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIAlign& 
             case ngraph::element::Type_t::i16 : return make(wrapper_roi_align<float, std::int16_t>);
             case ngraph::element::Type_t::i32 : return make(wrapper_roi_align<float, std::int32_t>);
             case ngraph::element::Type_t::i64 : return make(wrapper_roi_align<float, std::int64_t>);
-            default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(2); return {};
+            default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(2); return {};
         }
     } else {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
 }
 }  //  namespace ArmPlugin

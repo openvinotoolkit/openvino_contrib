@@ -8,10 +8,10 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::DepthToSpace& node) {
     if (node.get_input_shape(0).size() > 4) {
-        THROW_IE_EXCEPTION << "Unsupported DepthToSpace with num dimensions > 4";
+        IE_THROW() << "Unsupported DepthToSpace with num dimensions > 4";
     }
     if (node.get_mode() != opset::DepthToSpace::DepthToSpaceMode::BLOCKS_FIRST) {
-        THROW_IE_EXCEPTION << "Unsupported DepthToSpace mode";
+        IE_THROW() << "Unsupported DepthToSpace mode";
     }
 
     int32_t block_shape = node.get_block_size();

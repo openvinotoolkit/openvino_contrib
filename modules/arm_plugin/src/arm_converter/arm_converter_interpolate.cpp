@@ -103,7 +103,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
                 return make(wrap_interpolate<float, std::int32_t>);
             }
             return make(wrap_interpolate<float, std::int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 
@@ -128,7 +128,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpo
             policy = arm_compute::InterpolationPolicy::NEAREST_NEIGHBOR;
             break;
         default:
-            THROW_IE_EXCEPTION << "Unsupported interpolate mode";
+            IE_THROW() << "Unsupported interpolate mode";
     }
 
     return MakeConversion<arm_compute::NEScale>(node.input(0),

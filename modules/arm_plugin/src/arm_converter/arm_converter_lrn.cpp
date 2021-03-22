@@ -19,7 +19,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::LRN& node)
     } else {
         for (size_t i = 0; i < axes.size(); i++) {
             if (axes[i] != i + 2) {
-                THROW_IE_EXCEPTION << "Unsupported mode of LRN layer";
+                IE_THROW() << "Unsupported mode of LRN layer";
             }
         }
        norm_type = arm_compute::NormType::IN_MAP_2D;

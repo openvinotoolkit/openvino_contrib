@@ -134,7 +134,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvBiasFusionBase::fuse_conv_wit
         }
 
         if (!std::dynamic_pointer_cast<opset::Constant>(eltwise->input_value(1 - conv_idx).get_node_shared_ptr())) {
-            THROW_IE_EXCEPTION << "Unsupported Convolution with inconstant weights.";
+            IE_THROW() << "Unsupported Convolution with inconstant weights.";
         }
 
         auto bias = eltwise->input_value(1 - conv_idx);

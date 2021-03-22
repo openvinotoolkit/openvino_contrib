@@ -10,11 +10,11 @@ namespace ArmPlugin {
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::Gather& node) {
     auto axes = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
     if (!axes) {
-        THROW_IE_EXCEPTION << "Supported Gather op with constant axis only";
+        IE_THROW() << "Supported Gather op with constant axis only";
     }
 
     if (node.get_input_shape(1).size() > 1) {
-        THROW_IE_EXCEPTION << "Supported Gather op with scalar or 1D indices only";
+        IE_THROW() << "Supported Gather op with scalar or 1D indices only";
     }
 
     int axis = axes->cast_vector<int64_t>()[0];

@@ -23,7 +23,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertReduceMultiAxisBase::conve
 
         auto reduction_axes = std::dynamic_pointer_cast<opset::Constant>(reduce->input_value(1).get_node_shared_ptr());
         if (!reduction_axes) {
-            THROW_IE_EXCEPTION << "Reduce op only supports constant multiple reduction axes.";
+            IE_THROW() << "Reduce op only supports constant multiple reduction axes.";
         }
         auto axes = reduction_axes->cast_vector<int64_t>();
         ngraph::NodeVector new_ops;

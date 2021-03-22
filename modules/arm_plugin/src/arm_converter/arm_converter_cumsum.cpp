@@ -18,7 +18,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<std::uint8_t, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<std::uint8_t, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<std::uint8_t, std::int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
         case ngraph::element::Type_t::i16 :
             switch (node.get_input_element_type(1)) {
@@ -26,7 +26,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<std::int16_t, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<std::int16_t, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<std::int16_t, std::int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
         case ngraph::element::Type_t::u16 :
             switch (node.get_input_element_type(1)) {
@@ -34,7 +34,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<std::uint16_t, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<std::uint16_t, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<std::uint16_t, std::int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
         case ngraph::element::Type_t::u32 :
             switch (node.get_input_element_type(1)) {
@@ -42,7 +42,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<std::uint32_t, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<std::uint32_t, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<std::uint32_t, std::int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
         case ngraph::element::Type_t::i32 :
             switch (node.get_input_element_type(1)) {
@@ -50,7 +50,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<std::int32_t, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<std::int32_t, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<std::int32_t, std::int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
         case ngraph::element::Type_t::f32 :
             switch (node.get_input_element_type(1)) {
@@ -58,9 +58,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CumSum& no
                 case ngraph::element::Type_t::i16 : return make(ngraph::runtime::reference::cumsum<float, std::int16_t>);
                 case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::cumsum<float, std::uint16_t>);
                 case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::cumsum<float, int32_t>);
-                default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(1); return {};
+                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(1); return {};
             }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

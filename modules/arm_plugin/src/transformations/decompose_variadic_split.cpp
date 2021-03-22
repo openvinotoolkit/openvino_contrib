@@ -22,7 +22,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto split_lengths = std::dynamic_pointer_cast<opset::Constant>(split->input_value(2).get_node_shared_ptr());
 
         if (!axes || !split_lengths) {
-            THROW_IE_EXCEPTION << "Unsupported VariadicSplit op with inconstant axes or split_lengths";
+            IE_THROW() << "Unsupported VariadicSplit op with inconstant axes or split_lengths";
         }
 
         auto axis = axes->cast_vector<int64_t>()[0];
@@ -31,7 +31,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto size = input_shape.size();
 
         if (axis >= input_shape.size()) {
-            THROW_IE_EXCEPTION << "axis should be less than " << size;
+            IE_THROW() << "axis should be less than " << size;
         }
 
         auto stride = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, std::vector<int64_t>(size, 1));

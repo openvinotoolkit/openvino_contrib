@@ -17,9 +17,9 @@ void wrap_one_hot(const InputType* indices,
                   const OutputType* off_value) {
     const size_t depth_val = static_cast<size_t>(depth[0]);
     if (ngraph::shape_size(indices_shape) * depth_val != ngraph::shape_size(out_shape))
-        THROW_IE_EXCEPTION << "Incompatible I/O shapes or wrong depth value.";
+        IE_THROW() << "Incompatible I/O shapes or wrong depth value.";
     if (depth_val != out_shape[one_hot_axis])
-        THROW_IE_EXCEPTION << "Incompatible depth and axis values.";
+        IE_THROW() << "Incompatible depth and axis values.";
     ngraph::runtime::reference::one_hot<InputType>(indices,
                                                    indices_shape,
                                                    reinterpret_cast<char*>(out),
@@ -37,7 +37,7 @@ namespace ArmPlugin {
         std::int64_t axis = node.get_axis();
         const std::int64_t out_rank = out_shape.size();
         if (axis < -out_rank || axis >= out_rank)
-            THROW_IE_EXCEPTION << "Invalid axis value. Expected in [" << -out_rank
+            IE_THROW() << "Invalid axis value. Expected in [" << -out_rank
                                << ", " << out_rank-1 << "]. Got " << axis;
         if (axis < 0)
             axis += out_rank;
@@ -63,7 +63,7 @@ namespace ArmPlugin {
                 case ngraph::element::Type_t::u16 : return make(wrap_one_hot<input_type, depth_type, std::uint16_t>);\
                 case ngraph::element::Type_t::i32 : return make(wrap_one_hot<input_type, depth_type, std::int32_t>);\
                 case ngraph::element::Type_t::f32 : return make(wrap_one_hot<input_type, depth_type, float>);\
-                default: THROW_IE_EXCEPTION << "Unsupported Output Type: " << outType; return {};\
+                default: IE_THROW() << "Unsupported Output Type: " << outType; return {};\
             }\
             break
         switch (inputType) {
@@ -74,7 +74,7 @@ namespace ArmPlugin {
                     case ngraph::element::Type_t::i16 : ONEHOT_TYPE_OUT_CASE(std::int32_t, std::int16_t);
                     case ngraph::element::Type_t::i32 : ONEHOT_TYPE_OUT_CASE(std::int32_t, std::int32_t);
                     case ngraph::element::Type_t::i64 : ONEHOT_TYPE_OUT_CASE(std::int32_t, std::int64_t);
-                    default: THROW_IE_EXCEPTION << "Unsupported Depth Type: " << depthType; return {};
+                    default: IE_THROW() << "Unsupported Depth Type: " << depthType; return {};
                 }
                 break;
             }
@@ -85,11 +85,11 @@ namespace ArmPlugin {
                     case ngraph::element::Type_t::i16 : ONEHOT_TYPE_OUT_CASE(std::int64_t, std::int16_t);
                     case ngraph::element::Type_t::i32 : ONEHOT_TYPE_OUT_CASE(std::int64_t, std::int32_t);
                     case ngraph::element::Type_t::i64 : ONEHOT_TYPE_OUT_CASE(std::int64_t, std::int64_t);
-                    default: THROW_IE_EXCEPTION << "Unsupported Depth Type: " << depthType; return {};
+                    default: IE_THROW() << "Unsupported Depth Type: " << depthType; return {};
                 }
                 break;
             }
-            default: THROW_IE_EXCEPTION << "Unsupported Input Type. Expected int32 or int64, got " << inputType; return {};
+            default: IE_THROW() << "Unsupported Input Type. Expected int32 or int64, got " << inputType; return {};
         }
         #undef ONEHOT_TYPE_OUT_CASE
     }

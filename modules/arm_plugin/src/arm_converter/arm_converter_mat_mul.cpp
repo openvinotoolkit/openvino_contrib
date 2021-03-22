@@ -10,13 +10,13 @@ namespace ArmPlugin {
 enum Input {Features, Weights, Bias};
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& node) {
     if (node.get_transpose_a()) {
-        THROW_IE_EXCEPTION << "Can not create MatMul layer with transpose first input";
+        IE_THROW() << "Can not create MatMul layer with transpose first input";
     }
     return MakeConversion<arm_compute::NEFullyConnectedLayer>(node.input(Features), node.input(Weights), nullptr, node.output(0));
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMulBias& node) {
     if (node.get_transpose_a()) {
-        THROW_IE_EXCEPTION << "Can not create MatMul layer with transpose first input";
+        IE_THROW() << "Can not create MatMul layer with transpose first input";
     }
     return MakeConversion<arm_compute::NEFullyConnectedLayer>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0));
 }

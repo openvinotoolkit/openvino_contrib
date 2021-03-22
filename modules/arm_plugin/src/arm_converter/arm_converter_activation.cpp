@@ -89,7 +89,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& 
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     if (node.get_input_element_type(0) != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::hsigmoid<float>);
 }
@@ -99,7 +99,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
     };
     if (node.get_input_element_type(0) != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::gelu<float>);
 }
@@ -110,7 +110,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
     };
 
     if (node.get_input_element_type(0) != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     float alpha = dynamic_cast<const opset::Constant&>(
@@ -132,7 +132,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node
                                     ngraph::shape_size(node.get_input_shape(2)));
     };
     if (node.get_input_element_type(0) != ngraph::element::f32) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
     return make(ngraph::runtime::reference::selu<float>);
 }

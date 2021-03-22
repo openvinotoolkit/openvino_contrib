@@ -86,7 +86,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingS
                 return make(ngraph::runtime::reference::embeddingSegmentsSum<float, std::int32_t>);
             }
             return make(ngraph::runtime::reference::embeddingSegmentsSum<float, std::int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

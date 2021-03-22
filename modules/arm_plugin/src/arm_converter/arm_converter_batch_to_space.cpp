@@ -12,11 +12,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::BatchToSpa
     auto crops_end   = std::dynamic_pointer_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
 
     if (node.get_input_shape(0).size() != 4) {
-        THROW_IE_EXCEPTION << "Unsupported BatchToSpace with num dimensions != 4";
+        IE_THROW() << "Unsupported BatchToSpace with num dimensions != 4";
     }
 
     if (!block_shape || !crops_begin || !crops_end) {
-        THROW_IE_EXCEPTION << "Unsupported BatchToSpace op with inconstant block_shape, crops_begin or crops_end";
+        IE_THROW() << "Unsupported BatchToSpace op with inconstant block_shape, crops_begin or crops_end";
     }
 
     auto begin  = crops_begin->cast_vector<int>();
@@ -25,11 +25,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::BatchToSpa
 
     if (!std::all_of(begin.begin(), begin.end(), [] (int i) {return i == 0;}) ||
         !std::all_of(end.begin(), end.end(), [] (int i) {return i == 0;})) {
-        THROW_IE_EXCEPTION << "Unsupported BatchToSpace op with crop > 0";
+        IE_THROW() << "Unsupported BatchToSpace op with crop > 0";
     }
 
     if (shapes[0] != 1 || shapes[1] != 1) {
-        THROW_IE_EXCEPTION << "Unsupported BatchToSpace op with block_shape != 1 for N, C";
+        IE_THROW() << "Unsupported BatchToSpace op with block_shape != 1 for N, C";
     }
     int32_t block_shape_y = shapes[2];
     int32_t block_shape_x = shapes[3];

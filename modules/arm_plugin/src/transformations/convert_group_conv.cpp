@@ -21,7 +21,7 @@ ArmPlugin::pass::ConvertGroupConvolution::ConvertGroupConvolution() {
         }
 
         if (gconv->get_shape().size() != 4) {
-            THROW_IE_EXCEPTION << "Only Convolution2D is supported.";
+            IE_THROW() << "Only Convolution2D is supported.";
         }
 
         auto data_shape = gconv->get_input_shape(Inputs::Data);

@@ -9,7 +9,7 @@
 namespace ArmPlugin {
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::Select& node) {
     if (node.get_input_shape(0) != node.get_input_shape(1) || node.get_input_shape(0) != node.get_input_shape(2)) {
-        THROW_IE_EXCEPTION << "Select op doesn't support broadcast";
+        IE_THROW() << "Select op doesn't support broadcast";
     }
     return MakeConversion<arm_compute::NESelect>(node.input(0), node.input(1), node.input(2), node.output(0));
 }
