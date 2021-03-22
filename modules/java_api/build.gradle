@@ -1,11 +1,16 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
+    id "com.jfrog.bintray" version "1.8.5"
 }
 
 sourceSets {
     main {
         java {
             srcDirs = ["org"]
+        }
+        resources {
+            srcDir 'native'
         }
     }
     test {
@@ -25,4 +30,72 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-core:1.3"
 }
 
+test {
+    environment "MODELS_PATH", project.getProperty('MODELS_PATH')
+}
 test.onlyIf { project.hasProperty('run_tests') }
+
+//
+// Bintray publication:
+// $ export BINTRAY_USER=<USERNAME>
+// $ export BINTRAY_KEY=<TOKEN>
+// $ export VERSION=<VERSION>
+// $ gradle bintrayUpload
+//
+
+version = System.getenv('VERSION')
+
+bintray {
+    user = System.getenv('BINTRAY_USER')
+    key = System.getenv('BINTRAY_KEY')
+    publications = ['OpenVINOPublication']
+    pkg {
+        repo = 'openvino'
+        name = 'openvino_contrib'
+        userOrg = System.getenv('BINTRAY_USER')
+        licenses = ['Apache-2.0']
+        vcsUrl = 'https://github.com/openvinotoolkit/openvino_contrib.git'
+        version {
+            name = project.version
+        }
+    }
+}
+
+def pomConfig = {
+    licenses {
+        license {
+            name "The Apache Software License, Version 2.0"
+            url "http://www.apache.org/licenses/LICENSE-2.0.txt"
+            distribution "repo"
+        }
+    }
+    developers {
+        developer {
+            id "developer-id"
+            name "developer-name"
+            email "dev@d.com"
+        }
+    }
+
+    scm {
+       url "https://github.com/openvinotoolkit/openvino_contrib"
+    }
+}
+
+publishing {
+    publications {
+        OpenVINOPublication(MavenPublication) {
+            from(components.java)
+            groupId 'org.intel'
+            artifactId 'openvino'
+            version project.version
+            pom.withXml {
+                def root = asNode()
+                root.appendNode('description', 'Java bindings for Intel OpenVINO')
+                root.appendNode('name', 'Intel OpenVINO')
+                root.appendNode('url', 'https://github.com/openvinotoolkit/openvino_contrib')
+                root.children().last() + pomConfig
+            }
+        }
+    }
+}

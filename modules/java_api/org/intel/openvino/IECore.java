@@ -1,9 +1,16 @@
 package org.intel.openvino;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Files;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class IECore extends IEWrapper {
     public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
+    private static final Logger logger = Logger.getLogger(IECore.class.getName());
 
     public IECore() {
         super(GetCore());
@@ -11,6 +18,85 @@ public class IECore extends IEWrapper {
 
     public IECore(String xmlConfigFile) {
         super(GetCore1(xmlConfigFile));
+    }
+
+    private static String getLibraryName(String name, String linux_ver) {
+        final String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("win")) {
+            return name + ".dll";
+        } else if (osName.contains("mac")) {
+            return "lib" + name + ".dylib";
+        } else {
+            name = "lib" + name + ".so";
+            if (linux_ver != null) {
+                name += "." + linux_ver;
+            }
+        }
+        return name;
+    }
+
+    // Use this method to initialize native libraries and other files like
+    // plugins.xml and *.mvcmd in case of the JAR package os OpenVINO.
+    public static void loadNativeLibs() {
+        final String[] nativeFiles = {
+            "plugins.xml",
+            "usb-ma2x8x.mvcmd",
+            "pcie-ma2x8x.mvcmd",
+            "cache.json",
+            "tbb",
+            "tbbmalloc",
+            "ngraph",
+            "gna",
+            "inference_engine_transformations",
+            "inference_engine",
+            "inference_engine_ir_reader",
+            "inference_engine_legacy",
+            "inference_engine_lp_transformations",
+            "onnx_importer",
+            "inference_engine_onnx_reader",
+            "inference_engine_preproc",
+            "MKLDNNPlugin",
+            "clDNNPlugin",
+            "GNAPlugin",
+            "HeteroPlugin",
+            "MultiDevicePlugin",
+            "myriadPlugin",
+            "inference_engine_java_api" // Should be at the end
+        };
+
+        try {
+            // Create a temporal folder to unpack native files.
+            File tmpDir = Files.createTempDirectory("openvino-native").toFile();
+            for (String file : nativeFiles) {
+                boolean isLibrary = !file.contains(".");
+                if (isLibrary) {
+                    // On Linux, TBB and GNA libraries has .so.2 soname
+                    String version = file.startsWith("tbb") || file.equals("gna") ? "2" : null;
+                    file = getLibraryName(file, version);
+                }
+
+                URL url = IECore.class.getClassLoader().getResource(file);
+                if (url == null) {
+                    logger.warning("Resource not found: " + file);
+                    continue;
+                }
+                tmpDir.deleteOnExit();
+                File nativeLibTmpFile = new File(tmpDir, file);
+                nativeLibTmpFile.deleteOnExit();
+                try (InputStream in = url.openStream()) {
+                    Files.copy(in, nativeLibTmpFile.toPath());
+                }
+                String path = nativeLibTmpFile.getAbsolutePath();
+                if (isLibrary) {
+                    try {
+                        System.load(path);
+                    } catch (UnsatisfiedLinkError ex) {
+                        logger.warning("Failed to load library " + file + ": " + ex);
+                    }
+                }
+            }
+        } catch (IOException ex) {
+        }
     }
 
     public CNNNetwork ReadNetwork(final String modelPath, final String weightPath) {

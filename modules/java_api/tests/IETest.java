@@ -10,14 +10,18 @@ import java.nio.file.Paths;
 public class IETest {
     String modelXml;
     String modelBin;
-    static String device;
+    static String device = "CPU";
 
     public IETest() {
         try {
             System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
-            System.err.println("Failed to load Inference Engine library\n" + e);
-            System.exit(1);
+            try {
+                IECore.loadNativeLibs();
+            } catch (Exception ex) {
+                System.err.println("Failed to load Inference Engine library\n" + ex);
+                System.exit(1);
+            }
         }
         modelXml =
                 Paths.get(
