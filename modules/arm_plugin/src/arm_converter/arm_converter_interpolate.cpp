@@ -32,14 +32,14 @@ static void pad_input_data(const uint8_t* data_ptr,
     }
 }
 
-template <typename T, typename U>
-void wrap_interpolate(const T* input_data,
+template <typename T1, typename T2, typename U>
+void wrap_interpolate(const T1* input_data,
                       const ngraph::Shape& input_shape,
-                      const T* scales,
+                      const T2* scales,
                       const ngraph::Shape& scales_shape,
                       const U* axes,
                       const ngraph::Shape& axes_shape,
-                      T* out,
+                      T1* out,
                       const ngraph::Shape& out_shape,
                       const ngraph::op::v4::Interpolate::InterpolateAttrs& attrs) {
     auto& pads_begin = attrs.pads_begin;
@@ -49,7 +49,7 @@ void wrap_interpolate(const T* input_data,
         padded_shape[i] += pads_begin[i] + pads_end[i];
     }
 
-    auto type_size = sizeof(T);
+    auto type_size = sizeof(T1);
     std::vector<uint8_t> padded_input_data(ngraph::shape_size(padded_shape) * type_size, 0);
     const uint8_t* data_ptr  = reinterpret_cast<const uint8_t*>(input_data);
     uint8_t* padded_data_ptr = padded_input_data.data();
@@ -69,13 +69,13 @@ void wrap_interpolate(const T* input_data,
 
     auto axes_size = ngraph::shape_size(axes_shape);
     std::vector<int64_t> axes_vec(axes, axes + axes_size);
-    ngraph::runtime::reference::interpolate<T>(reinterpret_cast<T*>(padded_data_ptr),
-                                               padded_shape,
-                                               scales_vec,
-                                               axes_vec,
-                                               out,
-                                               out_shape,
-                                               attrs);
+    ngraph::runtime::reference::interpolate<T1>(reinterpret_cast<T1*>(padded_data_ptr),
+                                                padded_shape,
+                                                scales_vec,
+                                                axes_vec,
+                                                out,
+                                                out_shape,
+                                                attrs);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolate& node) {
@@ -94,15 +94,15 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
 
     switch (node.get_input_element_type(0)) {
         case ngraph::element::Type_t::f16 :
-            if (node.get_input_element_type(3) == ngraph::element::i32) {
-                return make(wrap_interpolate<ngraph::float16, std::int32_t>);
+            if (node.get_input_element_type(2) == ngraph::element::f32) {
+                return make(wrap_interpolate<ngraph::float16, float, std::int32_t>);
             }
-            return make(wrap_interpolate<ngraph::float16, std::int64_t>);
+            return make(wrap_interpolate<ngraph::float16, ngraph::float16, std::int32_t>);
         case ngraph::element::Type_t::f32 :
-            if (node.get_input_element_type(3) == ngraph::element::i32) {
-                return make(wrap_interpolate<float, std::int32_t>);
+            if (node.get_input_element_type(2) == ngraph::element::f32) {
+                return make(wrap_interpolate<float, float, std::int32_t>);
             }
-            return make(wrap_interpolate<float, std::int64_t>);
+            return make(wrap_interpolate<float, ngraph::float16, std::int32_t>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
