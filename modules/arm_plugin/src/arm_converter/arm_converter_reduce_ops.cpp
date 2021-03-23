@@ -60,7 +60,7 @@ void wrap_reduce_logical_and(const T* arg,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceLogicalAnd& node) {
     if (node.get_input_element_type(0) != ngraph::element::u8) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     auto func = wrap_reduce_logical_and<std::uint8_t>;
@@ -87,7 +87,7 @@ void wrap_reduce_logical_or(const T* arg,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceLogicalOr& node) {
     if (node.get_input_element_type(0) != ngraph::element::u8) {
-        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
     }
 
     auto func = wrap_reduce_logical_or<std::uint8_t>;
