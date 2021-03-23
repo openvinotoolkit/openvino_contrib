@@ -42,7 +42,7 @@ arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
         case ngraph::element::Type_t::f16   : return arm_compute::DataType::F16;
         case ngraph::element::Type_t::f32   : return arm_compute::DataType::F32;
         case ngraph::element::Type_t::bf16  : return arm_compute::DataType::BFLOAT16;
-        default: THROW_IE_EXCEPTION << "Unsupported Data Type " << type; return {};
+        default: IE_THROW() << "Unsupported Data Type " << type; return {};
     }
 }
 
@@ -193,7 +193,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
         }
     }
     if (!unsupported.empty()) {
-        THROW_IE_EXCEPTION << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported by plugin: " << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported by plugin: " << unsupported;
     }
     for (const auto& node : orderedOps) {
         Conversion::Ptr conversion;
@@ -210,7 +210,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
         }
     }
     if (!unsupported.empty()) {
-        THROW_IE_EXCEPTION << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported: " << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported: " << unsupported;
     }
     std::map<ngraph::Output<ngraph::Node>, std::size_t> counter;
     for (auto&& node : orderedOps) {

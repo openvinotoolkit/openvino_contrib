@@ -24,7 +24,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
         auto&& dims       = inputShape.size();
 
         if (dims > 4) {
-            THROW_IE_EXCEPTION << "Unsupported StridedSlice with " << dims << " dimensions.";
+            IE_THROW() << "Unsupported StridedSlice with " << dims << " dimensions.";
         }
 
         auto&& begin_node  = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(1).get_node_shared_ptr());
@@ -59,7 +59,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
                                std::find(shrinkAxis.begin(), shrinkAxis.end(), 1) != shrinkAxis.end();
 
         if (addOrReduceDims && std::find(ellipsisMask.begin(), ellipsisMask.end(), 1) != ellipsisMask.end()) {
-            THROW_IE_EXCEPTION << "Unsupported StridedSlice with ellipsis_mask and new_axis_mask or shrink_axis_mask";
+            IE_THROW() << "Unsupported StridedSlice with ellipsis_mask and new_axis_mask or shrink_axis_mask";
         }
 
         for (size_t i = 0; i < begin.size(); i++) {

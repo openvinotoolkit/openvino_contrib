@@ -43,7 +43,7 @@ static arm_compute::ActivationLayerInfo GetActivation(const Conv& node) {
         case FUNC::HARD_SWISH      : func = arm_compute::ActivationLayerInfo::ActivationFunction::HARD_SWISH; break;
         case FUNC::IDENTITY        : return arm_compute::ActivationLayerInfo();
     default:
-        THROW_IE_EXCEPTION << "Arm Plugin: unsupported activation function for Convolution";
+        IE_THROW() << "Arm Plugin: unsupported activation function for Convolution";
     }
     return arm_compute::ActivationLayerInfo(func, info.a, info.b);
 }

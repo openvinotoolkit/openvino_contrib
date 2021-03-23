@@ -16,7 +16,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Round& nod
     };
 
     if (node.get_mode() != ngraph::op::v5::Round::RoundMode::HALF_TO_EVEN) {
-        THROW_IE_EXCEPTION << "Use ConvertRound transformation";
+        IE_THROW() << "Use ConvertRound transformation";
     }
     return make(ngraph::runtime::reference::round<float>);
 }

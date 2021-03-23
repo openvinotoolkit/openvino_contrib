@@ -12,11 +12,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::SpaceToBat
     auto pads_end   = std::dynamic_pointer_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
 
     if (node.get_input_shape(0).size() != 4) {
-        THROW_IE_EXCEPTION << "Unsupported SpaceToBatch with num dimensions != 4";
+        IE_THROW() << "Unsupported SpaceToBatch with num dimensions != 4";
     }
 
     if (!block_shape || !pads_begin || !pads_end) {
-        THROW_IE_EXCEPTION << "Unsupported SpaceToBatch op with inconstant shapes, pads_begin or pads_end";
+        IE_THROW() << "Unsupported SpaceToBatch op with inconstant shapes, pads_begin or pads_end";
     }
 
     auto begin  = pads_begin->cast_vector<int>();
@@ -24,11 +24,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::SpaceToBat
     auto shapes = block_shape->cast_vector<int32_t>();
 
     if (begin[0] != 0 || begin[1] != 0 || end[0] != 0 || end[1] != 0) {
-        THROW_IE_EXCEPTION << "Unsupported SpaceToBatch op with non-zero paddings for batch or channels";
+        IE_THROW() << "Unsupported SpaceToBatch op with non-zero paddings for batch or channels";
     }
 
     if (shapes[0] != 1 || shapes[1] != 1) {
-        THROW_IE_EXCEPTION << "Unsupported SpaceToBatch op with shapes != 1 for batch or channels";
+        IE_THROW() << "Unsupported SpaceToBatch op with shapes != 1 for batch or channels";
     }
     int32_t block_shape_y = shapes[2];
     int32_t block_shape_x = shapes[3];

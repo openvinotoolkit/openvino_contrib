@@ -28,11 +28,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Pad& node)
             mode = arm_compute::PaddingMode::SYMMETRIC;
             break;
         default:
-            THROW_IE_EXCEPTION << "Unsupported pad mode: " << node.get_pad_mode();
+            IE_THROW() << "Unsupported pad mode: " << node.get_pad_mode();
     }
 
     if (mode == arm_compute::PaddingMode::SYMMETRIC && !std::all_of(pads_end.begin(), pads_end.end(), [](int i){return i == 0;})) {
-        THROW_IE_EXCEPTION << "Unsupported SYMMETRIC pad mode with a non-zero pads end";
+        IE_THROW() << "Unsupported SYMMETRIC pad mode with a non-zero pads end";
     }
 
     float value = dynamic_cast<const opset::Constant&>(*(node.input_value(3).get_node())).cast_vector<float>()[0];

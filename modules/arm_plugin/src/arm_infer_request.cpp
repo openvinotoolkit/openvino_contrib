@@ -109,7 +109,7 @@ void ArmInferRequest::allocateBlobs() {
                     case arm_compute::DataType::F16         : return InferenceEngine::Precision::FP16;
                     case arm_compute::DataType::F32         : return InferenceEngine::Precision::FP32;
                     case arm_compute::DataType::BFLOAT16    : return InferenceEngine::Precision::BF16;
-                    default: THROW_IE_EXCEPTION << "Unsupported Data Type ";
+                    default: IE_THROW() << "Unsupported Data Type ";
                 }
             };
             auto networkPresion = dataTypeCast(tensors.at(blobData.first)->info()->data_type());
@@ -151,7 +151,7 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
         DST_CASE(srcT, U64,   std::uint64_t)                                \
         DST_CASE(srcT, FP16,  half_float::half)                             \
         DST_CASE(srcT, FP32,  float)                                        \
-        default: THROW_IE_EXCEPTION << "Unsupported Data Type " << dst->getTensorDesc().getPrecision();            \
+        default: IE_THROW() << "Unsupported Data Type " << dst->getTensorDesc().getPrecision();            \
     } break;
     switch (src->getTensorDesc().getPrecision()) {
         SRC_CASE(BOOL,  bool)
@@ -164,7 +164,7 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
         SRC_CASE(U64,   std::uint64_t)
         SRC_CASE(FP16,  half_float::half)
         SRC_CASE(FP32,  float)
-        default: THROW_IE_EXCEPTION << "Unsupported Data Type " << src->getTensorDesc().getPrecision();
+        default: IE_THROW() << "Unsupported Data Type " << src->getTensorDesc().getPrecision();
     }
 #undef SRC_CASE
 #undef DST_CASE

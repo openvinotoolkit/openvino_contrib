@@ -71,7 +71,7 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
 
     auto function = network.getFunction();
     if (function == nullptr) {
-         THROW_IE_EXCEPTION << "Arm Plugin supports only ngraph cnn network representation";
+         IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
     return std::make_shared<ExecutableNetwork>(Transform(function), cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
@@ -81,7 +81,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     Configuration cfg{config, _cfg, false};
     auto function = network.getFunction();
     if (function == nullptr) {
-         THROW_IE_EXCEPTION << "Arm Plugin supports only ngraph cnn network representation";
+         IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
     std::unordered_set<std::string> originalOps;
     for (auto&& node : function->get_ops()) {
@@ -191,7 +191,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         std::vector<std::string> capabilities = { METRIC_VALUE(FP32), METRIC_VALUE(FP16) };
         IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
     } else  {
-        THROW_IE_EXCEPTION << "Unsupported device metric: " << name;
+        IE_THROW() << "Unsupported device metric: " << name;
     }
 }
 

@@ -33,7 +33,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint8_t, float>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::i16 :
             switch (dst) {
@@ -48,7 +48,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::int16_t, float>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::u16 :
             switch (dst) {
@@ -59,7 +59,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint16_t, float>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::i32 :
             switch (dst) {
@@ -74,7 +74,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::int32_t, float>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::u32 :
             switch (dst) {
@@ -87,7 +87,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint32_t, float>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::f16 :
             switch (dst) {
@@ -98,7 +98,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::i32 :
                     return make(ngraph::runtime::reference::convert<half_float::half, std::int32_t>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
         case ngraph::element::Type_t::f32 :
             switch (dst) {
@@ -109,9 +109,9 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::i32 :
                     return make(ngraph::runtime::reference::convert<float, std::int32_t>);
             default:
-                THROW_IE_EXCEPTION << "Unsupported convertion from " << src << " to " << dst; return {};
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 }  //  namespace ArmPlugin

@@ -8,7 +8,7 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherND& node) {
     if (node.get_output_shape(0).size() > 5) {
-        THROW_IE_EXCEPTION << "GatherND node doesn't support " << node.get_output_shape(0) << " output shape.";
+        IE_THROW() << "GatherND node doesn't support " << node.get_output_shape(0) << " output shape.";
     }
 
     auto make = [&] (auto refFunction) {
@@ -58,7 +58,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherND& 
                 return make(ngraph::runtime::reference::gather_nd<float, std::int32_t>);
             }
             return make(ngraph::runtime::reference::gather_nd<float, std::int64_t>);
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

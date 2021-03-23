@@ -15,7 +15,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ShuffleCha
 
     unsigned int group = static_cast<unsigned int>(node.get_group());
     if (axis != 1) {
-        THROW_IE_EXCEPTION << "Unsupported axis: " << axis;
+        IE_THROW() << "Unsupported axis: " << axis;
     }
     if (group == 1) {
         arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::IDENTITY);
