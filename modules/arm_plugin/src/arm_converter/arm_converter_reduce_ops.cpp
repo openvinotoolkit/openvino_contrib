@@ -5,6 +5,7 @@
 
 #include <arm_compute/runtime/NEON/functions/NEReductionOperation.h>
 #include <arm_compute/runtime/NEON/functions/NEReduceMean.h>
+#include <ngraph/runtime/reference/logical_reduction.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
@@ -43,4 +44,59 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceMean
     }
     return MakeConversion<arm_compute::NEReduceMean>(node.input(0), axes, node.get_keep_dims(), node.output(0));
 }
+
+template <typename T>
+void wrap_reduce_logical_and(const T* arg,
+                             T* out,
+                             const ngraph::Shape& input_shape,
+                             const ngraph::AxisSet& reduction_axes,
+                             bool keep_dims) {
+    ngraph::runtime::reference::reduce_logical_and(reinterpret_cast<const char*>(arg),
+                                                   reinterpret_cast<char*>(out),
+                                                   input_shape,
+                                                   reduction_axes,
+                                                   keep_dims);
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceLogicalAnd& node) {
+    if (node.get_input_element_type(0) != ngraph::element::u8) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+    }
+
+    auto func = wrap_reduce_logical_and<std::uint8_t>;
+    return MakeConversion(func,
+                          node.input(0),
+                          node.output(0),
+                          node.get_input_shape(0),
+                          node.get_reduction_axes(),
+                          node.get_keep_dims());
+}
+
+template <typename T>
+void wrap_reduce_logical_or(const T* arg,
+                            T* out,
+                            const ngraph::Shape& input_shape,
+                            const ngraph::AxisSet& reduction_axes,
+                            bool keep_dims) {
+    ngraph::runtime::reference::reduce_logical_or(reinterpret_cast<const char*>(arg),
+                                                  reinterpret_cast<char*>(out),
+                                                  input_shape,
+                                                  reduction_axes,
+                                                  keep_dims);
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceLogicalOr& node) {
+    if (node.get_input_element_type(0) != ngraph::element::u8) {
+        THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0);
+    }
+
+    auto func = wrap_reduce_logical_or<std::uint8_t>;
+    return MakeConversion(func,
+                          node.input(0),
+                          node.output(0),
+                          node.get_input_shape(0),
+                          node.get_reduction_axes(),
+                          node.get_keep_dims());
+}
+
 } // namespace ArmPlugin
