@@ -116,6 +116,7 @@ jobs:
   - script: |
       python3 -m pip install -U setuptools==51.0.0
       python3 -m pip install -r requirements.txt
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
     displayName: 'Install PyTorch tests dependencies'
 
