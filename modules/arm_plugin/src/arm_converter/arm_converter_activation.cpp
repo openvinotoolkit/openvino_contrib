@@ -112,7 +112,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
     };
 
     auto alpha_node = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
-    auto beta_node  = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto beta_node  = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
 
     if (!alpha_node || !beta_node) {
         IE_THROW() << "Unsupported HardSigmoid with inconstant alpha or beta";
