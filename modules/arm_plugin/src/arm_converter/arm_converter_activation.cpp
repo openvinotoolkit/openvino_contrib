@@ -88,20 +88,22 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSigmoid& 
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::hsigmoid<ngraph::float16>);
+        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::hsigmoid<float>);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
-    return make(ngraph::runtime::reference::hsigmoid<float>);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), node.get_approximation_mode(), ngraph::shape_size(node.get_output_shape(0)));
     };
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::gelu<ngraph::float16>);
+        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::gelu<float>);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
-    return make(ngraph::runtime::reference::gelu<float>);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoid& node) {
@@ -109,15 +111,26 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
         return this->MakeConversion(refFunction, node.input(0), alpha, beta, node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
 
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    auto alpha_node = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto beta_node  = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+
+    if (!alpha_node || !beta_node) {
+        IE_THROW() << "Unsupported HardSigmoid with inconstant alpha or beta";
     }
 
-    float alpha = dynamic_cast<const opset::Constant&>(
-            *(node.input_value(1).get_node())).cast_vector<float>()[0];
-    float beta  = dynamic_cast<const opset::Constant&>(
-            *(node.input_value(2).get_node())).cast_vector<float>()[0];
-    return make(ngraph::runtime::reference::hard_sigmoid<float>, alpha, beta);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 : {
+            auto alpha = alpha_node->cast_vector<ngraph::float16>()[0];
+            auto beta  = beta_node->cast_vector<ngraph::float16>()[0];
+            return make(ngraph::runtime::reference::hard_sigmoid<ngraph::float16>, alpha, beta);
+        }
+        case ngraph::element::Type_t::f32 : {
+            auto alpha = alpha_node->cast_vector<float>()[0];
+            auto beta  = beta_node->cast_vector<float>()[0];
+            return make(ngraph::runtime::reference::hard_sigmoid<float>, alpha, beta);
+        }
+        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node) {
@@ -131,9 +144,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Selu& node
                                     ngraph::shape_size(node.get_input_shape(1)),
                                     ngraph::shape_size(node.get_input_shape(2)));
     };
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::selu<ngraph::float16>);
+        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::selu<float>);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
-    return make(ngraph::runtime::reference::selu<float>);
 }
 } // namespace ArmPlugin

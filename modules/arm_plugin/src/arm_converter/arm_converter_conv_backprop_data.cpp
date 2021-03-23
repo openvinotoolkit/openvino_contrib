@@ -25,9 +25,12 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Convolutio
                                     node.get_strides());
     };
 
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 :
+            return make(ngraph::runtime::reference::convolution_backprop_in<ngraph::float16, ngraph::float16, ngraph::float16>);
+        case ngraph::element::Type_t::f32 :
+            return make(ngraph::runtime::reference::convolution_backprop_in<float, float, float>);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
-    return make(ngraph::runtime::reference::convolution_backprop_in<float, float, float>);
 }
 }  //  namespace ArmPlugin

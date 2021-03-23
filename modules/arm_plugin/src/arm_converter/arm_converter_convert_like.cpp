@@ -29,7 +29,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::u32 :
                     return make(ngraph::runtime::reference::convert<std::uint8_t, std::uint32_t>);
                 case ngraph::element::Type_t::f16 :
-                    return make(ngraph::runtime::reference::convert<std::uint8_t, half_float::half>);
+                    return make(ngraph::runtime::reference::convert<std::uint8_t, ngraph::float16>);
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint8_t, float>);
             default:
@@ -44,7 +44,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::u32 :
                     return make(ngraph::runtime::reference::convert<std::int16_t, std::uint32_t>);
                 case ngraph::element::Type_t::f16 :
-                    return make(ngraph::runtime::reference::convert<std::int16_t, half_float::half>);
+                    return make(ngraph::runtime::reference::convert<std::int16_t, ngraph::float16>);
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::int16_t, float>);
             default:
@@ -55,7 +55,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::i32 :
                     return make(ngraph::runtime::reference::convert<std::uint16_t, std::int32_t>);
                 case ngraph::element::Type_t::f16 :
-                    return make(ngraph::runtime::reference::convert<std::uint16_t, half_float::half>);
+                    return make(ngraph::runtime::reference::convert<std::uint16_t, ngraph::float16>);
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint16_t, float>);
             default:
@@ -70,7 +70,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::u32 :
                     return make(ngraph::runtime::reference::convert<std::int32_t, std::uint32_t>);
                 case ngraph::element::Type_t::f16 :
-                    return make(ngraph::runtime::reference::convert<std::int32_t, half_float::half>);
+                    return make(ngraph::runtime::reference::convert<std::int32_t, ngraph::float16>);
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::int32_t, float>);
             default:
@@ -83,7 +83,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
                 case ngraph::element::Type_t::i32 :
                     return make(ngraph::runtime::reference::convert<std::uint32_t, std::int32_t>);
                 case ngraph::element::Type_t::f16 :
-                    return make(ngraph::runtime::reference::convert<std::uint32_t, half_float::half>);
+                    return make(ngraph::runtime::reference::convert<std::uint32_t, ngraph::float16>);
                 case ngraph::element::Type_t::f32 :
                     return make(ngraph::runtime::reference::convert<std::uint32_t, float>);
             default:
@@ -92,11 +92,11 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ConvertLi
         case ngraph::element::Type_t::f16 :
             switch (dst) {
                 case ngraph::element::Type_t::u8 :
-                    return make(ngraph::runtime::reference::convert<half_float::half, std::uint8_t>);
+                    return make(ngraph::runtime::reference::convert<ngraph::float16, std::uint8_t>);
                 case ngraph::element::Type_t::i16 :
-                    return make(ngraph::runtime::reference::convert<half_float::half, std::int16_t>);
+                    return make(ngraph::runtime::reference::convert<ngraph::float16, std::int16_t>);
                 case ngraph::element::Type_t::i32 :
-                    return make(ngraph::runtime::reference::convert<half_float::half, std::int32_t>);
+                    return make(ngraph::runtime::reference::convert<ngraph::float16, std::int32_t>);
             default:
                 IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }

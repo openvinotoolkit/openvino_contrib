@@ -75,9 +75,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
             return make(ngraph::runtime::reference::embeddingBagOffsetsSum<std::int64_t, size_t>);
         case ngraph::element::Type_t::f16 :
             if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagOffsetsSum<half_float::half, std::int32_t>);
+                return make(ngraph::runtime::reference::embeddingBagOffsetsSum<ngraph::float16, std::int32_t>);
             }
-            return make(ngraph::runtime::reference::embeddingBagOffsetsSum<half_float::half, size_t>);
+            return make(ngraph::runtime::reference::embeddingBagOffsetsSum<ngraph::float16, size_t>);
         case ngraph::element::Type_t::f32 :
             if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
                 return make(ngraph::runtime::reference::embeddingBagOffsetsSum<float, std::int32_t>);

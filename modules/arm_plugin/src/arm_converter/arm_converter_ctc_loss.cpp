@@ -25,11 +25,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCLoss& n
                                     node.output(0));
     };
     switch (node.get_input_element_type(0)) {
-        // case ngraph::element::Type_t::f16 :
-        //     if (node.get_input_element_type(1) == ngraph::element::i32) {
-        //         return make(ngraph::runtime::reference::CTCLoss<half_float::half, std::int32_t>);
-        //     }
-        //     return make(ngraph::runtime::reference::CTCLoss<half_float::half, std::int64_t>);
+        case ngraph::element::Type_t::f16 :
+            if (node.get_input_element_type(1) == ngraph::element::i32) {
+                return make(ngraph::runtime::reference::CTCLoss<ngraph::float16, std::int32_t>);
+            }
+            return make(ngraph::runtime::reference::CTCLoss<ngraph::float16, std::int64_t>);
         case ngraph::element::Type_t::f32 :
             if (node.get_input_element_type(1) == ngraph::element::i32) {
                 return make(ngraph::runtime::reference::CTCLoss<float, std::int32_t>);

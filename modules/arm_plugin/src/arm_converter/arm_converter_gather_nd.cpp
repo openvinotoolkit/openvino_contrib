@@ -50,9 +50,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherND& 
             return make(ngraph::runtime::reference::gather_nd<std::int64_t, std::int64_t>);
         case ngraph::element::Type_t::f16 :
             if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather_nd<half_float::half, std::int32_t>);
+                return make(ngraph::runtime::reference::gather_nd<ngraph::float16, std::int32_t>);
             }
-            return make(ngraph::runtime::reference::gather_nd<half_float::half, std::int64_t>);
+            return make(ngraph::runtime::reference::gather_nd<ngraph::float16, std::int64_t>);
         case ngraph::element::Type_t::f32 :
             if (node.get_input_element_type(1) == ngraph::element::i32) {
                 return make(ngraph::runtime::reference::gather_nd<float, std::int32_t>);

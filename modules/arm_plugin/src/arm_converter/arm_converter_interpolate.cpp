@@ -95,9 +95,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
     switch (node.get_input_element_type(0)) {
         case ngraph::element::Type_t::f16 :
             if (node.get_input_element_type(3) == ngraph::element::i32) {
-                return make(wrap_interpolate<half_float::half, std::int32_t>);
+                return make(wrap_interpolate<ngraph::float16, std::int32_t>);
             }
-            return make(wrap_interpolate<half_float::half, std::int64_t>);
+            return make(wrap_interpolate<ngraph::float16, std::int64_t>);
         case ngraph::element::Type_t::f32 :
             if (node.get_input_element_type(3) == ngraph::element::i32) {
                 return make(wrap_interpolate<float, std::int32_t>);

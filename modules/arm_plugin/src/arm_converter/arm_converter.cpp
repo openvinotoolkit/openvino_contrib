@@ -10,15 +10,6 @@
 
 using namespace InferenceEngine::details;
 
-namespace ngraph {
-namespace element {
-    template <>
-    Type from<half_float::half>() {
-        return from<ngraph::float16>();
-    }
-}  //  namespace element
-}  //  namespace ngraph
-
 namespace ArmPlugin {
 arm_compute::TensorShape ShapeCast(const ngraph::Shape& shape) {
     arm_compute::TensorShape tensorShape;

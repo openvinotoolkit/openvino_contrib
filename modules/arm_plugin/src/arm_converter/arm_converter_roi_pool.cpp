@@ -13,10 +13,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIPooling
                                     node.get_spatial_scale(), node.get_method());
     };
 
-    if (node.get_input_element_type(0) != ngraph::element::f32) {
-        IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
+    switch (node.get_input_element_type(0)) {
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::roi_pooling<ngraph::float16>);
+        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::roi_pooling<float>);
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
-    return make(ngraph::runtime::reference::roi_pooling<float>);
 }
 
 }  //  namespace ArmPlugin

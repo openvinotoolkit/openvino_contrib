@@ -62,6 +62,7 @@ namespace ArmPlugin {
                 case ngraph::element::Type_t::i16 : return make(wrap_one_hot<input_type, depth_type, std::int16_t>);\
                 case ngraph::element::Type_t::u16 : return make(wrap_one_hot<input_type, depth_type, std::uint16_t>);\
                 case ngraph::element::Type_t::i32 : return make(wrap_one_hot<input_type, depth_type, std::int32_t>);\
+                case ngraph::element::Type_t::f16 : return make(wrap_one_hot<input_type, depth_type, ngraph::float16>);\
                 case ngraph::element::Type_t::f32 : return make(wrap_one_hot<input_type, depth_type, float>);\
                 default: IE_THROW() << "Unsupported Output Type: " << outType; return {};\
             }\

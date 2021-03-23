@@ -18,7 +18,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCGreedyD
                                     node.get_ctc_merge_repeated());
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::ctc_greedy_decoder<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::ctc_greedy_decoder<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::ctc_greedy_decoder<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }

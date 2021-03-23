@@ -18,8 +18,35 @@ void detection_output(const T* _location,
                       const ngraph::Shape& locShape,
                       const ngraph::Shape& priorsShape,
                       const ngraph::Shape& outShape) {
-    ngraph::runtime::reference::referenceDetectionOutput<float> refDetOut(attrs, locShape, priorsShape, outShape);
-    refDetOut.run(_location, _confidence, _priors, _armConfidence, _armLocation, result);
+    THROW_IE_EXCEPTION << "Not implemented";
+}
+
+template<> void detection_output<ngraph::float16>(const ngraph::float16* _location,
+                                                  const ngraph::float16* _confidence,
+                                                  const ngraph::float16* _priors,
+                                                  const ngraph::float16* _armConfidence,
+                                                  const ngraph::float16* _armLocation,
+                                                  ngraph::float16* result,
+                                                  const ngraph::op::DetectionOutputAttrs& attrs,
+                                                  const ngraph::Shape& locShape,
+                                                  const ngraph::Shape& priorsShape,
+                                                  const ngraph::Shape& outShape) {
+    ngraph::runtime::reference::referenceDetectionOutput<ngraph::float16> refDet(attrs, locShape, priorsShape, outShape);
+    refDet.run(_location, _confidence, _priors, _armConfidence, _armLocation, result);
+}
+
+template<> void detection_output<float>(const float* _location,
+                                        const float* _confidence,
+                                        const float* _priors,
+                                        const float* _armConfidence,
+                                        const float* _armLocation,
+                                        float* result,
+                                        const ngraph::op::DetectionOutputAttrs& attrs,
+                                        const ngraph::Shape& locShape,
+                                        const ngraph::Shape& priorsShape,
+                                        const ngraph::Shape& outShape) {
+    ngraph::runtime::reference::referenceDetectionOutput<float> refDet(attrs, locShape, priorsShape, outShape);
+    refDet.run(_location, _confidence, _priors, _armConfidence, _armLocation, result);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionOutput& node) {
@@ -51,8 +78,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionO
     };
 
     switch (node.get_input_element_type(0)) {
-        // case ngraph::element::Type_t::f16 :
-        //     return make(detection_output<half_float::half>);
+        case ngraph::element::Type_t::f16 :
+            return make(detection_output<ngraph::float16>);
         case ngraph::element::Type_t::f32 : {
             return make(detection_output<float>);
         }
