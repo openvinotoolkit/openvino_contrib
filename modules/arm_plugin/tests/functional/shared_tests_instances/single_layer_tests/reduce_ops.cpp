@@ -83,4 +83,48 @@ INSTANTIATE_TEST_CASE_P(
         ReduceOpsLayerTest::getTestCaseName
 );
 
+const std::vector<ngraph::helpers::ReductionType> reductionLogicalTypes = {
+        ngraph::helpers::ReductionType::LogicalAnd,
+        ngraph::helpers::ReductionType::LogicalOr,
+};
+
+const auto paramsOneAxisLogical = testing::Combine(
+        testing::Values(std::vector<int>{0}),
+        testing::ValuesIn(opTypes),
+        testing::Values(true, false),
+        testing::ValuesIn(reductionLogicalTypes),
+        testing::Values(InferenceEngine::Precision::BOOL),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::ValuesIn(inputShapes),
+        testing::Values(CommonTestUtils::DEVICE_CPU)
+);
+
+INSTANTIATE_TEST_CASE_P(
+        smoke_ReduceLogicalOneAxis,
+        ReduceOpsLayerTest,
+        paramsOneAxisLogical,
+        ReduceOpsLayerTest::getTestCaseName
+);
+
+const auto params_ReductionTypesLogical = testing::Combine(
+        testing::Values(std::vector<int>{0, 1, 3}),
+        testing::Values(opTypes[1]),
+        testing::Values(true, false),
+        testing::ValuesIn(reductionLogicalTypes),
+        testing::Values(InferenceEngine::Precision::BOOL),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::Values(std::vector<size_t>{2, 9, 2, 9}),
+        testing::Values(CommonTestUtils::DEVICE_CPU)
+);
+
+INSTANTIATE_TEST_CASE_P(
+        smoke_ReduceLogical_ReductionTypes,
+        ReduceOpsLayerTest,
+        params_ReductionTypesLogical,
+        ReduceOpsLayerTest::getTestCaseName
+);
 }  // namespace

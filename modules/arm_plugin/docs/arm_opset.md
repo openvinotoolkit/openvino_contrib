@@ -109,8 +109,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [ReadValue](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/ReadValue_3.md)                                    | Not Supported |
 | [ReduceL1](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL1_4.md)                                           | Supported     |
 | [ReduceL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL2_4.md)                                           | Supported     |
-| [ReduceLogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalAnd_1.md)                           | Not Supported |
-| [ReduceLogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalOr_1.md)                             | Not Supported |
+| [ReduceLogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalAnd_1.md)                           | Supported**   |
+| [ReduceLogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalOr_1.md)                             | Supported**   |
 | [ReduceMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMax_1.md)                                         | Supported     |
 | [ReduceMean](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMean_1.md)                                       | Supported     |
 | [ReduceMin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMin_1.md)                                         | Supported     |
