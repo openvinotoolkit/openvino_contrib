@@ -14,6 +14,7 @@ public class IEWrapper {
     @Override
     protected void finalize() throws Throwable {
         delete(nativeObj);
+        super.finalize();
     }
 
     /*----------------------------------- native methods -----------------------------------*/

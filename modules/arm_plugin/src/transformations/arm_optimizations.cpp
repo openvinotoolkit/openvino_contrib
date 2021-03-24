@@ -110,6 +110,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertConv1D>();
     manager.register_pass<pass::ConvertGroupConv1D>();
     manager.register_pass<pass::ConvertGroupConvolution>();
+    manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<pass::ConvBiasActivationFusion>();
     manager.register_pass<pass::ConvertMatMulToFC>();
     manager.register_pass<pass::ConvertEltwise>();
