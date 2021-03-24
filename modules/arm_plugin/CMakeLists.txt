@@ -15,6 +15,8 @@ if(NOT ARM AND NOT AARCH64)
     return()
 endif()
 
+include(cmake/features.cmake)
+
 add_subdirectory(thirdparty)
 add_subdirectory(src)
 

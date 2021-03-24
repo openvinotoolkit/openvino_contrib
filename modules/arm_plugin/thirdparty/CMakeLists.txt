@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-if(DEFINED ARM_COMPUTE_INCLUDE_DIR OR DEFINED ARM_COMPUTE_LIB_DIR)
-    if (NOT DEFINED ARM_COMPUTE_INCLUDE_DIR)
+if(ARM_COMPUTE_INCLUDE_DIR OR ARM_COMPUTE_LIB_DIR)
+    if (NOT ARM_COMPUTE_INCLUDE_DIR)
         message(FATAL_ERROR "Undefined ARM_COMPUTE_INCLUDE_DIR input variable should be set manually")
     else()
         message(STATUS "Using ${ARM_COMPUTE_INCLUDE_DIR} to include arm compute library headers")
     endif()
 
-    if (NOT DEFINED ARM_COMPUTE_LIB_DIR)
+    if (NOT ARM_COMPUTE_LIB_DIR)
         message(FATAL_ERROR "Undefined ARM_COMPUTE_LIB_DIR input variable should be set manually")
     else()
         find_library(
@@ -64,6 +64,7 @@ else()
         examples=0
         internal_only=0
         build_dir=${CMAKE_CURRENT_BINARY_DIR}
+        arch=${ARM_COMPUTE_TARGET_ARCH}
         -j8
     )
 
@@ -81,27 +82,12 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
     endif()
 
-    if (DEFINED ARM_COMPUTE_TARGET_ARCH)
-        list(APPEND ARM_COMPUTE_OPTIONS arch=${ARM_COMPUTE_TARGET_ARCH})
-    else()
-        if(ARM)
-            list(APPEND ARM_COMPUTE_OPTIONS arch=armv7a)
-        elseif(AARCH64)
-            if(APPLE)
-                # Apple M1 is assumed
-                list(APPEND ARM_COMPUTE_OPTIONS arch=arm64-v8.2-a)
-            else()
-                list(APPEND ARM_COMPUTE_OPTIONS arch=arm64-v8a)
-            endif()
-        endif()
-    endif()
-
-    if (DEFINED CMAKE_CXX_COMPILER_LAUNCHER)
+    if (CMAKE_CXX_COMPILER_LAUNCHER)
         list(APPEND ARM_COMPUTE_OPTIONS compiler_cache=${CMAKE_CXX_COMPILER_LAUNCHER})
     endif()
 
     # used to build for yocto
-    if (DEFINED ARM_COMPUTE_TOOLCHAIN_PREFIX)
+    if (ARM_COMPUTE_TOOLCHAIN_PREFIX)
         list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix=${ARM_COMPUTE_TOOLCHAIN_PREFIX})
     endif()
 
@@ -140,7 +126,7 @@ else()
 
     list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
 
-    if (DEFINED ARM_COMPUTE_WERROR)
+    if (ARM_COMPUTE_WERROR)
         list(APPEND ARM_COMPUTE_OPTIONS Werror=${ARM_COMPUTE_WERROR})
     endif()
 
