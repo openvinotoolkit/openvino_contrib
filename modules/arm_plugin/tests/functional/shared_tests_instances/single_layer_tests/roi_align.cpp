@@ -9,6 +9,11 @@
 
 using namespace LayerTestsDefinitions;
 
+const std::vector<InferenceEngine::Precision> netPrecisions = {
+    InferenceEngine::Precision::FP32,
+    InferenceEngine::Precision::FP16,
+};
+
 const auto ROIAlignCases_average = ::testing::Combine(
         ::testing::ValuesIn(
     std::vector<std::vector<size_t>> {
@@ -21,7 +26,7 @@ const auto ROIAlignCases_average = ::testing::Combine(
         ::testing::ValuesIn(std::vector<float> { 1, 0.625 }),
         ::testing::Values(2),
         ::testing::Values("avg"),
-        ::testing::Values(InferenceEngine::Precision::FP32),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
@@ -39,7 +44,7 @@ const auto ROIAlignCases_max = ::testing::Combine(
         ::testing::ValuesIn(std::vector<float> { 1, 0.625 }),
         ::testing::Values(2),
         ::testing::Values("max"),
-        ::testing::Values(InferenceEngine::Precision::FP32),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
