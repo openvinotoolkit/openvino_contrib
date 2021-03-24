@@ -149,7 +149,7 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
         DST_CASE(srcT, U32,   std::uint32_t)                                \
         DST_CASE(srcT, I64,   std::int64_t)                                 \
         DST_CASE(srcT, U64,   std::uint64_t)                                \
-        DST_CASE(srcT, FP16,  half_float::half)                             \
+        DST_CASE(srcT, FP16,  ngraph::float16)                             \
         DST_CASE(srcT, FP32,  float)                                        \
         default: IE_THROW() << "Unsupported Data Type " << dst->getTensorDesc().getPrecision();            \
     } break;
@@ -162,7 +162,7 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
         SRC_CASE(U32,   std::uint32_t)
         SRC_CASE(I64,   std::int64_t)
         SRC_CASE(U64,   std::uint64_t)
-        SRC_CASE(FP16,  half_float::half)
+        SRC_CASE(FP16,  ngraph::float16)
         SRC_CASE(FP32,  float)
         default: IE_THROW() << "Unsupported Data Type " << src->getTensorDesc().getPrecision();
     }

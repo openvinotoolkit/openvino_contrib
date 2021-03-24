@@ -53,9 +53,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::TopK& node
             return make(ngraph::runtime::reference::topk<std::int64_t, std::int64_t>);
         case ngraph::element::Type_t::f16 :
             if (node.get_index_element_type() == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::topk<half_float::half, std::int32_t>);
+                return make(ngraph::runtime::reference::topk<ngraph::float16, std::int32_t>);
             }
-            return make(ngraph::runtime::reference::topk<half_float::half, std::int64_t>);
+            return make(ngraph::runtime::reference::topk<ngraph::float16, std::int64_t>);
         case ngraph::element::Type_t::f32 :
             if (node.get_index_element_type() == ngraph::element::i32) {
                 return make(ngraph::runtime::reference::topk<float, std::int32_t>);

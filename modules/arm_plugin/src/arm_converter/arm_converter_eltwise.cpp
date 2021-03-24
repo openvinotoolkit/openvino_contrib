@@ -65,6 +65,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::FloorMod& 
         case ngraph::element::Type_t::u16 : return make(ngraph::runtime::reference::floor_mod<std::uint16_t>);
         case ngraph::element::Type_t::i32 : return make(ngraph::runtime::reference::floor_mod<std::int32_t>);
         case ngraph::element::Type_t::i64 : return make(ngraph::runtime::reference::floor_mod<std::int64_t>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::floor_mod<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::floor_mod<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }

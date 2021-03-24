@@ -13,12 +13,6 @@
 #include "opset/opset.hpp"
 
 
-namespace ngraph {
-namespace element {
-    template <>
-    Type from<half_float::half>();
-}  //  namespace element
-}  //  namespace ngraph
 namespace ArmPlugin {
 struct NCHW {enum {N, C, H, W, DIMS};};
 struct WEIGHTS {enum {C_OUT, C_IN, K_H, K_W};};
@@ -50,7 +44,7 @@ struct Argument<arm_compute::ITensor*> {
             _notPaddedTensor.allocator()->init({_tensor->info()->tensor_shape(), 1, _tensor->info()->data_type()});
         }
     }
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<half_float::half, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
     operator T*() {
         if (_tensor->info()->has_padding()) {
             return static_cast<T*>(static_cast<void*>(_notPaddedTensor.buffer()));
@@ -59,7 +53,7 @@ struct Argument<arm_compute::ITensor*> {
         }
     }
 
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<half_float::half, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
     operator const T*() const {
         return const_cast<Argument<arm_compute::ITensor*>*>(this)->operator T*();
     }

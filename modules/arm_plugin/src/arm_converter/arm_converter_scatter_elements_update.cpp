@@ -71,9 +71,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ScatterEle
             return make(wrap_scatter_elem_update<std::int64_t, std::int64_t>);
         case ngraph::element::Type_t::f16 :
             if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<half_float::half, std::int32_t>);
+                return make(wrap_scatter_elem_update<ngraph::float16, std::int32_t>);
             }
-            return make(wrap_scatter_elem_update<half_float::half, std::int64_t>);
+            return make(wrap_scatter_elem_update<ngraph::float16, std::int64_t>);
         case ngraph::element::Type_t::f32 :
             if (node.get_input_element_type(1) == ngraph::element::i32) {
                 return make(wrap_scatter_elem_update<float, std::int32_t>);

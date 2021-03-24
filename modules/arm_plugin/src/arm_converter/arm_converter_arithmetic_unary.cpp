@@ -23,7 +23,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acos<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acos<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::acos<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -34,7 +34,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& nod
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acosh<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::acosh<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::acosh<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -45,7 +45,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asin<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asin<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::asin<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -56,7 +56,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asinh& nod
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asinh<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::asinh<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::asinh<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -67,7 +67,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atan& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atan<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atan<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::atan<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -78,7 +78,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atanh<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::atanh<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::atanh<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -89,7 +89,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node)
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cos<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cos<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::cos<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -100,7 +100,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cosh& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cosh<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::cosh<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::cosh<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -115,7 +115,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::sinh<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::sinh<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::sinh<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -126,7 +126,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node)
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::tan<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::tan<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::tan<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
@@ -137,7 +137,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Erf& node)
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
     switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::erf<half_float::half>);
+        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::erf<ngraph::float16>);
         case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::erf<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }

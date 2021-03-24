@@ -58,7 +58,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherTree
         case ngraph::element::Type_t::i64 :
             return make(wrap_gather_tree<std::int64_t>);
         case ngraph::element::Type_t::f16 :
-            return make(wrap_gather_tree<half_float::half>);
+            return make(wrap_gather_tree<ngraph::float16>);
         case ngraph::element::Type_t::f32 :
             return make(wrap_gather_tree<float>);
         default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
