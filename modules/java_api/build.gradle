@@ -17,7 +17,6 @@ sourceSets {
         java {
             srcDirs = ["."]
             include "tests/*.java"
-            include "samples/ArgumentParser.java"
         }
     }
 }
@@ -31,7 +30,8 @@ dependencies {
 }
 
 test {
-    environment "MODELS_PATH", project.hasProperty('MODELS_PATH') ? project.getProperty('MODELS_PATH') : ""
+    systemProperty 'MODELS_PATH', System.getProperty('MODELS_PATH')
+    systemProperty 'device', System.getProperty('device')
 }
 test.onlyIf { project.hasProperty('run_tests') }
 

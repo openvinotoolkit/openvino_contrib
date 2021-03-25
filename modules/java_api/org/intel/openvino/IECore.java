@@ -1,8 +1,10 @@
 package org.intel.openvino;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.file.Files;
 import java.util.Map;
@@ -38,61 +40,54 @@ public class IECore extends IEWrapper {
     // Use this method to initialize native libraries and other files like
     // plugins.xml and *.mvcmd in case of the JAR package os OpenVINO.
     public static void loadNativeLibs() {
-        final String[] nativeFiles = {
-            "plugins.xml",
-            "usb-ma2x8x.mvcmd",
-            "pcie-ma2x8x.mvcmd",
-            "cache.json",
+        // A set of required libraries which are listed in dependency order.
+        final String[] nativeLibs = {
             "tbb",
             "tbbmalloc",
             "ngraph",
-            "gna",
             "inference_engine_transformations",
             "inference_engine",
-            "inference_engine_ir_reader",
             "inference_engine_legacy",
             "inference_engine_lp_transformations",
             "onnx_importer",
-            "inference_engine_onnx_reader",
-            "inference_engine_preproc",
-            "MKLDNNPlugin",
-            "clDNNPlugin",
-            "GNAPlugin",
-            "HeteroPlugin",
-            "MultiDevicePlugin",
-            "myriadPlugin",
-            "inference_engine_java_api" // Should be at the end
+            "inference_engine_java_api"
         };
 
         try {
+            // Get a list of all native resources (libraries, plugins and other files).
+            InputStream resources_list =
+                    IECore.class.getClassLoader().getResourceAsStream("resources_list.txt");
+            BufferedReader r = new BufferedReader(new InputStreamReader(resources_list));
+
             // Create a temporal folder to unpack native files.
             File tmpDir = Files.createTempDirectory("openvino-native").toFile();
-            for (String file : nativeFiles) {
-                boolean isLibrary = !file.contains(".");
-                if (isLibrary) {
-                    // On Linux, TBB and GNA libraries has .so.2 soname
-                    String version = file.startsWith("tbb") || file.equals("gna") ? "2" : null;
-                    file = getLibraryName(file, version);
-                }
+            tmpDir.deleteOnExit();
 
+            String file;
+            while ((file = r.readLine()) != null) {
                 URL url = IECore.class.getClassLoader().getResource(file);
                 if (url == null) {
                     logger.warning("Resource not found: " + file);
                     continue;
                 }
-                tmpDir.deleteOnExit();
                 File nativeLibTmpFile = new File(tmpDir, file);
                 nativeLibTmpFile.deleteOnExit();
                 try (InputStream in = url.openStream()) {
                     Files.copy(in, nativeLibTmpFile.toPath());
                 }
-                String path = nativeLibTmpFile.getAbsolutePath();
-                if (isLibrary) {
-                    try {
-                        System.load(path);
-                    } catch (UnsatisfiedLinkError ex) {
-                        logger.warning("Failed to load library " + file + ": " + ex);
-                    }
+            }
+            resources_list.close();
+
+            // Load native libraries.
+            for (String lib : nativeLibs) {
+                // On Linux, TBB and GNA libraries has .so.2 soname
+                String version = lib.startsWith("tbb") || lib.equals("gna") ? "2" : null;
+                lib = getLibraryName(lib, version);
+                File nativeLibTmpFile = new File(tmpDir, lib);
+                try {
+                    System.load(nativeLibTmpFile.getAbsolutePath());
+                } catch (UnsatisfiedLinkError ex) {
+                    logger.warning("Failed to load library " + file + ": " + ex);
                 }
             }
         } catch (IOException ex) {

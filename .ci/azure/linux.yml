@@ -114,7 +114,11 @@ jobs:
       cp $(BIN_DIR)/lib/*.mvcmd native
       cp $(OPENVINO_REPO_DIR)/inference-engine/temp/tbb/lib/lib* native
       cp $(OPENVINO_REPO_DIR)/inference-engine/temp/gna_*/linux/x64/lib* native
-      gradle build -Prun_tests -PMODELS_PATH=$(MODELS_PATH) --info
+      ls native > resources_list.txt && cat resources_list.txt && mv resources_list.txt native
+      gradle clean build
+      for d in CPU HETERO:CPU; do
+        gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
+      done
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
 
