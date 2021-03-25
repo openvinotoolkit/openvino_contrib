@@ -63,6 +63,7 @@ else()
         embed_kernels=0
         examples=0
         internal_only=0
+        data_layout_support=nchw
         build_dir=${CMAKE_CURRENT_BINARY_DIR}
         arch=${ARM_COMPUTE_TARGET_ARCH}
         -j8
