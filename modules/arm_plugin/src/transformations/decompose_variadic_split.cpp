@@ -42,6 +42,15 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         ngraph::OutputVector slices;
         ngraph::NodeVector slice_nodes;
         std::string output_name = split->get_friendly_name();
+
+        int count_useless_outs = 0;
+        for (auto out : split->outputs()) {
+            auto inputs = out.get_target_inputs();
+            if (inputs.empty()) {
+                ++count_useless_outs;
+            }
+        }
+
         for (size_t i = 0; i < splits.size(); i++) {
             begin_vec[axis] = end_vec[axis];
             end_vec[axis]  += splits[i];
@@ -49,7 +58,11 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
             auto begin  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, begin_vec);
             auto end    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, end_vec);
             auto slice  = std::make_shared<opset::StridedSlice>(input, begin, end, stride, std::vector<int64_t>{}, std::vector<int64_t>{});
-            slice->set_friendly_name(output_name  + '.' + std::to_string(i));
+            std::string name = output_name;
+            if (splits.size() - count_useless_outs > 1) {
+                name += '.' + std::to_string(i);
+            }
+            slice->set_friendly_name(name);
             slice_nodes.push_back(slice);
             slices.push_back(slice->output(0));
         }

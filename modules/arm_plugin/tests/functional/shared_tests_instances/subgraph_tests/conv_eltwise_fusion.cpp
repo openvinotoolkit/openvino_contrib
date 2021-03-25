@@ -25,7 +25,7 @@ const std::vector<ngraph::element::Type> types{
         {1, 1, 1, 1},
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_Convolution_2D, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::Convolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
@@ -36,7 +36,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_Convolution_2D_4ops, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_4ops, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::Convolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
@@ -47,7 +47,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_GroupConvolution_2D, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_GroupConvolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
@@ -58,7 +58,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_DepthwiseConvolution_2D, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_DepthwiseConvolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
@@ -80,7 +80,7 @@ const std::vector<ngraph::element::Type> types{
         {1, 3, 1}, // fused
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_Convolution_2D_Negative, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::Convolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
@@ -96,7 +96,7 @@ const std::vector<ngraph::element::Type> types{
         {1, 3, 1, 1}, // fused
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_Convolution_2D_Negative_5ops, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_Negative_5ops, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::Convolution::type_info),
                                     ::testing::ValuesIn(IN({ADD(5)})),
@@ -107,7 +107,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_GroupConvolution_2D_Negative, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_GroupConvolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
@@ -118,7 +118,7 @@ const std::vector<ngraph::element::Type> types{
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                             ConvEltwiseFusion::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_DepthwiseConvolution_2D_Negative, ConvEltwiseFusion,
+    INSTANTIATE_TEST_CASE_P(smoke_Check_DepthwiseConvolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
                                     ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
