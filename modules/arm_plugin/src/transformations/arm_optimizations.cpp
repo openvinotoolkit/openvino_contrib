@@ -56,6 +56,7 @@
 #include "convert_interpolate_arm.hpp"
 #include "convert_normalizel2_arm.hpp"
 #include "convert_pool1d_to_pool2d.hpp"
+#include "convert_inputs_precision.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
 
@@ -117,9 +118,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::BroadcastPRelu>();
     manager.register_pass<pass::ConvertLogical>();
     manager.register_pass<pass::ConvertComparison>();
-    manager.register_pass<pass::ConvertArmConvert>();
-    manager.register_pass<pass::ConvertArmConvertLike>();
-    manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<pass::ConvertRound>();
     manager.register_pass<pass::ConvertSign>();
@@ -151,6 +149,11 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
     manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
 #endif
+    manager.register_pass<pass::AlignNodePrecision>();
+    manager.register_pass<ngraph::pass::ConstantFolding>();
+    manager.register_pass<pass::ConvertArmConvert>();
+    manager.register_pass<pass::ConvertArmConvertLike>();
+    manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.run_passes(f);
     return false;
 }
