@@ -18,7 +18,7 @@ void detection_output(const T* _location,
                       const ngraph::Shape& locShape,
                       const ngraph::Shape& priorsShape,
                       const ngraph::Shape& outShape) {
-    THROW_IE_EXCEPTION << "Not implemented";
+    IE_THROW(NotImplemented) << "Not implemented";
 }
 
 template<> void detection_output<ngraph::float16>(const ngraph::float16* _location,
