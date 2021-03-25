@@ -21,7 +21,7 @@ elseif(AARCH64)
                                  armv8r64)
 endif()
 
-set(ARM_COMPUTE_TARGET_ARCH "${ARM_COMPUTE_TARGET_ARCH_DEFAULT}" CACHE PATH "ARM architecture")
+set(ARM_COMPUTE_TARGET_ARCH "${ARM_COMPUTE_TARGET_ARCH_DEFAULT}" CACHE STRING "Architecture for ARM ComputeLibrary")
 set_property(CACHE ARM_COMPUTE_TARGET_ARCH PROPERTY STRINGS ${ARM_COMPUTE_TARGET_ARCHS})
 
 # Print features
