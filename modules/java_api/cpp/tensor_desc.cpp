@@ -45,6 +45,9 @@ JNIEXPORT jintArray JNICALL Java_org_intel_openvino_TensorDesc_GetDims(JNIEnv *e
         std::vector<size_t> size_t_dims = tDesc->getDims();
 
         jintArray result = env->NewIntArray(size_t_dims.size());
+        if (!result) {
+            throw std::runtime_error("Out of memory!");
+        }
         jint *arr = env->GetIntArrayElements(result, nullptr);
 
         for (int i = 0; i < size_t_dims.size(); ++i)
