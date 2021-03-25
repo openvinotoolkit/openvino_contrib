@@ -101,7 +101,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Greater>();
     Register<opset::GreaterEqual>();
     Register<opset::Select>();
-    Register<opset::Gather>();
+    Register<ngraph::op::v1::Gather>();
     Register<opset::ReorgYolo>();
     Register<opset::BatchToSpace>();
     Register<opset::SpaceToBatch>();
