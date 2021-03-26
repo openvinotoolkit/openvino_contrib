@@ -7,7 +7,7 @@
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
-template <> Converter::Conversion::Ptr Converter::Convert(const opset::Gather& node) {
+template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v1::Gather& node) {
     auto axes = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
     if (!axes) {
         IE_THROW() << "Supported Gather op with constant axis only";

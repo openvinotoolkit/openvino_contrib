@@ -34,7 +34,7 @@ const std::vector<std::vector<int64_t>> masks = {
     {6, 7, 8}
 };
 
-std::vector<InferenceEngine::Precision> netPrecisions = {
+const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP32,
     InferenceEngine::Precision::FP16,
 };

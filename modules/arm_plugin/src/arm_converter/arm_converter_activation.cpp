@@ -129,7 +129,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
             auto beta  = beta_node->cast_vector<float>()[0];
             return make(ngraph::runtime::reference::hard_sigmoid<float>, alpha, beta);
         }
-        default: THROW_IE_EXCEPTION << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
     }
 }
 

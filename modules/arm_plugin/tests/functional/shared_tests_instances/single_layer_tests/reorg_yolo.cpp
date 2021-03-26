@@ -21,25 +21,29 @@ const std::vector<size_t> strides = {
     1, 2,
 };
 
+const std::vector<InferenceEngine::Precision> netPrecisions = {
+    InferenceEngine::Precision::FP32,
+    InferenceEngine::Precision::FP16,
+};
 
 const auto testCase_caffe_yolov2 = ::testing::Combine(
     ::testing::Values(ngraph::Shape{1, 64, 26, 26}),
     ::testing::ValuesIn(strides),
-    ::testing::Values(InferenceEngine::Precision::FP32),
+    ::testing::ValuesIn(netPrecisions),
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCase_smallest = ::testing::Combine(
     ::testing::ValuesIn(inShapes),
     ::testing::ValuesIn(strides),
-    ::testing::Values(InferenceEngine::Precision::FP32),
+    ::testing::ValuesIn(netPrecisions),
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
 const auto testCase_stride_3 = ::testing::Combine(
     ::testing::Values(ngraph::Shape{1, 9, 3, 3}),
     ::testing::Values(3),
-    ::testing::Values(InferenceEngine::Precision::FP32),
+    ::testing::ValuesIn(netPrecisions),
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
