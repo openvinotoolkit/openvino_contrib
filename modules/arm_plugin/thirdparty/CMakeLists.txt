@@ -63,12 +63,16 @@ else()
         embed_kernels=0
         examples=0
         internal_only=0
+        Werror=0
         data_layout_support=nchw
         build_dir=${CMAKE_CURRENT_BINARY_DIR}
         arch=${ARM_COMPUTE_TARGET_ARCH}
-        -j8
     )
 
+    if (ARM_COMPUTE_SCONS_JOBS)
+        list(APPEND ARM_COMPUTE_OPTIONS -j${ARM_COMPUTE_SCONS_JOBS})
+    endif()
+    
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND ARM_COMPUTE_OPTIONS debug=1)
     endif()
@@ -126,10 +130,6 @@ else()
     endif()
 
     list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
-
-    if (ARM_COMPUTE_WERROR)
-        list(APPEND ARM_COMPUTE_OPTIONS Werror=${ARM_COMPUTE_WERROR})
-    endif()
 
     add_custom_command(
         OUTPUT

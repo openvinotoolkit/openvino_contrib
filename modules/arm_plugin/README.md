@@ -119,6 +119,7 @@ mkdir build && cd build
 ```
 cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release .. && make
 ```
+> **NOTE**: Use `-DARM_COMPUTE_SCONS_JOBS=N` cmake flag to speedup building of ArmCompute library via N simultaneously executed build jobs.
 
 ## Demos and Samples
 ### Open Model Zoo demos
