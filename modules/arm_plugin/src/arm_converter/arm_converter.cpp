@@ -63,7 +63,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Clamp>();
     Register<opset::Sqrt>();
     Register<opset::Elu>();
-    Register<opset::Transpose>();
+    Register<opset::ArmTranspose>();
     Register<opset::Softmax>();
     Register<opset::Split>();
     Register<opset::LRN>();
@@ -112,6 +112,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::NormalizeL2>();
         Register<opset::Interpolate>();
         Register<opset::Concat>();
+        Register<opset::Transpose>();
         Register<opset::ROIPooling>();
         Register<opset::PSROIPooling>();
         Register<opset::TopK>();
