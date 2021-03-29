@@ -28,7 +28,7 @@
 #include "transformations/op_conversions/convert_mvn1_to_mvn6.hpp"
 #include "transformations/op_conversions/convert_gelu.hpp"
 
-#include "conv_bias_activ_fusion.hpp"
+#include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
 #include "convert_sign.hpp"
 #include "convert_round.hpp"
