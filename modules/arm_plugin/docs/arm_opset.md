@@ -7,155 +7,163 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 > **NOTE**: ARM plugin doesn't support operations with dynamic shape.
 ## Table of Contents <a name="toc"></a>
 
-| Layers                                                                                                                                         | ARM plugin    |
-|------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| [Abs](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Abs_1.md)                                                    | Supported     |
-| [Acos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acos_1.md)                                                  | Supported**   |
-| [Acosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acosh_3.md)                                                | Supported**   |
-| [Add](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Add_1.md)                                                    | Supported     |
-| [Asin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asin_1.md)                                                  | Supported**   |
-| [Asinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asinh_3.md)                                                | Supported**   |
-| [Assign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Assign_3.md)                                          | Not Supported |
-| [Atan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Atan_1.md)                                                  | Supported**   |
-| [Atanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Atanh_3.md)                                                | Supported**   |
-| [AvgPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/AvgPool_1.md)                                               | Supported***  |
-| [BatchNormInference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/BatchNormInference_5.md)                   | Supported     |
-| [BatchToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/BatchToSpace_2.md)                                    | Supported*    |
-| [BinaryConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/BinaryConvolution_1.md)                       | Not Supported |
-| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                          | Supported     |
-| [Bucketize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Bucketize_3.md)                                         | Not Supported |
-| [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                            | Supported**   |
-| [CTCGreedyDecoderSeqLen](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoderSeqLen_6.md)                | Not Supported |
-| [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Supported**   |
-| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Supported     |
-| [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                | Supported     |
-| [Concat](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Concat_1.md)                                                | Supported     |
-| [Constant](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Constant_1.md)                                      | Supported     |
-| [Convert](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/Convert_1.md)                                                  | Supported*    |
-| [ConvertLike](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/ConvertLike_1.md)                                          | Supported*    |
-| [Convolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/Convolution_1.md)                                   | Supported***  |
-| [ConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/ConvolutionBackpropData_1.md)           | Supported**   |
-| [Cos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cos_1.md)                                                    | Supported**   |
-| [Cosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cosh_1.md)                                                  | Supported**   |
-| [CumSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/CumSum_3.md)                                              | Supported**   |
-| [DeformableConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/DeformableConvolution_1.md)               | Not Supported |
-| [DeformablePSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DeformablePSROIPooling_1.md)               | Not Supported |
-| [DepthToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/DepthToSpace_1.md)                                    | Supported*    |
-| [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                             | Supported**   |
-| [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                              | Supported     |
-| [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                    | Supported     |
-| [EmbeddingBagOffsetsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagOffsetsSum_3.md)                  | Supported**   |
-| [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                    | Supported**   |
-| [EmbeddingSegmentsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingSegmentsSum_3.md)                      | Supported**   |
-| [Equal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Equal_1.md)                                                | Supported*    |
-| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Supported**   |
-| [Exp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Exp_1.md)                                                    | Supported     |
-| [ExtractImagePatches](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ExtractImagePatches_3.md)                      | Not Supported |
-| [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                | Not Supported |
-| [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                | Supported     |
-| [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                          | Supported**   |
-| [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_1.md)                                                | Supported*    |
-| [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                | Supported**   |
-| [GatherND_5](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherND_5.md)                                          | Supported**   |
-| [GatherTree](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherTree_1.md)                                        | Supported**   |
-| [Gelu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/GELU_7.md)                                                  | Supported**   |
-| [Greater](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Greater_1.md)                                            | Supported     |
-| [GreaterEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/GreaterEqual_1.md)                                  | Supported     |
-| [GRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/GRN_1.md)                                                 | Supported     |
-| [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                         | Supported***  |
-| [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md) | Supported**   |
-| [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Supported     |
-| [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                      | Not Supported |
-| [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Supported**   |
-| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Supported**   |
-| [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                              | Supported     |
-| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported*    |
-| [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported*    |
-| [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                        | Supported*    |
-| [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Supported     |
-| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                         | Supported     |
-| [LogicalNot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalNot_1.md)                                         | Supported     |
-| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                           | Supported     |
-| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                         | Supported     |
-| [LogSoftmax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/LogSoftmax_5.md)                                      | Supported     |
-| [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                              | Not Supported |
-| [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                 | Supported*    |
-| [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                            | Supported     |
-| [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                    | Not Supported |
-| [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                  | Supported     |
-| [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                               | Supported***  |
-| [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                            | Supported     |
-| [Minimum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Minimum_1.md)                                            | Supported     |
-| [Mish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Mish_4.md)                                                  | Supported     |
-| [Mod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Mod_1.md)                                                    | Supported*    |
-| [MVN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/MVN_6.md)                                                 | Supported*    |
-| [Multiply](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Multiply_1.md)                                          | Supported     |
-| [Negative](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Negative_1.md)                                          | Supported     |
-| [NonMaxSuppression](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/NonMaxSuppression_5.md)                              | Supported**   |
-| [NonZero](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/NonZero_3.md)                                             | Not Supported |
-| [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                 | Supported*    |
-| [NotEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/NotEqual_1.md)                                          | Supported*    |
-| [OneHot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/OneHot_1.md)                                                | Supported**   |
-| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                      | Supported*    |
-| [Parameter](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Parameter_1.md)                                    | Supported     |
-| [Power](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Power_1.md)                                                | Supported     |
-| [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                | Supported     |
-| [PriorBoxClustered](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBoxClustered_1.md)                         | Supported     |
-| [PriorBox](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBox_1.md)                                           | Supported     |
-| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Supported**   |
-| [PSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PSROIPooling_1.md)                                   | Supported**   |
-| [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                | Not Supported |
-| [ReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/ReLU_1.md)                                                  | Supported     |
-| [ReadValue](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/ReadValue_3.md)                                    | Not Supported |
-| [ReduceL1](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL1_4.md)                                           | Supported     |
-| [ReduceL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL2_4.md)                                           | Supported     |
-| [ReduceLogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalAnd_1.md)                           | Supported**   |
-| [ReduceLogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalOr_1.md)                             | Supported**   |
-| [ReduceMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMax_1.md)                                         | Supported     |
-| [ReduceMean](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMean_1.md)                                       | Supported     |
-| [ReduceMin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMin_1.md)                                         | Supported     |
-| [ReduceProd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceProd_1.md)                                       | Supported     |
-| [ReduceSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceSum_1.md)                                         | Supported     |
-| [RegionYolo](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/RegionYolo_1.md)                                       | Supported**   |
-| [ReorgYolo](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ReorgYolo_1.md)                                         | Supported     |
-| [Reshape](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Reshape_1.md)                                                 | Supported     |
-| [Result](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Result_1.md)                                          | Supported     |
-| [ReverseSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ReverseSequence_1.md)                              | Supported**   |
-| [RNNCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNCell_3.md)                                              | Supported     |
-| [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                      | Not Supported |
-| [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                           | Supported**   |
-| [ROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIPooling_1.md)                                       | Supported**   |
-| [Round](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Round_5.md)                                                | Supported*    |
-| [ScatterElementsUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterElementsUpdate_3.md)                  | Supported**   |
-| [ScatterNDUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterNDUpdate_3.md)                              | Supported**   |
-| [ScatterUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterUpdate_3.md)                                  | Supported**   |
-| [Select](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Select_1.md)                                               | Supported*    |
-| [Selu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Selu_1.md)                                                  | Supported**   |
-| [ShapeOf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/ShapeOf_3.md)                                                 | Not Supported |
-| [ShuffleChannels](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ShuffleChannels_1.md)                              | Supported     |
-| [Sigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Sigmoid_1.md)                                            | Supported     |
-| [Sign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sign_1.md)                                                  | Supported     |
-| [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                    | Supported     |
-| [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                  | Supported**   |
-| [SoftMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftMax_1.md)                                            | Supported     |
-| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                          | Supported     |
-| [SpaceToBatch](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToBatch_2.md)                                    | Supported*    |
-| [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                    | Supported*    |
-| [Split](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Split_1.md)                                                  | Supported     |
-| [Sqrt](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sqrt_1.md)                                                  | Supported     |
-| [SquaredDifference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/SquaredDifference_1.md)                        | Supported     |
-| [Squeeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Squeeze_1.md)                                                 | Supported     |
-| [StridedSlice](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/StridedSlice_1.md)                                    | Supported*    |
-| [Subtract](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Subtract_1.md)                                          | Supported     |
-| [Swish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Swish_4.md)                                                | Supported     |
-| [Tan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tan_1.md)                                                    | Supported**   |
-| [Tanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tanh_1.md)                                                  | Supported     |
-| [TensorIterator](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/TensorIterator_1.md)                          | Not Supported |
-| [Tile](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Tile_1.md)                                                    | Supported     |
-| [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                        | Supported**   |
-| [Transpose](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Transpose_1.md)                                          | Supported*    |
-| [Unsqueeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Unsqueeze_1.md)                                             | Supported     |
-| [VariadicSplit](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/VariadicSplit_1.md)                                  | Supported     |
+| Layers                                                                                                                                                                                   | ARM plugin    |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| [Abs](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Abs_1.md)                                                                                              | Supported     |
+| [Acos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acos_1.md)                                                                                            | Supported**   |
+| [Acosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acosh_3.md)                                                                                          | Supported**   |
+| [Add](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Add_1.md)                                                                                              | Supported     |
+| [Asin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asin_1.md)                                                                                            | Supported**   |
+| [Asinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asinh_3.md)                                                                                          | Supported**   |
+| [Assign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Assign_3.md)                                                                                    | Not Supported |
+| [Atan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Atan_1.md)                                                                                            | Supported**   |
+| [Atanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Atanh_3.md)                                                                                          | Supported**   |
+| [AvgPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/AvgPool_1.md)                                                                                         | Supported***  |
+| [BatchNormInference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/BatchNormInference_5.md)                                                             | Supported     |
+| [BatchToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/BatchToSpace_2.md)                                                                              | Supported*    |
+| [BinaryConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/BinaryConvolution_1.md)                                                                 | Not Supported |
+| [Broadcast](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Broadcast_3.md)                                                                                    | Supported     |
+| [Bucketize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Bucketize_3.md)                                                                                   | Not Supported |
+| [CTCGreedyDecoder](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoder_1.md)                                                                      | Supported**   |
+| [CTCGreedyDecoderSeqLen](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoderSeqLen_6.md)                                                          | Not Supported |
+| [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                                                                        | Supported**   |
+| [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                                                                      | Supported     |
+| [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                                                          | Supported     |
+| [Concat](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Concat_1.md)                                                                                          | Supported     |
+| [Constant](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Constant_1.md)                                                                                | Supported     |
+| [Convert](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/Convert_1.md)                                                                                            | Supported*    |
+| [ConvertLike](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/ConvertLike_1.md)                                                                                    | Supported*    |
+| [Convolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/Convolution_1.md)                                                                             | Supported***  |
+| [ConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/ConvolutionBackpropData_1.md)                                                     | Supported**   |
+| [Cos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cos_1.md)                                                                                              | Supported**   |
+| [Cosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cosh_1.md)                                                                                            | Supported**   |
+| [CumSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/CumSum_3.md)                                                                                        | Supported**   |
+| [DeformableConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/DeformableConvolution_1.md)                                                         | Not Supported |
+| [DeformablePSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DeformablePSROIPooling_1.md)                                                         | Not Supported |
+| [DepthToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/DepthToSpace_1.md)                                                                              | Supported*    |
+| [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                                                                       | Supported**   |
+| [DFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/DFT_7.md)                                                                                                 | Not Supported |
+| [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                                                                        | Supported     |
+| [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                                                              | Supported     |
+| [EmbeddingBagOffsetsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagOffsetsSum_3.md)                                                            | Supported**   |
+| [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                                                              | Supported**   |
+| [EmbeddingSegmentsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingSegmentsSum_3.md)                                                                | Supported**   |
+| [Equal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Equal_1.md)                                                                                          | Supported*    |
+| [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                                                              | Supported**   |
+| [Exp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Exp_1.md)                                                                                              | Supported     |
+| [ExperimentalDetectronDetectionOutput_6](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ExperimentalDetectronDetectionOutput_6.md)                           | Not Supported |
+| [ExperimentalDetectronGenerateProposalsSingleImage_6](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ExperimentalDetectronGenerateProposalsSingleImage_6.md) | Not Supported |
+| [ExperimentalDetectronPriorGridGenerator_6](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ExperimentalDetectronPriorGridGenerator_6.md)                     | Not Supported |
+| [ExperimentalDetectronROIFeatureExtractor_6](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ExperimentalDetectronROIFeatureExtractor_6.md)                   | Not Supported |
+| [ExperimentalDetectronTopKROIs_6](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/ExperimentalDetectronTopKROIs_6.md)                                              | Not Supported |
+| [ExtractImagePatches](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ExtractImagePatches_3.md)                                                                | Not Supported |
+| [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                                                          | Not Supported |
+| [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                                                          | Supported     |
+| [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                                                                    | Supported**   |
+| [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_1.md)                                                                                          | Supported*    |
+| [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                                                          | Supported**   |
+| [GatherND_5](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherND_5.md)                                                                                    | Supported**   |
+| [GatherTree](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherTree_1.md)                                                                                  | Supported**   |
+| [Gelu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/GELU_7.md)                                                                                            | Supported**   |
+| [Greater](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Greater_1.md)                                                                                      | Supported     |
+| [GreaterEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/GreaterEqual_1.md)                                                                            | Supported     |
+| [GRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/GRN_1.md)                                                                                           | Supported     |
+| [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                                                                   | Supported***  |
+| [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md)                                           | Supported**   |
+| [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                                                                        | Supported     |
+| [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                                                                | Not Supported |
+| [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                                                              | Supported**   |
+| [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                                                                    | Supported**   |
+| [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                                                                        | Supported     |
+| [IDFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/IDFT_7.md)                                                                                               | Not Supported |
+| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                                                                   | Supported*    |
+| [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                                                            | Supported*    |
+| [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                                                                  | Supported*    |
+| [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                                                              | Supported     |
+| [LogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalAnd_1.md)                                                                                   | Supported     |
+| [LogicalNot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalNot_1.md)                                                                                   | Supported     |
+| [LogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalOr_1.md)                                                                                     | Supported     |
+| [LogicalXor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/logical/LogicalXor_1.md)                                                                                   | Supported     |
+| [LogSoftmax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/LogSoftmax_5.md)                                                                                | Supported     |
+| [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                                                                        | Not Supported |
+| [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                                                           | Supported*    |
+| [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                                                                      | Supported     |
+| [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                                                              | Not Supported |
+| [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                                                            | Supported     |
+| [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                                                                         | Supported***  |
+| [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                                                                      | Supported     |
+| [Minimum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Minimum_1.md)                                                                                      | Supported     |
+| [Mish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Mish_4.md)                                                                                            | Supported     |
+| [Mod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Mod_1.md)                                                                                              | Supported*    |
+| [MVN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/MVN_6.md)                                                                                           | Supported*    |
+| [Multiply](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Multiply_1.md)                                                                                    | Supported     |
+| [Negative](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Negative_1.md)                                                                                    | Supported     |
+| [NonMaxSuppression](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/NonMaxSuppression_5.md)                                                                        | Supported**   |
+| [NonZero](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/NonZero_3.md)                                                                                       | Not Supported |
+| [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                                                           | Supported*    |
+| [NotEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/NotEqual_1.md)                                                                                    | Supported*    |
+| [OneHot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/OneHot_1.md)                                                                                          | Supported**   |
+| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                                                                | Supported*    |
+| [Parameter](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Parameter_1.md)                                                                              | Supported     |
+| [Power](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Power_1.md)                                                                                          | Supported     |
+| [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                                                          | Supported     |
+| [PriorBoxClustered](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBoxClustered_1.md)                                                                   | Supported     |
+| [PriorBox](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBox_1.md)                                                                                     | Supported     |
+| [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                                                                     | Supported**   |
+| [PSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PSROIPooling_1.md)                                                                             | Supported**   |
+| [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                                                          | Not Supported |
+| [ReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/ReLU_1.md)                                                                                            | Supported     |
+| [ReadValue](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/ReadValue_3.md)                                                                              | Not Supported |
+| [ReduceL1](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL1_4.md)                                                                                     | Supported     |
+| [ReduceL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL2_4.md)                                                                                     | Supported     |
+| [ReduceLogicalAnd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalAnd_1.md)                                                                     | Supported**   |
+| [ReduceLogicalOr](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceLogicalOr_1.md)                                                                       | Supported**   |
+| [ReduceMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMax_1.md)                                                                                   | Supported     |
+| [ReduceMean](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMean_1.md)                                                                                 | Supported     |
+| [ReduceMin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceMin_1.md)                                                                                   | Supported     |
+| [ReduceProd](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceProd_1.md)                                                                                 | Supported     |
+| [ReduceSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceSum_1.md)                                                                                   | Supported     |
+| [RegionYolo](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/RegionYolo_1.md)                                                                                 | Supported**   |
+| [ReorgYolo](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ReorgYolo_1.md)                                                                                   | Supported     |
+| [Reshape](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Reshape_1.md)                                                                                           | Supported     |
+| [Result](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Result_1.md)                                                                                    | Supported     |
+| [ReverseSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ReverseSequence_1.md)                                                                        | Supported**   |
+| [RNNCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNCell_3.md)                                                                                        | Supported     |
+| [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                                                                | Not Supported |
+| [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                                                                     | Supported**   |
+| [ROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIPooling_1.md)                                                                                 | Supported**   |
+| [Roll](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Roll_7.md)                                                                                              | Not Supported |
+| [Round](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Round_5.md)                                                                                          | Supported*    |
+| [ScatterElementsUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterElementsUpdate_3.md)                                                            | Supported**   |
+| [ScatterNDUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterNDUpdate_3.md)                                                                        | Supported**   |
+| [ScatterUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterUpdate_3.md)                                                                            | Supported**   |
+| [Select](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Select_1.md)                                                                                         | Supported*    |
+| [Selu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Selu_1.md)                                                                                            | Supported**   |
+| [ShapeOf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/ShapeOf_3.md)                                                                                           | Not Supported |
+| [ShuffleChannels](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ShuffleChannels_1.md)                                                                        | Supported     |
+| [Sigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Sigmoid_1.md)                                                                                      | Supported     |
+| [Sign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sign_1.md)                                                                                            | Supported     |
+| [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                                                              | Supported     |
+| [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                                                            | Supported**   |
+| [SoftMax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftMax_1.md)                                                                                      | Supported     |
+| [SoftPlus](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/SoftPlus_4.md)                                                                                    | Supported     |
+| [SpaceToBatch](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToBatch_2.md)                                                                              | Supported*    |
+| [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                                                              | Supported*    |
+| [Split](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Split_1.md)                                                                                            | Supported     |
+| [Sqrt](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sqrt_1.md)                                                                                            | Supported     |
+| [SquaredDifference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/SquaredDifference_1.md)                                                                  | Supported     |
+| [Squeeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Squeeze_1.md)                                                                                           | Supported     |
+| [StridedSlice](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/StridedSlice_1.md)                                                                              | Supported*    |
+| [Subtract](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Subtract_1.md)                                                                                    | Supported     |
+| [Swish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Swish_4.md)                                                                                          | Supported     |
+| [Tan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tan_1.md)                                                                                              | Supported**   |
+| [Tanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tanh_1.md)                                                                                            | Supported     |
+| [TensorIterator](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/TensorIterator_1.md)                                                                    | Not Supported |
+| [Tile](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Tile_1.md)                                                                                              | Supported     |
+| [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                                                                  | Supported**   |
+| [Transpose](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Transpose_1.md)                                                                                    | Supported*    |
+| [Unsqueeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Unsqueeze_1.md)                                                                                       | Supported     |
+| [VariadicSplit](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/VariadicSplit_1.md)                                                                            | Supported     |
 
 *- support is limited to the specific parameters. Refer to "Known Layers Limitation" section.
 
