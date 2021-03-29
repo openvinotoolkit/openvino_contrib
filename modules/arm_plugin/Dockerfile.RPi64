@@ -65,6 +65,9 @@ RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/nul
     && \
     rm -rf /var/lib/apt/lists/*
 
+RUN git config --global user.name "Your Name" && \
+    git config --global user.email "you@example.com"
+
 ENV ARCH_NAME aarch64-linux-gnu
 ENV TOOLCHAIN_DEFS arm64.toolchain.cmake
 COPY armplg_build.sh /armplg_build.sh

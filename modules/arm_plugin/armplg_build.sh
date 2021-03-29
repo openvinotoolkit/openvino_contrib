@@ -89,7 +89,7 @@ mkdir -p $STAGING_DIR
 mkdir -p $OPENCV_HOME/build && \
 cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
-cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,python3 \
+cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi,python3 \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=ON \
       -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
       -DPYTHON3_INCLUDE_PATH=/usr/include/${PYTHONVER}m \
