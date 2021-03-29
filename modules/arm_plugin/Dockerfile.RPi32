@@ -90,6 +90,9 @@ RUN echo 'deb http://deb.debian.org/debian stretch-backports main' > /etc/apt/so
     && \
     rm -rf /var/lib/apt/lists/*
 
+RUN git config --global user.name "Your Name" && \
+    git config --global user.email "you@example.com"
+
 ENV ARCH_NAME arm-linux-gnueabihf
 ENV TOOLCHAIN_DEFS arm.toolchain.cmake
 COPY armplg_build.sh /armplg_build.sh
