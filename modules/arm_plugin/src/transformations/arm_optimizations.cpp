@@ -49,6 +49,7 @@
 #include "convert_tile_to_concats.hpp"
 #include "convert_transpose_arm.hpp"
 #include "convert_prelu.hpp"
+#include "convert_gather_arm.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
 #include "normalizel2_max_fusion.hpp"
@@ -137,6 +138,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertReorgYolo>();
     manager.register_pass<pass::ConvertMaxPool1D>();
     manager.register_pass<pass::ConvertAvgPool1D>();
+    manager.register_pass<pass::ConvertGather>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();

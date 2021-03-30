@@ -103,4 +103,19 @@ const auto params4 = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(smoke_Gather4, GatherLayerTest, params4, GatherLayerTest::getTestCaseName);
+
+const auto params_ref = testing::Combine(
+        testing::ValuesIn(indices4),
+        testing::Values(std::vector<size_t>{2, 2}),
+        testing::ValuesIn(axes),
+        testing::ValuesIn(inputShapes),
+        testing::ValuesIn(netPrecisions),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::Values(CommonTestUtils::DEVICE_CPU)
+);
+
+INSTANTIATE_TEST_CASE_P(smoke_Gather_refernce, GatherLayerTest, params_ref, GatherLayerTest::getTestCaseName);
 }  // namespace

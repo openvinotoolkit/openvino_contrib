@@ -7,6 +7,7 @@
 #include "concat_arm.hpp"
 #include "conv_arm.hpp"
 #include "convert_arm.hpp"
+#include "gather_arm.hpp"
 #include "group_conv_arm.hpp"
 #include "interpolate_arm.hpp"
 #include "matmul_bias.hpp"
