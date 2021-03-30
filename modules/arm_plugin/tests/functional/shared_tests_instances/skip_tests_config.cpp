@@ -17,6 +17,7 @@ std::vector<std::string> disabledTestPatterns() {
         ".*PreprocessTest.*", // Does not cover all needed cases
         ".*GRUCellTest.*decomposition0.*",  // GruCell should be decomposed
         R"(.*ConstantResultSubgraphTest.*inPrc=(I8|U64|I64|BOOL).*)", // Unsupported precisions
+        ".*TensorIteratorTest.*unrolling=0.*",  // Skip due to unsupported LSTM, RNN and GRU sequenses
 #ifdef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
         ".*ActivationLayerTest.*CompareWithRefs/Tan_.*netPRC=FP16.*" // Failed (a small input change leads to a large output change)
 #endif
