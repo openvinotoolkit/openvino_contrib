@@ -137,7 +137,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [ScatterElementsUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterElementsUpdate_3.md)                                                            | Supported**   |
 | [ScatterNDUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterNDUpdate_3.md)                                                                        | Supported**   |
 | [ScatterUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterUpdate_3.md)                                                                            | Supported**   |
-| [Select](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Select_1.md)                                                                                         | Supported*    |
+| [Select](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Select_1.md)                                                                                         | Supported     |
 | [Selu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Selu_1.md)                                                                                            | Supported**   |
 | [ShapeOf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/ShapeOf_3.md)                                                                                           | Not Supported |
 | [ShuffleChannels](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ShuffleChannels_1.md)                                                                        | Supported     |
@@ -195,7 +195,6 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 * `'NotEqual'`doesn't support `broadcast` for inputs.
 * `'Pad'` layer works with `'pad_mode' = {REFLECT | CONSTANT | SYMMETRIC}` parameters only.
 * `'Round'` layer is supported via arm_compute library with `RoundMode::HALF_AWAY_FROM_ZERO` value of `mode`, for another cases layer is implemented via `ngraph::reference`.
-* `'Select'`  doesn't support `broadcast` for inputs.
 * `'SpaceToBatch'`  layer is supported 4D tensors only and constant nodes: `shapes`, `pads_begin` or `pads_end` with zero paddings for batch or channels and one values `shapes` for batch and channels.
 * `'SpaceToDepth'` layer is supported 4D tensors only and for `BLOCKS_FIRST` of `'mode'` attribute.
 * `'StridedSlice'` layer works with tensors with dims < 5 and zero values of `ellipsis_mask` or zero values of `new_axis_mask` and `shrink_axis_mask` only.
