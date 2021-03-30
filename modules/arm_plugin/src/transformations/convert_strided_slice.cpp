@@ -13,10 +13,10 @@
 using namespace ArmPlugin;
 
 ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
-    auto slice  = ngraph::pattern::wrap_type<opset::StridedSlice>();
+    auto slice  = ngraph::pattern::wrap_type<opset::ArmStridedSlice>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
-        auto slice = std::dynamic_pointer_cast<opset::StridedSlice>(m.get_match_root());
+        auto slice = std::dynamic_pointer_cast<opset::ArmStridedSlice>(m.get_match_root());
         if (!slice) {
             return false;
         }
@@ -24,7 +24,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
         auto&& dims       = inputShape.size();
 
         if (dims > 4) {
-            IE_THROW() << "Unsupported StridedSlice with " << dims << " dimensions.";
+            IE_THROW() << "Unsupported ArmStridedSlice with " << dims << " dimensions.";
         }
 
         auto&& begin_node  = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(1).get_node_shared_ptr());
@@ -59,7 +59,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
                                std::find(shrinkAxis.begin(), shrinkAxis.end(), 1) != shrinkAxis.end();
 
         if (addOrReduceDims && std::find(ellipsisMask.begin(), ellipsisMask.end(), 1) != ellipsisMask.end()) {
-            IE_THROW() << "Unsupported StridedSlice with ellipsis_mask and new_axis_mask or shrink_axis_mask";
+            IE_THROW() << "Unsupported ArmStridedSlice with ellipsis_mask and new_axis_mask or shrink_axis_mask";
         }
 
         for (size_t i = 0; i < begin.size(); i++) {
@@ -110,7 +110,7 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
         end_node    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_end);
         stride_node = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{dims}, new_stride);
 
-        auto optimized_slice = std::make_shared<opset::StridedSlice>(slice->input_value(0),
+        auto optimized_slice = std::make_shared<opset::ArmStridedSlice>(slice->input_value(0),
                                      begin_node, end_node, stride_node, std::vector<int64_t>{}, std::vector<int64_t>{});
         auto out_shape = slice->get_output_shape(0);
         auto shape = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
