@@ -158,7 +158,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Swish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Swish_4.md)                                                                                          | Supported     |
 | [Tan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tan_1.md)                                                                                              | Supported**   |
 | [Tanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tanh_1.md)                                                                                            | Supported     |
-| [TensorIterator](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/TensorIterator_1.md)                                                                    | Not Supported |
+| [TensorIterator](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/TensorIterator_1.md)                                                                    | Supported     |
 | [Tile](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Tile_1.md)                                                                                              | Supported     |
 | [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                                                                  | Supported**   |
 | [Transpose](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Transpose_1.md)                                                                                    | Supported*    |
