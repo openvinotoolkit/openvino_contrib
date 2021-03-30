@@ -28,7 +28,7 @@
 #include "transformations/op_conversions/convert_mvn1_to_mvn6.hpp"
 #include "transformations/op_conversions/convert_gelu.hpp"
 
-#include "conv_bias_activ_fusion.hpp"
+#include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
 #include "convert_sign.hpp"
 #include "convert_round.hpp"
@@ -49,6 +49,7 @@
 #include "convert_tile_to_concats.hpp"
 #include "convert_transpose_arm.hpp"
 #include "convert_prelu.hpp"
+#include "convert_gather_arm.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
 #include "convert_select.hpp"
@@ -139,6 +140,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertMaxPool1D>();
     manager.register_pass<pass::ConvertAvgPool1D>();
     manager.register_pass<pass::BroadcastSelect>();
+    manager.register_pass<pass::ConvertGather>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();
