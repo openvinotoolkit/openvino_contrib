@@ -26,41 +26,18 @@ static auto ConvParameters(const Conv& node) {
         arm_compute::Size2D {node.get_dilations().at(D2::W), node.get_dilations().at(D2::H)});
 }
 
-template<typename Conv>
-static arm_compute::ActivationLayerInfo GetActivation(const Conv& node) {
-    opset::ActivationInfo info = node.get_info();
-    arm_compute::ActivationLayerInfo::ActivationFunction func;
-    switch (info.function) {
-        case FUNC::LOGISTIC        : func = arm_compute::ActivationLayerInfo::ActivationFunction::LOGISTIC; break;
-        case FUNC::TANH            : func = arm_compute::ActivationLayerInfo::ActivationFunction::TANH; break;
-        case FUNC::RELU            : func = arm_compute::ActivationLayerInfo::ActivationFunction::RELU; break;
-        case FUNC::LU_BOUNDED_RELU : func = arm_compute::ActivationLayerInfo::ActivationFunction::LU_BOUNDED_RELU; break;
-        case FUNC::LEAKY_RELU      : func = arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU; break;
-        case FUNC::SOFT_RELU       : func = arm_compute::ActivationLayerInfo::ActivationFunction::SOFT_RELU; break;
-        case FUNC::ELU             : func = arm_compute::ActivationLayerInfo::ActivationFunction::ELU; break;
-        case FUNC::ABS             : func = arm_compute::ActivationLayerInfo::ActivationFunction::ABS; break;
-        case FUNC::SQRT            : func = arm_compute::ActivationLayerInfo::ActivationFunction::SQRT; break;
-        case FUNC::HARD_SWISH      : func = arm_compute::ActivationLayerInfo::ActivationFunction::HARD_SWISH; break;
-        case FUNC::IDENTITY        : return arm_compute::ActivationLayerInfo();
-    default:
-        IE_THROW() << "Arm Plugin: unsupported activation function for Convolution";
-    }
-    return arm_compute::ActivationLayerInfo(func, info.a, info.b);
-}
-
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolution& node) {
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
     std::tie(conv_info, dilation) = ConvParameters(node);
-    auto act_info = GetActivation(node);
     if (node.get_input_size() == 3) {
         return MakeConversion<arm_compute::NEConvolutionLayer>(
             node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
-            conv_info, arm_compute::WeightsInfo{}, dilation, act_info);
+            conv_info, arm_compute::WeightsInfo{}, dilation);
     } else {
         return MakeConversion<arm_compute::NEConvolutionLayer>(
             node.input(Features), node.input(Weights), nullptr, node.output(0),
-            conv_info, arm_compute::WeightsInfo{}, dilation, act_info);
+            conv_info, arm_compute::WeightsInfo{}, dilation);
     }
 }
 
@@ -83,15 +60,14 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
     std::tie(conv_info, dilation) = ConvParameters(node);
-    auto act_info = GetActivation(node);
     if (node.get_input_size() == 3) {
         return MakeConversion<arm_compute::NEDepthwiseConvolutionLayer>(
             node.input(Features), MakeWeightsArgument(node), node.input(Bias), node.output(0),
-            conv_info, 1u, act_info, dilation);
+            conv_info, 1u, arm_compute::ActivationLayerInfo(), dilation);
     } else {
         return MakeConversion<arm_compute::NEDepthwiseConvolutionLayer>(
             node.input(Features), MakeWeightsArgument(node), nullptr, node.output(0),
-            conv_info, 1u, act_info, dilation);
+            conv_info, 1u, arm_compute::ActivationLayerInfo(), dilation);
     }
 }
 }  //  namespace ArmPlugin
