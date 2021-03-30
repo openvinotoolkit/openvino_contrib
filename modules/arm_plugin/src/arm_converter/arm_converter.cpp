@@ -101,12 +101,12 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Greater>();
     Register<opset::GreaterEqual>();
     Register<opset::Select>();
-    Register<ngraph::op::v1::Gather>();
     Register<opset::ReorgYolo>();
     Register<opset::BatchToSpace>();
     Register<opset::SpaceToBatch>();
     Register<opset::ArmConvert>();
     Register<opset::ArmConcat>();
+    Register<opset::ArmGather>();
     if (ref) {
         Register<opset::MVN>();
         Register<opset::NormalizeL2>();
@@ -114,6 +114,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::Concat>();
         Register<opset::Transpose>();
         Register<opset::StridedSlice>();
+        Register<ngraph::op::v1::Gather>();
         Register<opset::ROIPooling>();
         Register<opset::PSROIPooling>();
         Register<opset::TopK>();

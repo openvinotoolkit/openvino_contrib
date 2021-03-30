@@ -27,6 +27,7 @@
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_mvn1_to_mvn6.hpp"
 #include "transformations/op_conversions/convert_gelu.hpp"
+#include "transformations/op_conversions/convert_ti_to_sequences.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -50,6 +51,7 @@
 #include "convert_tile_to_concats.hpp"
 #include "convert_transpose_arm.hpp"
 #include "convert_prelu.hpp"
+#include "convert_gather_arm.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
 #include "normalizel2_max_fusion.hpp"
@@ -102,6 +104,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::GroupConvolutionMultiplyFusion>();
     manager.register_pass<ngraph::pass::ConvolutionBackpropDataMultiplyFusion>();
     manager.register_pass<ngraph::pass::GroupConvolutionBackpropDataMultiplyFusion>();
+    manager.register_pass<ngraph::pass::ConvertTensorIteratorToGRUSequence>();
+    manager.register_pass<ngraph::pass::ConvertTensorIteratorToLSTMSequence>();
+    manager.register_pass<ngraph::pass::ConvertTensorIteratorToRNNSequence>();
     manager.register_pass<ngraph::pass::RNNCellDecomposition>();
     manager.register_pass<ngraph::pass::LSTMCellDecomposition>();
     manager.register_pass<ngraph::pass::GRUCellDecomposition>();
@@ -139,6 +144,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertReorgYolo>();
     manager.register_pass<pass::ConvertMaxPool1D>();
     manager.register_pass<pass::ConvertAvgPool1D>();
+    manager.register_pass<pass::ConvertGather>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
     manager.register_pass<ngraph::pass::ConvertDivide>();
