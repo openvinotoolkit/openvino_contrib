@@ -191,11 +191,11 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 * `'LRN'` layer is supported `axes = {1}` or `axes = {2, 3}` only.
 * `'Mod'` layer is supported for FP32 only.
 * `'MVN'` layer is supported via arm_compute library for 2D inputs and `false` value of `'normalize_variance'` and `false` value of `'across_channels'`, for another cases layer is implemented via `ngraph::reference`.
-* `'Normalize'` layer is supported with `MAX` value of `'eps_mode'` and `axes = {2 | 3}`, and for `ADD` value of `'eps_mode'` layer uses `'DecomposeNormalizeL2Add'`.
+* `'Normalize'` layer is supported via arm_compute library with `MAX` value of `'eps_mode'` and `axes = {2 | 3}`, and for `ADD` value of `'eps_mode'` layer uses `'DecomposeNormalizeL2Add'`, for another cases layer is implemented via `ngraph::reference`.
 * `'NotEqual'`doesn't support `broadcast` for inputs.
 * `'Pad'` layer works with `'pad_mode' = {REFLECT | CONSTANT | SYMMETRIC}` parameters only.
 * `'Round'` layer is supported via arm_compute library with `RoundMode::HALF_AWAY_FROM_ZERO` value of `mode`, for another cases layer is implemented via `ngraph::reference`.
 * `'SpaceToBatch'`  layer is supported 4D tensors only and constant nodes: `shapes`, `pads_begin` or `pads_end` with zero paddings for batch or channels and one values `shapes` for batch and channels.
 * `'SpaceToDepth'` layer is supported 4D tensors only and for `BLOCKS_FIRST` of `'mode'` attribute.
-* `'StridedSlice'` layer works with tensors with dims < 5 and zero values of `ellipsis_mask` or zero values of `new_axis_mask` and `shrink_axis_mask` only.
-* `'Transpose'` layer works with tensors with dims < 5.
+* `'StridedSlice'` layer is supported via arm_compute library for tensors with dims < 5 and zero values of `ellipsis_mask` or zero values of `new_axis_mask` and `shrink_axis_mask`, for another cases layer is implemented via `ngraph::reference`.
+* `'Transpose'`layer is supported via arm_compute library for tensors with dims < 5, for another cases layer is implemented via `ngraph::reference`.

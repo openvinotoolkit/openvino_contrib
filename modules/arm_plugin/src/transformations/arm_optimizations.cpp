@@ -36,6 +36,7 @@
 #include "convert_comparison.hpp"
 #include "convert_logical.hpp"
 #include "convert_strided_slice.hpp"
+#include "convert_strided_slice_arm.hpp"
 #include "convert_group_conv.hpp"
 #include "convert_conv1d_to_conv2d.hpp"
 #include "convert_grn_to_normalizel2.hpp"
@@ -132,6 +133,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertSign>();
     manager.register_pass<pass::ConvertCeiling>();
     manager.register_pass<pass::DecomposeVariadicSplit>();
+    manager.register_pass<pass::ConvertStridedSliceToArm>();
     manager.register_pass<pass::ConvertStridedSlice>();
     manager.register_pass<pass::ConvertBatchNormInferenceV0toV5>();
     manager.register_pass<pass::ConvertBatchNormInference>();
