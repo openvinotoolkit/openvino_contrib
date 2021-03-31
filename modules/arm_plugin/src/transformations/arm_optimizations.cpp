@@ -53,6 +53,7 @@
 #include "convert_gather_arm.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
+#include "convert_select.hpp"
 #include "normalizel2_max_fusion.hpp"
 #include "decompose_normalizel2_add.hpp"
 #include "decompose_mish.hpp"
@@ -142,6 +143,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<pass::ConvertReorgYolo>();
     manager.register_pass<pass::ConvertMaxPool1D>();
     manager.register_pass<pass::ConvertAvgPool1D>();
+    manager.register_pass<pass::BroadcastSelect>();
     manager.register_pass<pass::ConvertGather>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
 
