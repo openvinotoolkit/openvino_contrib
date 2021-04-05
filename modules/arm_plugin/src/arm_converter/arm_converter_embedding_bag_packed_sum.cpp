@@ -26,50 +26,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingB
                                         node.get_shape());
         }
     };
-    ngraph::element::Type_t indicesType = node.get_input_element_type(1);
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::u8 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint8_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint8_t, size_t>);
-        case ngraph::element::Type_t::i16 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int16_t, size_t>);
-        case ngraph::element::Type_t::u16 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint16_t, size_t>);
-        case ngraph::element::Type_t::u32 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::uint32_t, size_t>);
-        case ngraph::element::Type_t::i32 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int32_t, size_t>);
-        case ngraph::element::Type_t::i64 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int64_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<std::int64_t, size_t>);
-        case ngraph::element::Type_t::f16 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<ngraph::float16, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<ngraph::float16, size_t>);
-        case ngraph::element::Type_t::f32 :
-            if (indicesType == ngraph::element::i32 || indicesType == ngraph::element::u32) {
-                return make(ngraph::runtime::reference::embeddingBagPackedSum<float, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingBagPackedSum<float, size_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::embeddingBagPackedSum),
+        node.input(0), allTypes,
+        node.input(1), indexTypes);
 }
 
 }  //  namespace ArmPlugin

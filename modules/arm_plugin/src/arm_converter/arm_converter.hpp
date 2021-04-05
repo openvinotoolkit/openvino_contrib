@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <openvino/pp.hpp>
 #include <ie_common.h>
 #include <ngraph/function.hpp>
 
@@ -99,10 +100,10 @@ struct ConversionArg {
     Arg _arg;
 };
 
-template<std::size_t, typename> struct FunctionArgument;
+template<std::size_t Index, typename T> struct FunctionArgument : public FunctionArgument<Index, decltype(&T::operator())> {};
 
 template <std::size_t Index, typename ClassType, typename ReturnType, typename... Arguments>
-struct FunctionArgument<Index, ReturnType(ClassType::*)(Arguments...) const> {
+struct FunctionArgument<Index, ReturnType(ClassType::*)(Arguments...)> {
     using type = std::tuple_element_t<Index, std::tuple<Arguments...>>;
 };
 
@@ -356,7 +357,7 @@ struct Converter {
 
         template<std::size_t I, typename T>
         decltype(auto) MakeArgument(T&& x) {
-            static_assert(std::is_same<std::decay_t<T>, std::decay_t<typename FunctionArgument<I, Callable>::type>>::value,
+            static_assert(std::is_same<std::decay_t<T>, std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>::value,
                 "Arguments type should be the same");
             return x;
         }
@@ -368,7 +369,8 @@ struct Converter {
 
         template<std::size_t I>
         Argument<arm_compute::ITensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
-            auto type = ngraph::element::from<std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, Callable>::type>>>>();
+            auto type = ngraph::element::from<
+                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (input.get_element_type() != type) {
                 IE_THROW() << "Argument types should be the same "
                     << input.get_element_type() << " "
@@ -380,7 +382,8 @@ struct Converter {
 
         template<std::size_t I>
         Argument<arm_compute::ITensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
-            auto type = ngraph::element::from<std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, Callable>::type>>>>();
+            auto type = ngraph::element::from<
+                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (output.get_element_type() != type) {
                 IE_THROW() << "Argument types should be the same "
                     << output.get_element_type() << " "
@@ -544,4 +547,123 @@ struct ConversionArg<std::pair<ngraph::Input<const ngraph::Node>, arm_compute::T
     std::pair<ngraph::Input<const ngraph::Node>, arm_compute::TensorInfo>&  _input;
 };
 
+#define AP_WRAP(MAKE, F) [&](auto ... v) {return MAKE(F<decltype(v)...>);}
+
+template<typename IO>
+static auto get_element_type(const IO& io) {
+    return io.get_element_type();
+}
+
+static auto get_element_type(const ngraph::element::Type& type) {
+    return type;
+}
+
+template<typename, typename, typename F, typename Io2>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch32(F&& f, const Io2& io2) {
+    IE_THROW() << "Unsupported Type: " << io2;
+}
+
+template<typename T0, typename T1, typename H, typename ...T, typename F, typename Io2>
+Converter::Conversion::Ptr CallSwitch32(F&& f, const Io2& io2) {
+    if (ngraph::element::from<H>() == get_element_type(io2)) {
+        return f(T0{}, T1{}, H{});
+    } else {
+        return CallSwitch32<T0, T1, T...>(std::forward<F>(f), io2);
+    }
+}
+
+template<typename, typename F, typename Io1, typename Io2, typename ... T2>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch31(F&& f, const Io1& io1, const Io2&, std::tuple<T2...>) {
+    IE_THROW() << "Unsupported Type: " << io1;
+}
+
+template<typename T0, typename H, typename ...T, typename F, typename Io1, typename Io2, typename ... T2>
+Converter::Conversion::Ptr CallSwitch31(F&& f, const Io1& io1, const Io2& io2, std::tuple<T2...>) {
+    if (ngraph::element::from<H>() == get_element_type(io1)) {
+        return CallSwitch32<T0, H, T2...>(std::forward<F>(f), io2);
+    } else {
+        return CallSwitch31<T0, T...>(std::forward<F>(f), io1, io2, std::tuple<T2...>{});
+    }
+}
+
+template<typename F, typename Io0, typename Io1, typename Io2, typename ...T1, typename ... T2>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch30(F&& f, const Io0& io0, const Io1&, const Io2&, std::tuple<T1...>, std::tuple<T2...>) {
+    IE_THROW() << "Unsupported Type: " << io0;
+}
+
+template<typename H, typename ...T, typename F, typename Io0, typename Io1, typename Io2, typename ...T1, typename ... T2>
+Converter::Conversion::Ptr CallSwitch30(F&& f, const Io0& io0, const Io1& io1, const Io2& io2, std::tuple<T1...>, std::tuple<T2...>) {
+    if (ngraph::element::from<H>() == get_element_type(io0)) {
+        return CallSwitch31<H, T1...>(std::forward<F>(f), io1, io2, std::tuple<T2...>{});
+    } else {
+        return CallSwitch30<T...>(std::forward<F>(f), io0, io1, io2, std::tuple<T1...>{}, std::tuple<T2...>{});
+    }
+}
+
+template<typename F, typename Io0, typename Io1, typename Io2, typename ... T0, typename ... T1, typename ... T2>
+Converter::Conversion::Ptr CallSwitch(F&& f,
+                                      const Io0& io0, std::tuple<T0...>,
+                                      const Io1& io1, std::tuple<T1...>,
+                                      const Io2& io2, std::tuple<T2...>) {
+    return CallSwitch30<T0...>(std::forward<F>(f), io0, io1, io2, std::tuple<T1...>{}, std::tuple<T2...>{});
+}
+
+template<typename T0, typename F, typename Io1>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch21(F&& f, const Io1& io1) {
+    IE_THROW() << "Unsupported Type: " << io1;
+}
+
+template<typename T0, typename H, typename ...T, typename F, typename Io1>
+Converter::Conversion::Ptr CallSwitch21(F&& f, const Io1& io1) {
+    if (ngraph::element::from<H>() == get_element_type(io1)) {
+        return f(T0{}, H{});
+    } else {
+        return CallSwitch21<T0, T...>(std::forward<F>(f), io1);
+    }
+}
+
+template<typename F, typename Io0, typename Io1, typename ...T1>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch20(F&& f, const Io0& io0, const Io1& io1, std::tuple<T1...>) {
+    IE_THROW() << "Unsupported Type: " << io0;
+}
+
+template<typename H, typename ...T, typename F, typename Io0, typename Io1, typename ...T1>
+Converter::Conversion::Ptr CallSwitch20(F&& f, const Io0& io0, const Io1& io1, std::tuple<T1...>) {
+    if (ngraph::element::from<H>() == get_element_type(io0)) {
+        return CallSwitch21<H, T1...>(std::forward<F>(f), io1);
+    } else {
+        return CallSwitch20<T...>(std::forward<F>(f), io0, io1, std::tuple<T1...>{});
+    }
+}
+
+template<typename F, typename Io0, typename Io1, typename ... T0, typename ... T1>
+Converter::Conversion::Ptr CallSwitch(F&& f,
+                                      const Io0& io0, std::tuple<T0...>,
+                                      const Io1& io1, std::tuple<T1...>) {
+    return CallSwitch20<T0...>(std::forward<F>(f), io0, io1, std::tuple<T1...>{});
+}
+
+template<typename F, typename IO>
+[[noreturn]] Converter::Conversion::Ptr CallSwitch1(F&& f, const IO& io) {
+    IE_THROW() << "Unsupported Type: " << io;
+}
+
+template<typename H, typename ...T, typename F, typename IO>
+Converter::Conversion::Ptr CallSwitch1(F&& f, const IO& io) {
+    if (ngraph::element::from<H>() == get_element_type(io)) {
+        return f(H{});
+    } else {
+        return CallSwitch1<T...>(std::forward<F>(f), io);
+    }
+}
+
+template<typename F, typename IO, typename ... T0>
+auto CallSwitch(F&& f, const IO& io, std::tuple<T0...>) {
+    return CallSwitch1<T0...>(std::forward<F>(f), io);
+}
+
+constexpr static auto allTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, ngraph::float16, float>{};
+constexpr static auto intTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
+constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
+constexpr static auto floatTypes = std::tuple<ngraph::float16, float>{};
 }  //  namespace ArmPlugin

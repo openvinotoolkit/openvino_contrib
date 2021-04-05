@@ -24,19 +24,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::CTCLoss& n
                                     node.get_unique(),
                                     node.output(0));
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::CTCLoss<ngraph::float16, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::CTCLoss<ngraph::float16, std::int64_t>);
-        case ngraph::element::Type_t::f32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::CTCLoss<float, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::CTCLoss<float, std::int64_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::CTCLoss),
+        node.input(0), floatTypes,
+        node.input(1), indexTypes);
 }
 
 }  //  namespace ArmPlugin

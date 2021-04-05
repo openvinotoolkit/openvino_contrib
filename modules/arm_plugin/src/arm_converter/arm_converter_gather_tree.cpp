@@ -43,26 +43,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GatherTree
                                     node.get_input_shape(3),
                                     node.get_input_element_type(1));
     };
-
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::u8 :
-            return make(wrap_gather_tree<std::uint8_t>);
-        case ngraph::element::Type_t::i16 :
-            return make(wrap_gather_tree<std::int16_t>);
-        case ngraph::element::Type_t::u16 :
-            return make(wrap_gather_tree<std::uint16_t>);
-        case ngraph::element::Type_t::u32 :
-            return make(wrap_gather_tree<std::uint32_t>);
-        case ngraph::element::Type_t::i32 :
-            return make(wrap_gather_tree<std::int32_t>);
-        case ngraph::element::Type_t::i64 :
-            return make(wrap_gather_tree<std::int64_t>);
-        case ngraph::element::Type_t::f16 :
-            return make(wrap_gather_tree<ngraph::float16>);
-        case ngraph::element::Type_t::f32 :
-            return make(wrap_gather_tree<float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, wrap_gather_tree),
+        node.input(0), allTypes);
 }
 
 }  //  namespace ArmPlugin

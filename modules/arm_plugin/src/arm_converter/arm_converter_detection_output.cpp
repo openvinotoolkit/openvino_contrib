@@ -76,14 +76,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::DetectionO
                                     node.get_input_shape(2),
                                     node.get_output_shape(0));
     };
-
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 :
-            return make(detection_output<ngraph::float16>);
-        case ngraph::element::Type_t::f32 : {
-            return make(detection_output<float>);
-        }
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, detection_output),
+        node.input(0), floatTypes);
 }
 }  //  namespace ArmPlugin

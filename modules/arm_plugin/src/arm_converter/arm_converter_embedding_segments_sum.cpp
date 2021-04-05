@@ -43,51 +43,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::EmbeddingS
                                         node.get_output_shape(0));
         }
     };
-
-    ngraph::element::Type_t indicesType = node.get_input_element_type(1);
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::u8 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint8_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint8_t, std::int64_t>);
-        case ngraph::element::Type_t::i16 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int16_t, std::int64_t>);
-        case ngraph::element::Type_t::u16 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint16_t, std::int64_t>);
-        case ngraph::element::Type_t::u32 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::uint32_t, std::int64_t>);
-        case ngraph::element::Type_t::i32 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int32_t, std::int64_t>);
-        case ngraph::element::Type_t::i64 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int64_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<std::int64_t, std::int64_t>);
-        case ngraph::element::Type_t::f16 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<ngraph::float16, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<ngraph::float16, std::int64_t>);
-        case ngraph::element::Type_t::f32 :
-            if (indicesType == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::embeddingSegmentsSum<float, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::embeddingSegmentsSum<float, std::int64_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::embeddingSegmentsSum),
+        node.input(0), allTypes,
+        node.input(1), indexTypes);
 }
 
 }  //  namespace ArmPlugin

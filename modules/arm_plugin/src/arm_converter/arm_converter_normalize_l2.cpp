@@ -17,11 +17,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NormalizeL
                                     node.get_eps(),
                                     node.get_eps_mode());
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::normalize_l2<ngraph::float16>);
-        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::normalize_l2<float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::normalize_l2),
+        node.input(0), floatTypes);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmNormalizeL2& node) {
