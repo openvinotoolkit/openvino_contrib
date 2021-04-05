@@ -18,11 +18,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::RegionYolo
                                     node.get_do_softmax(),
                                     node.get_mask());
     };
-
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::region_yolo<ngraph::float16>);
-        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::region_yolo<float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::region_yolo),
+        node.input(0), floatTypes);
 }
 }  //  namespace ArmPlugin

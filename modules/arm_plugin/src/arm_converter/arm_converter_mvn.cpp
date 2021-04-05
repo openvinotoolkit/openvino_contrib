@@ -58,19 +58,10 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::MVN& node
                                     node.get_eps_mode());
     };
 
-   switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_mvn_6<ngraph::float16, std::int32_t>);
-            }
-            return make(wrap_mvn_6<ngraph::float16, std::int64_t>);
-        case ngraph::element::Type_t::f32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_mvn_6<float, std::int32_t>);
-            }
-            return make(wrap_mvn_6<float, std::int64_t>);
-        default: IE_THROW() << "Unsupported axes type: " << node.get_input_element_type(1); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, wrap_mvn_6),
+        node.input(0), floatTypes,
+        node.input(1), indexTypes);
 }
 
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMVN& node) {

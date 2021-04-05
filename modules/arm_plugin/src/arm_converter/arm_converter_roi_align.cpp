@@ -58,24 +58,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ROIAlign& 
                                     node.get_spatial_scale(),
                                     node.get_mode());
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 :
-            switch (node.get_input_element_type(2)) {
-                case ngraph::element::Type_t::i8  : return make(wrapper_roi_align<ngraph::float16, std::int8_t>);
-                case ngraph::element::Type_t::i16 : return make(wrapper_roi_align<ngraph::float16, std::int16_t>);
-                case ngraph::element::Type_t::i32 : return make(wrapper_roi_align<ngraph::float16, std::int32_t>);
-                case ngraph::element::Type_t::i64 : return make(wrapper_roi_align<ngraph::float16, std::int64_t>);
-                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(2); return {};
-            }
-        case ngraph::element::Type_t::f32 :
-            switch (node.get_input_element_type(2)) {
-                case ngraph::element::Type_t::i8  : return make(wrapper_roi_align<float, std::int8_t>);
-                case ngraph::element::Type_t::i16 : return make(wrapper_roi_align<float, std::int16_t>);
-                case ngraph::element::Type_t::i32 : return make(wrapper_roi_align<float, std::int32_t>);
-                case ngraph::element::Type_t::i64 : return make(wrapper_roi_align<float, std::int64_t>);
-                default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(2); return {};
-            }
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0);
-    }
+    return CallSwitch(
+        AP_WRAP(make, wrapper_roi_align),
+        node.input(0), floatTypes,
+        node.input(2), intTypes);
 }
 }  //  namespace ArmPlugin

@@ -38,49 +38,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ScatterEle
                                     node.get_input_shape(0),
                                     node.get_input_shape(1));
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::u8 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::uint8_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::uint8_t, std::int64_t>);
-        case ngraph::element::Type_t::i16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::int16_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::int16_t, std::int64_t>);
-        case ngraph::element::Type_t::u16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::uint16_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::uint16_t, std::int64_t>);
-        case ngraph::element::Type_t::u32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::uint32_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::uint32_t, std::int64_t>);
-        case ngraph::element::Type_t::i32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::int32_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::int32_t, std::int64_t>);
-        case ngraph::element::Type_t::i64 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<std::int64_t, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<std::int64_t, std::int64_t>);
-        case ngraph::element::Type_t::f16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<ngraph::float16, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<ngraph::float16, std::int64_t>);
-        case ngraph::element::Type_t::f32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(wrap_scatter_elem_update<float, std::int32_t>);
-            }
-            return make(wrap_scatter_elem_update<float, std::int64_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+
+    return CallSwitch(
+        AP_WRAP(make, wrap_scatter_elem_update),
+        node.get_input_element_type(0), allTypes,
+        node.get_input_element_type(1), indexTypes);
 }
 
 }  //  namespace ArmPlugin

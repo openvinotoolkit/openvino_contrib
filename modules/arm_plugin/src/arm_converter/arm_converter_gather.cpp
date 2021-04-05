@@ -19,49 +19,11 @@ template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v1::
                                     node.get_output_shape(0),
                                     static_cast<size_t>(node.get_axis()));
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::u8 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::uint8_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::uint8_t, std::int64_t>);
-        case ngraph::element::Type_t::i16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::int16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::int16_t, std::int64_t>);
-        case ngraph::element::Type_t::u16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::uint16_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::uint16_t, std::int64_t>);
-        case ngraph::element::Type_t::u32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::uint32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::uint32_t, std::int64_t>);
-        case ngraph::element::Type_t::i32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::int32_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::int32_t, std::int64_t>);
-        case ngraph::element::Type_t::i64 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<std::int64_t, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<std::int64_t, std::int64_t>);
-        case ngraph::element::Type_t::f16 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<ngraph::float16, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<ngraph::float16, std::int64_t>);
-        case ngraph::element::Type_t::f32 :
-            if (node.get_input_element_type(1) == ngraph::element::i32) {
-                return make(ngraph::runtime::reference::gather<float, std::int32_t>);
-            }
-            return make(ngraph::runtime::reference::gather<float, std::int64_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::gather),
+        node.input(0), allTypes,
+        node.input(1), indexTypes);
 }
 
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGather& node) {

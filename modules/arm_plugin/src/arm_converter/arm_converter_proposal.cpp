@@ -22,11 +22,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Proposal& 
                                     node.get_output_shape(1),
                                     node.get_attrs());
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::proposal_v4<ngraph::float16>);
-        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::proposal_v4<float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::proposal_v4),
+        node.input(0), floatTypes);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v0::Proposal& node) {
@@ -42,11 +40,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v0::P
                                     node.get_output_shape(0),
                                     node.get_attrs());
     };
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(ngraph::runtime::reference::proposal_v0<ngraph::float16>);
-        case ngraph::element::Type_t::f32 : return make(ngraph::runtime::reference::proposal_v0<float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, ngraph::runtime::reference::proposal_v0),
+        node.input(0), floatTypes);
 }
 
 }  //  namespace ArmPlugin

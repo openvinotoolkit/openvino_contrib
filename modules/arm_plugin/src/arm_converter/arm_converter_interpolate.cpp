@@ -91,12 +91,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
                                     node.get_output_shape(0),
                                     node.get_attrs());
     };
-
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 : return make(wrap_interpolate<ngraph::float16, std::int32_t>);
-        case ngraph::element::Type_t::f32 : return make(wrap_interpolate<float, std::int32_t>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+        AP_WRAP(make, wrap_interpolate),
+        node.get_input_element_type(0), floatTypes,
+        node.get_input_element_type(1), indexTypes);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpolate& node) {
