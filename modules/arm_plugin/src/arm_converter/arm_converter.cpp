@@ -140,6 +140,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::CumSum>();
         Register<opset::FloorMod>();
         Register<opset::CTCGreedyDecoder>();
+        Register<opset::CTCGreedyDecoderSeqLen>();
         Register<opset::CTCLoss>();
         Register<opset::Round>();
         Register<opset::Convert>();
