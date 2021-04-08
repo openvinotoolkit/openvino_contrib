@@ -31,7 +31,7 @@ dependencies {
 }
 
 test {
-    environment "MODELS_PATH", project.getProperty('MODELS_PATH')
+    environment "MODELS_PATH", project.hasProperty('MODELS_PATH') ? project.getProperty('MODELS_PATH') : ""
 }
 test.onlyIf { project.hasProperty('run_tests') }
 
