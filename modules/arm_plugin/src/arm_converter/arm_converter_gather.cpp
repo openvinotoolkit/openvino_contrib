@@ -18,7 +18,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v1::
                                     node.get_input_shape(1),
                                     node.get_output_shape(0),
                                     static_cast<size_t>(node.get_axis()),
-                                    0);
+                                    static_cast<size_t>(0));
     };
 
     return CallSwitch(
