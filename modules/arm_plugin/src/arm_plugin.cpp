@@ -20,6 +20,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <ie_input_info.hpp>
 #include <ie_layouts.h>
+#include <ie_algorithm.hpp>
 #include <hetero/hetero_plugin_config.hpp>
 
 #include <ngraph/function.hpp>

@@ -12,7 +12,6 @@
 #include <unordered_map>
 
 #include <ie_common.h>
-#include <cpp_interfaces/impl/ie_infer_request_internal.hpp>
 #include <cpp_interfaces/impl/ie_executable_network_internal.hpp>
 #include <threading/ie_itask_executor.hpp>
 
@@ -30,13 +29,13 @@ namespace ArmPlugin {
 
 class ExecutableNetwork;
 
-struct ArmInferRequest : public InferenceEngine::InferRequestInternal {
+struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     using Ptr = std::shared_ptr<ArmInferRequest>;
 
     ArmInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
                       const InferenceEngine::OutputsDataMap&    networkOutputs,
                       const std::shared_ptr<ExecutableNetwork>& executableNetwork);
-    ~ArmInferRequest() override;
+    ~ArmInferRequest();
 
     void InferImpl() override;
     std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;

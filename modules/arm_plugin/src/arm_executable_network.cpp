@@ -44,16 +44,12 @@ void ArmPlugin::ExecutableNetwork::InitExecutor() {
     _executor = _taskExecutor.get();
 }
 
-InferenceEngine::InferRequestInternal::Ptr
+InferenceEngine::IInferRequestInternal::Ptr
 ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
                                                      InferenceEngine::OutputsDataMap networkOutputs) {
     return std::make_shared<ArmInferRequest>(networkInputs,
                                              networkOutputs,
                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
-}
-
-IInferRequest::Ptr ArmPlugin::ExecutableNetwork::CreateInferRequest() {
-    return CreateAsyncInferRequestFromSync<InferenceEngine::AsyncInferRequestThreadSafeDefault>();
 }
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::string& name) const {
