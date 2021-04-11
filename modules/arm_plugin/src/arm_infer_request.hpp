@@ -12,7 +12,6 @@
 #include <unordered_map>
 
 #include <ie_common.h>
-#include <cpp_interfaces/impl/ie_executable_network_internal.hpp>
 #include <threading/ie_itask_executor.hpp>
 
 #include "arm_converter/arm_converter.hpp"

@@ -64,7 +64,7 @@ static std::shared_ptr<ngraph::Function> Transform(const std::shared_ptr<const n
     return transformedFunction;
 }
 
-InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
+InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
                                                                            const ConfigMap& config) {
     auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();

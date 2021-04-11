@@ -28,7 +28,7 @@ struct Plugin : public InferenceEngine::InferencePluginInternal {
     InferenceEngine::QueryNetworkResult
     QueryNetwork(const InferenceEngine::CNNNetwork& network,
                  const std::map<std::string, std::string>& config) const override;
-    InferenceEngine::ExecutableNetworkInternal::Ptr
+    InferenceEngine::IExecutableNetworkInternal::Ptr
     LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
                        const std::map<std::string, std::string>& config) override;
     InferenceEngine::Parameter GetConfig(const std::string& name,
