@@ -34,7 +34,6 @@ struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDe
     InferenceEngine::InferRequestInternal::Ptr
     CreateInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
                            InferenceEngine::OutputsDataMap networkOutputs) override;
-    InferenceEngine::IInferRequest::Ptr CreateInferRequest() override;
     InferenceEngine::Parameter GetMetric(const std::string& name) const override;
     InferenceEngine::Parameter GetConfig(const std::string& name) const override;
 
