@@ -39,6 +39,7 @@ void ArmPlugin::ExecutableNetwork::InitExecutor() {
     } else {
         auto streamsExecutorConfig = InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(_cfg._streamsExecutorConfig);
         streamsExecutorConfig._name = "CPUStreamsExecutor";
+        streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
         _taskExecutor = ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
     }
     _executor = _taskExecutor.get();
@@ -50,10 +51,6 @@ ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsData
     return std::make_shared<ArmInferRequest>(networkInputs,
                                              networkOutputs,
                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
-}
-
-IInferRequest::Ptr ArmPlugin::ExecutableNetwork::CreateInferRequest() {
-    return CreateAsyncInferRequestFromSync<InferenceEngine::AsyncInferRequestThreadSafeDefault>();
 }
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::string& name) const {
@@ -74,8 +71,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(PERF_COUNT),
-            CONFIG_KEY(CPU_THROUGHPUT_STREAMS) };
+            CONFIG_KEY(PERF_COUNT)};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);

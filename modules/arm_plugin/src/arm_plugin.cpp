@@ -40,8 +40,11 @@ using namespace InferenceEngine::details;
 using namespace InferenceEngine::PluginConfigParams;
 using namespace ArmPlugin;
 
+static std::mutex armSchedulerMutex;
+
 Plugin::Plugin() {
     _pluginName = "CPU";
+    std::lock_guard<std::mutex> lock{armSchedulerMutex};
 #if IE_THREAD == IE_THREAD_SEQ
     arm_compute::Scheduler::get();  // Init default AC scheduler list
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::CPP);
@@ -51,7 +54,10 @@ Plugin::Plugin() {
 }
 
 Plugin::~Plugin() {
-    arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+    {
+        std::lock_guard<std::mutex> lock{armSchedulerMutex};
+        arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+    }
     ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
 }
 

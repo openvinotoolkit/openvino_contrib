@@ -32,6 +32,6 @@ struct Configuration {
 
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
-    InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
+    mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin

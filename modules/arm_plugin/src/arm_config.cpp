@@ -19,6 +19,7 @@ using namespace ArmPlugin;
 Configuration::Configuration() {
     _streamsExecutorConfig._streams = 1;
     _streamsExecutorConfig._threadsPerStream = std::thread::hardware_concurrency();
+    _streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
 }
 
 Configuration::Configuration(const ConfigMap& config, const Configuration& defaultCfg, bool throwOnUnsupported) {
@@ -28,11 +29,10 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         const auto& key = c.first;
         const auto& value = c.second;
 
-        if (CONFIG_KEY(CPU_THROUGHPUT_STREAMS) == key) {
-            _streamsExecutorConfig.SetConfig(CONFIG_KEY(CPU_THROUGHPUT_STREAMS), value);
-        } else if (streamExecutorConfigKeys.end() !=
-            std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key)) {
+        if ((streamExecutorConfigKeys.end() !=
+             std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key))) {
             _streamsExecutorConfig.SetConfig(key, value);
+            _streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             _perfCount = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
@@ -46,12 +46,14 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
 }
 
 InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
-    if (name == CONFIG_KEY(PERF_COUNT)) {
+    auto streamExecutorConfigKeys = _streamsExecutorConfig.SupportedKeys();
+    if ((streamExecutorConfigKeys.end() !=
+             std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
+        return _streamsExecutorConfig.GetConfig(name);
+    } else if (name == CONFIG_KEY(PERF_COUNT)) {
         return {_perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
-    } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
-        return {std::to_string(_streamsExecutorConfig._streams)};
     } else {
         IE_THROW(NotFound) << ": " << name;
     }
