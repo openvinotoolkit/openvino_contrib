@@ -161,6 +161,9 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::GatherElements>();
         Register<opset::ReduceLogicalAnd>();
         Register<opset::ReduceLogicalOr>();
+        Register<opset::LSTMSequence>();
+        Register<opset::GRUSequence>();
+        Register<opset::RNNSequence>();
     }
     Register<opset::Result>();
 

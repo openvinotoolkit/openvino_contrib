@@ -71,7 +71,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                                                                   | Supported***  |
 | [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md)                                           | Supported**   |
 | [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                                                                        | Supported     |
-| [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                                                                | Not Supported |
+| [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                                                                | Supported**   |
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                                                              | Supported**   |
 | [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                                                                    | Supported**   |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                                                                        | Supported     |
@@ -88,7 +88,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                                                                        | Not Supported |
 | [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                                                           | Supported*    |
 | [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                                                                      | Supported     |
-| [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                                                              | Not Supported |
+| [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                                                              | Supported**   |
 | [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                                                            | Supported     |
 | [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                                                                         | Supported***  |
 | [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                                                                      | Supported     |
@@ -129,7 +129,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Result](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Result_1.md)                                                                                    | Supported     |
 | [ReverseSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ReverseSequence_1.md)                                                                        | Supported**   |
 | [RNNCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNCell_3.md)                                                                                        | Supported     |
-| [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                                                                | Not Supported |
+| [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                                                                | Supported**   |
 | [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                                                                     | Supported**   |
 | [ROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIPooling_1.md)                                                                                 | Supported**   |
 | [Roll](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Roll_7.md)                                                                                              | Not Supported |
