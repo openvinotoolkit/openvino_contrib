@@ -558,108 +558,36 @@ static auto get_element_type(const ngraph::element::Type& type) {
     return type;
 }
 
-template<typename, typename, typename F, typename Io2>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch32(F&& f, const Io2& io2) {
-    IE_THROW() << "Unsupported Type: " << io2;
+template<typename ... PT, typename F>
+Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&& f) {
+        return f(PT{} ...);
 }
 
-template<typename T0, typename T1, typename H, typename ...T, typename F, typename Io2>
-Converter::Conversion::Ptr CallSwitch32(F&& f, const Io2& io2) {
-    if (ngraph::element::from<H>() == get_element_type(io2)) {
-        return f(T0{}, T1{}, H{});
-    } else {
-        return CallSwitch32<T0, T1, T...>(std::forward<F>(f), io2);
-    }
-}
-
-template<typename, typename F, typename Io1, typename Io2, typename ... T2>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch31(F&& f, const Io1& io1, const Io2&, std::tuple<T2...>) {
-    IE_THROW() << "Unsupported Type: " << io1;
-}
-
-template<typename T0, typename H, typename ...T, typename F, typename Io1, typename Io2, typename ... T2>
-Converter::Conversion::Ptr CallSwitch31(F&& f, const Io1& io1, const Io2& io2, std::tuple<T2...>) {
-    if (ngraph::element::from<H>() == get_element_type(io1)) {
-        return CallSwitch32<T0, H, T2...>(std::forward<F>(f), io2);
-    } else {
-        return CallSwitch31<T0, T...>(std::forward<F>(f), io1, io2, std::tuple<T2...>{});
-    }
-}
-
-template<typename F, typename Io0, typename Io1, typename Io2, typename ...T1, typename ... T2>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch30(F&& f, const Io0& io0, const Io1&, const Io2&, std::tuple<T1...>, std::tuple<T2...>) {
-    IE_THROW() << "Unsupported Type: " << io0;
-}
-
-template<typename H, typename ...T, typename F, typename Io0, typename Io1, typename Io2, typename ...T1, typename ... T2>
-Converter::Conversion::Ptr CallSwitch30(F&& f, const Io0& io0, const Io1& io1, const Io2& io2, std::tuple<T1...>, std::tuple<T2...>) {
-    if (ngraph::element::from<H>() == get_element_type(io0)) {
-        return CallSwitch31<H, T1...>(std::forward<F>(f), io1, io2, std::tuple<T2...>{});
-    } else {
-        return CallSwitch30<T...>(std::forward<F>(f), io0, io1, io2, std::tuple<T1...>{}, std::tuple<T2...>{});
-    }
-}
-
-template<typename F, typename Io0, typename Io1, typename Io2, typename ... T0, typename ... T1, typename ... T2>
-Converter::Conversion::Ptr CallSwitch(F&& f,
-                                      const Io0& io0, std::tuple<T0...>,
-                                      const Io1& io1, std::tuple<T1...>,
-                                      const Io2& io2, std::tuple<T2...>) {
-    return CallSwitch30<T0...>(std::forward<F>(f), io0, io1, io2, std::tuple<T1...>{}, std::tuple<T2...>{});
-}
-
-template<typename T0, typename F, typename Io1>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch21(F&& f, const Io1& io1) {
-    IE_THROW() << "Unsupported Type: " << io1;
-}
-
-template<typename T0, typename H, typename ...T, typename F, typename Io1>
-Converter::Conversion::Ptr CallSwitch21(F&& f, const Io1& io1) {
-    if (ngraph::element::from<H>() == get_element_type(io1)) {
-        return f(T0{}, H{});
-    } else {
-        return CallSwitch21<T0, T...>(std::forward<F>(f), io1);
-    }
-}
-
-template<typename F, typename Io0, typename Io1, typename ...T1>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch20(F&& f, const Io0& io0, const Io1& io1, std::tuple<T1...>) {
-    IE_THROW() << "Unsupported Type: " << io0;
-}
-
-template<typename H, typename ...T, typename F, typename Io0, typename Io1, typename ...T1>
-Converter::Conversion::Ptr CallSwitch20(F&& f, const Io0& io0, const Io1& io1, std::tuple<T1...>) {
-    if (ngraph::element::from<H>() == get_element_type(io0)) {
-        return CallSwitch21<H, T1...>(std::forward<F>(f), io1);
-    } else {
-        return CallSwitch20<T...>(std::forward<F>(f), io0, io1, std::tuple<T1...>{});
-    }
-}
-
-template<typename F, typename Io0, typename Io1, typename ... T0, typename ... T1>
-Converter::Conversion::Ptr CallSwitch(F&& f,
-                                      const Io0& io0, std::tuple<T0...>,
-                                      const Io1& io1, std::tuple<T1...>) {
-    return CallSwitch20<T0...>(std::forward<F>(f), io0, io1, std::tuple<T1...>{});
-}
-
-template<typename F, typename IO>
-[[noreturn]] Converter::Conversion::Ptr CallSwitch1(F&& f, const IO& io) {
+template<typename ... PT, typename F, typename IO, typename ... TRest>
+[[noreturn]] Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, std::tuple<int>, F&& f, const IO& io, TRest ... args) {
     IE_THROW() << "Unsupported Type: " << io;
 }
 
-template<typename H, typename ...T, typename F, typename IO>
-Converter::Conversion::Ptr CallSwitch1(F&& f, const IO& io) {
+template<typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
+Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&&, const IO&, std::tuple<T...>, TRest ... args);
+
+template<typename ... PT, typename H, typename ... T, typename F, typename IO, typename ... TRest>
+Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, std::tuple<int, H, T...>, F&& f, const IO& io, TRest ... args) {
     if (ngraph::element::from<H>() == get_element_type(io)) {
-        return f(H{});
+        return CallSwitchPT(std::tuple<int, PT ... , H>{}, std::forward<F>(f), args...);
     } else {
-        return CallSwitch1<T...>(std::forward<F>(f), io);
+        return CallSwitchPT(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
     }
 }
 
-template<typename F, typename IO, typename ... T0>
-auto CallSwitch(F&& f, const IO& io, std::tuple<T0...>) {
-    return CallSwitch1<T0...>(std::forward<F>(f), io);
+template<typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
+Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&& f, const IO& io, std::tuple<T...>, TRest ... args) {
+        return CallSwitchPT(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
+}
+
+template<typename F, typename IO, typename ... T, typename ... TRest>
+auto CallSwitch(F&& f, const IO& io, std::tuple<T...>, TRest ... args) {
+        return CallSwitchPT(std::tuple<int>{}, std::forward<F>(f), io, std::tuple<T...>{}, args...);
 }
 
 constexpr static auto allTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, ngraph::float16, float>{};
