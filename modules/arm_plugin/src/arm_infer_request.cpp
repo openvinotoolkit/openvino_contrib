@@ -105,7 +105,7 @@ void ArmInferRequest::allocateBlobs() {
                     case arm_compute::DataType::S16         : return InferenceEngine::Precision::I16;
                     case arm_compute::DataType::U16         : return InferenceEngine::Precision::U16;
                     case arm_compute::DataType::S32         : return InferenceEngine::Precision::I32;
-                    case arm_compute::DataType::S64         : return InferenceEngine::Precision::U32;
+                    case arm_compute::DataType::S64         : return InferenceEngine::Precision::I64;
                     case arm_compute::DataType::F16         : return InferenceEngine::Precision::FP16;
                     case arm_compute::DataType::F32         : return InferenceEngine::Precision::FP32;
                     case arm_compute::DataType::BFLOAT16    : return InferenceEngine::Precision::BF16;
