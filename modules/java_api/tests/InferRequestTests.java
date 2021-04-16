@@ -61,7 +61,11 @@ public class InferRequestTests extends IETest {
             String key = resKeySet.get(i);
             InferenceEngineProfileInfo resVal = res.get(key);
 
-            assertEquals(key + " execType", key, layer_name.elementAt(i));
+            if (key.lastIndexOf(' ') != -1) {
+                key = key.substring(key.lastIndexOf(' ') + 1);
+            }
+
+            assertEquals(key + " execType", layer_name.get(i), key);
             assertEquals(key + " executionIndex", i, resVal.executionIndex);
             assertTrue(
                     resVal.status == InferenceEngineProfileInfo.LayerStatus.EXECUTED
