@@ -45,7 +45,7 @@ void ArmPlugin::ExecutableNetwork::InitExecutor() {
     _executor = _taskExecutor.get();
 }
 
-InferenceEngine::InferRequestInternal::Ptr
+InferenceEngine::IInferRequestInternal::Ptr
 ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
                                                      InferenceEngine::OutputsDataMap networkOutputs) {
     return std::make_shared<ArmInferRequest>(networkInputs,

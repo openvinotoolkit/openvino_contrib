@@ -37,7 +37,7 @@ using fsec = std::chrono::duration<float>;
 ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&                networkInputs,
                                  const InferenceEngine::OutputsDataMap&               networkOutputs,
                                  const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork) :
-    InferRequestInternal(networkInputs, networkOutputs),
+    IInferRequestInternal(networkInputs, networkOutputs),
     _executableNetwork(executableNetwork),
     _lifetime{std::make_shared<arm_compute::OffsetLifetimeManager>()},
     _pool{std::make_shared<arm_compute::PoolManager>()},
@@ -175,7 +175,7 @@ void ArmInferRequest::InferImpl() {
     {
         OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, _profilingTasks[Preprocessing]);
         auto start = Time::now();
-        InferRequestInternal::execDataPreprocessing(_inputs);
+        IInferRequestInternal::execDataPreprocessing(_inputs);
         for (auto&& input : _inputs) {
             auto inputBlob = input.second;
             auto networkInput = _networkInputBlobs[input.first];
