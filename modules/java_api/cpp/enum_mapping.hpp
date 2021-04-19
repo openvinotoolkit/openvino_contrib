@@ -51,9 +51,9 @@ static const std::map<int, InferenceEngine::Precision> precision_map = {
 //
 // wait_mode
 //
-static const std::map<int, InferenceEngine::IInferRequest::WaitMode> wait_mode_map = {
-    {-1, InferenceEngine::IInferRequest::WaitMode::RESULT_READY},
-    {0, InferenceEngine::IInferRequest::WaitMode::STATUS_ONLY}
+static const std::map<int, InferenceEngine::InferRequest::WaitMode> wait_mode_map = {
+    {-1, InferenceEngine::InferRequest::WaitMode::RESULT_READY},
+    {0, InferenceEngine::InferRequest::WaitMode::STATUS_ONLY}
 };
 
 //
