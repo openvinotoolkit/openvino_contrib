@@ -218,7 +218,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_IECore_AddExtension(JNIEnv *env, 
         const std::string n_extension = jstringToString(env, extension);
 
         const InferenceEngine::IExtensionPtr extension =
-                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(n_extension);
+                        std::make_shared<InferenceEngine::Extension>(n_extension);
 
         Core *core = (Core *) addr;
         core->AddExtension(extension);
@@ -242,7 +242,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_IECore_AddExtension1(JNIEnv *env,
         const std::string n_device = jstringToString(env, deviceName);
 
         InferenceEngine::IExtensionPtr extension =
-                        InferenceEngine::make_so_pointer<InferenceEngine::IExtension>(n_extension);
+                        std::make_shared<InferenceEngine::Extension>(n_extension);
 
         Core *core = (Core *) addr;
         core->AddExtension(extension, n_device);
