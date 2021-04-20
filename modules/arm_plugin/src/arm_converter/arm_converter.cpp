@@ -114,6 +114,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::Concat>();
         Register<opset::Transpose>();
         Register<opset::StridedSlice>();
+        Register<opset::Gather>();
         Register<ngraph::op::v1::Gather>();
         Register<opset::ROIPooling>();
         Register<opset::PSROIPooling>();
