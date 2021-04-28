@@ -5,12 +5,9 @@
 
 #include <string>
 #include <vector>
-#include <algorithm>
 #include <thread>
 
 #include <ie_plugin_config.hpp>
-#include <file_utils.h>
-#include <cpp_interfaces/exception2status.hpp>
 
 #include "arm_config.hpp"
 
