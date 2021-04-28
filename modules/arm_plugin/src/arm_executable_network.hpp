@@ -5,17 +5,13 @@
 #pragma once
 
 #include <utility>
-#include <tuple>
 #include <memory>
 #include <string>
 #include <vector>
 #include <map>
-#include <unordered_map>
-#include <list>
 
 #include <ie_common.h>
 #include <cpp_interfaces/impl/ie_executable_network_thread_safe_default.hpp>
-#include <threading/ie_istreams_executor.hpp>
 
 #include "arm_config.hpp"
 #include "arm_infer_request.hpp"

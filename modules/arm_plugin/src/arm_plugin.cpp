@@ -6,22 +6,15 @@
 #include <utility>
 #include <memory>
 #include <vector>
-#include <sstream>
-#include <regex>
 #include <string>
 #include <map>
-#include <thread>
 
 #include <ie_metric_helpers.hpp>
 #include <ie_plugin_config.hpp>
-#include <inference_engine.hpp>
-#include <file_utils.h>
-#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <ie_input_info.hpp>
 #include <ie_layouts.h>
 #include <ie_algorithm.hpp>
-#include <hetero/hetero_plugin_config.hpp>
 
 #include <ngraph/function.hpp>
 #include <ngraph/pass/manager.hpp>

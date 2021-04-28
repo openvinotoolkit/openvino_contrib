@@ -4,15 +4,14 @@
 
 #pragma once
 
-#include <inference_engine.hpp>
-#include <description_buffer.hpp>
-#include <cpp_interfaces/impl/ie_plugin_internal.hpp>
-
 #include <memory>
 #include <string>
 #include <map>
 #include <unordered_map>
 #include <vector>
+
+#include <cpp/ie_cnn_network.h>
+#include <cpp_interfaces/impl/ie_plugin_internal.hpp>
 
 #include "arm_executable_network.hpp"
 #include "arm_config.hpp"
