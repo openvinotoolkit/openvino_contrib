@@ -4,58 +4,76 @@
 
 set(TARGET_NAME "CUDAPlugin")
 
-set(CMAKE_CXX_STANDARD 14)
-
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})
-list(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_BINARY_DIR})
-
-include(FetchContent)
-
-# In this example we are picking a specific tag.
-# You can also pick a specific commit, if you need to.
-FetchContent_Declare(GSL
-                     GIT_REPOSITORY "https://github.com/microsoft/GSL"
-                     GIT_TAG "v3.1.0")
-
-FetchContent_MakeAvailable(GSL)
-find_package(CUDAToolkit REQUIRED)
-
 file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.cu)
 file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/*.cuh)
 
 set_source_files_properties(*.cu  PROPERTIES LANGUAGE CUDA)
 set_source_files_properties(*.cuh PROPERTIES LANGUAGE CUDA)
 
-# adds a shared library with plugin
+# Adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "CUDA"
               SOURCES ${SOURCES} ${HEADERS}
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_plugin.cpp)
+# Adds test object library
+add_library(${TARGET_NAME}_test_static STATIC EXCLUDE_FROM_ALL ${SOURCES} ${HEADERS})
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
+    set_property(TARGET ${TARGET_NAME}_test_static PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
 else()
     set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
+    set_property(TARGET ${TARGET_NAME}_test_static PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
 endif()
 
-target_include_directories(${TARGET_NAME} PRIVATE
+target_include_directories(${TARGET_NAME}
+                           PUBLIC
+                           "${GSL_INCLUDE_DIR}"
+                           PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
                            "${InferenceEngine_C_API_SOURCE_DIR}/include"
+                           "${CUDAToolkit_INCLUDE_DIRS}")
+target_include_directories(${TARGET_NAME}_test_static
+                           PUBLIC
                            "${GSL_INCLUDE_DIR}"
+                           PRIVATE
+                           "${CMAKE_CURRENT_SOURCE_DIR}"
+                           "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
+                           "${InferenceEngine_C_API_SOURCE_DIR}/include"
                            "${CUDAToolkit_INCLUDE_DIRS}")
 
-# link common Inference Engine libraries
-target_link_libraries(${TARGET_NAME} PRIVATE
+# Link common Inference Engine libraries
+target_link_libraries(${TARGET_NAME}
+                      PRIVATE
                       IE::inference_engine
                       IE::inference_engine_transformations
                       GSL
                       CUDA::cudart
                       CUDA::cuda_driver
                       ${NGRAPH_LIBRARIES})
+target_link_libraries(${TARGET_NAME}_test_static
+                      PRIVATE
+                      IE::inference_engine
+                      IE::inference_engine_transformations
+                      GSL
+                      CUDA::cudart
+                      CUDA::cuda_driver
+                      ${NGRAPH_LIBRARIES})
+if(TARGET IE::inference_engine_plugin_api)
+    target_link_libraries(${TARGET_NAME}_test_static PRIVATE IE::inference_engine_plugin_api)
+else()
+    target_link_libraries(${TARGET_NAME}_test_static PRIVATE inference_engine_plugin_api)
+endif()
 
 # Link inference backend library to plugin. Here we use ngraph interpreter_backend as example
-target_link_libraries(${TARGET_NAME} PRIVATE
+target_link_libraries(${TARGET_NAME}
+                      PRIVATE
+                      IE::ngraph_backend
+                      IE::interpreter_backend
+                      CUDA::cudart)
+target_link_libraries(${TARGET_NAME}_test_static
+                      PRIVATE
                       IE::ngraph_backend
                       IE::interpreter_backend
                       CUDA::cudart)

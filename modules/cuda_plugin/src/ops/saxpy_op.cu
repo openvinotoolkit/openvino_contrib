@@ -3,6 +3,7 @@
 //
 
 #include <kernels/saxpy.cuh>
+#include <cuda_operation_registry.hpp>
 
 #include "saxpy_op.hpp"
 
@@ -19,5 +20,7 @@ void SaxpyOp::Execute(const InferenceRequestContext& context,
                                inputTensors[1].cast<const float*>(),
                                outputTensors[0].cast<float*>());
 }
+
+OPERATION_REGISTER(SaxpyOp, "Saxpy");
 
 } // namespace CUDAPlugin
