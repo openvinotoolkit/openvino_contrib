@@ -108,7 +108,7 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
         THROW_IE_EXCEPTION << "CUDA plugin can compile only IR v10 networks";
     }
 
-    return std::make_shared<ExecutableNetwork>(function, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
+    return std::make_shared<ExecutableNetwork>(network, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 // InferenceEngine::ExecutableNetworkInternal::Ptr
