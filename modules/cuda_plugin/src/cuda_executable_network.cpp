@@ -12,49 +12,51 @@
 #include "cuda_plugin.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
+#include "cuda_operation_registry.hpp"
 
-using namespace CUDAPlugin;
+// forward declaration
+std::shared_ptr<ngraph::Function>
+TransformNetwork(const std::shared_ptr<const ngraph::Function>& function);
 
-CUDAPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ngraph::Function>& function,
-                                                 Configuration cfg,
-                                                 Plugin::Ptr plugin) :
+namespace CUDAPlugin {
+
+ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
+                                     Configuration cfg,
+                                     Plugin::Ptr plugin) :
     InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr), // Disable default threads creation
-    _cfg(std::move(cfg)),
-    _plugin(std::move(plugin)) {
+    cnn_network_(cnnNetwork),
+    cfg_(std::move(cfg)),
+    plugin_(std::move(plugin)) {
     // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
     // you should select proper device based on KEY_DEVICE_ID or automatic behavior
     // In this case, _waitExecutor should also be created per device.
     try {
-        CompileNetwork(function);
+        CompileNetwork(cnn_network_.getFunction());
         InitExecutor(); // creates thread-based executor using for async requests
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
-//    } catch (const InferenceEngine::Exception&) {
-//        throw;
-    } catch (const std::exception & e) {
-        //IE_THROW() << "Standard exception from compilation library: " << e.what();
+    } catch (const std::exception& e) {
         THROW_IE_EXCEPTION << "Standard exception from compilation library: " << e.what();
     } catch (...) {
-        //IE_THROW() << "Generic exception is thrown";
         THROW_IE_EXCEPTION << "Generic exception is thrown";
     }
 }
 
-CUDAPlugin::ExecutableNetwork::ExecutableNetwork(std::istream& model,
-                                                 Configuration cfg,
-                                                 Plugin::Ptr plugin) :
-    _cfg(std::move(cfg)),
-    _plugin(std::move(plugin)) {
-    // read XML content
+ExecutableNetwork::ExecutableNetwork(std::istream& model,
+                                     Configuration cfg,
+                                     Plugin::Ptr plugin) :
+    cfg_(std::move(cfg)),
+    plugin_(std::move(plugin)) {
+    // Read XML content
     std::string xmlString;
     std::uint64_t dataSize = 0;
-    model.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+    model.read(reinterpret_cast<char *>(&dataSize), sizeof(dataSize));
     xmlString.resize(dataSize);
-    model.read(const_cast<char*>(xmlString.c_str()), dataSize);
+    model.read(const_cast<char *>(xmlString.c_str()), dataSize);
 
-    // read blob content
+    // Read blob content
     InferenceEngine::Blob::Ptr dataBlob;
-    model.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+    model.read(reinterpret_cast<char *>(&dataSize), sizeof(dataSize));
     if (0 != dataSize) {
         dataBlob = InferenceEngine::make_shared_blob<std::uint8_t>(
             InferenceEngine::TensorDesc(InferenceEngine::Precision::U8,
@@ -67,59 +69,66 @@ CUDAPlugin::ExecutableNetwork::ExecutableNetwork(std::istream& model,
     // TODO: implement Import / Export of configuration options and merge with `cfg`
     // TODO: implement Import / Export of network precisions, layouts, preprocessing info
 
-    auto cnnnetwork = _plugin->GetCore()->ReadNetwork(xmlString, std::move(dataBlob));
+    cnn_network_ = plugin_->GetCore()->ReadNetwork(xmlString, std::move(dataBlob));
 
-    setNetworkInputs(cnnnetwork.getInputsInfo());
-    setNetworkOutputs(cnnnetwork.getOutputsInfo());
-    SetPointerToPlugin(_plugin->shared_from_this());
+    setNetworkInputs(cnn_network_.getInputsInfo());
+    setNetworkOutputs(cnn_network_.getOutputsInfo());
+    SetPointerToPlugin(plugin_->shared_from_this());
 
     try {
-        CompileNetwork(cnnnetwork.getFunction());
+        CompileNetwork(cnn_network_.getFunction());
         InitExecutor(); // creates thread-based executor using for async requests
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
-//    } catch (const InferenceEngine::Exception&) {
-//        throw;
-    } catch (const std::exception & e) {
-        //IE_THROW() << "Standard exception from compilation library: " << e.what();
+    } catch (const std::exception& e) {
         THROW_IE_EXCEPTION << "Standard exception from compilation library: " << e.what();
     } catch (...) {
-        //IE_THROW() << "Generic exception is thrown";
         THROW_IE_EXCEPTION << "Generic exception is thrown";
     }
 }
 
-// forward declaration
-std::shared_ptr<ngraph::Function>
-TransformNetwork(const std::shared_ptr<const ngraph::Function>& function);
-
-void CUDAPlugin::ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function) {
-    // TODO: perform actual graph compilation / mapping to backend graph representation / kernels
-
-    // apply plugins transformations
-    _function = TransformNetwork(function);
+void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function) {
+    // Apply plugins transformations
+    function_ = TransformNetwork(function);
 
     // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
     // as inference request output names but the name of the layer before.
-    for (auto&& result : _function->get_results()) {
+    for (auto&& result : function_->get_results()) {
         auto previousOutput = result->get_input_source_output(0);
         auto outputName = previousOutput.get_node()->get_friendly_name();
         if (previousOutput.get_node()->get_output_size() > 1) {
             outputName += '.' + std::to_string(previousOutput.get_index());
         }
-        _outputIndex.emplace(outputName, _function->get_result_index(result));
+        output_index_.emplace(outputName, function_->get_result_index(result));
     }
-    for (auto&& parameter : _function->get_parameters()) {
-        _inputIndex.emplace(parameter->get_friendly_name(), _function->get_parameter_index(parameter));
+    for (auto&& parameter : function_->get_parameters()) {
+        input_index_.emplace(parameter->get_friendly_name(), function_->get_parameter_index(parameter));
     }
+
+    const auto& orderedNodes = function_->get_ordered_ops();
+    tensor_collector_ = std::make_unique<TensorCollector>(orderedNodes);
+    memory_model_ = CreateMemoryModel();
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
+    for (auto& node : orderedNodes) {
+        if (!OperationRegistry::getInstance().hasOperation(node)) {
+            THROW_IE_EXCEPTION << "Node: "
+                               << "name = " << node->get_name() << ", "
+                               << "description = " << node->description() << "; "
+                               << "Is not found in OperationRegistry";
+        }
+
+        const auto&[inIds, outIds] = tensor_collector_->getTensorIds(node);
+        auto operation = OperationRegistry::getInstance().createOperation(node, inIds, outIds);
+        exec_sequence_.push_back(operation);
+    }
 }
 
-void CUDAPlugin::ExecutableNetwork::InitExecutor() {
+void ExecutableNetwork::InitExecutor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
-    auto streamsExecutorConfig = InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(_cfg._streamsExecutorConfig);
+    auto streamsExecutorConfig =
+        InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(cfg_._streamsExecutorConfig);
     streamsExecutorConfig._name = "CudaStreamsExecutor";
     // As Inference Engine CPU Streams Executor creates some additional therads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
@@ -130,19 +139,29 @@ void CUDAPlugin::ExecutableNetwork::InitExecutor() {
     // _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
+MemoryModel::Ptr
+ExecutableNetwork::CreateMemoryModel() {
+    // TODO: Should be added proper implementation
+    [[maybe_unused]] MemoryModelComposer memoryModelComposer;
+    return MemoryModel::Ptr{};
+}
+
 InferenceEngine::InferRequestInternal::Ptr
-CUDAPlugin::ExecutableNetwork::CreateInferRequestImpl(
-        InferenceEngine::InputsDataMap networkInputs,
-        InferenceEngine::OutputsDataMap networkOutputs) {
-    return std::make_shared<CudaInferRequest>(networkInputs, networkOutputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+ExecutableNetwork::CreateInferRequestImpl(
+    InferenceEngine::InputsDataMap networkInputs,
+    InferenceEngine::OutputsDataMap networkOutputs) {
+    return std::make_shared<CudaInferRequest>(networkInputs,
+                                              networkOutputs,
+                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 
 InferenceEngine::IInferRequest::Ptr
-CUDAPlugin::ExecutableNetwork::CreateInferRequest() {
+ExecutableNetwork::CreateInferRequest() {
     InferenceEngine::IInferRequest::Ptr asyncRequest;
     auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
-    auto asyncThreadSafeImpl = std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
-                                                                           _taskExecutor, _plugin->_waitExecutor, _callbackExecutor);
+    auto asyncThreadSafeImpl =
+        std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
+                                                _taskExecutor, plugin_->_waitExecutor, _callbackExecutor);
     asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl),
                        [](InferenceEngine::IInferRequest *p) { p->Release(); });
     //asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl));
@@ -151,12 +170,12 @@ CUDAPlugin::ExecutableNetwork::CreateInferRequest() {
 }
 
 InferenceEngine::Parameter
-CUDAPlugin::ExecutableNetwork::GetConfig(const std::string &name) const {
-    return _cfg.Get(name);
+ExecutableNetwork::GetConfig(const std::string& name) const {
+    return cfg_.Get(name);
 }
 
 InferenceEngine::Parameter
-CUDAPlugin::ExecutableNetwork::GetMetric(const std::string &name) const {
+ExecutableNetwork::GetMetric(const std::string& name) const {
     // TODO: return more supported values for metrics
     if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, std::vector<std::string>{
@@ -168,17 +187,17 @@ CUDAPlugin::ExecutableNetwork::GetMetric(const std::string &name) const {
         std::vector<std::string> configKeys = {
             CONFIG_KEY(DEVICE_ID),
             CONFIG_KEY(PERF_COUNT),
-            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) };
+            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (EXEC_NETWORK_METRIC_KEY(NETWORK_NAME) == name) {
-        auto networkName = _function->get_friendly_name();
+        auto networkName = function_->get_friendly_name();
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
     } else if (EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
-        unsigned int value = _cfg._streamsExecutorConfig._streams;
+        unsigned int value = cfg_._streamsExecutorConfig._streams;
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
         //IE_THROW() << "Unsupported ExecutableNetwork metric: " << name;
@@ -186,15 +205,20 @@ CUDAPlugin::ExecutableNetwork::GetMetric(const std::string &name) const {
     }
 }
 
-void CUDAPlugin::ExecutableNetwork::ExportImpl(std::ostream& modelStream) {
+InferenceEngine::CNNNetwork
+ExecutableNetwork::GetExecGraphInfo() {
+    return cnn_network_;
+}
+
+void ExecutableNetwork::ExportImpl(std::ostream& modelStream) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "ExecutableNetwork::ExportImpl");
 
     // Note: custom ngraph extensions are not supported
     std::map<std::string, ngraph::OpSet> custom_opsets;
     std::stringstream xmlFile, binFile;
     ngraph::pass::Serialize serializer(xmlFile, binFile,
-        ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
-    serializer.run_on_function(_function);
+                                       ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
+    serializer.run_on_function(function_);
 
     auto m_constants = binFile.str();
     auto m_model = xmlFile.str();
@@ -209,3 +233,5 @@ void CUDAPlugin::ExecutableNetwork::ExportImpl(std::ostream& modelStream) {
 
     // TODO: implement network precision, layout, preprocessing info serialization
 }
+
+} // namespace CUDAPlugin

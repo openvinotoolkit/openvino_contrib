@@ -36,19 +36,19 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
     _executableNetwork(executableNetwork) {
     // TODO: allocate infer request device and host buffers if needed, fill actual list of profiling tasks
 
-    auto requestID = std::to_string(_executableNetwork->_requestId.fetch_add(1));
+    auto requestID = std::to_string(_executableNetwork->request_id_.fetch_add(1));
 
-    std::string name = _executableNetwork->_function->get_friendly_name() + "_Req" + requestID;
+    std::string name = _executableNetwork->function_->get_friendly_name() + "_Req" + requestID;
     _profilingTask = {
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->_cfg.deviceId) + "_" + name + "_Preprocess"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->_cfg.deviceId) + "_" + name + "_Postprocess"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->_cfg.deviceId) + "_" + name + "_StartPipline"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->_cfg.deviceId) + "_" + name + "_WaitPipline"),
+        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_Preprocess"),
+        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_Postprocess"),
+        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_StartPipline"),
+        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_WaitPipline"),
     };
 
-    _executable = _executableNetwork->_plugin->_backend->compile(_executableNetwork->_function);
-    _parameters = _executableNetwork->_function->get_parameters();
-    _results = _executableNetwork->_function->get_results();
+    _executable = _executableNetwork->plugin_->_backend->compile(_executableNetwork->function_);
+    _parameters = _executableNetwork->function_->get_parameters();
+    _results = _executableNetwork->function_->get_results();
 
     allocateDeviceBuffers();
     allocateBlobs();
@@ -62,7 +62,7 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
 }
 
 CudaInferRequest::~CudaInferRequest() {
-    _executableNetwork->_requestId--;
+    _executableNetwork->request_id_--;
 }
 
 void CudaInferRequest::allocateDeviceBuffers() {
@@ -120,13 +120,13 @@ static void AllocateImpl(const BlobDataMap& userDataMap,
 }
 
 void CudaInferRequest::allocateBlobs() {
-    auto&& parameters = _executableNetwork->_function->get_parameters();
+    auto&& parameters = _executableNetwork->function_->get_parameters();
     AllocateImpl(_networkInputs, _inputs, _deviceInputs, [&] (const std::string& blobName) {
-        return parameters.at(_executableNetwork->_inputIndex.at(blobName))->get_element_type();
+        return parameters.at(_executableNetwork->input_index_.at(blobName))->get_element_type();
     });
-    auto&& results = _executableNetwork->_function->get_results();
+    auto&& results = _executableNetwork->function_->get_results();
     AllocateImpl(_networkOutputs, _outputs, _networkOutputBlobs, [&] (const std::string& blobName) {
-        return results.at(_executableNetwork->_outputIndex.at(blobName))->get_element_type();
+        return results.at(_executableNetwork->output_index_.at(blobName))->get_element_type();
     });
 }
 
@@ -193,24 +193,28 @@ void CudaInferRequest::inferPreprocess() {
     //       input can points to other memory region than it was allocated in constructor.
     InferRequestInternal::execDataPreprocessing(_deviceInputs);
     for (auto&& networkInput : _deviceInputs) {
-        auto index = _executableNetwork->_inputIndex[networkInput.first];
+        auto index = _executableNetwork->input_index_[networkInput.first];
         const auto& parameter = _parameters[index];
         const auto& parameterShape = parameter->get_shape();
         const auto& parameterType = parameter->get_element_type();
-        _inputTensors[index] = _executableNetwork->_plugin->_backend->create_tensor(parameterType, parameterShape,
+        _inputTensors[index] = _executableNetwork->plugin_->_backend->create_tensor(
+            parameterType,
+            parameterShape,
             InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput.second)->rmap().as<void*>());
     }
     for (auto&& output : _outputs) {
         auto outputBlob = output.second;
         auto networkOutput = _networkOutputBlobs[output.first];
-        auto index = _executableNetwork->_outputIndex[output.first];
+        auto index = _executableNetwork->output_index_[output.first];
         if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
             networkOutput = outputBlob;
         }
         const auto& result = _results[index];
         const auto& resultShape = result->get_shape();
         const auto& resultType = result->get_element_type();
-        _outputTensors[index] = _executableNetwork->_plugin->_backend->create_tensor(resultType, resultShape,
+        _outputTensors[index] = _executableNetwork->plugin_->_backend->create_tensor(
+            resultType,
+            resultShape,
             InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
     }
     _durations[Preprocess] = Time::now() - start;
