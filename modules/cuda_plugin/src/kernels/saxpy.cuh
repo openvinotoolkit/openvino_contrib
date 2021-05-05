@@ -6,6 +6,6 @@
 
 namespace CUDAPlugin {
 
-extern __global__ void saxpy(int n, float a, const float *x, float *y);
+extern __global__ void saxpy(int n, const float *a, const float *x, float *y);
 
 } // namespace CUDAPlugin

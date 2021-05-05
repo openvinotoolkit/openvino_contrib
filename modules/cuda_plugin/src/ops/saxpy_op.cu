@@ -9,15 +9,15 @@
 namespace CUDAPlugin {
 
 void SaxpyOp::Execute(const InferenceRequestContext& context,
-                      gsl::span<const void*> inputTensors,
-                      gsl::span<void*> outputTensors) {
+                      Inputs inputTensors,
+                      Outputs outputTensors) {
   size_t size = 10000;
   auto gridNum = size / 1024;
   auto blockNum = gridNum > 1 ? 1024 : size / 1024;
   saxpy<<<gridNum, blockNum>>>(size,
-                               *reinterpret_cast<const float*>(inputTensors[0]),
-                               reinterpret_cast<const float*>(inputTensors[1]),
-                               reinterpret_cast<float*>(outputTensors[0]));
+                               inputTensors[0].cast<const float*>(),
+                               inputTensors[1].cast<const float*>(),
+                               outputTensors[0].cast<float*>());
 }
 
 } // namespace CUDAPlugin

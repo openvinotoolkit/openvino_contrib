@@ -9,7 +9,7 @@
 #include <memory>
 
 #include <gpu/gpu_context_api_cuda.hpp>
-#include <gsl/span>
+#include <gpu/device_pointers.hpp>
 #include <ie_layouts.h>
 
 namespace ngraph {
@@ -24,10 +24,13 @@ using InferenceEngine::gpu::InferenceRequestContext;
 
 class IOperationExec {
  public:
+  using Inputs = gsl::span<InferenceEngine::gpu::DevicePointer<const void*>>;
+  using Outputs = gsl::span<InferenceEngine::gpu::DevicePointer<void*>>;
+
   virtual ~IOperationExec() = default;
   virtual void Execute(const InferenceRequestContext& context,
-                       gsl::span<const void*> inputTensors,
-                       gsl::span<void*> outputTensors) = 0;
+                       Inputs inputTensors,
+                       Outputs outputTensors) = 0;
 };
 
 class IOperationMeta {
