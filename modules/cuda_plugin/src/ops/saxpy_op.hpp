@@ -12,8 +12,8 @@ class SaxpyOp : public OperationBase {
  public:
   using OperationBase::OperationBase;
   void Execute(const InferenceRequestContext& context,
-               gsl::span<const void*> inputTensors,
-               gsl::span<void*> outputTensors) override;
+               Inputs inputTensors,
+               Outputs outputTensors) override;
 };
 
 } // namespace CUDAPlugin
