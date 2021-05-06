@@ -118,4 +118,34 @@ const auto params_ref = testing::Combine(
 );
 
 INSTANTIATE_TEST_CASE_P(smoke_Gather_refernce, GatherLayerTest, params_ref, GatherLayerTest::getTestCaseName);
+
+const std::vector<std::vector<size_t>> indicesShapes5 = {
+        std::vector<size_t>{10, 4},
+        std::vector<size_t>{10, 20, 5},
+};
+
+const std::vector< std::tuple<int, int> > axes_batches = {
+        std::tuple<int, int>(0, 0),
+        std::tuple<int, int>(1, 0),
+        std::tuple<int, int>(2, 0),
+        std::tuple<int, int>(3, 0),
+        std::tuple<int, int>(-1, 0),
+        std::tuple<int, int>(-2, 0),
+        std::tuple<int, int>(1, 1),
+        std::tuple<int, int>(-1, 1),
+};
+
+const auto params_g7 = testing::Combine(
+        testing::ValuesIn(inputShapes),
+        testing::ValuesIn(indicesShapes5),
+        testing::ValuesIn(axes_batches),
+        testing::ValuesIn(netPrecisions),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::Values(InferenceEngine::Layout::ANY),
+        testing::Values(CommonTestUtils::DEVICE_CPU)
+);
+
+INSTANTIATE_TEST_CASE_P(smoke_V7Gather4, Gather7LayerTest, params_g7, Gather7LayerTest::getTestCaseName);
 }  // namespace
