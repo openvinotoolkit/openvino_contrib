@@ -94,7 +94,6 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
       -DPYTHON3_INCLUDE_PATH=/usr/include/${PYTHONVER}m \
       -DPYTHON3_LIBRARIES=/usr/lib/$ARCH_NAME/lib${PYTHONVER}m.so \
-      -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/lib/python3/dist-packages/numpy/core/include \
       -D CMAKE_USE_RELATIVE_PATHS=ON \
       -D CMAKE_SKIP_INSTALL_RPATH=ON \
       -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
