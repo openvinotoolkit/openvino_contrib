@@ -19,6 +19,7 @@ addIeTargetTest(
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src"
         "${InferenceEngine_C_API_SOURCE_DIR}/include"
+        "${CUDAToolkit_INCLUDE_DIRS}"
         "${GSL_INCLUDE_DIR}"
         ADD_CPPLINT
         LABELS
