@@ -12,7 +12,7 @@
 
 #include <memory>
 #include <string>
-
+#include <cuda_runtime.h>
 #include <ie_remote_context.hpp>
 
 #include "gpu/gpu_params.hpp"
@@ -57,7 +57,45 @@ class InferenceRequestContext {
   using Ptr = std::shared_ptr<InferenceRequestContext>;
   using WeakPtr = std::weak_ptr<InferenceRequestContext>;
 
-  // TODO: Add additional functions
+  InferenceRequestContext(cudaStream_t stream,
+                          const InferenceEngine::BlobMap& inputs,
+                          const InferenceEngine::BlobMap& outputs)
+  : cuda_stream {stream}, blob_inputs {inputs}, blob_outputs {outputs} {}
+
+  /**
+   * @brief GetInputBlob(name) returns an input blob with the given name
+   */
+  Blob::Ptr GetInputBlob(const std::string& input_name) const {
+    return blob_inputs.at(input_name);
+  }
+  /**
+   * @brief GetInputBlob(name) returns an input blob with the given name
+   */
+  Blob::Ptr GetOutputBlob(const std::string& input_name) const {
+    return blob_outputs.at(input_name);
+  }
+  /**
+   * @brief HasInputBlob(name) returns true if it contains an input blob with the given name
+   */
+  bool HasInputBlob(const std::string& input_name) const noexcept {
+    return blob_inputs.find(input_name) != blob_inputs.end();
+  }
+  /**
+   * @brief HasOutputBlob(name) returns true if contains an output blob with the given name
+   */
+  bool HasOutputBlob(const std::string& input_name) const noexcept {
+    return blob_outputs.find(input_name) != blob_outputs.end();
+  }
+  /**
+   * @brief GetCUDAStream() returns associated CUDA stream
+   */
+  cudaStream_t GetCUDAStream() const noexcept {
+    return cuda_stream;
+  }
+ private:
+  cudaStream_t cuda_stream;
+  const InferenceEngine::BlobMap& blob_inputs;
+  const InferenceEngine::BlobMap& blob_outputs;
 };
 
 } // namespace gpu
