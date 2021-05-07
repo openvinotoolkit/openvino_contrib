@@ -14,6 +14,10 @@
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 
+#include "memory_manager/model/cuda_memory_model_builder.hpp"
+#include "memory_manager/cuda_immutable_memory_block_builder.hpp"
+#include "memory_manager/cuda_memory_manager.hpp"
+
 // forward declaration
 std::shared_ptr<ngraph::Function>
 TransformNetwork(const std::shared_ptr<const ngraph::Function>& function);
@@ -107,7 +111,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
 
     const auto& orderedNodes = function_->get_ordered_ops();
     tensor_collector_ = std::make_unique<TensorCollector>(orderedNodes);
-    memory_model_ = CreateMemoryModel();
+    MemoryManagerComponentsSnippets();
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     for (auto& node : orderedNodes) {
@@ -139,11 +143,36 @@ void ExecutableNetwork::InitExecutor() {
     // _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
-MemoryModel::Ptr
-ExecutableNetwork::CreateMemoryModel() {
-    // TODO: Should be added proper implementation
-    [[maybe_unused]] MemoryModelComposer memoryModelComposer;
-    return MemoryModel::Ptr{};
+void
+ExecutableNetwork::MemoryManagerComponentsSnippets() {
+    //
+    // TODO: Remove. The following is a usage example.
+    //
+
+    ImmutableMemoryBlockBuilder constants_block_builder;
+    MemoryModelBuilder mutable_model_builder;
+
+    // Process nGraph and add allocations
+    std::vector<uint8_t> rand_data(1000);
+    constants_block_builder.addAllocation(0, &rand_data[0], rand_data.size());
+    constants_block_builder.addAllocation(1, &rand_data[1], rand_data.size());
+    mutable_model_builder.addAllocation(2, 0, 1, 988);
+    mutable_model_builder.addAllocation(3, 0, 1, 988);
+
+    // Build shared constants memory block
+    shared_constants_blob_ = constants_block_builder.build();
+
+    // Build memory model for mutable memory block
+    memory_model_ = mutable_model_builder.build();
+
+    // Later on, for each infer request
+    auto memory_manager = std::make_shared<MemoryManager>(shared_constants_blob_, memory_model_);
+
+    // For each operation
+    // std::vector<MemoryModel::TensorID> inputIDs { 0, 1, 2 };
+    // std::vector<MemoryModel::TensorID> outputIDs { 2, 3 };
+    // auto inputs = memory_manager->inputTensorPointers(operation);
+    // auto outputs = memory_manager->outputTensorPointers(operation);
 }
 
 InferenceEngine::InferRequestInternal::Ptr
