@@ -11,8 +11,9 @@
 #include "cuda_infer_request.hpp"
 #include "cuda_async_infer_request.hpp"
 #include "cuda_tensor_collector.hpp"
-#include "cuda_memory_model_composer.hpp"
-#include "cuda_memory_model.hpp"
+
+#include "memory_manager/model/cuda_memory_model.hpp"
+#include "memory_manager/cuda_device_mem_block.hpp"
 
 class ExecNetworkTest;
 
@@ -51,13 +52,14 @@ private:
 
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
-    MemoryModel::Ptr CreateMemoryModel();
+    void MemoryManagerComponentsSnippets();
 
     std::atomic<std::size_t>                    request_id_ = {0};
     InferenceEngine::CNNNetwork                 cnn_network_;
     Configuration                               cfg_;
     std::shared_ptr<Plugin>                     plugin_;
     std::shared_ptr<ngraph::Function>           function_;
+    std::shared_ptr<DeviceMemBlock>              shared_constants_blob_;
     MemoryModel::Ptr                            memory_model_;
     std::unique_ptr<TensorCollector>            tensor_collector_;
     std::vector<OperationBase::Ptr>             exec_sequence_;
