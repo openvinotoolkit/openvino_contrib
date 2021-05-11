@@ -5,19 +5,17 @@
 
 #include <common_test_utils/test_constants.hpp>
 #include "behavior/add_output.hpp"
-#include "functional_test_utils/test_model/test_model.hpp"
 #include "functional_test_utils/plugin_cache.hpp"
+#include "ngraph_functions/subgraph_builders.hpp"
 
 InferenceEngine::CNNNetwork getTargetNetwork() {
-    auto model = FuncTestUtils::TestModel::getModelWithMemory(InferenceEngine::Precision::FP32);
-    auto ie = PluginCache::get().ie();
-    return ie->ReadNetwork(model.model_xml_str, model.weights_blob);
+    return InferenceEngine::CNNNetwork { ngraph::builder::subgraph::makeConvPoolRelu() };
 }
 
 std::vector<addOutputsParams> testCases = {
-        addOutputsParams(getTargetNetwork(), {"Memory_1"}, CommonTestUtils::DEVICE_CPU)
+    addOutputsParams(getTargetNetwork(), {"Pool_1"}, CommonTestUtils::DEVICE_CPU)
 };
 
-INSTANTIATE_TEST_CASE_P(DISABLED_AddOutputBasic, AddOutputsTest,
+INSTANTIATE_TEST_CASE_P(AddOutputBasic, AddOutputsTest,
                         ::testing::ValuesIn(testCases),
                         AddOutputsTest::getTestCaseName);
