@@ -29,19 +29,19 @@ endif()
 target_include_directories(${TARGET_NAME}
                            PUBLIC
                            "${GSL_INCLUDE_DIR}"
+                           "${CUDAToolkit_INCLUDE_DIRS}"
                            PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-                           "${InferenceEngine_C_API_SOURCE_DIR}/include"
-                           "${CUDAToolkit_INCLUDE_DIRS}")
+                           "${InferenceEngine_C_API_SOURCE_DIR}/include")
 target_include_directories(${TARGET_NAME}_test_static
                            PUBLIC
                            "${GSL_INCLUDE_DIR}"
+                           "${CUDAToolkit_INCLUDE_DIRS}"
                            PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-                           "${InferenceEngine_C_API_SOURCE_DIR}/include"
-                           "${CUDAToolkit_INCLUDE_DIRS}")
+                           "${InferenceEngine_C_API_SOURCE_DIR}/include")
 
 # Link common Inference Engine libraries
 target_link_libraries(${TARGET_NAME}

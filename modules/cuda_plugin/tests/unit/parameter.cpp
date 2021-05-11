@@ -96,7 +96,7 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 }
 
 TEST_F(ParameterTest, canExecuteSync) {
-  InferenceRequestContext context{cudaStream_t{0}, blobs, empty};
+  InferenceRequestContext context{std::make_shared<CudaStream>(), blobs, empty};
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
   cudaMemcpy(data.get(), outputs[0], size, cudaMemcpyDeviceToHost);
@@ -105,15 +105,13 @@ TEST_F(ParameterTest, canExecuteSync) {
 }
 
 TEST_F(ParameterTest, canExecuteAsync) {
-  cudaStream_t stream {};
-  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+  std::shared_ptr<CudaStream> stream;
+  ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
   InferenceRequestContext context{stream, blobs, empty};
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpyAsync(data.get(), outputs[0], size, cudaMemcpyDeviceToHost, stream);
+  stream->memcpyAsync(data.get(), outputs[0].cast<const void*>(), size);
   auto mem = blob->as<MemoryBlob>()->rmap();
-  auto err = cudaStreamSynchronize(stream);
-  cudaStreamDestroy(stream);
-  ASSERT_EQ(cudaSuccess, err);
+  ASSERT_NO_THROW(stream->synchronize());
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
