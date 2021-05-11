@@ -35,7 +35,7 @@ struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     ArmInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
                       const InferenceEngine::OutputsDataMap&    networkOutputs,
                       const std::shared_ptr<ExecutableNetwork>& executableNetwork);
-    ~ArmInferRequest();
+    virtual ~ArmInferRequest();
 
     void InferImpl() override;
     std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
