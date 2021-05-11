@@ -26,10 +26,12 @@ namespace CUDAPlugin {
 
 ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                                      Configuration cfg,
+                                     InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
                                      Plugin::Ptr plugin) :
     InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr), // Disable default threads creation
     cnn_network_(cnnNetwork),
     cfg_(std::move(cfg)),
+    wait_executor_(std::move(waitExecutor)),
     plugin_(std::move(plugin)) {
     // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
     // you should select proper device based on KEY_DEVICE_ID or automatic behavior
@@ -48,8 +50,10 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
 
 ExecutableNetwork::ExecutableNetwork(std::istream& model,
                                      Configuration cfg,
+                                     InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
                                      Plugin::Ptr plugin) :
     cfg_(std::move(cfg)),
+    wait_executor_(std::move(waitExecutor)),
     plugin_(std::move(plugin)) {
     // Read XML content
     std::string xmlString;
@@ -133,7 +137,7 @@ void ExecutableNetwork::InitExecutor() {
     // real hardware cores and NUMA nodes.
     auto streamsExecutorConfig =
         InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(cfg_._streamsExecutorConfig);
-    streamsExecutorConfig._name = "CudaStreamsExecutor";
+    streamsExecutorConfig._name = "CudaCPUPreprocessExecutor";
     // As Inference Engine CPU Streams Executor creates some additional therads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
@@ -166,13 +170,26 @@ ExecutableNetwork::MemoryManagerComponentsSnippets() {
     memory_model_ = mutable_model_builder.build();
 
     // Later on, for each infer request
-    auto memory_manager = std::make_shared<MemoryManager>(shared_constants_blob_, memory_model_);
+    const std::string numStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    memory_manager_pool_ = std::make_shared<MemoryManagerPool>(std::stoi(numStreams), shared_constants_blob_, memory_model_);
 
     // For each operation
     // std::vector<MemoryModel::TensorID> inputIDs { 0, 1, 2 };
     // std::vector<MemoryModel::TensorID> outputIDs { 2, 3 };
     // auto inputs = memory_manager->inputTensorPointers(operation);
     // auto outputs = memory_manager->outputTensorPointers(operation);
+}
+
+std::shared_ptr<CudaStream>
+ExecutableNetwork::GetCudaStream(const int streamId) {
+    const std::string& deviceName = cfg_.Get(CONFIG_KEY(DEVICE_ID));
+    auto& cudaStreams = plugin_->device_cuda_streams_[deviceName];
+    auto foundStream = cudaStreams.find(streamId);
+    if (cudaStreams.end() == foundStream) {
+        THROW_IE_EXCEPTION << "Internal error: Could not find mapped CUDA Stream !!";
+    }
+
+    return foundStream->second;
 }
 
 InferenceEngine::InferRequestInternal::Ptr
@@ -190,7 +207,7 @@ ExecutableNetwork::CreateInferRequest() {
     auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
     auto asyncThreadSafeImpl =
         std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
-                                                _taskExecutor, plugin_->_waitExecutor, _callbackExecutor);
+                                                _taskExecutor, wait_executor_, _callbackExecutor);
     asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl),
                        [](InferenceEngine::IInferRequest *p) { p->Release(); });
     //asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl));
@@ -229,7 +246,6 @@ ExecutableNetwork::GetMetric(const std::string& name) const {
         unsigned int value = cfg_._streamsExecutorConfig._streams;
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
-        //IE_THROW() << "Unsupported ExecutableNetwork metric: " << name;
         THROW_IE_EXCEPTION << "Unsupported ExecutableNetwork metric: " << name;
     }
 }
