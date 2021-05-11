@@ -41,10 +41,6 @@ class IOperationMeta {
   virtual gsl::span<const unsigned> GetOutputIds() const = 0;
 };
 
-using OperationExecPtr = std::shared_ptr<IOperationExec>;
-using BoundTensors = std::tuple<std::vector<const void*>, std::vector<void*>>;
-using ExecStep = std::pair<OperationExecPtr, BoundTensors>;
-
 class OperationBase
     : public IOperationExec
     , public IOperationMeta

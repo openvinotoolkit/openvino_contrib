@@ -98,7 +98,7 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
   void* input = const_cast<void*>(inputs[0].get());
-  InferenceRequestContext context{cudaStream_t{0}, empty, blobs};
+  InferenceRequestContext context{std::make_shared<CudaStream>(), empty, blobs};
   auto mem = blob->as<MemoryBlob>()->rmap();
   cudaMemcpy(input, mem, size, cudaMemcpyHostToDevice);
   operation->Execute(context, inputs, outputs);
@@ -108,17 +108,15 @@ TEST_F(ResultTest, canExecuteSync) {
 }
 
 TEST_F(ResultTest, canExecuteAsync) {
-  void* input = const_cast<void*>(inputs[0].get());
-  cudaStream_t stream {};
-  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&stream));
+  std::shared_ptr<CudaStream> stream;
+  ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
   InferenceRequestContext context{stream, empty, blobs};
   auto mem = blob->as<MemoryBlob>()->rmap();
-  cudaMemcpyAsync(input, mem, size, cudaMemcpyHostToDevice, stream);
+  auto writeInput = InferenceEngine::gpu::DevicePointer<void*>(const_cast<void*>(inputs[0].get()));
+  stream->memcpyAsync(writeInput, static_cast<const void*>(mem), size);
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpyAsync(data.get(), inputs[0], size, cudaMemcpyDeviceToHost, stream);
-  auto err = cudaStreamSynchronize(stream);
-  cudaStreamDestroy(stream);
-  ASSERT_EQ(cudaSuccess, err);
+  stream->memcpyAsync(data.get(), inputs[0], size);
+  ASSERT_NO_THROW(stream->synchronize());
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
