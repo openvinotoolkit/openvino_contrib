@@ -10,7 +10,8 @@
 #include "cuda_config.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_async_infer_request.hpp"
-#include "cuda_tensor_collector.hpp"
+#include "cuda_op_buffers_extractor.hpp"
+
 #include "memory_manager/model/cuda_memory_model.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
 #include "cuda/stream.hpp"
@@ -58,7 +59,8 @@ private:
 
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
-    void MemoryManagerComponentsSnippets();
+    std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor,
+            std::size_t numStreams);
     std::shared_ptr<CudaStream> GetCudaStream(int streamId);
 
     std::atomic<std::size_t>                    request_id_ = {0};
@@ -67,9 +69,6 @@ private:
     InferenceEngine::IStreamsExecutor::Ptr      wait_executor_;
     std::shared_ptr<Plugin>                     plugin_;
     std::shared_ptr<ngraph::Function>           function_;
-    std::shared_ptr<DeviceMemBlock>              shared_constants_blob_;
-    MemoryModel::Ptr                            memory_model_;
-    std::unique_ptr<TensorCollector>            tensor_collector_;
     std::vector<OperationBase::Ptr>             exec_sequence_;
     std::map<std::string, std::size_t>          input_index_;
     std::map<std::string, std::size_t>          output_index_;
