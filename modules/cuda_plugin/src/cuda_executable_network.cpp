@@ -114,8 +114,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     }
 
     const auto& orderedNodes = function_->get_ordered_ops();
-    tensor_collector_ = std::make_unique<TensorCollector>(orderedNodes);
-    MemoryManagerComponentsSnippets();
+
+    OperationBuffersExtractor opBuffersExtractor { orderedNodes };
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     for (auto& node : orderedNodes) {
@@ -125,11 +125,14 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
                                << "description = " << node->description() << "; "
                                << "Is not found in OperationRegistry";
         }
-
-        const auto&[inIds, outIds] = tensor_collector_->getTensorIds(node);
+        auto inIds = opBuffersExtractor.inputBufferIndices(*node);
+        auto outIds = opBuffersExtractor.outputBufferIndices(*node);
         auto operation = OperationRegistry::getInstance().createOperation(node, inIds, outIds);
         exec_sequence_.push_back(operation);
     }
+
+    const std::string numStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    memory_manager_pool_ = CreateMemoryManagerPool(opBuffersExtractor, std::stoi(numStreams));
 }
 
 void ExecutableNetwork::InitExecutor() {
@@ -147,37 +150,30 @@ void ExecutableNetwork::InitExecutor() {
     // _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
-void
-ExecutableNetwork::MemoryManagerComponentsSnippets() {
-    //
-    // TODO: Remove. The following is a usage example.
-    //
-
+std::shared_ptr<MemoryManagerPool>
+ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBuffersExtractor, std::size_t numStreams) {
     ImmutableMemoryBlockBuilder constants_block_builder;
     MemoryModelBuilder mutable_model_builder;
 
     // Process nGraph and add allocations
-    std::vector<uint8_t> rand_data(1000);
-    constants_block_builder.addAllocation(0, &rand_data[0], rand_data.size());
-    constants_block_builder.addAllocation(1, &rand_data[1], rand_data.size());
-    mutable_model_builder.addAllocation(2, 0, 1, 988);
-    mutable_model_builder.addAllocation(3, 0, 1, 988);
+    for (auto index : opBuffersExtractor.immutableBuffersIndices()) {
+        auto span = opBuffersExtractor.immutableBuffer(index);
+        constants_block_builder.addAllocation(index, span.data(), span.size());
+    }
+    for (auto index : opBuffersExtractor.mutableBuffersIndices())
+        mutable_model_builder.addAllocation(index,
+                opBuffersExtractor.mutableBufferLifespanStart(index),
+                opBuffersExtractor.mutableBufferLifespanEnd(index),
+                opBuffersExtractor.mutableBufferSize(index));
 
     // Build shared constants memory block
-    shared_constants_blob_ = constants_block_builder.build();
+    auto shared_constants_blob = constants_block_builder.build();
 
     // Build memory model for mutable memory block
-    memory_model_ = mutable_model_builder.build();
+    auto memory_model = mutable_model_builder.build();
 
     // Later on, for each infer request
-    const std::string numStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
-    memory_manager_pool_ = std::make_shared<MemoryManagerPool>(std::stoi(numStreams), shared_constants_blob_, memory_model_);
-
-    // For each operation
-    // std::vector<MemoryModel::TensorID> inputIDs { 0, 1, 2 };
-    // std::vector<MemoryModel::TensorID> outputIDs { 2, 3 };
-    // auto inputs = memory_manager->inputTensorPointers(operation);
-    // auto outputs = memory_manager->outputTensorPointers(operation);
+    return std::make_shared<MemoryManagerPool>(numStreams, shared_constants_blob, memory_model);
 }
 
 std::shared_ptr<CudaStream>
