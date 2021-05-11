@@ -24,14 +24,15 @@
 #include "cuda_plugin.hpp"
 #include "cuda_itt.hpp"
 
-using namespace CUDAPlugin;
 using namespace InferenceEngine;
+
+namespace CUDAPlugin {
 
 using Time = std::chrono::high_resolution_clock;
 
 CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&                     networkInputs,
                                    const InferenceEngine::OutputsDataMap&                    networkOutputs,
-                                   const std::shared_ptr<CUDAPlugin::ExecutableNetwork>& executableNetwork) :
+                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork) :
     InferRequestInternal(networkInputs, networkOutputs),
     _executableNetwork(executableNetwork) {
     // TODO: allocate infer request device and host buffers if needed, fill actual list of profiling tasks
@@ -52,13 +53,6 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
 
     allocateDeviceBuffers();
     allocateBlobs();
-
-    // NOTE: Example of creation of execution sequence
-//    auto execStep = ExecStep{
-//        saxpyNode,
-//        BoundTensors{inputs, outputs}
-//    };
-//    sequence_.push_back(execStep);
 }
 
 CudaInferRequest::~CudaInferRequest() {
@@ -131,13 +125,6 @@ void CudaInferRequest::allocateBlobs() {
 }
 
 void CudaInferRequest::InferImpl() {
-    // NOTE: Example of execution
-//    for (auto& execStep : sequence_) {
-//      auto& op = execStep.first;
-//      auto& args = execStep.second;
-//      op->Execute(*context.get(), std::get<0>(args), std::get<1>(args));
-//    }
-    // TODO: fill with actual list of pipeline stages, which are executed synchronously for sync infer requests
     inferPreprocess();
     startPipeline();
     waitPipeline();  // does nothing in current implementation
@@ -186,6 +173,10 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
     }
 }
 
+void CudaInferRequest::setCudaStream(std::shared_ptr<CudaStream> cudaStream) {
+    cuda_stream_ = std::move(cudaStream);
+}
+
 void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
     auto start = Time::now();
@@ -222,16 +213,22 @@ void CudaInferRequest::inferPreprocess() {
 
 void CudaInferRequest::startPipeline() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
+    memory_manager_proxy_ = _executableNetwork->memory_manager_pool_->WaitAndGet();
     auto start = Time::now();
-    _executable->call(_outputTensors, _inputTensors);
+    auto inferRequestContext = InferenceRequestContext{cuda_stream_, {}, {}};
+    for (auto& op : _executableNetwork->exec_sequence_) {
+      auto inputTensors = memory_manager_proxy_->Get().inputTensorPointers(*op);
+      auto outputTensors = memory_manager_proxy_->Get().outputTensorPointers(*op);
+      op->Execute(inferRequestContext, inputTensors, outputTensors);
+    }
     _durations[StartPipeline] = Time::now() - start;
 }
 
 void CudaInferRequest::waitPipeline() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[WaitPipeline])
     auto start = Time::now();
-    // TODO: Wait pipeline using driver API or other synchronizations methods
-    // NOTE: not used in current implementation since `startPipeline` executes pipiline synchronously
+    cuda_stream_->synchronize();
+    memory_manager_proxy_.reset();
     _durations[WaitPipeline] = Time::now() - start;
 }
 
@@ -268,3 +265,10 @@ std::map<std::string, InferenceEngineProfileInfo> CudaInferRequest::GetPerforman
     perfMap["5. output postprocessing"] = info;
     return perfMap;
 }
+
+std::shared_ptr<ExecutableNetwork>
+CudaInferRequest::GetExecNetwork() {
+    return _executableNetwork;
+}
+
+} // namespace CUDAPlugin

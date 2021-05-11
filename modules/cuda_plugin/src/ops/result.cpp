@@ -14,9 +14,9 @@ void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
   Expects(outputs.size() == 0);
   Expects(context.HasOutputBlob(GetName()));
   auto blob = context.GetOutputBlob(GetName());
+  auto stream = context.GetCUDAStream();
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
-  cudaMemcpyAsync(memory_ptr, inputs[0], blob->byteSize(),
-                  cudaMemcpyDeviceToHost, context.GetCUDAStream());
+  stream->memcpyAsync(static_cast<void*>(memory_ptr), inputs[0], blob->byteSize());
 }
 
 OPERATION_REGISTER(ResultOp, "Result");
