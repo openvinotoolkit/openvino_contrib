@@ -8,6 +8,7 @@
 
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
+#include <cuda_plugin.hpp>
 #include <cuda_executable_network.hpp>
 #include <ops/saxpy_op.hpp>
 
@@ -59,7 +60,9 @@ TEST_F(ExecNetworkTest, BuildExecutableSequence_Saxpy_Success) {
     dummyFunction->add_sinks({ saxpyDummyNode });
     auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
     Configuration cfg;
-    auto execNetwork = std::make_shared<ExecutableNetwork>(dummyCNNNetwork, cfg, nullptr);
+    auto plugin = std::make_shared<Plugin>();
+    auto execNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(
+        plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}}));
     const auto& execSequence = GetExecSequence(execNetwork);
     ASSERT_EQ(execSequence.size(), 1);
     ASSERT_EQ(std::type_index(typeid(*execSequence[0].get())), std::type_index(typeid(SaxpyOp)));
@@ -72,6 +75,7 @@ TEST_F(ExecNetworkTest, BuildExecutableSequence_SuperOperation_Failed) {
     dummyFunction->add_sinks({ superOperationDummyNode });
     auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
     Configuration cfg;
-    ASSERT_THROW(std::make_shared<ExecutableNetwork>(dummyCNNNetwork, cfg, nullptr),
+    auto plugin = std::make_shared<Plugin>();
+    ASSERT_THROW(plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}}),
                  InferenceEngine::details::InferenceEngineException);
 }

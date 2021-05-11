@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <threading/ie_cpu_streams_executor.hpp>
+
+#include "cuda_executable_network.hpp"
 #include "cuda_async_infer_request.hpp"
 #include "cuda_itt.hpp"
 
 using namespace CUDAPlugin;
 
-// ! [async_infer_request:ctor]
 CudaAsyncInferRequest::CudaAsyncInferRequest(
-    const CudaInferRequest::Ptr&           inferRequest,
+    const CudaInferRequest::Ptr&               inferRequest,
     const InferenceEngine::ITaskExecutor::Ptr& cpuTaskExecutor,
     const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
     const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor) :
@@ -26,14 +28,25 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
         _pipeline = {
             {cpuTaskExecutor, [this] {
                 OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                   "CudaAsyncInferRequest::PreprocessingAndStartPipeline");
+                                   "CudaAsyncInferRequest::Preprocessing");
                 _inferRequest->inferPreprocess();
-                _inferRequest->startPipeline();
             }},
             {_waitExecutor, [this] {
-                OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                   "CudaAsyncInferRequest::WaitPipeline");
-                _inferRequest->waitPipeline();
+                auto cpuStreamExecutor = std::dynamic_pointer_cast<InferenceEngine::CPUStreamsExecutor>(_waitExecutor);
+                auto streamId = cpuStreamExecutor->GetStreamId();
+                auto execNetwork = _inferRequest->GetExecNetwork();
+                auto cudaStream = execNetwork->GetCudaStream(streamId);
+                _inferRequest->setCudaStream(cudaStream);
+                {
+                    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
+                                       "CudaAsyncInferRequest::StartPipeline");
+                    _inferRequest->startPipeline();
+                }
+                {
+                    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
+                                       "CudaAsyncInferRequest::WaitPipeline");
+                    _inferRequest->waitPipeline();
+                }
             }},
             {cpuTaskExecutor, [this] {
                 OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
@@ -43,10 +56,7 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
         };
     }
 }
-// ! [async_infer_request:ctor]
 
-// ! [async_infer_request:dtor]
 CudaAsyncInferRequest::~CudaAsyncInferRequest() {
     InferenceEngine::AsyncInferRequestThreadSafeDefault::StopAndWait();
 }
-// ! [async_infer_request:dtor]

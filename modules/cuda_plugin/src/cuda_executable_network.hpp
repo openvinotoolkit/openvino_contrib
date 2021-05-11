@@ -11,9 +11,10 @@
 #include "cuda_infer_request.hpp"
 #include "cuda_async_infer_request.hpp"
 #include "cuda_tensor_collector.hpp"
-
 #include "memory_manager/model/cuda_memory_model.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
+#include "cuda/stream.hpp"
+#include "memory_manager/cuda_memory_manager_pool.hpp"
 
 class ExecNetworkTest;
 
@@ -29,9 +30,11 @@ class ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDef
 public:
     ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                       Configuration cfg,
+                      InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
                       std::shared_ptr<Plugin> plugin);
     ExecutableNetwork(std::istream& model,
                       Configuration cfg,
+                      InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
                       std::shared_ptr<Plugin> plugin);
 
     ~ExecutableNetwork() override = default;
@@ -49,14 +52,19 @@ public:
 private:
     friend class ::ExecNetworkTest;
     friend class CudaInferRequest;
+    friend class CudaAsyncInferRequest;
+
+    using CudaStreamMapping = std::unordered_map<int, std::shared_ptr<CudaStream>>;
 
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
     void MemoryManagerComponentsSnippets();
+    std::shared_ptr<CudaStream> GetCudaStream(int streamId);
 
     std::atomic<std::size_t>                    request_id_ = {0};
     InferenceEngine::CNNNetwork                 cnn_network_;
     Configuration                               cfg_;
+    InferenceEngine::IStreamsExecutor::Ptr      wait_executor_;
     std::shared_ptr<Plugin>                     plugin_;
     std::shared_ptr<ngraph::Function>           function_;
     std::shared_ptr<DeviceMemBlock>              shared_constants_blob_;
@@ -65,6 +73,7 @@ private:
     std::vector<OperationBase::Ptr>             exec_sequence_;
     std::map<std::string, std::size_t>          input_index_;
     std::map<std::string, std::size_t>          output_index_;
+    std::shared_ptr<MemoryManagerPool>          memory_manager_pool_;
 };
 
 }  // namespace CUDAPlugin

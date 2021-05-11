@@ -14,6 +14,8 @@
 #include <string>
 #include <cuda_runtime.h>
 #include <ie_remote_context.hpp>
+#include <cuda/stream.hpp>
+#include <utility>
 
 #include "gpu/gpu_params.hpp"
 #include "gpu/details/gpu_context_helpers.hpp"
@@ -38,17 +40,6 @@ class CudaContext : public RemoteContext, public details::param_map_obj_getter {
   // TODO: Add additional functions
 };
 
-class CudaStreamContext {
- public:
-  /**
-   * @brief A smart pointer to the ClContext object
-   */
-  using Ptr = std::shared_ptr<CudaStreamContext>;
-  using WeakPtr = std::weak_ptr<CudaStreamContext>;
-
-  // TODO: Add additional functions
-};
-
 class InferenceRequestContext {
  public:
   /**
@@ -57,7 +48,7 @@ class InferenceRequestContext {
   using Ptr = std::shared_ptr<InferenceRequestContext>;
   using WeakPtr = std::weak_ptr<InferenceRequestContext>;
 
-  InferenceRequestContext(cudaStream_t stream,
+  InferenceRequestContext(std::shared_ptr<CUDAPlugin::CudaStream> stream,
                           const InferenceEngine::BlobMap& inputs,
                           const InferenceEngine::BlobMap& outputs)
   : cuda_stream {stream}, blob_inputs {inputs}, blob_outputs {outputs} {}
@@ -89,11 +80,12 @@ class InferenceRequestContext {
   /**
    * @brief GetCUDAStream() returns associated CUDA stream
    */
-  cudaStream_t GetCUDAStream() const noexcept {
+  std::shared_ptr<CUDAPlugin::CudaStream>
+  GetCUDAStream() const noexcept {
     return cuda_stream;
   }
  private:
-  cudaStream_t cuda_stream;
+  std::shared_ptr<CUDAPlugin::CudaStream> cuda_stream;
   const InferenceEngine::BlobMap& blob_inputs;
   const InferenceEngine::BlobMap& blob_outputs;
 };

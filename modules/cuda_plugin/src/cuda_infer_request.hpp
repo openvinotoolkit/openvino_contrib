@@ -23,6 +23,9 @@
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
 #include "ops/saxpy_op.hpp"
+#include "memory_manager/cuda_memory_manager.hpp"
+#include "memory_manager/cuda_memory_manager_pool.hpp"
+#include "cuda/stream.hpp"
 
 namespace CUDAPlugin {
 
@@ -40,8 +43,10 @@ public:
 
     void InferImpl() override;
     std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
+    std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular executor
+    void setCudaStream(std::shared_ptr<CudaStream> cudaStream);
     void inferPreprocess();
     void startPipeline();
     void waitPipeline();
@@ -71,13 +76,8 @@ private:
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _inputTensors;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _outputTensors;
     std::shared_ptr<ngraph::runtime::Executable>            _executable;
-
-  // NOTE: Example of data for execution sequence
-//    InferenceRequestContext::Ptr context;
-//    std::vector<const void*> inputs;
-//    std::vector<void*> outputs;
-//    SaxpyOp::Ptr saxpyNode{};
-//    std::vector<ExecStep> sequence_;
+    std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
+    std::shared_ptr<CudaStream>                             cuda_stream_;
 };
 // ! [infer_request:header]
 
