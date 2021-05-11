@@ -15,6 +15,8 @@
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <transformations/convert_precision.hpp>
+#include <cuda/device.hpp>
+#include <cuda/props.hpp>
 
 #include "cuda/cuda_config.hpp"
 #include "cuda_itt.hpp"
@@ -31,9 +33,6 @@ Plugin::Plugin() {
     // create ngraph backend which performs inference using ngraph reference implementations
     ngraph::runtime::Backend::set_backend_shared_library_search_directory("");
     _backend = ngraph::runtime::Backend::create("INTERPRETER");
-
-    // create default stream executor with a given name
-    _waitExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaWaitExecutor"});
 }
 
 Plugin::~Plugin() {
@@ -102,13 +101,38 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
         }
     }
 
-    auto function = network.getFunction();
-    if (function == nullptr) {
-        //IE_THROW() << "CUDA plugin can compile only IR v10 networks";
-        THROW_IE_EXCEPTION << "CUDA plugin can compile only IR v10 networks";
-    }
+    // Create stream executor for given device
+    auto waitExecutor = GetStreamExecutor(cfg);
+    return std::make_shared<ExecutableNetwork>(network, cfg, waitExecutor, std::static_pointer_cast<Plugin>(shared_from_this()));
+}
 
-    return std::make_shared<ExecutableNetwork>(network, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
+InferenceEngine::IStreamsExecutor::Ptr
+Plugin::GetStreamExecutor(const Configuration &cfg) {
+    const std::string deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID));
+    const int numDeviceId = std::stoi(deviceId);
+    auto devicesProp = CudaDevice::GetAllDevicesProp();
+    if (numDeviceId < 0) {
+        THROW_IE_EXCEPTION << "Device Id is less than 0. "
+                           << "Accepted device id: 0 <= id < " << devicesProp.size();
+    }
+    if (numDeviceId >= devicesProp.size()) {
+        THROW_IE_EXCEPTION << "Device Id is bigger or equal than " << devicesProp.size() << "."
+                           << "Accepted device id: 0 <= id < " << devicesProp.size();
+    }
+    const auto& devProp = devicesProp[numDeviceId];
+    const size_t numConcurrentStreams = CudaDevice::GetDeviceConcurrentKernels(devProp);
+    InferenceEngine::IStreamsExecutor::Config cudaExecutorConfig(
+        "CudaGpuExecutor:Device=" + deviceId,
+        numConcurrentStreams);
+    auto streamExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(cudaExecutorConfig);
+    if (device_cuda_streams_.end() == device_cuda_streams_.find(deviceId)) {
+        auto cudaStreams = CudaStreamMapping{};
+        for (int i = 0; i < numConcurrentStreams; ++i) {
+            cudaStreams[i] = std::make_shared<CudaStream>();
+        }
+        device_cuda_streams_[deviceId] = cudaStreams;
+    }
+    return streamExecutor;
 }
 
 // InferenceEngine::ExecutableNetworkInternal::Ptr
@@ -117,7 +141,9 @@ Plugin::ImportNetworkImpl(std::istream& model, const std::map<std::string, std::
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CUDAPlugin::ImportNetworkImpl");
 
     Configuration cfg(config);
+    auto waitExecutor = GetStreamExecutor(cfg);
     auto exec_network_impl = std::make_shared<ExecutableNetwork>(model, cfg,
+                                                                 waitExecutor,
         std::static_pointer_cast<Plugin>(shared_from_this()));
 
     return make_executable_network(exec_network_impl);

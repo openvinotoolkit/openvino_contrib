@@ -38,9 +38,13 @@ private:
     friend class ExecutableNetwork;
     friend class CudaInferRequest;
 
+    using CudaStreamMapping = std::unordered_map<int, std::shared_ptr<CudaStream>>;
+
     enum class cuda_attribute {
         name
     };
+
+    InferenceEngine::IStreamsExecutor::Ptr GetStreamExecutor(const Configuration &cfg);
 
     template <cuda_attribute ID, class Result>
     Result getCudaAttribute() const;
@@ -49,7 +53,8 @@ private:
 
     std::shared_ptr<ngraph::runtime::Backend> _backend;
     Configuration _cfg;
-    InferenceEngine::ITaskExecutor::Ptr _waitExecutor;
+    std::unordered_map<std::string, InferenceEngine::ITaskExecutor::Ptr> _waitExecutors;
+    std::unordered_map<std::string, CudaStreamMapping> device_cuda_streams_;
 };
 
 template <>
