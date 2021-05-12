@@ -21,14 +21,14 @@ const Params paramsStreams[] = {
 
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, CoreThreadingTests, testing::ValuesIn(params), CoreThreadingTests::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_BehaviorTests, CoreThreadingTestsWithIterations,
+INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, CoreThreadingTestsWithIterations,
     testing::Combine(testing::ValuesIn(params),
                      testing::Values(4),
                      testing::Values(50),
                      testing::Values(ModelClass::Default)),
     CoreThreadingTestsWithIterations::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Streams_BehaviorTests, CoreThreadingTestsWithIterations,
+INSTANTIATE_TEST_CASE_P(smoke_Streams_BehaviorTests, CoreThreadingTestsWithIterations,
     testing::Combine(testing::ValuesIn(paramsStreams),
                      testing::Values(4),
                      testing::Values(10),
