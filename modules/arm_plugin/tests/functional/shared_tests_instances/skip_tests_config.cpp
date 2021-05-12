@@ -9,9 +9,7 @@
 
 std::vector<std::string> disabledTestPatterns() {
     return {
-        ".*reusableCPUStreamsExecutor.*",  //  TEST DO not support hetero case when all plugins use executers cache
-        ".*Multi.*canSetExclusiveAsyncRequests.*",  // Unsupported topology
-        ".*Multi.*withoutExclusiveAsyncRequests.*",  // Unsupported topology
+        ".*reusableCPUStreamsExecutor.*",  //  TEST DO not support hetero case when all plugins use executors cache
         ".*ExecGraphTests.*", // Not implemented
         R"(.*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*)", // Failed
         ".*PreprocessTest.*", // Does not cover all needed cases
