@@ -1,2 +1,3 @@
 #!/bin/bash
-rm ../../../.git/hooks/pre-push
+DIR=$(dirname $0)
+rm $DIR/../../../.git/hooks/pre-push
