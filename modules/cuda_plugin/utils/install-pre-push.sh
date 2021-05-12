@@ -1,2 +1,3 @@
 #!/bin/bash
-cp pre-push ../../../.git/hooks/
+DIR=$(dirname $0)
+cp $DIR/pre-push $DIR/../../../.git/hooks/
