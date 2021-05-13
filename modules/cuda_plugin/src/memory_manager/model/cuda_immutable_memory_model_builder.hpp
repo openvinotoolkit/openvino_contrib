@@ -24,7 +24,8 @@ public:
    * @param [in] id Tensor identifier. Will be used to obtain device side
    * tensor pointer.
    * @param [in] bsize Tensor memory size in bytes.
-   * @throws InferenceEngineException if tensor is already added.
+   * @throws InferenceEngineException if allocation size is zero or tensor
+   * with specified id is already added.
    */
   void addAllocation(TensorID id, size_t bsize);
 

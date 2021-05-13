@@ -16,6 +16,7 @@ ImmutableMemoryModelBuilder::ImmutableMemoryModelBuilder()
 }
 
 void ImmutableMemoryModelBuilder::addAllocation(TensorID id, size_t bsize) {
+  IE_ASSERT(bsize > 0); // Verify that allocation size isn't zero.
   auto res = offsets_.emplace(id, end_offset_);
   IE_ASSERT(res.second); // Verify that "id" is unique.
   end_offset_ += applyAllignment(bsize);
