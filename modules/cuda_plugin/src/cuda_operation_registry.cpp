@@ -28,7 +28,7 @@ OperationRegistry::createOperation(const std::shared_ptr<ngraph::Node>& node,
                                    const std::vector<unsigned>& inIds,
                                    const std::vector<unsigned>& outIds) {
     auto& opBuilder = registered_operations_.at(node->get_type_info().name);
-    return opBuilder(node, inIds, inIds);
+    return opBuilder(node, inIds, outIds);
 }
 
 const std::string&
