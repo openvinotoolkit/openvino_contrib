@@ -11,7 +11,7 @@ MemoryModel::MemoryModel(size_t bsize, const std::unordered_map<TensorID, ptrdif
 {
 }
 
-size_t MemoryModel::deviceMemoryBlobSize() const {
+size_t MemoryModel::deviceMemoryBlockSize() const {
   return bsize_;
 }
 
