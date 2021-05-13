@@ -29,7 +29,10 @@ public:
    * pointer is still valid when `ImmutableMemoryBlockBuilder::build()` method
    * is invoked.
    * @param [in] bsize Tensor memory size in bytes.
-   * @throws InferenceEngineException if tensor is already added.
+   * @throws InferenceEngineException if
+   *  - allocation size is zero
+   *  - tensor with specified id is already added
+   *  - data pointer is nullptr
    */
   void addAllocation(TensorID id, const void* data, size_t bsize);
 

@@ -1,0 +1,48 @@
+// Copyright (C) 2018-2020 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include <gtest/gtest.h>
+
+#include "memory_manager/model/cuda_memory_model.hpp"
+
+TEST(MemoryModel, Empty) {
+  using namespace CUDAPlugin;
+
+  constexpr size_t bsize = 0;
+
+  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
+  MemoryModel::Ptr model = std::make_shared<MemoryModel>(bsize, offsets);
+
+  ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
+
+  ptrdiff_t offset {};
+  ASSERT_FALSE(model->offsetForTensor(0, offset));
+  ASSERT_FALSE(model->offsetForTensor(1, offset));
+}
+
+TEST(MemoryModel, NotEmpty) {
+  using namespace CUDAPlugin;
+
+  constexpr size_t bsize = 0x354700;
+
+  MemoryModel::TensorID invalid_id = 0, id1 = 1, id2 = 2;
+  ptrdiff_t offset1 = 0, offset2 = 0x254000;
+  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets = {
+    { id1, offset1 }, { id2, offset2 },
+  };
+
+  MemoryModel::Ptr model = std::make_shared<MemoryModel>(bsize, offsets);
+
+  ASSERT_EQ(model->deviceMemoryBlockSize(), bsize);
+
+  ptrdiff_t offset {};
+
+  ASSERT_FALSE(model->offsetForTensor(invalid_id, offset));
+
+  ASSERT_TRUE(model->offsetForTensor(id1, offset));
+  ASSERT_EQ(offset, offset1);
+
+  ASSERT_TRUE(model->offsetForTensor(id2, offset));
+  ASSERT_EQ(offset, offset2);
+}
