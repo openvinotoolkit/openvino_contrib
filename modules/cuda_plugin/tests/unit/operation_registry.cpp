@@ -3,6 +3,7 @@
 //
 
 #include <memory>
+#include <vector>
 #include <typeinfo>
 #include <gtest/gtest.h>
 
@@ -20,8 +21,8 @@ class OperationRegistryTest : public testing::Test {
   }
 
  public:
-    std::vector<unsigned> dummyInputTensorIds = std::vector<unsigned>{};
-    std::vector<unsigned> dummyOutputTensorIds = std::vector<unsigned>{};
+    std::vector<unsigned> dummyInputTensorIds = std::vector<unsigned>{1, 2, 3};
+    std::vector<unsigned> dummyOutputTensorIds = std::vector<unsigned>{4, 5, 6};
 };
 
 class SaxpyDummyNode : public ngraph::Node {
@@ -81,4 +82,14 @@ TEST_F(OperationRegistryTest, BuildOperation_Saxpy) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
     auto saxpyOperation = OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
     ASSERT_EQ(std::type_index(typeid(*saxpyOperation.get())), std::type_index(typeid(SaxpyOp)));
+}
+
+TEST_F(OperationRegistryTest, BuildOperationAndCheckTenorIds_Success) {
+    auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
+    auto saxpyDummyOperation = OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
+    ASSERT_TRUE(saxpyDummyOperation);
+    auto inputIds = saxpyDummyOperation->GetInputIds();
+    auto outputIds = saxpyDummyOperation->GetOutputIds();
+    ASSERT_EQ(std::vector<unsigned>(inputIds.begin(), inputIds.end()), dummyInputTensorIds);
+    ASSERT_EQ(std::vector<unsigned>(outputIds.begin(), outputIds.end()), dummyOutputTensorIds);
 }
