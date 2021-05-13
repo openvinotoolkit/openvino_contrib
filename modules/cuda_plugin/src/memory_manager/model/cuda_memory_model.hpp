@@ -11,8 +11,8 @@
 namespace CUDAPlugin {
 
 /**
- * @brief MemoryModel describes a size of continous memory blob on CUDA device
- * and a location of every tensor within this blob.
+ * @brief MemoryModel describes a size of continous memory block on CUDA device
+ * and a location of every tensor within this block.
  */
 class MemoryModel {
 public:
@@ -20,22 +20,22 @@ public:
   using TensorID = unsigned;
 
   /**
-   * @param [in] bsize Memory blob size in bytes.
-   * @param [in] offsets Maps tensor identifiers to tensor offsets within a memory blob.
+   * @param [in] bsize Memory block size in bytes.
+   * @param [in] offsets Maps tensor identifiers to tensor offsets within a memory block.
    */
   MemoryModel(size_t bsize, const std::unordered_map<TensorID, ptrdiff_t>& offsets);
 
   /**
-   * @returns The size of memory blob
+   * @returns The size of memory block
    */
-  size_t deviceMemoryBlobSize() const;
+  size_t deviceMemoryBlockSize() const;
 
   /**
    * Provides tensor memory offset if any.
    *
    * @param [in] id Tensor identifier.
-   * @param [out] offset Tensor memory offset with respect to the beginning of the blob.
-   * @returns false if memory blob doesn't contain a tensor with requested identifier.
+   * @param [out] offset Tensor memory offset with respect to the beginning of the block.
+   * @returns false if memory block doesn't contain a tensor with requested identifier.
    */
   bool offsetForTensor(TensorID id, ptrdiff_t& offset) const;
 
