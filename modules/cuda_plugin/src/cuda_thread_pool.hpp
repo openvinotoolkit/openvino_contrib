@@ -4,33 +4,25 @@
 
 #pragma once
 
-#include <thread>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
-#include <deque>
-
-#include <threading/ie_itask_executor.hpp>
 #include <atomic>
-#include <cuda/stream.hpp>
+#include <condition_variable>
+#include <cuda/context.hpp>
+#include <deque>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <threading/ie_itask_executor.hpp>
+
 #include "cuda_jthread.hpp"
 
 namespace CUDAPlugin {
-
-struct CudaThreadContext {
-    CudaThreadContext() {
-        cuda_stream_ = std::make_shared<CudaStream>();
-    }
-
-    std::shared_ptr<CudaStream> cuda_stream_;
-};
 
 class CudaThreadPool : public InferenceEngine::ITaskExecutor {
  public:
     using Task = std::function<void()>;
 
-    explicit CudaThreadPool(unsigned _numThreads);
-    CudaThreadContext& GetCudaThreadContext();
+    CudaThreadPool(CUDA::Device d, unsigned _numThreads);
+    const CUDA::ThreadContext& GetThreadContext();
     ~CudaThreadPool() override;
     void run(Task task) override;
 

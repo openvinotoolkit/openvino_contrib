@@ -15,8 +15,6 @@
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <transformations/convert_precision.hpp>
-#include <cuda/device.hpp>
-#include <cuda/props.hpp>
 
 #include "cuda/cuda_config.hpp"
 #include "cuda_itt.hpp"
@@ -106,28 +104,20 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
     return std::make_shared<ExecutableNetwork>(network, cfg, waitExecutor, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
-InferenceEngine::ITaskExecutor::Ptr
-Plugin::GetStreamExecutor(const Configuration &cfg) {
-    const std::string deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID));
-    const int numDeviceId = std::stoi(deviceId);
-    auto devicesProp = CudaDevice::GetAllDevicesProp();
-    if (numDeviceId < 0) {
-        THROW_IE_EXCEPTION << "Device Id is less than 0. "
-                           << "Accepted device id: 0 <= id < " << devicesProp.size();
-    }
-    if (numDeviceId >= devicesProp.size()) {
-        THROW_IE_EXCEPTION << "Device Id is bigger or equal than " << devicesProp.size() << "."
-                           << "Accepted device id: 0 <= id < " << devicesProp.size();
-    }
-    const auto& devProp = devicesProp[numDeviceId];
-    const size_t numConcurrentStreams = CudaDevice::GetDeviceConcurrentKernels(devProp);
-    {
-        std::lock_guard<std::mutex> lock{mtx_};
-        if (device_thread_pool_.end() == device_thread_pool_.find(deviceId)) {
-            device_thread_pool_[deviceId] = std::make_shared<CudaThreadPool>(numConcurrentStreams);
-        }
-    }
-    return device_thread_pool_[deviceId];
+InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(
+    const Configuration& cfg) {
+  // TODO: get available integer value instead of chain of conversions
+  auto param = cfg.Get(CONFIG_KEY(DEVICE_ID));
+  const std::string& deviceId = param;
+  CUDA::Device device{std::stoi(deviceId)};
+  const size_t numConcurrentStreams =
+      maxConcurrentStreams(device);
+  {
+    std::lock_guard<std::mutex> lock{mtx_};
+    auto& p = device_thread_pool_[deviceId];
+    if (!p) p = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
+    return p;
+  }
 }
 
 // InferenceEngine::ExecutableNetworkInternal::Ptr
