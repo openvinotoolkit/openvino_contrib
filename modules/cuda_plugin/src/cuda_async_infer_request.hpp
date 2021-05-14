@@ -30,7 +30,6 @@ public:
 
 private:
     CudaInferRequest::Ptr           _inferRequest;
-    InferenceEngine::ITaskExecutor::Ptr _waitExecutor;
 };
 
 }  // namespace CUDAPlugin

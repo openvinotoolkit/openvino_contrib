@@ -13,10 +13,10 @@ static __global__ void sigmoid(const size_t inputSize, const float *x, float *y)
     }
 }
 
-void sigmoid_run(CUDAPlugin::CudaStream& stream,
+void sigmoid_run(const CUDA::Stream& stream,
                  const unsigned gridDim, const unsigned blockDim,
                  size_t inputSize, const float *x, float *y) {
-    stream.runKernel(gridDim, blockDim, sigmoid, inputSize, x, y);
+    stream.run(gridDim, blockDim, sigmoid, inputSize, x, y);
 }
 
 } // namespace CUDAPlugin

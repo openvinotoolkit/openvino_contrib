@@ -24,9 +24,8 @@ void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs,
   Expects(outputs.size() == 1);
   Expects(context.HasInputBlob(input_tensor_name_));
   auto blob = context.GetInputBlob(input_tensor_name_);
-  auto stream = context.GetCUDAStream();
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->rmap();
-  stream->memcpyAsync(outputs[0], static_cast<const void*>(memory_ptr), blob->byteSize());
+  context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->byteSize());
 }
 
 OPERATION_REGISTER(ParameterOp, "Parameter");

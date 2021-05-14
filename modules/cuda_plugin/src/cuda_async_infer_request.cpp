@@ -17,7 +17,7 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
     const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
     const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor) :
     AsyncInferRequestThreadSafeDefault(inferRequest, cpuTaskExecutor, callbackExecutor),
-    _inferRequest(inferRequest), _waitExecutor(waitExecutor) {
+    _inferRequest(inferRequest) {
     // In current implementation we have CPU only tasks and no needs in 2 executors
     // So, by default single stage pipeline is created.
     // This stage executes InferRequest::Infer() using cpuTaskExecutor.
@@ -25,7 +25,7 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
     // and waiting tasks. Waiting tasks can lock execution thread so they use separate threads from other executor.
     constexpr const auto remoteDevice = true;
 
-    auto cudaThreadPool = std::dynamic_pointer_cast<CudaThreadPool>(_waitExecutor);
+    auto cudaThreadPool = std::dynamic_pointer_cast<CudaThreadPool>(waitExecutor);
     if (remoteDevice) {
         _pipeline = {
             {cpuTaskExecutor, [this] {
@@ -33,18 +33,17 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
                                    "CudaAsyncInferRequest::Preprocessing");
                 _inferRequest->inferPreprocess();
             }},
-            {_waitExecutor, [this, cudaThreadPool] {
-                auto& cudaThreadContext = cudaThreadPool->GetCudaThreadContext();
-                _inferRequest->setCudaThreadContext(&cudaThreadContext);
+            {waitExecutor, [this, cudaThreadPool] {
+                auto& threadContext = cudaThreadPool->GetThreadContext();
                 {
                     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
                                        "CudaAsyncInferRequest::StartPipeline");
-                    _inferRequest->startPipeline();
+                    _inferRequest->startPipeline(threadContext);
                 }
                 {
                     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
                                        "CudaAsyncInferRequest::WaitPipeline");
-                    _inferRequest->waitPipeline();
+                    _inferRequest->waitPipeline(threadContext);
                 }
             }},
             {cpuTaskExecutor, [this] {

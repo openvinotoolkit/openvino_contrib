@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda_runtime_api.h>
-#include <cuda/stream.hpp>
+#include <cuda/runtime.hpp>
 
 namespace CUDAPlugin {
 
-extern void sigmoid_run(CUDAPlugin::CudaStream& stream,
-                        unsigned gridDim, unsigned blockDim,
-                        size_t inputSize, const float *x, float *y);
+void sigmoid_run(const CUDA::Stream &stream, unsigned gridDim,
+                 unsigned blockDim, size_t inputSize, const float *x, float *y);
 
 } // namespace CUDAPlugin

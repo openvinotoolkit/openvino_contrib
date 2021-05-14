@@ -30,9 +30,8 @@ void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
   Expects(outputs.size() == 0);
   Expects(context.HasOutputBlob(output_tensor_name_));
   auto blob = context.GetOutputBlob(output_tensor_name_);
-  auto stream = context.GetCUDAStream();
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
-  stream->memcpyAsync(static_cast<void*>(memory_ptr), inputs[0], blob->byteSize());
+  context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
 }
 
 OPERATION_REGISTER(ResultOp, "Result");
