@@ -63,11 +63,6 @@ TEST_F(OperationRegistryTest, CheckOperation_NotFound) {
     ASSERT_FALSE(OperationRegistry::getInstance().hasOperation(superOperationDummyNode));
 }
 
-TEST_F(OperationRegistryTest, GetOperationTypename) {
-    auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
-    ASSERT_EQ(OperationRegistry::getInstance().getOperationTypename(saxpyDummyNode), "SaxpyOp");
-}
-
 TEST_F(OperationRegistryTest, GetOperationBuilder_Available) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
     ASSERT_TRUE(OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds));

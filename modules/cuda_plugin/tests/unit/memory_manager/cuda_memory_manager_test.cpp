@@ -51,7 +51,10 @@ public:
 public: // CUDAPlugin::IOperationMeta
   std::vector<unsigned> inputIds_;
   std::vector<unsigned> outputIds_;
-  std::string GetName() const override { return ""; }
+  const std::string& GetName() const override {
+    static std::string empty;
+    return empty;
+  }
   gsl::span<const unsigned> GetInputIds() const override { return inputIds_; }
   gsl::span<const unsigned> GetOutputIds() const override { return outputIds_; }
 };

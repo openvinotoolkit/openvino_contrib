@@ -28,7 +28,7 @@ using namespace InferenceEngine;
 
 namespace CUDAPlugin {
 
-using Time = std::chrono::high_resolution_clock;
+using Time = std::chrono::steady_clock;
 
 CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&                     networkInputs,
                                    const InferenceEngine::OutputsDataMap&                    networkOutputs,
@@ -37,26 +37,16 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
     _executableNetwork(executableNetwork) {
     // TODO: allocate infer request device and host buffers if needed, fill actual list of profiling tasks
 
-    auto requestID = std::to_string(_executableNetwork->request_id_.fetch_add(1));
-
-    std::string name = _executableNetwork->function_->get_friendly_name() + "_Req" + requestID;
-    _profilingTask = {
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_Preprocess"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_Postprocess"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_StartPipline"),
-        openvino::itt::handle("Cuda" + std::to_string(_executableNetwork->cfg_.deviceId) + "_" + name + "_WaitPipline"),
-    };
-
-    _executable = _executableNetwork->plugin_->_backend->compile(_executableNetwork->function_);
-    _parameters = _executableNetwork->function_->get_parameters();
-    _results = _executableNetwork->function_->get_results();
+  std::string name = _executableNetwork->newRequestName();
+  _profilingTask = {
+      openvino::itt::handle(name + "_Preprocess"),
+      openvino::itt::handle(name + "_Postprocess"),
+      openvino::itt::handle(name + "_StartPipline"),
+      openvino::itt::handle(name + "_WaitPipline"),
+  };
 
     allocateDeviceBuffers();
     allocateBlobs();
-}
-
-CudaInferRequest::~CudaInferRequest() {
-    _executableNetwork->request_id_--;
 }
 
 void CudaInferRequest::allocateDeviceBuffers() {
@@ -114,21 +104,21 @@ static void AllocateImpl(const BlobDataMap& userDataMap,
 }
 
 void CudaInferRequest::allocateBlobs() {
-    auto&& parameters = _executableNetwork->function_->get_parameters();
     AllocateImpl(_networkInputs, _inputs, _deviceInputs, [&] (const std::string& blobName) {
-        return parameters.at(_executableNetwork->input_index_.at(blobName))->get_element_type();
+        return _executableNetwork->parameter(blobName).get_element_type();
     });
-    auto&& results = _executableNetwork->function_->get_results();
     AllocateImpl(_networkOutputs, _outputs, _networkOutputBlobs, [&] (const std::string& blobName) {
-        return results.at(_executableNetwork->output_index_.at(blobName))->get_element_type();
+        return _executableNetwork->result(blobName).get_element_type();
     });
 }
 
 void CudaInferRequest::InferImpl() {
-    inferPreprocess();
-    startPipeline();
-    waitPipeline();  // does nothing in current implementation
-    inferPostprocess();
+  CUDA::ThreadContext threadContext{{}};  // TODO: pass executable network's
+                                          // device id instead of using current
+  inferPreprocess();
+  startPipeline(threadContext);
+  waitPipeline(threadContext);  // does nothing in current implementation
+  inferPostprocess();
 }
 
 template<typename SrcT, typename DstT>
@@ -173,10 +163,6 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
     }
 }
 
-void CudaInferRequest::setCudaThreadContext(gsl::not_null<CudaThreadContext*> cudaThreadContext) {
-    cuda_thread_context_ = cudaThreadContext;
-}
-
 void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
     ThrowIfCanceled();
@@ -184,57 +170,36 @@ void CudaInferRequest::inferPreprocess() {
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in constructor.
     InferRequestInternal::execDataPreprocessing(_deviceInputs);
-    for (auto&& networkInput : _deviceInputs) {
-        ThrowIfCanceled();
-        auto index = _executableNetwork->input_index_[networkInput.first];
-        const auto& parameter = _parameters[index];
-        const auto& parameterShape = parameter->get_shape();
-        const auto& parameterType = parameter->get_element_type();
-        _inputTensors[index] = _executableNetwork->plugin_->_backend->create_tensor(
-            parameterType,
-            parameterShape,
-            InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput.second)->rmap().as<void*>());
-    }
-    for (auto&& output : _outputs) {
-        ThrowIfCanceled();
-        auto outputBlob = output.second;
-        auto networkOutput = _networkOutputBlobs[output.first];
-        auto index = _executableNetwork->output_index_[output.first];
-        if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
-            networkOutput = outputBlob;
-        }
-        const auto& result = _results[index];
-        const auto& resultShape = result->get_shape();
-        const auto& resultType = result->get_element_type();
-        _outputTensors[index] = _executableNetwork->plugin_->_backend->create_tensor(
-            resultType,
-            resultShape,
-            InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
-    }
+    ThrowIfCanceled();
+    _executableNetwork->createInputs(_inputTensors, _deviceInputs);
+    ThrowIfCanceled();
+    _executableNetwork->createOutputs(_outputTensors, _outputs, _networkOutputBlobs);
     _durations[Preprocess] = Time::now() - start;
 }
 
-void CudaInferRequest::startPipeline() {
+void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
-    ThrowIfCanceled();
-    memory_manager_proxy_ = _executableNetwork->memory_manager_pool_->WaitAndGet();
-    ThrowIfCanceled();
     auto start = Time::now();
-    auto inferRequestContext = InferenceRequestContext{_executableNetwork->GetCudaDeviceId(), cuda_thread_context_->cuda_stream_, _inputs, _outputs};
+    memory_manager_proxy_ =
+        _executableNetwork->memory_manager_pool_->WaitAndGet();
+    InferenceEngine::BlobMap inputs, outputs;
+    auto& manager = memory_manager_proxy_->Get();
+    InferenceRequestContext inferRequestContext{inputs, outputs, threadContext};
     for (auto& op : _executableNetwork->exec_sequence_) {
-        ThrowIfCanceled();
-        auto inputTensors = memory_manager_proxy_->Get().inputTensorPointers(*op);
-        auto outputTensors = memory_manager_proxy_->Get().outputTensorPointers(*op);
-        op->Execute(inferRequestContext, inputTensors, outputTensors);
+      ThrowIfCanceled();
+      auto inputTensors = manager.inputTensorPointers(*op);
+      auto outputTensors = manager.outputTensorPointers(*op);
+      op->Execute(inferRequestContext, inputTensors, outputTensors);
     }
     _durations[StartPipeline] = Time::now() - start;
 }
 
-void CudaInferRequest::waitPipeline() {
+void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[WaitPipeline])
     ThrowIfCanceled();
     auto start = Time::now();
-    cuda_thread_context_->cuda_stream_->synchronize();
+    // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
+    threadContext.stream().synchronize();
     memory_manager_proxy_.reset();
     _durations[WaitPipeline] = Time::now() - start;
 }

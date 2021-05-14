@@ -36,7 +36,7 @@ class IOperationExec {
 class IOperationMeta {
  public:
   virtual ~IOperationMeta() = default;
-  virtual std::string GetName() const = 0;
+  virtual const std::string& GetName() const = 0;
   virtual gsl::span<const unsigned> GetInputIds() const = 0;
   virtual gsl::span<const unsigned> GetOutputIds() const = 0;
 };
@@ -50,34 +50,23 @@ class OperationBase
   using WeakPtr = std::weak_ptr<OperationBase>;
 
   OperationBase(const std::shared_ptr<ngraph::Node>& node,
-                std::vector<unsigned> inputIds,
-                std::vector<unsigned> outputIds);
+                std::vector<unsigned>&& inputIds,
+                std::vector<unsigned>&& outputIds);
 
-  std::string GetName() const override;
-  gsl::span<const unsigned> GetInputIds() const override;
-  gsl::span<const unsigned> GetOutputIds() const override;
+  const std::string& GetName() const override {
+    return node_name_;
+  }
+  gsl::span<const unsigned> GetInputIds() const override {
+    return input_ids_;
+  }
+  gsl::span<const unsigned> GetOutputIds() const override {
+    return output_ids_;
+  }
 
  protected:
   std::string node_name_;
   const std::vector<unsigned> input_ids_;
   const std::vector<unsigned> output_ids_;
 };
-
-inline
-std::string OperationBase::GetName() const {
-  return node_name_;
-}
-
-inline
-gsl::span<const unsigned>
-OperationBase::GetInputIds() const {
-  return input_ids_;
-}
-
-inline
-gsl::span<const unsigned>
-OperationBase::GetOutputIds() const {
-  return output_ids_;
-}
 
 } // namespace CUDAPlugin
