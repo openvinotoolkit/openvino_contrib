@@ -22,11 +22,8 @@
 
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
-#include "ops/saxpy_op.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
-#include "cuda/stream.hpp"
-#include "cuda_thread_pool.hpp"
 
 namespace CUDAPlugin {
 
@@ -40,17 +37,15 @@ public:
     CudaInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
                          const InferenceEngine::OutputsDataMap&    networkOutputs,
                          const std::shared_ptr<ExecutableNetwork>& executableNetwork);
-    ~CudaInferRequest() override;
 
     void InferImpl() override;
     std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular executor
-    void setCudaThreadContext(gsl::not_null<CudaThreadContext*> cudaThreadContext);
     void inferPreprocess();
-    void startPipeline();
-    void waitPipeline();
+    void startPipeline(const CUDA::ThreadContext& threadContext);
+    void waitPipeline(const CUDA::ThreadContext& threadContext);
     void inferPostprocess();
     /**
      * Cancel InferRequest
@@ -80,13 +75,9 @@ private:
     std::array<std::chrono::duration<float, std::micro>, numOfStages>   _durations;
 
     InferenceEngine::BlobMap                                _networkOutputBlobs;
-    ngraph::ParameterVector                                 _parameters;
-    ngraph::ResultVector                                    _results;
 
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _inputTensors;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _outputTensors;
-    std::shared_ptr<ngraph::runtime::Executable>            _executable;
-    CudaThreadContext*                                      cuda_thread_context_ = nullptr;
     std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
     std::atomic<bool>                                       cancellation_token_{false};
 };

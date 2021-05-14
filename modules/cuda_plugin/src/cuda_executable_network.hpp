@@ -14,7 +14,6 @@
 
 #include "memory_manager/model/cuda_memory_model.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
-#include "cuda/stream.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
 
 class ExecNetworkTest;
@@ -49,14 +48,28 @@ public:
     InferenceEngine::IInferRequest::Ptr CreateInferRequest() override;
     InferenceEngine::Parameter GetMetric(const std::string &name) const override;
     InferenceEngine::Parameter GetConfig(const std::string &name) const override;
+    std::string newRequestName() {
+      return "Cuda" + std::to_string(cfg_.deviceId) + "_" +
+             function_->get_friendly_name() + "_Req" +
+             std::to_string(request_id_++);
+    }
+    const ngraph::op::Parameter& parameter(const std::string& name) const {
+      return *function_->get_parameters().at(input_index_.at(name));
+    }
+    const ngraph::op::Result& result(const std::string& name) const {
+      return *function_->get_results().at(output_index_.at(name));
+    }
+    void createInputs(
+        std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& inputTensors,
+        const InferenceEngine::BlobMap& deviceInputs);
+    void createOutputs(
+        std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& outputTensors,
+        const InferenceEngine::BlobMap& outputs,
+        const InferenceEngine::BlobMap& networkOutputBlobs);
 
 private:
     friend class ::ExecNetworkTest;
     friend class CudaInferRequest;
-    friend class CudaAsyncInferRequest;
-
-    using CudaStreamMapping = std::unordered_map<int, std::shared_ptr<CudaStream>>;
-
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor,

@@ -33,14 +33,15 @@ SigmoidOp::SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
 void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
-    auto stream = context.GetCUDAStream();
-    const unsigned maxBlockSize = CudaDevice::GetMaxGridBlockSizeParams(context.GetDeviceId());
+    auto& tc = context.getThreadContext();
+    auto& stream = tc.stream();
+    const unsigned maxBlockSize = tc.device().props().maxThreadsPerBlock;
     const unsigned numBlocks = (input_size_ % maxBlockSize == 0) ?
                                (input_size_ / maxBlockSize) :
                                (input_size_ / maxBlockSize + 1);
     const unsigned threadsPerBlock = (numBlocks == 1) ? input_size_ : maxBlockSize;
     sigmoid_run(
-        *stream, numBlocks, threadsPerBlock,
+        stream, numBlocks, threadsPerBlock,
         input_size_,
         static_cast<const float *>(inputs[0].get()),
         static_cast<float *>(outputs[0].get()));
