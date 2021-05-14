@@ -34,7 +34,10 @@ class DevicePointer : private gsl::not_null<T> {
     static_assert(std::is_void<typename std::remove_pointer<T>::type>::value ||
                   std::is_void<typename std::remove_pointer<U>::type>::value,
                   "cast requires one of U or T to be void");
-    return DevicePointer<U>{static_cast<U>(gsl::not_null<T>::get())};
+    return DevicePointer<U>{static_cast<U>(this->get())};
+  }
+  DevicePointer<std::remove_const_t<std::remove_pointer_t<T>>*> as_mutable() const noexcept {
+    return const_cast<std::remove_const_t<std::remove_pointer_t<T>>*>(this->get());
   }
 };
 

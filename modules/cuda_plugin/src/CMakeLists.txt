@@ -17,7 +17,7 @@ ie_add_plugin(NAME ${TARGET_NAME}
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_plugin.cpp)
 # Adds test object library
-add_library(${TARGET_NAME}_test_static STATIC EXCLUDE_FROM_ALL ${SOURCES} ${HEADERS})
+add_library(${TARGET_NAME}_test_static OBJECT EXCLUDE_FROM_ALL ${SOURCES} ${HEADERS})
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
     set_property(TARGET ${TARGET_NAME}_test_static PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
@@ -49,7 +49,7 @@ target_link_libraries(${TARGET_NAME}
                       GSL
                       fmt-header-only
                       CUDA::cudart
-                      CUDA::cuda_driver
+                      cudnn
                       ${NGRAPH_LIBRARIES})
 target_link_libraries(${TARGET_NAME}_test_static
                       PRIVATE
@@ -58,7 +58,7 @@ target_link_libraries(${TARGET_NAME}_test_static
                       GSL
                       fmt-header-only
                       CUDA::cudart
-                      CUDA::cuda_driver
+                      cudnn
                       ${NGRAPH_LIBRARIES})
 if(TARGET IE::inference_engine_plugin_api)
     target_link_libraries(${TARGET_NAME}_test_static PRIVATE IE::inference_engine_plugin_api)

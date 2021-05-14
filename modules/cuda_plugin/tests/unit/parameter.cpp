@@ -71,6 +71,7 @@ struct ParameterTest : testing::Test {
     blob = InferenceEngine::make_shared_blob<uint8_t>(desc);
     blob->allocate();
   }
+  CUDA::ThreadContext threadContext{{}};
   OperationBase::Ptr operation;
   IOperationExec::Inputs inputs {};
   std::vector<devptr_t> outputs {};
@@ -84,22 +85,23 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 }
 
 TEST_F(ParameterTest, canExecuteSync) {
-  InferenceRequestContext context{0, std::make_shared<CudaStream>(), blobs, empty};
+  InferenceRequestContext context{blobs, empty, threadContext};
+  auto& stream = context.getThreadContext().stream();
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpy(data.get(), outputs[0].get(), size, cudaMemcpyDeviceToHost);
+  stream.download(data.get(), outputs[0], size);
+  stream.synchronize();
   auto mem = blob->as<MemoryBlob>()->rmap();
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
 
 TEST_F(ParameterTest, canExecuteAsync) {
-  std::shared_ptr<CudaStream> stream;
-  ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
-  InferenceRequestContext context{0, stream, blobs, empty};
+  InferenceRequestContext context{blobs, empty, threadContext};
+  auto& stream = context.getThreadContext().stream();
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  stream->memcpyAsync(data.get(), outputs[0].cast<const void*>(), size);
+  stream.download(data.get(), outputs[0], size);
+  ASSERT_NO_THROW(stream.synchronize());
   auto mem = blob->as<MemoryBlob>()->rmap();
-  ASSERT_NO_THROW(stream->synchronize());
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }

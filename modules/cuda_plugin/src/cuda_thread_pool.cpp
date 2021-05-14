@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <fmt/format.h>
 #include "cuda_thread_pool.hpp"
+
+#include <fmt/format.h>
+
+#include <details/ie_exception.hpp>
 
 namespace CUDAPlugin {
 
-static thread_local CudaThreadContext* contextPtr = nullptr;
+static thread_local CUDA::ThreadContext* contextPtr = nullptr;
 
-CudaThreadPool::CudaThreadPool(unsigned _numThreads) {
+CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
     try {
         for (int i = 0; i < _numThreads; ++i) {
-            threads_.emplace_back([this] {
-                CudaThreadContext context;
+            threads_.emplace_back([this, d] {
+                CUDA::ThreadContext context{d};
                 contextPtr = &context;
                 while (!is_stopped_.load(std::memory_order_acquire)) {
                     Task task;
@@ -51,9 +54,9 @@ void CudaThreadPool::stopThreadPool() noexcept {
     threads_.clear();
 }
 
-CudaThreadContext& CudaThreadPool::GetCudaThreadContext() {
+const CUDA::ThreadContext& CudaThreadPool::GetThreadContext() {
     if (!contextPtr) {
-        THROW_IE_EXCEPTION << "Call GetCudaThreadContext() not from ThreadPool owned thread is not allowed !!";
+        THROW_IE_EXCEPTION << "Call GetThreadContext() not from ThreadPool owned thread is not allowed !!";
     }
     return *contextPtr;
 }
@@ -64,4 +67,4 @@ void CudaThreadPool::run(Task task) {
     queue_cond_var_.notify_one();
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

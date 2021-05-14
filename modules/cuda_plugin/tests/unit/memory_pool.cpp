@@ -12,8 +12,6 @@
 #include <cuda_plugin.hpp>
 #include <cuda_executable_network.hpp>
 #include <memory_manager/model/cuda_memory_model.hpp>
-#include <ops/saxpy_op.hpp>
-#include <cuda/device.hpp>
 #include <threading/ie_executor_manager.hpp>
 
 using namespace CUDAPlugin;

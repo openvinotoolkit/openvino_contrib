@@ -1,10 +1,9 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <kernels/saxpy.cuh>
 #include <cuda_operation_registry.hpp>
-#include <cuda/device.hpp>
 
 #include "saxpy_op.hpp"
 
@@ -14,7 +13,7 @@ void SaxpyOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors) {
     size_t size = 10000;
-    const unsigned maxBlockSize = CudaDevice::GetMaxGridBlockSizeParams(context.GetDeviceId());
+    const unsigned maxBlockSize = context.getThreadContext().device().props().maxThreadsPerBlock;
     const unsigned gridSize = size / maxBlockSize;
     const unsigned blockSize = gridSize > 1 ? maxBlockSize : size % maxBlockSize;
     const dim3 gridDim = dim3{gridSize ? gridSize : 1};
