@@ -72,6 +72,7 @@ struct ResultTest : testing::Test {
     blob = InferenceEngine::make_shared_blob<uint8_t>(desc);
     blob->allocate();
   }
+  CUDA::ThreadContext threadContext{{}};
   OperationBase::Ptr operation;
   std::vector<cdevptr_t> inputs {};
   IOperationExec::Outputs outputs {};
@@ -85,26 +86,25 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 }
 
 TEST_F(ResultTest, canExecuteSync) {
-  void* input = const_cast<void*>(inputs[0].get());
-  InferenceRequestContext context{0, std::make_shared<CudaStream>(), empty, blobs};
+  InferenceRequestContext context{empty, blobs, threadContext};
   auto mem = blob->as<MemoryBlob>()->rmap();
-  cudaMemcpy(input, mem, size, cudaMemcpyHostToDevice);
+  auto& stream = context.getThreadContext().stream();
+  stream.upload(inputs[0].as_mutable(), mem, size);
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpy(data.get(), inputs[0].get(), size, cudaMemcpyDeviceToHost);
+  stream.download(data.get(), inputs[0], size);
+  stream.synchronize();
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
 
 TEST_F(ResultTest, canExecuteAsync) {
-  std::shared_ptr<CudaStream> stream;
-  ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
-  InferenceRequestContext context{0, stream, empty, blobs};
+  InferenceRequestContext context{empty, blobs, threadContext};
+  auto& stream = context.getThreadContext().stream();
   auto mem = blob->as<MemoryBlob>()->rmap();
-  auto writeInput = InferenceEngine::gpu::DevicePointer<void*>(const_cast<void*>(inputs[0].get()));
-  stream->memcpyAsync(writeInput, static_cast<const void*>(mem), size);
+  stream.upload(inputs[0].as_mutable(), mem, size);
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  stream->memcpyAsync(data.get(), inputs[0], size);
-  ASSERT_NO_THROW(stream->synchronize());
+  stream.download(data.get(), inputs[0], size);
+  ASSERT_NO_THROW(stream.synchronize());
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }

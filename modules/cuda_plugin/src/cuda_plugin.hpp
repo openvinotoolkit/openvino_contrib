@@ -39,8 +39,6 @@ private:
     friend class ExecutableNetwork;
     friend class CudaInferRequest;
 
-    using CudaStreamMapping = std::unordered_map<int, std::shared_ptr<CudaStream>>;
-
     enum class cuda_attribute {
         name
     };

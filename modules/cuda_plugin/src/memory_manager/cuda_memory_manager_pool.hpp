@@ -4,9 +4,8 @@
 
 #pragma once
 
-#include <mutex>
 #include <condition_variable>
-#include <deque>
+#include <mutex>
 
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
@@ -21,7 +20,8 @@ namespace CUDAPlugin {
  * This class is an owner of bunch of MemoryManager-s and provides on request
  * WaitAndGet currently available MemoryManager from pool
  */
-class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManagerPool> {
+class MemoryManagerPool
+    : public std::enable_shared_from_this<MemoryManagerPool> {
  public:
     /**
      * @brief Proxy provides currently available MemoryManager.
@@ -29,41 +29,23 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
      * Proxy provides access to MemoryManager without given direct
      * access to callee
      */
-    class Proxy final {
-     public:
-        Proxy(const Proxy&) = delete;
-        Proxy& operator=(const Proxy&) = delete;
-
-        Proxy(Proxy&&) = default;
-        Proxy& operator=(Proxy&&) = default;
-
-        /**
-         * Shows if Proxy is accessible
-         * @return true if Proxy is accessible, false - otherwise
-         */
-        explicit operator bool() const {
-            return static_cast<bool>(pool_);
-        }
+  class Proxy {
+   public:
+    Proxy(Proxy&&) = default;
+    Proxy& operator=(Proxy&&) = default;
 
         /**
          * Returns MemoryManager to MemoryManagerPool
          */
-        ~Proxy() {
-            if (pool_) {
-                pool_->PushBack(std::move(memory_manager_));
-            }
-        }
+    ~Proxy() {
+      if (pool_) pool_->PushBack(move(memory_manager_));
+    }
 
         /**
          * Provides MemoryManager
          * @return MemoryManager
          */
-        MemoryManager& Get() {
-          return *memory_manager_;
-        }
-
-     private:
-        friend class MemoryManagerPool;
+    MemoryManager& Get() { return *memory_manager_; }
 
         /**
          * Initialize Proxy with MemoryManagerPool and MemoryManager.
@@ -71,14 +53,14 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
          * @param pool MemoryManagerPool that is an owner of MemoryManager
          * @param memManager MemoryManager that will be temporary used
          */
-        explicit Proxy(std::shared_ptr<MemoryManagerPool> pool, std::unique_ptr<MemoryManager> memManager)
-            : pool_{std::move(pool)}
-            , memory_manager_{std::move(memManager)} {
-        }
+    Proxy(std::shared_ptr<MemoryManagerPool> pool,
+          std::unique_ptr<MemoryManager>&& memManager)
+        : pool_{move(pool)}, memory_manager_{move(memManager)} {}
 
-        std::unique_ptr<MemoryManager> memory_manager_;
-        std::shared_ptr<MemoryManagerPool> pool_;
-    };
+   private:
+    std::unique_ptr<MemoryManager> memory_manager_;
+    std::shared_ptr<MemoryManagerPool> pool_;
+  };
 
     /**
      * Creates MemoryManagerPool that owns @num MemoryManager-s
@@ -87,27 +69,27 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
      * @param memoryModel MemoryModel that is used by each MemoryManager to map
      *                    device pointer to tensors
      */
-    MemoryManagerPool(size_t num,
-                      std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
-                      std::shared_ptr<MemoryModel> memoryModel);
+  MemoryManagerPool(size_t num,
+                    std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
+                    std::shared_ptr<MemoryModel> memoryModel);
     /**
      * Wait and return Proxy object
      * @return Proxy object through which we can access MemoryManager
      */
-    Proxy WaitAndGet();
+  Proxy WaitAndGet();
 
  private:
-    friend class ::MemoryManagerPoolTest;
+  friend class ::MemoryManagerPoolTest;
 
     /**
      * Move MemoryManager back to pool
      * @param memManager MemoryManager
      */
-    void PushBack(std::unique_ptr<MemoryManager> memManager);
+  void PushBack(std::unique_ptr<MemoryManager> memManager);
 
-    std::mutex mtx_;
-    std::condition_variable cond_var_;
-    std::deque<std::unique_ptr<MemoryManager>> memory_managers_;
+  std::mutex mtx_;
+  std::condition_variable cond_var_;
+  std::vector<std::unique_ptr<MemoryManager>> memory_managers_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
