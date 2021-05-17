@@ -28,6 +28,42 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmTranspo
     return MakeConversion<arm_compute::NEPermute>(node.input(0), node.output(0), order);
 }
 
+template<typename D, typename I>
+static void wrap_transpose(const D* data,
+                           D* out,
+                           const ngraph::Shape& data_shape,
+                           const I* axes_order) {
+    std::vector<std::int64_t> converted_axes_order(data_shape.size());
+    if (axes_order == nullptr) {
+        std::iota(converted_axes_order.begin(), converted_axes_order.end(), 0);
+        std::reverse(converted_axes_order.begin(), converted_axes_order.end());
+    } else {
+        for (size_t i = 0; i < converted_axes_order.size(); ++i) {
+            converted_axes_order[i] = static_cast<std::int64_t>(axes_order[i]);
+        }
+    }
+
+    ngraph::Shape output_shape(converted_axes_order.size());
+    std::transform(
+        converted_axes_order.begin(),
+        converted_axes_order.end(),
+        output_shape.begin(),
+        [&](const std::int64_t& v) {
+            NGRAPH_CHECK(v >= 0,
+                         "Negative values for transpose axes order are not supported.");
+            NGRAPH_CHECK(v < int64_t(converted_axes_order.size()),
+                         "Transpose axis ",
+                         v,
+                         " is out of shape range.");
+            return data_shape[v];
+        });
+
+    ngraph::runtime::reference::transpose(reinterpret_cast<const char*>(data),
+                                          reinterpret_cast<char*>(out),
+                                          data_shape, sizeof(D),
+                                          converted_axes_order.data(), output_shape);
+}
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Transpose& node) {
     auto make = [&] (auto refFunction) {
         if (ngraph::shape_size(node.get_input_shape(1)) == 0) {
@@ -44,7 +80,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Transpose&
                                     node.input(1));
     };
     return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::transpose),
+        AP_WRAP(make, wrap_transpose),
         node.input(0), allTypes,
         node.input(1), indexTypes);
 }
