@@ -19,14 +19,11 @@ namespace gpu {
  */
 
 template <typename T>
-class DevicePointer : public gsl::not_null<T> {
+class DevicePointer : private gsl::not_null<T> {
  public:
   static_assert(std::is_pointer<T>::value, "T should be a pointer type");
   using gsl::not_null<T>::not_null;
   using gsl::not_null<T>::get;
-  /* dereferencing device pointer on the host is not allowed" */
-  T operator->() const = delete;
-  typename std::remove_pointer<T>::type operator*() const = delete;
 
   /**
    * @brief cast<U>() - Casts original type T* to U*, provided one of them is void*

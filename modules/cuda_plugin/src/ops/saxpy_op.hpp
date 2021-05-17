@@ -10,8 +10,8 @@ namespace CUDAPlugin {
 
 class SaxpyOp : public OperationBase {
  public:
-  using OperationBase::OperationBase;
-  void Execute(const InferenceRequestContext& context,
+    using OperationBase::OperationBase;
+    void Execute(const InferenceRequestContext& context,
                Inputs inputTensors,
                Outputs outputTensors) override;
 };
