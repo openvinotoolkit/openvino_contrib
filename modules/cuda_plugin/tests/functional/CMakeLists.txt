@@ -9,13 +9,14 @@ set(TARGET_NAME CudaFuncTests)
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+        ADDITIONAL_SOURCE_DIRS ${OpenVINO_MAIN_SOURCE_DIR}/tests/stress_tests/common
         DEPENDENCIES
         CUDAPlugin
         LINK_LIBRARIES
         IE::funcSharedTests
         INCLUDES
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-        ADD_CPPLINT
+        "${OpenVINO_MAIN_SOURCE_DIR}/tests"
         LABELS
         CUDA
 )

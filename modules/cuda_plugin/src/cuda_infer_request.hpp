@@ -26,6 +26,7 @@
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
 #include "cuda/stream.hpp"
+#include "cuda_thread_pool.hpp"
 
 namespace CUDAPlugin {
 
@@ -46,15 +47,24 @@ public:
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular executor
-    void setCudaStream(std::shared_ptr<CudaStream> cudaStream);
+    void setCudaThreadContext(gsl::not_null<CudaThreadContext*> cudaThreadContext);
     void inferPreprocess();
     void startPipeline();
     void waitPipeline();
     void inferPostprocess();
+    /**
+     * Cancel InferRequest
+     */
+    void Cancel() override;
 
 private:
     void allocateDeviceBuffers();
     void allocateBlobs();
+    /**
+     * Checks if InferRequest is canceled and
+     * throws exception THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED)
+     */
+    void ThrowIfCanceled();
 
     enum {
         Preprocess,
@@ -76,8 +86,9 @@ private:
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _inputTensors;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _outputTensors;
     std::shared_ptr<ngraph::runtime::Executable>            _executable;
+    CudaThreadContext*                                      cuda_thread_context_ = nullptr;
     std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
-    std::shared_ptr<CudaStream>                             cuda_stream_;
+    std::atomic<bool>                                       cancellation_token_{false};
 };
 // ! [infer_request:header]
 

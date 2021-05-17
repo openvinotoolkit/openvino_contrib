@@ -48,10 +48,14 @@ class InferenceRequestContext {
   using Ptr = std::shared_ptr<InferenceRequestContext>;
   using WeakPtr = std::weak_ptr<InferenceRequestContext>;
 
-  InferenceRequestContext(std::shared_ptr<CUDAPlugin::CudaStream> stream,
+  InferenceRequestContext(int deviceId,
+                          std::shared_ptr<CUDAPlugin::CudaStream> stream,
                           const InferenceEngine::BlobMap& inputs,
                           const InferenceEngine::BlobMap& outputs)
-  : cuda_stream {stream}, blob_inputs {inputs}, blob_outputs {outputs} {}
+  : device_id_{deviceId}
+  , cuda_stream {stream}
+  , blob_inputs {inputs}
+  , blob_outputs {outputs} {}
 
   /**
    * @brief GetInputBlob(name) returns an input blob with the given name
@@ -78,6 +82,15 @@ class InferenceRequestContext {
     return blob_outputs.find(input_name) != blob_outputs.end();
   }
   /**
+   * Returns CUDA Device Id that is mapped to appropriate
+   * CUDADevice index returned by CudaDevice::GetAllDevicesProp()
+   * function
+   * @return Cuda Device Index
+   */
+  int GetDeviceId() const noexcept {
+    return device_id_;
+  }
+  /**
    * @brief GetCUDAStream() returns associated CUDA stream
    */
   std::shared_ptr<CUDAPlugin::CudaStream>
@@ -85,9 +98,10 @@ class InferenceRequestContext {
     return cuda_stream;
   }
  private:
-  std::shared_ptr<CUDAPlugin::CudaStream> cuda_stream;
-  const InferenceEngine::BlobMap& blob_inputs;
-  const InferenceEngine::BlobMap& blob_outputs;
+    int device_id_;
+    std::shared_ptr<CUDAPlugin::CudaStream> cuda_stream;
+    const InferenceEngine::BlobMap& blob_inputs;
+    const InferenceEngine::BlobMap& blob_outputs;
 };
 
 } // namespace gpu

@@ -9,6 +9,7 @@
 #include <cpp_interfaces/impl/ie_plugin_internal.hpp>
 
 #include "backend.hpp"
+#include "cuda_thread_pool.hpp"
 
 namespace CUDAPlugin {
 
@@ -44,17 +45,24 @@ private:
         name
     };
 
-    InferenceEngine::IStreamsExecutor::Ptr GetStreamExecutor(const Configuration &cfg);
+    /**
+     * Gets CpuStreamExecutor if it was already created,
+     * creates otherwise one for device specified in cfg
+     * @param cfg Configuration used for CpuStreamExecutor creation
+     * @return CpuStreamExecutor
+     */
+    InferenceEngine::ITaskExecutor::Ptr GetStreamExecutor(const Configuration &cfg);
 
     template <cuda_attribute ID, class Result>
     Result getCudaAttribute() const;
 
     int cudaDeviceID() const noexcept { return 0; } //TODO implement
 
+    std::mutex mtx_;
     std::shared_ptr<ngraph::runtime::Backend> _backend;
     Configuration _cfg;
     std::unordered_map<std::string, InferenceEngine::ITaskExecutor::Ptr> _waitExecutors;
-    std::unordered_map<std::string, CudaStreamMapping> device_cuda_streams_;
+    std::unordered_map<std::string, std::shared_ptr<CudaThreadPool>> device_thread_pool_;
 };
 
 template <>

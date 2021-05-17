@@ -4,16 +4,26 @@
 
 #include <cuda_runtime.h>
 #include <gsl/gsl_assert>
-#include "parameter.hpp"
+#include <ngraph/node.hpp>
 #include <cuda_operation_registry.hpp>
 
+#include "parameter.hpp"
+
 namespace CUDAPlugin {
+
+ParameterOp::ParameterOp(const std::shared_ptr<ngraph::Node>& node,
+                         std::vector<unsigned> inputIds,
+                         std::vector<unsigned> outputIds)
+    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    auto prevNode = node->output(0);
+    input_tensor_name_ = prevNode.get_node()->get_friendly_name();
+}
 
 void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
   Expects(inputs.size() == 0);
   Expects(outputs.size() == 1);
-  Expects(context.HasInputBlob(GetName()));
-  auto blob = context.GetInputBlob(GetName());
+  Expects(context.HasInputBlob(input_tensor_name_));
+  auto blob = context.GetInputBlob(input_tensor_name_);
   auto stream = context.GetCUDAStream();
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->rmap();
   stream->memcpyAsync(outputs[0], static_cast<const void*>(memory_ptr), blob->byteSize());

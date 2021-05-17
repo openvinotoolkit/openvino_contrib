@@ -13,6 +13,7 @@ class CudaDevice {
     static int GetNumDevices();
     static std::vector<cudaDeviceProp> GetAllDevicesProp();
     static size_t GetDeviceConcurrentKernels(const cudaDeviceProp& devProp);
+    static unsigned GetMaxGridBlockSizeParams(unsigned deviceId);
 };
 
-}
+} // namespace CUDAPlugin
