@@ -6,6 +6,8 @@
 #include <ie_plugin_config.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
+#include <fmt/format.h>
+
 #include "transformations/serialize.hpp"
 
 #include "cuda/cuda_config.hpp"
@@ -26,12 +28,12 @@ namespace CUDAPlugin {
 
 ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                                      Configuration cfg,
-                                     InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
+                                     InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                                      Plugin::Ptr plugin) :
     InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr), // Disable default threads creation
     cnn_network_(cnnNetwork),
     cfg_(std::move(cfg)),
-    wait_executor_(std::move(waitExecutor)),
+    cuda_stream_executor_(std::move(waitExecutor)),
     plugin_(std::move(plugin)) {
     // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
     // you should select proper device based on KEY_DEVICE_ID or automatic behavior
@@ -42,7 +44,7 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
     } catch (const std::exception& e) {
-        THROW_IE_EXCEPTION << "Standard exception from compilation library: " << e.what();
+        THROW_IE_EXCEPTION << fmt::format("Standard exception from compilation library: {}", e.what());
     } catch (...) {
         THROW_IE_EXCEPTION << "Generic exception is thrown";
     }
@@ -50,10 +52,10 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
 
 ExecutableNetwork::ExecutableNetwork(std::istream& model,
                                      Configuration cfg,
-                                     InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
+                                     InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                                      Plugin::Ptr plugin) :
     cfg_(std::move(cfg)),
-    wait_executor_(std::move(waitExecutor)),
+    cuda_stream_executor_(std::move(waitExecutor)),
     plugin_(std::move(plugin)) {
     // Read XML content
     std::string xmlString;
@@ -89,7 +91,7 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
     } catch (const std::exception& e) {
-        THROW_IE_EXCEPTION << "Standard exception from compilation library: " << e.what();
+        THROW_IE_EXCEPTION << fmt::format("Standard exception from compilation library: {}", e.what());
     } catch (...) {
         THROW_IE_EXCEPTION << "Generic exception is thrown";
     }
@@ -120,10 +122,9 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     for (auto& node : orderedNodes) {
         if (!OperationRegistry::getInstance().hasOperation(node)) {
-            THROW_IE_EXCEPTION << "Node: "
-                               << "name = " << node->get_name() << ", "
-                               << "description = " << node->description() << "; "
-                               << "Is not found in OperationRegistry";
+            THROW_IE_EXCEPTION << fmt::format(
+                "Node: name = {}, description = {}; Is not found in OperationRegistry",
+                node->get_name(), node->description());
         }
         auto inIds = opBuffersExtractor.inputBufferIndices(*node);
         auto outIds = opBuffersExtractor.outputBufferIndices(*node);
@@ -146,8 +147,7 @@ void ExecutableNetwork::InitExecutor() {
     // and memory consumption can be larger than it is expected.
     // So Inference Engone provides executors cache.
     _taskExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
-    // NOTE: callback Executor is not configured. So callback will be called in the thread of the last stage of inference request pipeline
-    // _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
+     _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
 std::shared_ptr<MemoryManagerPool>
@@ -176,16 +176,9 @@ ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBu
     return std::make_shared<MemoryManagerPool>(numStreams, shared_constants_blob, memory_model);
 }
 
-std::shared_ptr<CudaStream>
-ExecutableNetwork::GetCudaStream(const int streamId) {
-    const std::string& deviceName = cfg_.Get(CONFIG_KEY(DEVICE_ID));
-    auto& cudaStreams = plugin_->device_cuda_streams_[deviceName];
-    auto foundStream = cudaStreams.find(streamId);
-    if (cudaStreams.end() == foundStream) {
-        THROW_IE_EXCEPTION << "Internal error: Could not find mapped CUDA Stream !!";
-    }
-
-    return foundStream->second;
+int ExecutableNetwork::GetCudaDeviceId() const noexcept {
+    const std::string deviceId = cfg_.Get(CONFIG_KEY(DEVICE_ID));
+    return std::stoi(deviceId);
 }
 
 InferenceEngine::InferRequestInternal::Ptr
@@ -203,7 +196,7 @@ ExecutableNetwork::CreateInferRequest() {
     auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
     auto asyncThreadSafeImpl =
         std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
-                                                _taskExecutor, wait_executor_, _callbackExecutor);
+                                                _taskExecutor, cuda_stream_executor_, _callbackExecutor);
     asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl),
                        [](InferenceEngine::IInferRequest *p) { p->Release(); });
     //asyncRequest.reset(new InferenceEngine::InferRequestBase(asyncThreadSafeImpl));
@@ -242,7 +235,7 @@ ExecutableNetwork::GetMetric(const std::string& name) const {
         unsigned int value = cfg_._streamsExecutorConfig._streams;
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
-        THROW_IE_EXCEPTION << "Unsupported ExecutableNetwork metric: " << name;
+        THROW_IE_EXCEPTION << fmt::format("Unsupported ExecutableNetwork metric: {}", name);
     }
 }
 

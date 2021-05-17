@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include <ops/result.hpp>
 #include <typeinfo>
 #include <gtest/gtest.h>
+
+#include "nodes/result_stub_node.hpp"
 
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
@@ -39,20 +41,6 @@ class ResultRegistryTest : public testing::Test {
   }
 };
 
-struct ResultStubNode : ngraph::Node {
-  static constexpr type_info_t type_info{"Result", 0};
-  const type_info_t& get_type_info() const override {
-    return type_info;
-  }
-
-  std::shared_ptr<ngraph::Node>
-  clone_with_new_inputs(const ngraph::OutputVector& inputs) const override {
-    return std::make_shared<ResultStubNode>();
-  }
-};
-
-constexpr ngraph::Node::type_info_t ResultStubNode::type_info;
-
 struct ResultTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
@@ -68,7 +56,7 @@ struct ResultTest : testing::Test {
     ASSERT_TRUE(resultOp);
     allocate();
     fillBlobRandom<uint8_t>(blob);
-    blobs.insert({resultOp->GetName(), blob});
+    blobs.insert({node->get_friendly_name(), blob});
   }
   void TearDown() override {
     if (outputs.size() > 0)
@@ -98,19 +86,19 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
   void* input = const_cast<void*>(inputs[0].get());
-  InferenceRequestContext context{std::make_shared<CudaStream>(), empty, blobs};
+  InferenceRequestContext context{0, std::make_shared<CudaStream>(), empty, blobs};
   auto mem = blob->as<MemoryBlob>()->rmap();
   cudaMemcpy(input, mem, size, cudaMemcpyHostToDevice);
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpy(data.get(), inputs[0], size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(data.get(), inputs[0].get(), size, cudaMemcpyDeviceToHost);
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
 
 TEST_F(ResultTest, canExecuteAsync) {
   std::shared_ptr<CudaStream> stream;
   ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
-  InferenceRequestContext context{stream, empty, blobs};
+  InferenceRequestContext context{0, stream, empty, blobs};
   auto mem = blob->as<MemoryBlob>()->rmap();
   auto writeInput = InferenceEngine::gpu::DevicePointer<void*>(const_cast<void*>(inputs[0].get()));
   stream->memcpyAsync(writeInput, static_cast<const void*>(mem), size);
