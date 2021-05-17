@@ -1,0 +1,5 @@
+First of all install dependencies:
+python3 -m pip install -r ./requirements.txt
+
+Then run it like this:
+./main.py --model <path>/vgg16-converted-IR-FP32/vgg16.xml --ops MatMul MaxPool

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,8 @@
 #include <ops/parameter.hpp>
 #include <typeinfo>
 #include <gtest/gtest.h>
+
+#include "nodes/parameter_stub_node.hpp"
 
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
@@ -38,20 +40,6 @@ class ParameterRegistryTest : public testing::Test {
   }
 };
 
-struct ParameterStubNode : ngraph::Node {
-  static constexpr type_info_t type_info{"Parameter", 0};
-  const type_info_t& get_type_info() const override {
-    return type_info;
-  }
-
-  std::shared_ptr<ngraph::Node>
-  clone_with_new_inputs(const ngraph::OutputVector& inputs) const override {
-    return std::make_shared<ParameterStubNode>();
-  }
-};
-
-constexpr ngraph::Node::type_info_t ParameterStubNode::type_info;
-
 struct ParameterTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
@@ -67,7 +55,7 @@ struct ParameterTest : testing::Test {
     ASSERT_TRUE(parameterOp);
     allocate();
     fillBlobRandom<uint8_t>(blob);
-    blobs.insert({parameterOp->GetName(), blob});
+    blobs.insert({node->get_friendly_name(), blob});
   }
   void TearDown() override {
     if (outputs.size() > 0)
@@ -96,10 +84,10 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 }
 
 TEST_F(ParameterTest, canExecuteSync) {
-  InferenceRequestContext context{std::make_shared<CudaStream>(), blobs, empty};
+  InferenceRequestContext context{0, std::make_shared<CudaStream>(), blobs, empty};
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
-  cudaMemcpy(data.get(), outputs[0], size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(data.get(), outputs[0].get(), size, cudaMemcpyDeviceToHost);
   auto mem = blob->as<MemoryBlob>()->rmap();
   ASSERT_EQ(0, memcmp(data.get(), mem, size));
 }
@@ -107,7 +95,7 @@ TEST_F(ParameterTest, canExecuteSync) {
 TEST_F(ParameterTest, canExecuteAsync) {
   std::shared_ptr<CudaStream> stream;
   ASSERT_NO_THROW(stream = std::make_shared<CudaStream>());
-  InferenceRequestContext context{stream, blobs, empty};
+  InferenceRequestContext context{0, stream, blobs, empty};
   operation->Execute(context, inputs, outputs);
   auto data = std::make_unique<uint8_t[]>(size);
   stream->memcpyAsync(data.get(), outputs[0].cast<const void*>(), size);

@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <details/ie_exception.hpp>
+#include <fmt/format.h>
 
 #include "device.hpp"
 #include "props.hpp"
@@ -47,6 +48,15 @@ CudaDevice::GetDeviceConcurrentKernels(const cudaDeviceProp& devProp) {
         concurrentKernels = cudaConcurrentKernels.at(computeCompatibility);
     }
     return concurrentKernels;
+}
+
+unsigned
+CudaDevice::GetMaxGridBlockSizeParams(unsigned deviceId) {
+    std::vector<cudaDeviceProp> devices = GetAllDevicesProp();
+    if (deviceId >= devices.size()) {
+        THROW_IE_EXCEPTION << fmt::format("deviceId {} is out of range");
+    }
+    return devices[deviceId].maxThreadsPerBlock;
 }
 
 } // namespace CUDAPlugin

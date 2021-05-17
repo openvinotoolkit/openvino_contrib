@@ -19,6 +19,15 @@ public:
 
     ~CudaAsyncInferRequest() override;
 
+    /**
+     * Cancel AsyncInferRequest
+     */
+    void Cancel() override;
+    /**
+     * Overrides default behaviour and run request asynchronous
+     */
+    void Infer_ThreadUnsafe() override;
+
 private:
     CudaInferRequest::Ptr           _inferRequest;
     InferenceEngine::ITaskExecutor::Ptr _waitExecutor;
