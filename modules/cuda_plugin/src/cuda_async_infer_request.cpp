@@ -7,8 +7,9 @@
 #include "cuda_executable_network.hpp"
 #include "cuda_async_infer_request.hpp"
 #include "cuda_itt.hpp"
+#include "cuda_thread_pool.hpp"
 
-using namespace CUDAPlugin;
+namespace CUDAPlugin {
 
 CudaAsyncInferRequest::CudaAsyncInferRequest(
     const CudaInferRequest::Ptr&               inferRequest,
@@ -22,8 +23,9 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
     // This stage executes InferRequest::Infer() using cpuTaskExecutor.
     // But if remote asynchronous device is used the pipeline can by splitted tasks that are executed by cpuTaskExecutor
     // and waiting tasks. Waiting tasks can lock execution thread so they use separate threads from other executor.
-    constexpr const auto remoteDevice = false;
+    constexpr const auto remoteDevice = true;
 
+    auto cudaThreadPool = std::dynamic_pointer_cast<CudaThreadPool>(_waitExecutor);
     if (remoteDevice) {
         _pipeline = {
             {cpuTaskExecutor, [this] {
@@ -31,12 +33,9 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
                                    "CudaAsyncInferRequest::Preprocessing");
                 _inferRequest->inferPreprocess();
             }},
-            {_waitExecutor, [this] {
-                auto cpuStreamExecutor = std::dynamic_pointer_cast<InferenceEngine::CPUStreamsExecutor>(_waitExecutor);
-                auto streamId = cpuStreamExecutor->GetStreamId();
-                auto execNetwork = _inferRequest->GetExecNetwork();
-                auto cudaStream = execNetwork->GetCudaStream(streamId);
-                _inferRequest->setCudaStream(cudaStream);
+            {_waitExecutor, [this, cudaThreadPool] {
+                auto& cudaThreadContext = cudaThreadPool->GetCudaThreadContext();
+                _inferRequest->setCudaThreadContext(&cudaThreadContext);
                 {
                     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
                                        "CudaAsyncInferRequest::StartPipeline");
@@ -60,3 +59,14 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
 CudaAsyncInferRequest::~CudaAsyncInferRequest() {
     InferenceEngine::AsyncInferRequestThreadSafeDefault::StopAndWait();
 }
+
+void CudaAsyncInferRequest::Cancel() {
+    InferenceEngine::AsyncInferRequestThreadSafeDefault::Cancel();
+    _inferRequest->Cancel();
+}
+
+void CudaAsyncInferRequest::Infer_ThreadUnsafe() {
+    StartAsync_ThreadUnsafe();
+}
+
+} // namespace CUDAPlugin

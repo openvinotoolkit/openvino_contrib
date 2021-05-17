@@ -106,7 +106,7 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
     return std::make_shared<ExecutableNetwork>(network, cfg, waitExecutor, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
-InferenceEngine::IStreamsExecutor::Ptr
+InferenceEngine::ITaskExecutor::Ptr
 Plugin::GetStreamExecutor(const Configuration &cfg) {
     const std::string deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID));
     const int numDeviceId = std::stoi(deviceId);
@@ -121,18 +121,13 @@ Plugin::GetStreamExecutor(const Configuration &cfg) {
     }
     const auto& devProp = devicesProp[numDeviceId];
     const size_t numConcurrentStreams = CudaDevice::GetDeviceConcurrentKernels(devProp);
-    InferenceEngine::IStreamsExecutor::Config cudaExecutorConfig(
-        "CudaGpuExecutor:Device=" + deviceId,
-        numConcurrentStreams);
-    auto streamExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(cudaExecutorConfig);
-    if (device_cuda_streams_.end() == device_cuda_streams_.find(deviceId)) {
-        auto cudaStreams = CudaStreamMapping{};
-        for (int i = 0; i < numConcurrentStreams; ++i) {
-            cudaStreams[i] = std::make_shared<CudaStream>();
+    {
+        std::lock_guard<std::mutex> lock{mtx_};
+        if (device_thread_pool_.end() == device_thread_pool_.find(deviceId)) {
+            device_thread_pool_[deviceId] = std::make_shared<CudaThreadPool>(numConcurrentStreams);
         }
-        device_cuda_streams_[deviceId] = cudaStreams;
     }
-    return streamExecutor;
+    return device_thread_pool_[deviceId];
 }
 
 // InferenceEngine::ExecutableNetworkInternal::Ptr

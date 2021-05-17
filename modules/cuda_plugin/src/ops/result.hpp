@@ -11,10 +11,15 @@ namespace CUDAPlugin {
 
 class ResultOp : public OperationBase {
  public:
-  using OperationBase::OperationBase;
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors) override;
+    ResultOp(const std::shared_ptr<ngraph::Node>& node,
+             std::vector<unsigned> inputIds,
+             std::vector<unsigned> outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors) override;
+
+ private:
+    std::string output_tensor_name_;
 };
 
 } // namespace CUDAPlugin

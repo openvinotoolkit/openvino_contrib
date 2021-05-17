@@ -9,17 +9,18 @@
 
 namespace CUDAPlugin {
 
-class ParameterOp : public OperationBase {
+class SigmoidOp : public OperationBase {
  public:
-    ParameterOp(const std::shared_ptr<ngraph::Node>& node,
-                std::vector<unsigned> inputIds,
-                std::vector<unsigned> outputIds);
+    SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
+              std::vector<unsigned> inputIds,
+              std::vector<unsigned> outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors) override;
 
  private:
-    std::string input_tensor_name_;
+    size_t input_size_;
+    size_t output_size_;
 };
 
 } // namespace CUDAPlugin

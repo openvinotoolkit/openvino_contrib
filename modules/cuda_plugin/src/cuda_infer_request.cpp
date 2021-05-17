@@ -173,17 +173,19 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
     }
 }
 
-void CudaInferRequest::setCudaStream(std::shared_ptr<CudaStream> cudaStream) {
-    cuda_stream_ = std::move(cudaStream);
+void CudaInferRequest::setCudaThreadContext(gsl::not_null<CudaThreadContext*> cudaThreadContext) {
+    cuda_thread_context_ = cudaThreadContext;
 }
 
 void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
+    ThrowIfCanceled();
     auto start = Time::now();
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in constructor.
     InferRequestInternal::execDataPreprocessing(_deviceInputs);
     for (auto&& networkInput : _deviceInputs) {
+        ThrowIfCanceled();
         auto index = _executableNetwork->input_index_[networkInput.first];
         const auto& parameter = _parameters[index];
         const auto& parameterShape = parameter->get_shape();
@@ -194,6 +196,7 @@ void CudaInferRequest::inferPreprocess() {
             InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput.second)->rmap().as<void*>());
     }
     for (auto&& output : _outputs) {
+        ThrowIfCanceled();
         auto outputBlob = output.second;
         auto networkOutput = _networkOutputBlobs[output.first];
         auto index = _executableNetwork->output_index_[output.first];
@@ -213,29 +216,35 @@ void CudaInferRequest::inferPreprocess() {
 
 void CudaInferRequest::startPipeline() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
+    ThrowIfCanceled();
     memory_manager_proxy_ = _executableNetwork->memory_manager_pool_->WaitAndGet();
+    ThrowIfCanceled();
     auto start = Time::now();
-    auto inferRequestContext = InferenceRequestContext{cuda_stream_, {}, {}};
+    auto inferRequestContext = InferenceRequestContext{_executableNetwork->GetCudaDeviceId(), cuda_thread_context_->cuda_stream_, _inputs, _outputs};
     for (auto& op : _executableNetwork->exec_sequence_) {
-      auto inputTensors = memory_manager_proxy_->Get().inputTensorPointers(*op);
-      auto outputTensors = memory_manager_proxy_->Get().outputTensorPointers(*op);
-      op->Execute(inferRequestContext, inputTensors, outputTensors);
+        ThrowIfCanceled();
+        auto inputTensors = memory_manager_proxy_->Get().inputTensorPointers(*op);
+        auto outputTensors = memory_manager_proxy_->Get().outputTensorPointers(*op);
+        op->Execute(inferRequestContext, inputTensors, outputTensors);
     }
     _durations[StartPipeline] = Time::now() - start;
 }
 
 void CudaInferRequest::waitPipeline() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[WaitPipeline])
+    ThrowIfCanceled();
     auto start = Time::now();
-    cuda_stream_->synchronize();
+    cuda_thread_context_->cuda_stream_->synchronize();
     memory_manager_proxy_.reset();
     _durations[WaitPipeline] = Time::now() - start;
 }
 
 void CudaInferRequest::inferPostprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Postprocess]);
+    ThrowIfCanceled();
     auto start = Time::now();
     for (auto&& output : _outputs) {
+        ThrowIfCanceled();
         auto outputBlob = output.second;
         auto networkOutput = _networkOutputBlobs[output.first];
         // perform precision conversion of network output's precision and computational
@@ -245,6 +254,18 @@ void CudaInferRequest::inferPostprocess() {
         }
     }
     _durations[Postprocess] = Time::now() - start;
+}
+
+void CudaInferRequest::Cancel() {
+    cancellation_token_.store(true, std::memory_order_release);
+}
+
+void CudaInferRequest::ThrowIfCanceled() {
+    if (cancellation_token_.load(std::memory_order_acquire)) {
+        memory_manager_proxy_.reset();
+        cancellation_token_.store(false, std::memory_order_release);
+        THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED);
+    }
 }
 
 std::map<std::string, InferenceEngineProfileInfo> CudaInferRequest::GetPerformanceCounts() const {
