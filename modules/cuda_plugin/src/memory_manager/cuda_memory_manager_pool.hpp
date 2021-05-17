@@ -15,8 +15,20 @@ class MemoryManagerPoolTest;
 
 namespace CUDAPlugin {
 
+/**
+ * @brief MemoryManagerPool provides currently available MemoryManager.
+ *
+ * This class is an owner of bunch of MemoryManager-s and provides on request
+ * WaitAndGet currently available MemoryManager from pool
+ */
 class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManagerPool> {
  public:
+    /**
+     * @brief Proxy provides currently available MemoryManager.
+     *
+     * Proxy provides access to MemoryManager without given direct
+     * access to callee
+     */
     class Proxy final {
      public:
         Proxy(const Proxy&) = delete;
@@ -25,16 +37,27 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
         Proxy(Proxy&&) = default;
         Proxy& operator=(Proxy&&) = default;
 
+        /**
+         * Shows if Proxy is accessible
+         * @return true if Proxy is accessible, false - otherwise
+         */
         explicit operator bool() const {
             return static_cast<bool>(pool_);
         }
 
+        /**
+         * Returns MemoryManager to MemoryManagerPool
+         */
         ~Proxy() {
             if (pool_) {
                 pool_->PushBack(std::move(memory_manager_));
             }
         }
 
+        /**
+         * Provides MemoryManager
+         * @return MemoryManager
+         */
         MemoryManager& Get() {
           return *memory_manager_;
         }
@@ -42,6 +65,12 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
      private:
         friend class MemoryManagerPool;
 
+        /**
+         * Initialize Proxy with MemoryManagerPool and MemoryManager.
+         * MemoryManagerPool is needed for returning back MemoryManager
+         * @param pool MemoryManagerPool that is an owner of MemoryManager
+         * @param memManager MemoryManager that will be temporary used
+         */
         explicit Proxy(std::shared_ptr<MemoryManagerPool> pool, std::unique_ptr<MemoryManager> memManager)
             : pool_{std::move(pool)}
             , memory_manager_{std::move(memManager)} {
@@ -51,14 +80,29 @@ class MemoryManagerPool final : public std::enable_shared_from_this<MemoryManage
         std::shared_ptr<MemoryManagerPool> pool_;
     };
 
+    /**
+     * Creates MemoryManagerPool that owns @num MemoryManager-s
+     * @param num Number of MemoryManager-s in pool
+     * @param sharedConstantsBlob Blob with constants
+     * @param memoryModel MemoryModel that is used by each MemoryManager to map
+     *                    device pointer to tensors
+     */
     MemoryManagerPool(size_t num,
                       std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
                       std::shared_ptr<MemoryModel> memoryModel);
+    /**
+     * Wait and return Proxy object
+     * @return Proxy object through which we can access MemoryManager
+     */
     Proxy WaitAndGet();
 
  private:
     friend class ::MemoryManagerPoolTest;
 
+    /**
+     * Move MemoryManager back to pool
+     * @param memManager MemoryManager
+     */
     void PushBack(std::unique_ptr<MemoryManager> memManager);
 
     std::mutex mtx_;

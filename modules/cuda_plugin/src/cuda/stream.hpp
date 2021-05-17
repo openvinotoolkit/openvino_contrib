@@ -7,6 +7,7 @@
 #include <cuda_runtime_api.h>
 #include <gpu/device_pointers.hpp>
 #include <details/ie_no_copy.hpp>
+#include <ie_extension.h>
 
 namespace CUDAPlugin {
 
@@ -16,6 +17,21 @@ class CudaStream : protected InferenceEngine::details::no_copy {
     explicit CudaStream(unsigned int flags);
     CudaStream(unsigned int flags, int priority);
     ~CudaStream() override;
+
+    template <typename ... TArgs>
+    void runKernel(void(*kernel)(TArgs...),
+                   TArgs... args) {
+        kernel(args...);
+    }
+
+#ifdef __CUDACC__
+    template <typename ... TArgs>
+    void runKernel(dim3 blocks, dim3 threads,
+                   void(*kernel)(TArgs...), TArgs... args) {
+        constexpr auto constantsSize = 0;
+        kernel<<<blocks, threads, constantsSize, stream_>>>(args...);
+    }
+#endif
 
     /**
      * Copy memory asynchronous from Host to Device
@@ -39,7 +55,7 @@ class CudaStream : protected InferenceEngine::details::no_copy {
 
 template <typename TDes, typename TSrc>
 void CudaStream::memcpyAsync(InferenceEngine::gpu::DevicePointer<TDes*> dest, const TSrc* src, std::size_t n) {
-    auto err = cudaMemcpyAsync(dest, src, n, cudaMemcpyHostToDevice, stream_);
+    auto err = cudaMemcpyAsync(dest.get(), src, n, cudaMemcpyHostToDevice, stream_);
     if (cudaSuccess != err) {
         THROW_IE_EXCEPTION << "Internal error: " << cudaGetErrorString(err);
     }
@@ -47,7 +63,7 @@ void CudaStream::memcpyAsync(InferenceEngine::gpu::DevicePointer<TDes*> dest, co
 
 template <typename TDes, typename TSrc>
 void CudaStream::memcpyAsync(TDes* dest, InferenceEngine::gpu::DevicePointer<const TSrc*> src, std::size_t n) {
-    auto err = cudaMemcpyAsync(dest, src, n, cudaMemcpyDeviceToHost, stream_);
+    auto err = cudaMemcpyAsync(dest, src.get(), n, cudaMemcpyDeviceToHost, stream_);
     if (cudaSuccess != err) {
         THROW_IE_EXCEPTION << "Internal error: " << cudaGetErrorString(err);
     }

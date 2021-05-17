@@ -28,7 +28,6 @@ endif()
 
 target_include_directories(${TARGET_NAME}
                            PUBLIC
-                           "${GSL_INCLUDE_DIR}"
                            "${CUDAToolkit_INCLUDE_DIRS}"
                            PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -36,7 +35,6 @@ target_include_directories(${TARGET_NAME}
                            "${InferenceEngine_C_API_SOURCE_DIR}/include")
 target_include_directories(${TARGET_NAME}_test_static
                            PUBLIC
-                           "${GSL_INCLUDE_DIR}"
                            "${CUDAToolkit_INCLUDE_DIRS}"
                            PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -49,6 +47,7 @@ target_link_libraries(${TARGET_NAME}
                       IE::inference_engine
                       IE::inference_engine_transformations
                       GSL
+                      fmt-header-only
                       CUDA::cudart
                       CUDA::cuda_driver
                       ${NGRAPH_LIBRARIES})
@@ -57,6 +56,7 @@ target_link_libraries(${TARGET_NAME}_test_static
                       IE::inference_engine
                       IE::inference_engine_transformations
                       GSL
+                      fmt-header-only
                       CUDA::cudart
                       CUDA::cuda_driver
                       ${NGRAPH_LIBRARIES})

@@ -31,11 +31,11 @@ class ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDef
 public:
     ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                       Configuration cfg,
-                      InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
+                      InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                       std::shared_ptr<Plugin> plugin);
     ExecutableNetwork(std::istream& model,
                       Configuration cfg,
-                      InferenceEngine::IStreamsExecutor::Ptr waitExecutor,
+                      InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                       std::shared_ptr<Plugin> plugin);
 
     ~ExecutableNetwork() override = default;
@@ -61,12 +61,12 @@ private:
     void InitExecutor();
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor,
             std::size_t numStreams);
-    std::shared_ptr<CudaStream> GetCudaStream(int streamId);
+    int GetCudaDeviceId() const noexcept;
 
     std::atomic<std::size_t>                    request_id_ = {0};
     InferenceEngine::CNNNetwork                 cnn_network_;
     Configuration                               cfg_;
-    InferenceEngine::IStreamsExecutor::Ptr      wait_executor_;
+    InferenceEngine::ITaskExecutor::Ptr         cuda_stream_executor_;
     std::shared_ptr<Plugin>                     plugin_;
     std::shared_ptr<ngraph::Function>           function_;
     std::vector<OperationBase::Ptr>             exec_sequence_;
