@@ -8,6 +8,7 @@ OpenVINO™ ARM CPU plugin is supported and validated on the following platforms
 
 Host  | OS
 ------------- | -------------
+Raspberry Pi* 4 Model B   | Debian* 9 (32-bit)
 Raspberry Pi* 4 Model B   | Debian* 10.3 (32-bit)
 Raspberry Pi* 4 Model B   | Ubuntu* 18.04 (64-bit)
 
@@ -16,7 +17,8 @@ OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVINO
 
 ## How to build
 ### Approach #1: build OpenCV, OpenVINO™ and the plugin using pre-configured Dockerfile (cross-compiling, the preferred way)
-OpenVINO™ and ARM CPU plugin could be built in Docker* container for [32-bit](Dockerfile.RPi32) Debian* and [64-bit](Dockerfile.RPi64) Ubuntu*:
+OpenVINO™ and ARM CPU plugin could be built in Docker* container for 32-bit Debian* [Stretch](Dockerfile.RPi32_stretch),
+[Buster](Dockerfile.RPi32_buster) and [64-bit](Dockerfile.RPi64_bionic) Ubuntu*:
 
 1. Clone `openvino_contrib` repository:
 ```
@@ -28,7 +30,7 @@ cd openvino_contrib/modules/arm_plugin
 ```
 3. Build a Docker* image:
 ```
-docker image build -t arm-plugin -f Dockerfile.RPi32 .
+docker image build -t arm-plugin -f Dockerfile.RPi32_buster .
 ```
 4. Build the plugin in Docker* container:
 
