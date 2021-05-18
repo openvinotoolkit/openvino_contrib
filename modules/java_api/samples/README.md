@@ -58,8 +58,10 @@ Throughput: 148.29 FPS
 Upon the start-up the sample application reads command line parameters and loads a network and an image to the Inference
 Engine device. When inference is done, the application creates an output image/video.
 
-To download model ( .bin and .xml files must be downloaded) use:
-https://download.01.org/opencv/2019/open_model_zoo/R1/models_bin/face-detection-adas-0001/FP32/
+Download model from [Open Model Zoo](https://github.com/openvinotoolkit/open_model_zoo) using the following command:
+```
+python downloader.py --name face-detection-adas-0001 --output_dir .
+```
 
 ## Build and run
 
