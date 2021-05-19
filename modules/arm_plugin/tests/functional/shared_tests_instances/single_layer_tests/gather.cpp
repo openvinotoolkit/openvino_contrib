@@ -133,6 +133,8 @@ const std::vector< std::tuple<int, int> > axes_batches = {
         std::tuple<int, int>(-2, 0),
         std::tuple<int, int>(1, 1),
         std::tuple<int, int>(-1, 1),
+        std::tuple<int, int>(1, -2),
+        std::tuple<int, int>(-1, -2),
 };
 
 const auto params_g7 = testing::Combine(
