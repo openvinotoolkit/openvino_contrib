@@ -23,3 +23,8 @@ addIeTargetTest(
         LABELS
         CUDA
 )
+if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
+    set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
+else()
+    set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
+endif()

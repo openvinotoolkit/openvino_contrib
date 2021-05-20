@@ -80,7 +80,8 @@ class Relu : public OperationBase {
   }
 };
 
-OperationRegistry::Register<Relu> reg{"Relu"};
 
 }  // namespace
+
+OPERATION_REGISTER(Relu, Relu);
 }  // namespace CUDAPlugin
