@@ -182,9 +182,8 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     auto start = Time::now();
     memory_manager_proxy_ =
         _executableNetwork->memory_manager_pool_->WaitAndGet();
-    InferenceEngine::BlobMap inputs, outputs;
     auto& manager = memory_manager_proxy_->Get();
-    InferenceRequestContext inferRequestContext{inputs, outputs, threadContext};
+    InferenceRequestContext inferRequestContext{_inputs, _outputs, threadContext};
     for (auto& op : _executableNetwork->exec_sequence_) {
       ThrowIfCanceled();
       auto inputTensors = manager.inputTensorPointers(*op);
