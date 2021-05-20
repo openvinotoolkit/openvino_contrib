@@ -6,6 +6,7 @@
 
 #include "details/ie_no_copy.hpp"
 
+#include <gsl/pointers>
 #include "memory_manager/model/cuda_memory_model.hpp"
 
 namespace CUDAPlugin {
@@ -35,7 +36,7 @@ public:
 
 private:
   MemoryModel::Ptr model_;
-  void* device_mem_ptr_;
+  gsl::owner<void*> device_mem_ptr_;
 };
 
 }  // namespace CUDAPlugin
