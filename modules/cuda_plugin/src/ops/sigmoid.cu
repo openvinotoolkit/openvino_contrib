@@ -2,19 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <vector>
 #include <cuda_runtime.h>
 #include <gsl/gsl_assert>
-#include <ngraph/node.hpp>
 #include <cuda/device.hpp>
 #include <cuda_operation_registry.hpp>
 #include <utility>
 
-#include <kernels/sigmoid.hpp>
 #include <cuda/device.hpp>
 
+#include "details/cuda_ngraph_import.hpp"
 #include "sigmoid.hpp"
 
 namespace CUDAPlugin {
+
+static __global__ void sigmoid(const size_t inputSize, const float *x, float *y) {
+    const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < inputSize) {
+        y[i] = 1 / (1 + expf(-x[i]));
+    }
+}
 
 SigmoidOp::SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
@@ -40,12 +47,13 @@ void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, O
                                (input_size_ / maxBlockSize) :
                                (input_size_ / maxBlockSize + 1);
     const unsigned threadsPerBlock = (numBlocks == 1) ? input_size_ : maxBlockSize;
-    sigmoid_run(
-        stream, numBlocks, threadsPerBlock,
-        input_size_,
-        static_cast<const float *>(inputs[0].get()),
-        static_cast<float *>(outputs[0].get()));
+    stream.run(
+            numBlocks, threadsPerBlock,
+            sigmoid,
+            input_size_,
+            static_cast<const float *>(inputs[0].get()),
+            static_cast<float *>(outputs[0].get()));
 }
 
-OPERATION_REGISTER(SigmoidOp, "Sigmoid");
+OPERATION_REGISTER(SigmoidOp, Sigmoid);
 } // namespace CUDAPlugin

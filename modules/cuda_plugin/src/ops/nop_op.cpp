@@ -7,9 +7,9 @@
 
 namespace CUDAPlugin {
 
-OperationRegistry::Register<NopOp> op_registrar_Constant{"Constant"};
-OperationRegistry::Register<NopOp> op_registrar_Reshape{"Reshape"};
-OperationRegistry::Register<NopOp> op_registrar_Squeeze{"Squeeze"};
-OperationRegistry::Register<NopOp> op_registrar_Unsqueeze{"Unsqueeze"};
+OPERATION_REGISTER(NopOp, Constant);
+OPERATION_REGISTER(NopOp, Reshape);
+OPERATION_REGISTER(NopOp, Squeeze);
+OPERATION_REGISTER(NopOp, Unsqueeze);
 
 } // namespace CUDAPlugin

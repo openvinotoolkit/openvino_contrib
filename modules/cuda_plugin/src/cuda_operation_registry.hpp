@@ -57,5 +57,5 @@ class OperationRegistry final {
 }  // namespace CUDAPlugin
 
 #define OPERATION_REGISTER(type, name)                                    \
-  [[maybe_unused]] static ::CUDAPlugin::OperationRegistry::Register<type> \
-      reg##type{name};
+  [[maybe_unused]] ::CUDAPlugin::OperationRegistry::Register<type> \
+      op_register_##name{#name};

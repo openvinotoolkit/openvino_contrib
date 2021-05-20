@@ -28,5 +28,5 @@ void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs,
   context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->byteSize());
 }
 
-OPERATION_REGISTER(ParameterOp, "Parameter");
+OPERATION_REGISTER(ParameterOp, Parameter);
 } // namespace CUDAPlugin
