@@ -49,4 +49,3 @@ void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, O
 
 OPERATION_REGISTER(SigmoidOp, "Sigmoid");
 } // namespace CUDAPlugin
-
