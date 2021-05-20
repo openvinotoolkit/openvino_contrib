@@ -175,6 +175,13 @@ private:
     static bool IsConstantNode(const ngraph::Node& node);
 
     /**
+     * Checks whether the given node changes tensor shape only and
+     * doesn't change tensor data itself. For such nodes, input and output
+     * data tensors will reuse the same buffer allocation.
+     */
+    static bool isReshapeOnlyNode(const ngraph::Node& node);
+
+    /**
      * Exception helper
      */
     static void ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input);
