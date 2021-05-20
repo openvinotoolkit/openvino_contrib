@@ -10,6 +10,7 @@
 #include <memory>
 #include <unordered_map>
 #include <chrono>
+#include <optional>
 
 #include <ie_common.h>
 #include <cpp_interfaces/impl/ie_infer_request_internal.hpp>
@@ -38,7 +39,9 @@ public:
                          const InferenceEngine::OutputsDataMap&    networkOutputs,
                          const std::shared_ptr<ExecutableNetwork>& executableNetwork);
 
-    void InferImpl() override;
+    void InferImpl() override {
+        THROW_IE_EXCEPTION_WITH_STATUS(NOT_IMPLEMENTED);
+    }
     std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 
