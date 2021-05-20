@@ -5,6 +5,7 @@
 #include <kernels/saxpy.cuh>
 #include <cuda_operation_registry.hpp>
 
+#include "details/cuda_ngraph_import.hpp"
 #include "saxpy_op.hpp"
 
 namespace CUDAPlugin {
@@ -25,6 +26,6 @@ void SaxpyOp::Execute(const InferenceRequestContext& context,
         outputTensors[0].cast<float*>().get());
 }
 
-OPERATION_REGISTER(SaxpyOp, "Saxpy");
+OPERATION_REGISTER(SaxpyOp, Saxpy);
 
 } // namespace CUDAPlugin
