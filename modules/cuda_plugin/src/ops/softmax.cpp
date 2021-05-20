@@ -153,5 +153,5 @@ void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, O
       outputs[0].get()));
 }
 
-OPERATION_REGISTER(SoftmaxOp, "Softmax");
+OPERATION_REGISTER(SoftmaxOp, Softmax);
 } // namespace CUDAPlugin

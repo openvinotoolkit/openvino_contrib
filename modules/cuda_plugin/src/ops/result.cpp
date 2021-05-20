@@ -34,5 +34,5 @@ void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
   context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
 }
 
-OPERATION_REGISTER(ResultOp, "Result");
+OPERATION_REGISTER(ResultOp, Result);
 } // namespace CUDAPlugin
