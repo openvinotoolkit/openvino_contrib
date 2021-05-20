@@ -7,6 +7,9 @@
 #include <details/ie_exception.hpp>
 #include "ngraph/op/result.hpp"
 #include "ngraph/op/constant.hpp"
+#include "ngraph/op/reshape.hpp"
+#include "ngraph/op/squeeze.hpp"
+#include "ngraph/op/unsqueeze.hpp"
 
 #include <gsl/span_ext>
 
@@ -115,11 +118,25 @@ std::size_t OperationBuffersExtractor::GetBufferSize(const ngraph::Input<ngraph:
 }
 
 void OperationBuffersExtractor::extractMutableBuffers(const NodePtr& node, int node_idx, unsigned& buffer_idx) {
-    for (const auto& output : node->outputs()) {
-        mutable_buffers_.emplace(std::make_pair(buffer_idx, BufferDesc { node_idx,
-                node_idx, GetBufferSize(output) }));
-        buffer_names_.emplace(GetBufferNameInternal(output), buffer_idx);
-        buffer_idx++;
+    if (isReshapeOnlyNode(*node)) {
+        try {
+            Expects(node->inputs().size() >= 1);
+            Expects(node->outputs().size() == 1);
+            const auto input = node->inputs().at(0);
+            const auto input_idx = buffer_names_.at(GetBufferNameInternal(input));
+            const auto output = node->outputs().at(0);
+            buffer_names_.emplace(GetBufferNameInternal(output), input_idx);
+        } catch (std::out_of_range&) {
+            THROW_IE_EXCEPTION << "Failed to extract output buffer for reshape only node '"
+                               << node->get_name() << "'";
+        }
+    } else {
+        for (const auto& output : node->outputs()) {
+            mutable_buffers_.emplace(std::make_pair(buffer_idx, BufferDesc { node_idx,
+                    node_idx, GetBufferSize(output) }));
+            buffer_names_.emplace(GetBufferNameInternal(output), buffer_idx);
+            buffer_idx++;
+        }
     }
 }
 
@@ -138,6 +155,12 @@ bool OperationBuffersExtractor::IsResultNode(const ngraph::Node& node) {
 
 bool OperationBuffersExtractor::IsConstantNode(const ngraph::Node& node) {
     return dynamic_cast<const ngraph::op::v0::Constant*>(&node) != nullptr;
+}
+
+bool OperationBuffersExtractor::isReshapeOnlyNode(const ngraph::Node& node) {
+    return ngraph::is_type<const ngraph::op::v1::Reshape>(&node)
+        || ngraph::is_type<const ngraph::op::v0::Squeeze>(&node)
+        || ngraph::is_type<const ngraph::op::v0::Unsqueeze>(&node);
 }
 
 void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input) {
