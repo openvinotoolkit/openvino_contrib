@@ -59,13 +59,6 @@ public:
     const ngraph::op::Result& result(const std::string& name) const {
       return *function_->get_results().at(output_index_.at(name));
     }
-    void createInputs(
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& inputTensors,
-        const InferenceEngine::BlobMap& deviceInputs);
-    void createOutputs(
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& outputTensors,
-        const InferenceEngine::BlobMap& outputs,
-        const InferenceEngine::BlobMap& networkOutputBlobs);
 
 private:
     friend class ::ExecNetworkTest;
