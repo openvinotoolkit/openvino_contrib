@@ -63,12 +63,17 @@ struct Argument<arm_compute::ITensor*> {
     arm_compute::Tensor     _notPaddedTensor;
 };
 
+struct HostTensors {
+    ngraph::HostTensorVector _hosts;
+    const ngraph::Node*      _node = nullptr;
+};
+
 template<>
-struct Argument<ngraph::HostTensorVector> {
-    Argument(const ngraph::HostTensorVector& hosts, const std::vector<arm_compute::ITensor*>& tensors, ArgumentType type) :
+struct Argument<HostTensors> {
+    Argument(const HostTensors& hosts, const std::vector<arm_compute::ITensor*>& tensors, ArgumentType type) :
         _type{type},
         _tensors(tensors),
-        _hosts{hosts} {
+        _hosts{hosts._hosts} {
         _notPaddedTensors.resize(_tensors.size());
         for (size_t i = 0; i < _tensors.size(); i++) {
             if (_tensors[i]->info()->has_padding()) {
@@ -227,8 +232,8 @@ struct Converter {
                 }
             }
 
-            void StartArgumentLifeTime(Argument<ngraph::HostTensorVector>& hostsArgument) {
-                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+            void StartArgumentLifeTime(Argument<HostTensors>& hostsArgument) {
+                for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
                     if (hostsArgument._tensors[i]->info()->has_padding()) {
                         _memoryGroup.manage(&(hostsArgument._notPaddedTensors[i]));
                     }
@@ -257,8 +262,8 @@ struct Converter {
                 }
             }
 
-            void EndArgumentLifeTime(Argument<ngraph::HostTensorVector>& hostsArgument) {
-                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+            void EndArgumentLifeTime(Argument<HostTensors>& hostsArgument) {
+                for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
                     if (hostsArgument._tensors[i]->info()->has_padding()) {
                         hostsArgument._notPaddedTensors[i].allocator()->allocate();
                     }
@@ -305,17 +310,15 @@ struct Converter {
                 }
             }
 
-            void CopyArgument(ArgumentType type, Argument<ngraph::HostTensorVector>& hostsArgument) {
-                for (size_t i = 0; i < hostsArgument._hosts.size(); i++) {
+            void CopyArgument(ArgumentType type, Argument<HostTensors>& hostsArgument) {
+                for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
                     void* host_ptr = static_cast<void*>(hostsArgument._hosts[i]->get_data_ptr());
                     void* tensor_ptr = static_cast<void*>(hostsArgument._tensors[i]->buffer());
                     if (host_ptr != tensor_ptr) {
-                        IE_SUPPRESS_DEPRECATED_START
-                        hostsArgument._hosts[i] = std::make_shared<ngraph::HostTensor>(hostsArgument._hosts[i]->get_element_type(),
-                                                               hostsArgument._hosts[i]->get_shape(),
-                                                               tensor_ptr,
-                                                               hostsArgument._hosts[i]->get_name());
-                        IE_SUPPRESS_DEPRECATED_END
+                        hostsArgument._hosts[i] = std::make_shared<ngraph::HostTensor>(
+                                                    hostsArgument._hosts[i]->get_element_type(),
+                                                    hostsArgument._hosts[i]->get_shape(),
+                                                    tensor_ptr);
                     }
                     if (hostsArgument._tensors[i]->info()->has_padding()) {
                         if (hostsArgument._type == type) {
@@ -372,9 +375,7 @@ struct Converter {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (input.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same "
-                    << input.get_element_type() << " "
-                    << type;
+                IE_THROW() << "Argument types should be the same " << input << " " << type;
             }
             return {_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()),
                     ArgumentType::Input};
@@ -385,24 +386,18 @@ struct Converter {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (output.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same "
-                    << output.get_element_type() << " "
-                    << type;
+                IE_THROW() << "Argument types should be the same " << output << " " << type;
             }
             return {_converter._layers.at(output.get_node()->get_friendly_name())._outputs.at(output.get_index()).get(),
                     ArgumentType::Output};
         }
 
         template<std::size_t I>
-        Argument<ngraph::HostTensorVector> MakeArgument(ngraph::HostTensorVector& hosts) {
+        Argument<HostTensors> MakeArgument(HostTensors& hosts) {
             std::vector<arm_compute::ITensor*> tensors;
-            for (size_t i = 0; i < hosts.size(); i++) {
-                IE_SUPPRESS_DEPRECATED_START
-                if (_converter._layers.find(hosts[i]->get_name()) == _converter._layers.end()) {
-                    IE_THROW() << "Output " << hosts[i]->get_name() << " was not allocated";
-                }
-                tensors.push_back(_converter._layers.at(hosts[i]->get_name())._outputs.at(i).get());
-                IE_SUPPRESS_DEPRECATED_END
+            IE_ASSERT(hosts._node != nullptr);
+            for (std::size_t i = 0; i < hosts._hosts.size(); i++) {
+                tensors.push_back(_converter._layers.at(hosts._node->get_friendly_name())._outputs.at(i).get());
             }
             return {hosts, tensors, ArgumentType::Output};
         }

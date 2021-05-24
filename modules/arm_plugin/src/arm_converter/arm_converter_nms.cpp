@@ -159,7 +159,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSupp
                                     node.get_output_partial_shape(0).get_max_shape(),
                                     node.get_sort_result_descending(),
                                     node.output(0).get_element_type(),
-                                    hosts,
+                                    HostTensors{hosts, &node},
                                     selected_scores_type,
                                     node.get_box_encoding());
     };
