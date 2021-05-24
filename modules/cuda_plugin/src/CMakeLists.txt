@@ -51,6 +51,7 @@ target_link_libraries(${TARGET_NAME}
                       CUDA::cudart
                       cudnn
                       CUDA::cublas
+                      CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
 target_link_libraries(${TARGET_NAME}_test_static
                       PRIVATE
@@ -61,6 +62,7 @@ target_link_libraries(${TARGET_NAME}_test_static
                       CUDA::cudart
                       cudnn
                       CUDA::cublas
+                      CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
 if(TARGET IE::inference_engine_plugin_api)
     target_link_libraries(${TARGET_NAME}_test_static PRIVATE IE::inference_engine_plugin_api)
