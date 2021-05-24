@@ -6,6 +6,7 @@
 
 #include <cudnn.h>
 #include <cublas_v2.h>
+#include <cutensor.h>
 
 #include <gpu/device_pointers.hpp>
 #if __has_include(<experimental/source_location>)
@@ -58,6 +59,12 @@ inline void throwIfError(cublasStatus_t err,
   if (err != CUBLAS_STATUS_SUCCESS)
     throwIEException(cublasGetErrorString(err), location);
 }
+inline void throwIfError(cutensorStatus_t err,
+                         const std::experimental::source_location& location =
+                             std::experimental::source_location::current()) {
+  if (err != CUTENSOR_STATUS_SUCCESS)
+    throwIEException(cutensorGetErrorString(err), location);
+}
 
 [[gnu::cold]] void logError(const std::string& msg,
                             const std::experimental::source_location& location =
@@ -76,6 +83,11 @@ inline void logIfError(cublasStatus_t err,
                        const std::experimental::source_location& location =
                        std::experimental::source_location::current()) {
     if (err != CUBLAS_STATUS_SUCCESS) logError(cublasGetErrorString(err), location);
+}
+inline void logIfError(cutensorStatus_t err,
+                       const std::experimental::source_location& location =
+                           std::experimental::source_location::current()) {
+  if (err != CUTENSOR_STATUS_SUCCESS) logError(cutensorGetErrorString(err), location);
 }
 
 template <typename T, typename R, typename... Args>
@@ -151,6 +163,7 @@ template <typename R, typename T, typename... Args>
 T firstArgHelper(R (*f)(T, Args...));
 template <auto F>
 using FirstArg = decltype(firstArgHelper(F));
+
 template <auto Construct, auto Destruct, typename N = FirstArg<Destruct>>
 class UniqueBase {
   static_assert(std::is_same_v<N, FirstArg<Destruct>>,
@@ -158,6 +171,21 @@ class UniqueBase {
                 "same as default");  // third arg isn't needed, but
                                      // eclipse parser can't derive it
   using Native = N;
+  Native native{create(Construct)};
+public:
+  ~UniqueBase() {
+      logIfError(Destruct(native));
+  }
+  const Native& get() const noexcept { return native; }
+};
+
+template <auto Construct, auto Destruct, typename N>
+class UniqueBase<Construct, Destruct, N*> {
+  static_assert(std::is_same_v<N*, FirstArg<Destruct>>,
+                "you can pass third argument explicitly, but it must be the "
+                "same as default");  // third arg isn't needed, but
+                                     // eclipse parser can't derive it
+  using Native = N*;
   struct Deleter {
     void operator()(Native p) const noexcept { logIfError(Destruct(p)); }
   };

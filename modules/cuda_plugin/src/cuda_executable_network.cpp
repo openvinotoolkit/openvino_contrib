@@ -266,44 +266,4 @@ void ExecutableNetwork::ExportImpl(std::ostream& modelStream) {
     // TODO: implement network precision, layout, preprocessing info serialization
 }
 
-void ExecutableNetwork::createInputs(
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& inputTensors,
-    const InferenceEngine::BlobMap& deviceInputs) {
-  auto& parameters = function_->get_parameters();
-  for (auto&& [name, ptr] : deviceInputs) {
-    auto index = input_index_.at(name);
-    const auto& parameter = parameters[index];
-    const auto& parameterShape = parameter->get_shape();
-    const auto& parameterType = parameter->get_element_type();
-    inputTensors[index] = plugin_->_backend->create_tensor(
-        parameterType, parameterShape,
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(ptr)
-            ->rmap()
-            .as<void*>());
-  }
-}
-
-void ExecutableNetwork::createOutputs(
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& outputTensors,
-    const InferenceEngine::BlobMap& outputs,
-    const InferenceEngine::BlobMap& networkOutputBlobs) {
-  auto& results = function_->get_results();
-  for (auto&& [name, outputBlob] : outputs) {
-    auto networkOutput = networkOutputBlobs.at(name);
-    if (outputBlob->getTensorDesc().getPrecision() ==
-        networkOutput->getTensorDesc().getPrecision()) {
-      networkOutput = outputBlob;
-    }
-    auto index = output_index_.at(name);
-    const auto& result = results[index];
-    const auto& resultShape = result->get_shape();
-    const auto& resultType = result->get_element_type();
-    outputTensors[index] = plugin_->_backend->create_tensor(
-        resultType, resultShape,
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)
-            ->wmap()
-            .as<void*>());
-  }
-}
-
 } // namespace CUDAPlugin
