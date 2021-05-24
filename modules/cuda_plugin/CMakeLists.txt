@@ -48,6 +48,13 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
 else()
     find_package(CUDAToolkit REQUIRED)
 endif()
+find_library(CUTENSOR_PATH
+             NAMES cutensor
+             HINTS ${CUDA_TOOLKIT_ROOT_DIR} ${CUDA_PATH} ENV CUTENSOR_PATH
+             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+add_library(cutensor SHARED IMPORTED GLOBAL)
+set_target_properties(cutensor PROPERTIES IMPORTED_LOCATION ${CUTENSOR_PATH})
+add_library(CUDA::cutensor ALIAS cutensor)
 
 include(FetchContent)
 
