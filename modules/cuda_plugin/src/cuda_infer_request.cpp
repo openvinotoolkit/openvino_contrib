@@ -24,6 +24,8 @@
 #include "cuda_plugin.hpp"
 #include "cuda_itt.hpp"
 
+#include <cuda_fp16.h>
+
 using namespace InferenceEngine;
 
 namespace CUDAPlugin {
@@ -48,132 +50,36 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
       openvino::itt::handle(name + "_WaitPipline"),
     };
 
-    allocateDeviceBuffers();
-    allocateBlobs();
-}
-
-void CudaInferRequest::allocateDeviceBuffers() {
-    // Allocate plugin backend specific memory handles
-    _inputTensors.resize(_networkInputs.size());
-    _outputTensors.resize(_networkOutputs.size());
-}
-
-template<typename BlobDataMap, typename GetNetworkPrecisionF>
-static void AllocateImpl(const BlobDataMap& userDataMap,
-                         BlobMap& userBlobMap,
-                         BlobMap& deviceBlobMap,
-                         GetNetworkPrecisionF&& GetNetworkPrecision) {
-    for (auto&& userData : userDataMap) {
-        auto& dims = userData.second->getTensorDesc().getDims();
-        const auto deviceLayout = TensorDesc::getLayoutByDims(dims);
-        auto userPrecision = userData.second->getTensorDesc().getPrecision();
-        auto userLayout = userData.second->getTensorDesc().getLayout();
-
-        Blob::Ptr userBlob;
-        switch (userPrecision) {
-            case Precision::U8: {
-                userBlob = InferenceEngine::make_shared_blob<std::uint8_t>({userPrecision, dims, userLayout});
-            } break;
-            case Precision::I16: {
-                userBlob = InferenceEngine::make_shared_blob<std::int16_t>({userPrecision, dims, userLayout});
-            } break;
-//            case Precision::FP16: { // This does not work
-//                userBlob = InferenceEngine::make_shared_blob<ngraph::float16>({userPrecision, dims, userLayout});
-//            } break;
-            case Precision::FP32 : {
-                userBlob = InferenceEngine::make_shared_blob<float>({userPrecision, dims, userLayout});
-            } break;
-            // TODO add FP16
-            default: //IE_THROW() << "Cuda Plugin: Unsupported Input/Output Precision" << userPrecision;
-                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output Precision " << userPrecision;
+    for (auto&& [inputName, userInputInfo] : _networkInputs) {
+        const auto& descr = userInputInfo->getTensorDesc();
+        auto userInputBlob = allocateBlob(descr.getDims(), descr.getPrecision(), descr.getLayout());
+        _inputs[inputName] = userInputBlob;
+        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
+        if (descr.getPrecision() != networkPrecision) {
+            if (descr.getPrecision() == Precision::FP32 && networkPrecision == Precision::FP16) {
+                // Let InferRequestInternal::execDataPreprocessing do preprocessing without type conversion.
+                // Type conversion will be performed in CudaInferRequest::inferPreprocess().
+                _deviceInputs[inputName] = userInputBlob;
+                fp16NetworkInputBlobs_[inputName] = allocateBlob(descr.getDims(),
+                        networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
+            } else {
+            _deviceInputs[inputName] = allocateBlob(descr.getDims(),
+                    networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
+            }
+        } else {
+            _deviceInputs[inputName] = userInputBlob;
         }
-        userBlob->allocate();
-        userBlobMap[userData.first] = userBlob;
-
-        auto networkPrecision = GetNetworkPrecision(userData.first);
-        Blob::Ptr deviceBlob;
-        switch (networkPrecision) {
-            case ngraph::element::Type_t::f32 : {
-                if (userPrecision == Precision::FP32 && userLayout == deviceLayout) {
-                    deviceBlob = userBlob;
-                } else {
-                    deviceBlob = InferenceEngine::make_shared_blob<float>({Precision::FP32, dims, deviceLayout});
-                }
-            } break;
-            case ngraph::element::Type_t::i16 : {
-                if (userPrecision == Precision::I16 && userLayout == deviceLayout) {
-                    deviceBlob = userBlob;
-                } else {
-                    deviceBlob = InferenceEngine::make_shared_blob<std::int16_t>({Precision::I16, dims, deviceLayout});
-                }
-            } break;
-            case ngraph::element::Type_t::u8 : {
-                if (userPrecision == Precision::U8 && userLayout == deviceLayout) {
-                    deviceBlob = userBlob;
-                } else {
-                    deviceBlob = InferenceEngine::make_shared_blob<uint8_t>({Precision::U8, dims, deviceLayout});
-                }
-            } break;
-            default: //IE_THROW() << "Cuda Plugin: Unsupported network Input/Output Precision " << networkPrecision;
-                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported network Input/Output Precision " << networkPrecision;
-        }
-        // preprocessing converts user input blob to desired device input blob automatically
-        // NOTE: this is not supported for output user blobs yet
-        if (userBlob != deviceBlob) {
-            deviceBlob->allocate();
-        }
-        deviceBlobMap[userData.first] = deviceBlob;
     }
-}
-
-void CudaInferRequest::allocateBlobs() {
-    AllocateImpl(_networkInputs, _inputs, _deviceInputs, [&] (const std::string& blobName) {
-        return _executableNetwork->parameter(blobName).get_element_type();
-    });
-    AllocateImpl(_networkOutputs, _outputs, _networkOutputBlobs, [&] (const std::string& blobName) {
-        return _executableNetwork->result(blobName).get_element_type();
-    });
-}
-
-template<typename SrcT, typename DstT>
-static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
-    std::copy_n(InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const SrcT*>(),
-                src->size(),
-                InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<DstT*>());
-}
-
-static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
-    switch (src->getTensorDesc().getPrecision()) {
-        case Precision::U8 : {
-            switch (dst->getTensorDesc().getPrecision()) {
-                case Precision::U8 : break;
-                case Precision::FP32 : {
-                    blobCopy<std::uint8_t, float>(src, dst);
-                } break;
-                default : {
-                    //IE_THROW() << "Unsupported precision conversion from "
-                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
-                }
-            }
-        } break;
-        case Precision::FP32 : {
-            switch (dst->getTensorDesc().getPrecision()) {
-                case Precision::FP32 : break;
-                case Precision::U8 : {
-                    blobCopy<float, std::uint8_t>(src, dst);
-                } break;
-                default : {
-                    // IE_THROW() << "Unsupported precision conversion from "
-                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
-                }
-            }
-        } break;
-        default : {
-            //IE_THROW() << "Unsupported precision conversion from " << src->getTensorDesc().getPrecision();
-            THROW_IE_EXCEPTION << "Unsupported precision conversion from " << src->getTensorDesc().getPrecision();
-        }
+    for (auto&& [outputName, userOutputInfo] : _networkOutputs) {
+        const auto& descr = userOutputInfo->getTensorDesc();
+        auto userOutputBlob = allocateBlob(descr.getDims(), descr.getPrecision(), descr.getLayout());
+        _outputs[outputName] = userOutputBlob;
+        const auto networkPrecision = convertType(_executableNetwork->result(outputName).get_element_type());
+        if (descr.getPrecision() != networkPrecision)
+            _networkOutputBlobs[outputName] = allocateBlob(descr.getDims(),
+                    networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
+        else
+            _networkOutputBlobs[outputName] = userOutputBlob;
     }
 }
 
@@ -184,10 +90,14 @@ void CudaInferRequest::inferPreprocess() {
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in constructor.
     InferRequestInternal::execDataPreprocessing(_deviceInputs);
-    cancellation_token_.Check();
-    _executableNetwork->createInputs(_inputTensors, _deviceInputs);
-    cancellation_token_.Check();
-    _executableNetwork->createOutputs(_outputTensors, _outputs, _networkOutputBlobs);
+    // InferRequestInternal::execDataPreprocessing() doesn't support conversion from fp32 to fp16.
+    // It converts floats to int8_t values instead.
+    // To avoid such behavior, CudaInferRequest creates network blob in fp32 format.
+    // Subsequent conversion is performed here.
+    for (auto&& [inputName, fp16NetworkInput] : fp16NetworkInputBlobs_) {
+        convertPrecision(_deviceInputs.at(inputName), fp16NetworkInput);
+        _deviceInputs[inputName] = fp16NetworkInput;
+    }
     cancellation_token_.Check();
     _durations[Preprocess] = Time::now() - start;
 }
@@ -198,7 +108,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     memory_manager_proxy_ =
         _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
     auto& manager = memory_manager_proxy_->Get();
-    InferenceRequestContext inferRequestContext{_inputs, _outputs, threadContext};
+    InferenceRequestContext inferRequestContext{_deviceInputs, _networkOutputBlobs, threadContext};
     for (auto& op : _executableNetwork->exec_sequence_) {
       cancellation_token_.Check();
       auto inputTensors = manager.inputTensorPointers(*op);
@@ -229,7 +139,7 @@ void CudaInferRequest::inferPostprocess() {
         // perform precision conversion of network output's precision and computational
         // graph output's precision are different
         if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision()) {
-            blobCopy(networkOutput, outputBlob);
+            convertPrecision(networkOutput, outputBlob);
         }
     }
     _durations[Postprocess] = Time::now() - start;
@@ -262,6 +172,122 @@ std::map<std::string, InferenceEngineProfileInfo> CudaInferRequest::GetPerforman
 std::shared_ptr<ExecutableNetwork>
 CudaInferRequest::GetExecNetwork() {
     return _executableNetwork;
+}
+
+InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
+        const std::vector<std::size_t>& shape, InferenceEngine::Precision precision,
+        InferenceEngine::Layout layout) {
+    Blob::Ptr blob;
+    switch (precision) {
+    case Precision::FP16:
+        blob = InferenceEngine::make_shared_blob<std::uint16_t>({
+                Precision::FP16, shape, layout });
+        break;
+    case Precision::FP32:
+        blob = InferenceEngine::make_shared_blob<float>({
+                Precision::FP32, shape, layout });
+        break;
+    case Precision::I16:
+        blob = InferenceEngine::make_shared_blob<std::int16_t>({
+                Precision::I16, shape, layout });
+        break;
+    case Precision::U8:
+        blob = InferenceEngine::make_shared_blob<uint8_t>({
+                Precision::U8, shape, layout });
+        break;
+    default:
+        THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output Precision " << precision;
+    }
+    blob->allocate();
+    return blob;
+}
+
+InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(
+        ngraph::element::Type_t type) {
+    using InferenceEngine::Precision;
+    using ngraph::element::Type_t;
+    switch (type) {
+    case Type_t::f16:
+        return Precision::FP16;
+    case Type_t::f32:
+        return Precision::FP32;
+    case Type_t::u8:
+        return Precision::U8;
+    case Type_t::i16:
+        return Precision::I16;
+    default:
+        THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output type " << type;
+    }
+}
+
+template<typename SrcT, typename DstT>
+void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    std::copy_n(InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const SrcT*>(),
+                src->size(),
+                InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<DstT*>());
+}
+
+template<>
+void CudaInferRequest::convertPrecision<__half, float>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
+    std::transform(begin,
+            begin + src->size(),
+            InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<float*>(),
+            __half2float);
+}
+
+template<>
+void CudaInferRequest::convertPrecision<float, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const float*>();
+    std::transform(begin,
+            begin + src->size(),
+            InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+            __float2half);
+}
+
+void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    if (src->getTensorDesc().getPrecision() == dst->getTensorDesc().getPrecision())
+        return;
+    switch (src->getTensorDesc().getPrecision()) {
+        case Precision::U8 : {
+            switch (dst->getTensorDesc().getPrecision()) {
+                case Precision::FP32 :
+                    convertPrecision<std::uint8_t, float>(src, dst);
+                    break;
+                default : {
+                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
+                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                }
+            }
+        } break;
+        case Precision::FP16:
+            switch (dst->getTensorDesc().getPrecision()) {
+            case Precision::FP32:
+                convertPrecision<__half, float>(src, dst);
+                break;
+            default:
+                THROW_IE_EXCEPTION << "Unsupported precision conversion from "
+                    << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+            }
+            break;
+        case Precision::FP32 : {
+            switch (dst->getTensorDesc().getPrecision()) {
+                case Precision::U8 :
+                    convertPrecision<float, std::uint8_t>(src, dst);
+                    break;
+                case Precision::FP16:
+                    convertPrecision<float, __half>(src, dst);
+                    break;
+                default : {
+                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
+                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                }
+            }
+        } break;
+        default : {
+            THROW_IE_EXCEPTION << "Unsupported precision conversion from " << src->getTensorDesc().getPrecision();
+        }
+    }
 }
 
 } // namespace CUDAPlugin

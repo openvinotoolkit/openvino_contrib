@@ -6,6 +6,7 @@
 
 #include "dnn.hpp"
 #include "cublas_handle.hpp"
+#include "cutensor.hpp"
 
 namespace CUDA {
 
@@ -14,6 +15,7 @@ class ThreadContext {
   CUDA::Stream stream_;
   CUDA::DnnHandle dnnHandle_{stream_};
   CUDA::CuBlasHandle cuBlasHandle_{stream_};
+  CUDA::CuTensorHandle cuTensorHandle_;
 
  public:
   explicit ThreadContext(CUDA::Device d) : device_{d.setCurrent()} {}
@@ -21,6 +23,7 @@ class ThreadContext {
   const CUDA::Stream& stream() const noexcept { return stream_; }
   const CUDA::DnnHandle& dnnHandle() const noexcept { return dnnHandle_; }
   const CUDA::CuBlasHandle& cuBlasHandle() const noexcept { return cuBlasHandle_; }
+  const CUDA::CuTensorHandle& cuTensorHandle() const noexcept { return cuTensorHandle_; }
 };
 
 }  // namespace CUDA
