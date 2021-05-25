@@ -14,7 +14,9 @@ addIeTargetTest(
         unitTestUtils
         CUDAPlugin_test_static
         GSL
+        fmt-header-only
         ngraph_backend
+        CUDA::cublas
         INCLUDES
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src"

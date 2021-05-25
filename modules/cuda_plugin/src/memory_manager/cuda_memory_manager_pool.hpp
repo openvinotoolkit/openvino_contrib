@@ -6,6 +6,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <cancellation_token.hpp>
 
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
@@ -72,11 +73,15 @@ class MemoryManagerPool
   MemoryManagerPool(size_t num,
                     std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
                     std::shared_ptr<MemoryModel> memoryModel);
-    /**
-     * Wait and return Proxy object
-     * @return Proxy object through which we can access MemoryManager
-     */
-  Proxy WaitAndGet();
+  /**
+   * Interrupt waiting of MemoryManager Proxy object
+   */
+  void Interrupt();
+  /**
+   * Wait and return Proxy object
+   * @return Proxy object through which we can access MemoryManager
+   */
+  Proxy WaitAndGet(CancellationToken& cancellationToken);
 
  private:
   friend class ::MemoryManagerPoolTest;
