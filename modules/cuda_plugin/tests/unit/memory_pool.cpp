@@ -30,22 +30,23 @@ class MemoryManagerPoolTest : public testing::Test {
 };
 
 TEST_F(MemoryManagerPoolTest, MemoryManagerProxy_Success) {
+    CancellationToken cancellationToken{};
     std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
     auto memoryModel = std::make_shared<MemoryModel>(1000, offsets);
     auto memoryPool = std::make_shared<MemoryManagerPool>(2, nullptr, memoryModel);
     ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);
     {
         ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);
-        auto memoryManagerProxy = memoryPool->WaitAndGet();
+        auto memoryManagerProxy = memoryPool->WaitAndGet(cancellationToken);
         ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 1);
     }
     ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);
 
     {
         ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);
-        auto memoryManagerProxy0 = memoryPool->WaitAndGet();
+        auto memoryManagerProxy0 = memoryPool->WaitAndGet(cancellationToken);
         ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 1);
-        auto memoryManagerProxy1 = memoryPool->WaitAndGet();
+        auto memoryManagerProxy1 = memoryPool->WaitAndGet(cancellationToken);
         ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 0);
     }
     ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);
