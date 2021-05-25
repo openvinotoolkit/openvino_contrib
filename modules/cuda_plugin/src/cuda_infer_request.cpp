@@ -34,16 +34,19 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
                                    const InferenceEngine::OutputsDataMap&                    networkOutputs,
                                    const std::shared_ptr<ExecutableNetwork>& executableNetwork) :
     InferRequestInternal(networkInputs, networkOutputs),
-    _executableNetwork(executableNetwork) {
+    _executableNetwork(executableNetwork),
+    cancellation_token_{[this] {
+        memory_manager_proxy_.reset();
+    }} {
     // TODO: allocate infer request device and host buffers if needed, fill actual list of profiling tasks
 
-  std::string name = _executableNetwork->newRequestName();
-  _profilingTask = {
+    std::string name = _executableNetwork->newRequestName();
+    _profilingTask = {
       openvino::itt::handle(name + "_Preprocess"),
       openvino::itt::handle(name + "_Postprocess"),
       openvino::itt::handle(name + "_StartPipline"),
       openvino::itt::handle(name + "_WaitPipline"),
-  };
+    };
 
     allocateDeviceBuffers();
     allocateBlobs();
@@ -176,30 +179,28 @@ static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
 
 void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     auto start = Time::now();
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in constructor.
     InferRequestInternal::execDataPreprocessing(_deviceInputs);
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     _executableNetwork->createInputs(_inputTensors, _deviceInputs);
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     _executableNetwork->createOutputs(_outputTensors, _outputs, _networkOutputBlobs);
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     _durations[Preprocess] = Time::now() - start;
 }
 
 void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
     auto start = Time::now();
-    ThrowIfCanceled();
     memory_manager_proxy_ =
-        _executableNetwork->memory_manager_pool_->WaitAndGet();
-    ThrowIfCanceled();
+        _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
     auto& manager = memory_manager_proxy_->Get();
     InferenceRequestContext inferRequestContext{_inputs, _outputs, threadContext};
     for (auto& op : _executableNetwork->exec_sequence_) {
-      ThrowIfCanceled();
+      cancellation_token_.Check();
       auto inputTensors = manager.inputTensorPointers(*op);
       auto outputTensors = manager.outputTensorPointers(*op);
       op->Execute(inferRequestContext, inputTensors, outputTensors);
@@ -209,7 +210,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
 
 void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[WaitPipeline])
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     auto start = Time::now();
     // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
     threadContext.stream().synchronize();
@@ -219,10 +220,10 @@ void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
 
 void CudaInferRequest::inferPostprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Postprocess]);
-    ThrowIfCanceled();
+    cancellation_token_.Check();
     auto start = Time::now();
     for (auto&& output : _outputs) {
-        ThrowIfCanceled();
+        cancellation_token_.Check();
         auto outputBlob = output.second;
         auto networkOutput = _networkOutputBlobs[output.first];
         // perform precision conversion of network output's precision and computational
@@ -235,15 +236,8 @@ void CudaInferRequest::inferPostprocess() {
 }
 
 void CudaInferRequest::Cancel() {
-    cancellation_token_.store(true, std::memory_order_release);
-}
-
-void CudaInferRequest::ThrowIfCanceled() {
-    if (cancellation_token_.load(std::memory_order_acquire)) {
-        memory_manager_proxy_.reset();
-        cancellation_token_.store(false, std::memory_order_release);
-        THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED);
-    }
+    cancellation_token_.Cancel();
+    _executableNetwork->memory_manager_pool_->Interrupt();
 }
 
 std::map<std::string, InferenceEngineProfileInfo> CudaInferRequest::GetPerformanceCounts() const {
