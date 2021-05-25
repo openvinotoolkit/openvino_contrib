@@ -25,6 +25,7 @@
 #include "cuda_operation_base.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
+#include "cancellation_token.hpp"
 
 namespace CUDAPlugin {
 
@@ -58,11 +59,6 @@ public:
 private:
     void allocateDeviceBuffers();
     void allocateBlobs();
-    /**
-     * Checks if InferRequest is canceled and
-     * throws exception THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED)
-     */
-    void ThrowIfCanceled();
 
     enum {
         Preprocess,
@@ -82,7 +78,7 @@ private:
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _inputTensors;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>>   _outputTensors;
     std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
-    std::atomic<bool>                                       cancellation_token_{false};
+    CancellationToken                                       cancellation_token_;
 };
 // ! [infer_request:header]
 
