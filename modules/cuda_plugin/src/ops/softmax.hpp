@@ -28,6 +28,7 @@ class SoftmaxOp : public OperationBase {
   void mapRankAxis(const ngraph::Shape& shape, int axis);
   std::array<int, 4> shape_;
   cudnnDataType_t type_;
+  CUDA::ScalingParameters scaling_params_;
   CUDA::DnnTensorDescriptor tensor_descriptor_;
 };
 

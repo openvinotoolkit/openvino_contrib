@@ -28,31 +28,34 @@ class DnnOpTensorDescriptor : public UniqueBase<cudnnCreateOpTensorDescriptor,
 class DnnTensorDescriptor
     : public UniqueBase<cudnnCreateTensorDescriptor,
                         cudnnDestroyTensorDescriptor, cudnnTensorDescriptor_t> {
- public:
-  DnnTensorDescriptor() {}
-  DnnTensorDescriptor(cudnnDataType_t dataType, int nbDims, const int dimA[],
-                      const int strideA[]) {
-    set(dataType, nbDims, dimA, strideA);
-  }
-  /**
-   * @brief creates a 4D tensor description with given format (NCHW or NHWC)
-   */
-  DnnTensorDescriptor(cudnnDataType_t dataType, cudnnTensorFormat_t format,
-                      const int dimA[4]) {
-    set(dataType, format, dimA);
-  }
-  void set(cudnnDataType_t dataType, int nbDims, const int dimA[],
-           const int strideA[]) {
-    throwIfError(
-        cudnnSetTensorNdDescriptor(  // there are two other signatures available
-            get(), dataType, nbDims, dimA, strideA));
-  }
-  /**
-   * @brief setup a 4D tensor with given format (NCHW or NHWC)
-   */
-  void set(cudnnDataType_t dataType, cudnnTensorFormat_t format, const int dimA[4]) {
-    throwIfError(cudnnSetTensorNdDescriptorEx(get(), format, dataType, 4, dimA));
-  }
+public:
+    DnnTensorDescriptor() {}
+
+    DnnTensorDescriptor(cudnnDataType_t dataType, int nbDims, const int dimA[], const int strideA[]) {
+        set(dataType, nbDims, dimA, strideA);
+    }
+
+    DnnTensorDescriptor(cudnnTensorFormat_t format, cudnnDataType_t dataType, int nbDims, const int dimA[]) {
+        set(format, dataType, nbDims, dimA);
+    }
+
+    DnnTensorDescriptor(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
+        set(format, dataType, n, c, h, w);
+    }
+
+public:
+    void set(cudnnDataType_t dataType, int nbDims, const int dimA[], const int strideA[]) {
+        throwIfError(cudnnSetTensorNdDescriptor(get(), dataType, nbDims, dimA, strideA));
+    }
+
+    void set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int nbDims, const int dimA[]) {
+        throwIfError(cudnnSetTensorNdDescriptorEx(get(), format, dataType, nbDims, dimA));
+    }
+
+    void set(cudnnTensorFormat_t format, cudnnDataType_t dataType,
+             int n, int c, int h, int w) {
+        throwIfError(cudnnSetTensor4dDescriptor(get(), format, dataType, n, c, h, w));
+    }
 };
 
 class DnnActivationDescriptor
@@ -105,8 +108,43 @@ class SigmoidDescriptor : public DnnActivationDescriptor {
                                 0} {}
 };
 
+class DnnFilterDescriptor
+    : public UniqueBase<cudnnCreateFilterDescriptor,
+                        cudnnDestroyFilterDescriptor,
+                        cudnnFilterDescriptor_t> {
+ public:
+    DnnFilterDescriptor() {}
+    DnnFilterDescriptor(cudnnDataType_t dataType, cudnnTensorFormat_t format,
+                        int nbDims, const int filterDimA[]) {
+        set(dataType, format, nbDims, filterDimA);
+    }
+    void set(cudnnDataType_t dataType, cudnnTensorFormat_t format,
+             int nbDims, const int filterDimA[]) {
+        throwIfError(cudnnSetFilterNdDescriptor(get(), dataType, format, nbDims, filterDimA));
+    }
+};
+
+class DnnConvolutionDescriptor
+    : public UniqueBase<cudnnCreateConvolutionDescriptor,
+                        cudnnDestroyConvolutionDescriptor,
+                        cudnnConvolutionDescriptor_t> {
+ public:
+    DnnConvolutionDescriptor() {}
+    DnnConvolutionDescriptor(int arrayLength, const int padA[], const int filterStrideA[],
+             const int dilationA[], cudnnConvolutionMode_t mode, cudnnDataType_t dataType) {
+        set(arrayLength, padA, filterStrideA, dilationA, mode, dataType);
+    }
+ public:
+    void set(int arrayLength, const int padA[], const int filterStrideA[],
+             const int dilationA[], cudnnConvolutionMode_t mode, cudnnDataType_t dataType) {
+        throwIfError(cudnnSetConvolutionNdDescriptor(get(), arrayLength, padA, filterStrideA,
+                                                     dilationA, mode, dataType));
+    }
+};
+
 class DnnHandle : public UniqueBase<cudnnCreate, cudnnDestroy, cudnnHandle_t> {
  public:
+  DnnHandle() {}
   explicit DnnHandle(const Stream& stream) {
     throwIfError(cudnnSetStream(get(), stream.get()));
   }
@@ -133,24 +171,26 @@ class DnnHandle : public UniqueBase<cudnnCreate, cudnnDestroy, cudnnHandle_t> {
  * @brief Holds scaling parameters, required for some CUDNN functions
  * @ref https://docs.nvidia.com/deeplearning/cudnn/developer-guide/index.html#scaling-parameters
  */
-struct ScalingParameters {
-  float alpha;
-  float beta;
+class ScalingParameters {
+public:
+    union Param { double fp64; float fp32; };
+
+    void set(cudnnDataType_t type, double alpha = 1.0, double beta = 0.0) {
+        if (type == CUDNN_DATA_DOUBLE) {
+            alpha_.fp64 = alpha;
+            beta_.fp64 = beta;
+        } else {
+            alpha_.fp32 = static_cast<float>(alpha);
+            beta_.fp32 = static_cast<float>(beta);
+        }
+    }
+
+    Param alpha() const { return alpha_; }
+    Param beta() const { return beta_; }
+
+private:
+    Param alpha_ = {}, beta_ = {};
 };
-
-/* Note: the doc says:
- * The storage data types for alpha and beta are:
- *   float for HALF and FLOAT tensors, and
- *   double for DOUBLE tensors.
- * Since CUDAPlugin supports only HALF and FLOAT tensors,
- * the storage data is set to float
- */
-
-/**
- * @brief Defines default scaling parameters { 1.0, 0.0 } that make no scaling
- */
-inline constexpr ScalingParameters NoScaling { 1.0, 0.0 };
-
 
 /**
  * @brief Converts an OpenVino data type to a corresponding cuDNN data type, throws
@@ -178,6 +218,5 @@ constexpr cudnnDataType_t toDataType(const ngraph::element::Type& type) {
                              type.c_type_string());
   }
 }
-
 
 }  // namespace CUDA
