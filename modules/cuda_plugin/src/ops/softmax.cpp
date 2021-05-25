@@ -133,22 +133,25 @@ SoftmaxOp::SoftmaxOp(const NodeOp& node,
                      IndexCollection&& outputIds)
   : OperationBase{node, move(inputIds), move(outputIds) },
     type_ {convertDataType(node.input(0).get_element_type())} {
+      scaling_params_.set(type_, 1.0, 0.0);
       const int axis = node.get_axis();
       mapRankAxis(node.input(0).get_shape(), axis);
-      tensor_descriptor_.set(type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, shape_.data());
+      tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());
   }
 
 void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 1);
+  const auto alpha = scaling_params_.alpha();
+  const auto beta = scaling_params_.beta();
   CUDA::throwIfError(cudnnSoftmaxForward(
       context.getThreadContext().dnnHandle().get(),
       cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
       cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
-      &CUDA::NoScaling.alpha,
+      &alpha,
       tensor_descriptor_.get(),
       inputs[0].get(),
-      &CUDA::NoScaling.beta,
+      &beta,
       tensor_descriptor_.get(),
       outputs[0].get()));
 }
