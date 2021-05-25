@@ -36,6 +36,15 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
     add_library(cuda_driver SHARED IMPORTED GLOBAL)
     set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION ${CUDA_DRIVER_PATH})
     add_library(CUDA::cuda_driver ALIAS cuda_driver)
+    # Search for CUBLAS Library
+    find_library(CUBLAS_PATH
+                 NAMES cublas
+                 HINTS ${CUDA_TOOLKIT_ROOT_DIR}
+                 ENV CUDA_PATH
+                 PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+    add_library(cublas SHARED IMPORTED GLOBAL)
+    set_target_properties(cublas PROPERTIES IMPORTED_LOCATION ${CUBLAS_PATH})
+    add_library(CUDA::cublas ALIAS cublas)
 else()
     find_package(CUDAToolkit REQUIRED)
 endif()

@@ -17,13 +17,21 @@ MemoryManagerPool::MemoryManagerPool(
   }
 }
 
-MemoryManagerPool::Proxy MemoryManagerPool::WaitAndGet() {
-  std::unique_lock<std::mutex> lock{mtx_};
-  cond_var_.wait(lock, [this] { return !memory_managers_.empty(); });
-  Proxy memoryManagerProxy{shared_from_this(),
-                           move(memory_managers_.back())};
-  memory_managers_.pop_back();
-  return memoryManagerProxy;
+void MemoryManagerPool::Interrupt() {
+    cond_var_.notify_all();
+}
+
+MemoryManagerPool::Proxy
+MemoryManagerPool::WaitAndGet(CancellationToken& cancellationToken) {
+    std::unique_lock<std::mutex> lock{mtx_};
+    cond_var_.wait(lock, [this, &cancellationToken] {
+        cancellationToken.Check();
+        return !memory_managers_.empty();
+    });
+    Proxy memoryManagerProxy{shared_from_this(),
+                             move(memory_managers_.back())};
+    memory_managers_.pop_back();
+    return memoryManagerProxy;
 }
 
 void MemoryManagerPool::PushBack(std::unique_ptr<MemoryManager> memManager) {

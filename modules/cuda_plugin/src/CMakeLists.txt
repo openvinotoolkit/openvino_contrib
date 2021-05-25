@@ -50,6 +50,7 @@ target_link_libraries(${TARGET_NAME}
                       fmt-header-only
                       CUDA::cudart
                       cudnn
+                      CUDA::cublas
                       ${NGRAPH_LIBRARIES})
 target_link_libraries(${TARGET_NAME}_test_static
                       PRIVATE
@@ -59,6 +60,7 @@ target_link_libraries(${TARGET_NAME}_test_static
                       fmt-header-only
                       CUDA::cudart
                       cudnn
+                      CUDA::cublas
                       ${NGRAPH_LIBRARIES})
 if(TARGET IE::inference_engine_plugin_api)
     target_link_libraries(${TARGET_NAME}_test_static PRIVATE IE::inference_engine_plugin_api)
