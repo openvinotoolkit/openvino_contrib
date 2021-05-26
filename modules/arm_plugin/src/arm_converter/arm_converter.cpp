@@ -167,6 +167,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::GRUSequence>();
         Register<opset::RNNSequence>();
         Register<opset::Bucketize>();
+        Register<opset::DFT>();
+        Register<opset::IDFT>();
     }
     Register<opset::Result>();
 
