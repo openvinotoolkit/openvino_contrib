@@ -11,8 +11,8 @@
 namespace CUDAPlugin {
 
 OperationBase::OperationBase(const std::shared_ptr<ngraph::Node>& node,
-                             std::vector<unsigned>&& inputIds,
-                             std::vector<unsigned>&& outputIds)
+                             IndexCollection&& inputIds,
+                             IndexCollection&& outputIds)
     : node_name_{node->get_name()},
       input_ids_{move(inputIds)},
       output_ids_{move(outputIds)} {}
