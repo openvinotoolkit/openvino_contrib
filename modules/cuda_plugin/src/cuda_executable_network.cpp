@@ -15,14 +15,11 @@
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
+#include "cuda_graph_transformer.hpp"
 
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
-
-// forward declaration
-std::shared_ptr<ngraph::Function>
-TransformNetwork(const std::shared_ptr<const ngraph::Function>& function);
 
 namespace CUDAPlugin {
 
@@ -86,7 +83,10 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     SetPointerToPlugin(plugin_->shared_from_this());
 
     try {
-        CompileNetwork(cnn_network_.getFunction());
+        GraphTransformer transformer;
+        auto original_function = cnn_network_.getFunction();
+        auto transformed_function = transformer.transform(original_function, ConfigMap{});
+        CompileNetwork(transformed_function);
         InitExecutor(); // creates thread-based executor using for async requests
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
@@ -98,9 +98,7 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
 }
 
 void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function) {
-    // Apply plugins transformations
-    function_ = TransformNetwork(function);
-
+    function_ = function;
     // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
@@ -252,7 +250,7 @@ void ExecutableNetwork::ExportImpl(std::ostream& modelStream) {
     std::stringstream xmlFile, binFile;
     ngraph::pass::Serialize serializer(xmlFile, binFile,
                                        ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
-    serializer.run_on_function(function_);
+    serializer.run_on_function(ngraph::clone_function(*function_));
 
     auto m_constants = binFile.str();
     auto m_model = xmlFile.str();
