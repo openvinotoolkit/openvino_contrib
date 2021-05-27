@@ -11,13 +11,13 @@
 #include <vector>
 
 #include <cpp/ie_cnn_network.h>
-#include <cpp_interfaces/impl/ie_plugin_internal.hpp>
+#include <cpp_interfaces/interface/ie_iplugin_internal.hpp>
 
 #include "arm_executable_network.hpp"
 #include "arm_config.hpp"
 
 namespace ArmPlugin {
-struct Plugin : public InferenceEngine::InferencePluginInternal {
+struct Plugin : public InferenceEngine::IInferencePlugin {
     using Ptr = std::shared_ptr<Plugin>;
 
     Plugin();
@@ -27,7 +27,7 @@ struct Plugin : public InferenceEngine::InferencePluginInternal {
     InferenceEngine::QueryNetworkResult
     QueryNetwork(const InferenceEngine::CNNNetwork& network,
                  const std::map<std::string, std::string>& config) const override;
-    InferenceEngine::ExecutableNetworkInternal::Ptr
+    InferenceEngine::IExecutableNetworkInternal::Ptr
     LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
                        const std::map<std::string, std::string>& config) override;
     InferenceEngine::Parameter GetConfig(const std::string& name,
