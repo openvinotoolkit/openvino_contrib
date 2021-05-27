@@ -48,10 +48,10 @@ class OperationBase
  public:
   using Ptr = std::shared_ptr<OperationBase>;
   using WeakPtr = std::weak_ptr<OperationBase>;
-
+  using IndexCollection = std::vector<unsigned>;
   OperationBase(const std::shared_ptr<ngraph::Node>& node,
-                std::vector<unsigned>&& inputIds,
-                std::vector<unsigned>&& outputIds);
+                IndexCollection&& inputIds,
+                IndexCollection&& outputIds);
 
   const std::string& GetName() const override {
     return node_name_;
@@ -69,4 +69,11 @@ class OperationBase
   const std::vector<unsigned> output_ids_;
 };
 
+/**
+ * @brief Downcasts a shared node pointer to a ConcreteOperator reference
+ */
+template<class ConcreteOperator>
+ConcreteOperator& downcast(const std::shared_ptr<ngraph::Node>& node) {
+  return dynamic_cast<ConcreteOperator&>(*node.get());
+}
 } // namespace CUDAPlugin
