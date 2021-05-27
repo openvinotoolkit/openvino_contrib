@@ -5,6 +5,7 @@
 #pragma once
 
 #include "runtime.hpp"
+#include <ngraph/type/element_type.hpp>
 
 namespace CUDA {
 
@@ -66,6 +67,23 @@ class DnnActivationDescriptor
   void set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt,
            double coef) {
     throwIfError(cudnnSetActivationDescriptor(get(), mode, reluNanOpt, coef));
+  }
+};
+
+class DnnPoolingDescriptor
+    : public UniqueBase<cudnnCreatePoolingDescriptor,
+                        cudnnDestroyPoolingDescriptor, cudnnPoolingDescriptor_t> {
+ public:
+  DnnPoolingDescriptor(const cudnnPoolingMode_t mode,
+                       const cudnnNanPropagation_t nanPropagation, int nbDims,
+                       const int windowDimA[], const int paddingA[], const int strideA[]) {
+    set(mode, nanPropagation, nbDims, windowDimA, paddingA, strideA);
+  }
+  void set(const cudnnPoolingMode_t mode,
+           const cudnnNanPropagation_t nanPropagation, int nbDims,
+           const int windowDimA[], const int paddingA[], const int strideA[]) {
+    throwIfError(cudnnSetPoolingNdDescriptor(
+        get(), mode, nanPropagation, nbDims, windowDimA, paddingA, strideA));
   }
 };
 
@@ -132,5 +150,34 @@ struct ScalingParameters {
  * @brief Defines default scaling parameters { 1.0, 0.0 } that make no scaling
  */
 inline constexpr ScalingParameters NoScaling { 1.0, 0.0 };
+
+
+/**
+ * @brief Converts an OpenVino data type to a corresponding cuDNN data type, throws
+ *        if incompatible.
+ */
+constexpr cudnnDataType_t toDataType(const ngraph::element::Type& type) {
+  using ngraph::element::Type_t;
+  switch (static_cast<Type_t>(type)) {
+    case Type_t::bf16:
+      return CUDNN_DATA_BFLOAT16;
+    case Type_t::f16:
+      return CUDNN_DATA_HALF;
+    case Type_t::f32:
+      return CUDNN_DATA_FLOAT;
+    case Type_t::f64:
+      return CUDNN_DATA_DOUBLE;
+    case Type_t::i8:
+      return CUDNN_DATA_INT8;
+    case Type_t::i32:
+      return CUDNN_DATA_INT32;
+    case Type_t::i64:
+      return CUDNN_DATA_INT64;
+    default:
+      CUDA::throwIEException("unsupported ngraph element type " +
+                             type.c_type_string());
+  }
+}
+
 
 }  // namespace CUDA
