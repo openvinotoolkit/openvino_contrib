@@ -14,6 +14,7 @@ addIeTargetTest(
         CUDAPlugin
         LINK_LIBRARIES
         IE::funcSharedTests
+        CUDA::cudart
         INCLUDES
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
         "${OpenVINO_MAIN_SOURCE_DIR}/tests"
