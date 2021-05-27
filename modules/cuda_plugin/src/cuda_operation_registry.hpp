@@ -12,25 +12,83 @@
 
 namespace CUDAPlugin {
 
+
+namespace details {
+
+template<typename TOperation>
+constexpr bool isConstructibleWithNodePtr = std::is_constructible<TOperation,
+  const std::shared_ptr<ngraph::Node>&,
+  OperationBase::IndexCollection&&,
+  OperationBase::IndexCollection&&>::value;
+
+template<typename TOperation>
+constexpr bool isConstructibleWithNodeRef = std::is_constructible<TOperation,
+  const ngraph::Node&,
+  OperationBase::IndexCollection&&,
+  OperationBase::IndexCollection&&>::value;
+
+template<typename TOperation, typename NodeOp = typename TOperation::NodeOp>
+constexpr bool hasNodeOpType(int) {
+  return true;
+}
+
+template<typename TOperation>
+constexpr bool hasNodeOpType(long) { return false; }
+
+template<typename TOperation>
+constexpr bool constructibleWithNodeOpRef(int) {
+  if constexpr(hasNodeOpType<TOperation>(0)) {
+    return std::is_constructible<TOperation,
+        const typename TOperation::NodeOp&,
+        OperationBase::IndexCollection&&,
+        OperationBase::IndexCollection&&>::value;
+  } else {
+    return false;
+  }
+}
+
+template<typename TOperation>
+constexpr bool constructibleWithNodeOpRef(long) { return false; }
+
+template<typename TOperation>
+constexpr bool isConstructibleWithNodeOpRef = constructibleWithNodeOpRef<TOperation>(0);
+
+} // namespace details
+
 class OperationRegistry final {
  public:
+  using IndexCollection = OperationBase::IndexCollection;
   using OperationBuilder = std::function<OperationBase::Ptr(
-      const std::shared_ptr<ngraph::Node>&, std::vector<unsigned>&&,
-      std::vector<unsigned>&&)>;
+      const std::shared_ptr<ngraph::Node>&, IndexCollection&&, IndexCollection&&)>;
   template <typename TOperation>
   class Register {
-   public:
+  public:
     static_assert(std::is_base_of_v<OperationBase, TOperation>,
                   "TOperation should derive from OperationBase");
-
     explicit Register(const std::string& opName) {
-      getInstance().registerOp(
-          opName,
-          [](const std::shared_ptr<ngraph::Node>& node,
-             std::vector<unsigned>&& inputs, std::vector<unsigned>&& outputs) {
-            return std::make_shared<TOperation>(node, move(inputs),
-                                                move(outputs));
-          });
+      using namespace details;
+      if constexpr(isConstructibleWithNodeOpRef<TOperation>) {
+        getInstance().registerOp(opName,
+            [](const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputs, IndexCollection&& outputs) {
+              return std::make_shared<TOperation>(downcast<const typename TOperation::NodeOp>(node),
+              move(inputs), move(outputs));
+            });
+      } else { if constexpr(isConstructibleWithNodeRef<TOperation>) {
+        getInstance().registerOp(opName,
+            [](const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputs, IndexCollection&& outputs) {
+              return std::make_shared<TOperation>(*node, move(inputs), move(outputs));
+            });
+      } else {
+        getInstance().registerOp(
+        opName,
+        [](const std::shared_ptr<ngraph::Node>& node,
+           IndexCollection&& inputs, IndexCollection&& outputs) {
+          return std::make_shared<TOperation>(node, move(inputs),
+                                              move(outputs));
+        });
+      }}
     }
   };
 
@@ -39,8 +97,8 @@ class OperationRegistry final {
   bool hasOperation(const std::shared_ptr<ngraph::Node>& node);
 
   OperationBase::Ptr createOperation(const std::shared_ptr<ngraph::Node>& node,
-                                     std::vector<unsigned>&& inIds,
-                                     std::vector<unsigned>&& outIds);
+                                     IndexCollection&& inIds,
+                                     IndexCollection&& outIds);
 
   OperationBase::Ptr createOperation(const std::shared_ptr<ngraph::Node>& node,
                                      gsl::span<const unsigned> inIds,
@@ -56,6 +114,17 @@ class OperationRegistry final {
 
 }  // namespace CUDAPlugin
 
+/**
+ * @macro OPERATION_REGISTER
+ * @brief Operator registration macro
+ *
+ * @param type - a class derived from OperationBase and having one of the following constructors
+ *        1. type(const std::shared_ptr<ngraph::Node>&, IndexCollection&&, IndexCollection&&);
+ *        2. type(const ngraph::Node&, IndexCollection&&, IndexCollection&&);
+ *        3. type(const NodeOp&, IndexCollection&&, IndexCollection&&);
+ *           where NodeOp is a type's inner alias for a concrete OpenVINO Node class
+ * @param name - a textual operator's name
+ */
 #define OPERATION_REGISTER(type, name)                                    \
   [[maybe_unused]] ::CUDAPlugin::OperationRegistry::Register<type> \
       op_register_##name{#name};
