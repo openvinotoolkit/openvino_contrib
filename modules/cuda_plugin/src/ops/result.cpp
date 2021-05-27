@@ -19,8 +19,8 @@ std::string get_name_from(const std::shared_ptr<ngraph::Node>& node) {
 }
 
 ResultOp::ResultOp(const std::shared_ptr<ngraph::Node>& node,
-                   std::vector<unsigned> inputIds,
-                   std::vector<unsigned> outputIds)
+                   IndexCollection&& inputIds,
+                   IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
     output_tensor_name_ = get_name_from(node);
 }

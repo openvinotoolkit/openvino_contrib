@@ -17,8 +17,8 @@
 namespace CUDAPlugin {
 
 SigmoidOp::SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
-                     std::vector<unsigned> inputIds,
-                     std::vector<unsigned> outputIds)
+                     IndexCollection&& inputIds,
+                     IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
     auto input_element_type = node->get_input_element_type(0);
     auto output_element_type = node->get_output_element_type(0);
