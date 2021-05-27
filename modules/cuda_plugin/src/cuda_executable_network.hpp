@@ -81,7 +81,7 @@ private:
     Configuration                               cfg_;
     InferenceEngine::ITaskExecutor::Ptr         cuda_stream_executor_;
     std::shared_ptr<Plugin>                     plugin_;
-    std::shared_ptr<ngraph::Function>           function_;
+    std::shared_ptr<const ngraph::Function>     function_;
     std::vector<OperationBase::Ptr>             exec_sequence_;
     std::map<std::string, std::size_t>          input_index_;
     std::map<std::string, std::size_t>          output_index_;
