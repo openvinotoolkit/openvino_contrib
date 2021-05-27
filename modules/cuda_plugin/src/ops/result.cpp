@@ -12,13 +12,13 @@
 
 namespace CUDAPlugin {
 
-std::string get_name_from(const std::shared_ptr<ngraph::Node>& node) {
-    return node->inputs().size() == 0
-           ? node->get_friendly_name()
-           : node->input(0).get_source_output().get_node()->get_friendly_name();
+std::string get_name_from(const ngraph::Node& node) {
+    return node.inputs().size() == 0
+           ? node.get_friendly_name()
+           : node.input(0).get_source_output().get_node()->get_friendly_name();
 }
 
-ResultOp::ResultOp(const std::shared_ptr<ngraph::Node>& node,
+ResultOp::ResultOp(const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
