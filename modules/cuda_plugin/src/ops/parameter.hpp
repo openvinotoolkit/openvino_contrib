@@ -11,7 +11,7 @@ namespace CUDAPlugin {
 
 class ParameterOp : public OperationBase {
  public:
-    ParameterOp(const std::shared_ptr<ngraph::Node>& node,
+    ParameterOp(const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
