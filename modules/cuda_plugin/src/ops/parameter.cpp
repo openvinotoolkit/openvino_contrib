@@ -12,8 +12,8 @@
 namespace CUDAPlugin {
 
 ParameterOp::ParameterOp(const std::shared_ptr<ngraph::Node>& node,
-                         std::vector<unsigned> inputIds,
-                         std::vector<unsigned> outputIds)
+                         IndexCollection&& inputIds,
+                         IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
     auto prevNode = node->output(0);
     input_tensor_name_ = prevNode.get_node()->get_friendly_name();
