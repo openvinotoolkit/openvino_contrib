@@ -49,10 +49,15 @@ class OperationBase
   using Ptr = std::shared_ptr<OperationBase>;
   using WeakPtr = std::weak_ptr<OperationBase>;
   using IndexCollection = std::vector<unsigned>;
-  OperationBase(const std::shared_ptr<ngraph::Node>& node,
+  OperationBase(const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
-
+ protected:
+  OperationBase(const std::shared_ptr<ngraph::Node>& node,
+                IndexCollection&& inputIds,
+                IndexCollection&& outputIds)
+    : OperationBase(*node, move(inputIds), move(outputIds)) {}
+ public:
   const std::string& GetName() const override {
     return node_name_;
   }

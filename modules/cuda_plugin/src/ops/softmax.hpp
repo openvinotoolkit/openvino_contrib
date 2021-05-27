@@ -17,7 +17,8 @@ namespace CUDAPlugin {
 class SoftmaxOp : public OperationBase {
  public:
   using InferenceRequestContext = InferenceEngine::gpu::InferenceRequestContext;
-  SoftmaxOp(const std::shared_ptr<ngraph::Node>& node,
+  using NodeOp = ngraph::op::v1::Softmax;
+  SoftmaxOp(const NodeOp& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
   void Execute(const InferenceRequestContext& context,
