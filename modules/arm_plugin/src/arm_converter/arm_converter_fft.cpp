@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
+#include <arm_compute/runtime/NEON/functions/NEFFT1D.h>
 #include <ngraph/runtime/reference/fft.hpp>
 #include "arm_converter/arm_converter.hpp"
 
@@ -110,5 +111,59 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::IDFT& node
     return CallSwitch(
         AP_WRAP(make, wrap_fft),
         node.input(0), floatTypes);
+}
+
+struct NEFFT1Ds2 final: public arm_compute::IFunction {
+public:
+    NEFFT1Ds2(const std::shared_ptr<arm_compute::IMemoryManager>& memory_manager):
+        _memory_manager(memory_manager), _fft(), _input(nullptr), _output(nullptr), _input2c(), _output2c() {}
+    NEFFT1Ds2(const NEFFT1Ds2 &) = delete;
+    NEFFT1Ds2 &operator=(const NEFFT1Ds2 &) = delete;
+    NEFFT1Ds2(NEFFT1Ds2 &&) = delete;
+    NEFFT1Ds2 &operator=(NEFFT1Ds2 &&) = delete;
+    ~NEFFT1Ds2() = default;
+    void configure(const arm_compute::ITensor *input, arm_compute::ITensor *output, const arm_compute::FFT1DInfo &config) {
+        ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
+        ARM_COMPUTE_ERROR_THROW_ON(NEFFT1Ds2::validate(input->info(), output->info(), config));
+        _input = input;
+        _output = output;
+        _input2c.allocator()->init(shape2chan(_input->info()));
+        _output2c.allocator()->init(shape2chan(_output->info()));
+
+        _fft = std::make_unique<arm_compute::NEFFT1D>(_memory_manager);
+        _fft->configure(&_input2c, &_output2c, config);
+    }
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *output, const arm_compute::FFT1DInfo &config) {
+        ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(input, output);
+        arm_compute::TensorInfo ishape = shape2chan(input);
+        arm_compute::TensorInfo oshape = shape2chan(output);
+        return arm_compute::NEFFT1D::validate(&ishape, &oshape, config);
+    }
+    void run() override {
+        ARM_COMPUTE_ERROR_ON_MSG(!_fft.get(), "Kernel didn't configured");
+        _input2c.allocator()->import_memory(_input->buffer());
+        _output2c.allocator()->import_memory(_output->buffer());
+        _fft->run();
+    }
+
+protected:
+    static arm_compute::TensorInfo shape2chan(const arm_compute::ITensorInfo *t_info) {
+        arm_compute::TensorShape shape = t_info->tensor_shape();
+        int num_channels = shape[0];
+        shape.remove_dimension(0);
+        return arm_compute::TensorInfo(shape, num_channels, t_info->data_type());
+    }
+    std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
+    const arm_compute::ITensor *_input;
+    arm_compute::ITensor *_output;
+    arm_compute::Tensor                          _input2c;
+    arm_compute::Tensor                          _output2c;
+    std::unique_ptr<arm_compute::NEFFT1D>        _fft;
+};
+
+template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmFFT& node) {
+    arm_compute::FFT1DInfo fft_cfg{node.get_arm_axis(),
+                                   node.is_inverse() ? arm_compute::FFTDirection::Inverse : arm_compute::FFTDirection::Forward};
+    return MakeConversion<NEFFT1Ds2>(node.input(0), node.output(0), fft_cfg);
 }
 } // namespace ArmPlugin
