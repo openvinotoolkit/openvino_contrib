@@ -128,13 +128,13 @@ constexpr cudnnDataType_t convertDataType(const ngraph::element::Type& type) {
   }
 }
 
-SoftmaxOp::SoftmaxOp(const std::shared_ptr<ngraph::Node>& node,
+SoftmaxOp::SoftmaxOp(const NodeOp& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
   : OperationBase{node, move(inputIds), move(outputIds) },
-    type_ {convertDataType(node->input(0).get_element_type())} {
-      const int axis = downcast<const ngraph::op::v1::Softmax>(node).get_axis();
-      mapRankAxis(node->input(0).get_shape(), axis);
+    type_ {convertDataType(node.input(0).get_element_type())} {
+      const int axis = node.get_axis();
+      mapRankAxis(node.input(0).get_shape(), axis);
       tensor_descriptor_.set(type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, shape_.data());
   }
 

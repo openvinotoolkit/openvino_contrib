@@ -6,12 +6,14 @@
 
 #include <cuda_operation_base.hpp>
 #include <gpu/device_pointers.hpp>
+#include <ngraph/op/result.hpp>
 
 namespace CUDAPlugin {
 
 class ResultOp : public OperationBase {
  public:
-    ResultOp(const std::shared_ptr<ngraph::Node>& node,
+    using NodeOp = ngraph::op::v0::Result;
+    ResultOp(const NodeOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
