@@ -4,24 +4,23 @@
 
 #include <ie_metric_helpers.hpp>
 #include <ie_plugin_config.hpp>
+#include <ie_ngraph_utils.hpp>
 
 #include <hetero/hetero_plugin_config.hpp>
 #include <threading/ie_executor_manager.hpp>
 
 #include <ngraph/op/util/op_types.hpp>
-#include <ngraph/graph_util.hpp>
-#include <ngraph/pass/manager.hpp>
 #include <ngraph/opsets/opset.hpp>
-#include <transformations/common_optimizations/common_optimizations.hpp>
+
 #include <transformations/rt_info/fused_names_attribute.hpp>
-#include <transformations/convert_precision.hpp>
+#include <cuda/device.hpp>
+#include <cuda/props.hpp>
 
 #include "cuda/cuda_config.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
-#include "cuda_pattern_transformation.hpp"
 
 using namespace CUDAPlugin;
 
@@ -39,30 +38,6 @@ Plugin::~Plugin() {
     InferenceEngine::ExecutorManager::getInstance()->clear("CudaWaitExecutor");
     // NOTE: Uncomment this if Inference Engine Executor cache is used to create callback executor
     // ExecutorManager::getInstance()->clear("CudaCallbackExecutor");
-}
-
-std::shared_ptr<ngraph::Function>
-TransformNetwork(const std::shared_ptr<const ngraph::Function>& function) {
-    // 1. Copy ngraph::Function first to apply some transformations which modify original ngraph::Function
-    auto transformedNetwork = ngraph::clone_function(*function);
-
-    // 2. Perform common optimizations and device-specific transformations
-    ngraph::pass::Manager passManager;
-    // Example: register CommonOptimizations transformation from transformations library
-    passManager.register_pass<ngraph::pass::CommonOptimizations>();
-    // Cuda plugin handles only FP32 networks
-    passManager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-    // Example: register plugin specific transformation
-    passManager.register_pass<ngraph::pass::DecomposeDivideMatcher>();
-    passManager.register_pass<ngraph::pass::ReluReluFusionMatcher>();
-    // Register any other transformations
-    // ..
-
-    // After `run_passes`, we have the transformed function, where operations match device operations,
-    // and we can create device backend-dependent graph
-    passManager.run_passes(transformedNetwork);
-
-    return transformedNetwork;
 }
 
 InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork & network,
@@ -99,9 +74,14 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
         }
     }
 
+    const auto transformed_function_graph =
+        transformer_.transform(network.getFunction(), config);
+    InferenceEngine::CNNNetwork transformed_network{transformed_function_graph};
     // Create stream executor for given device
     auto waitExecutor = GetStreamExecutor(cfg);
-    return std::make_shared<ExecutableNetwork>(network, cfg, waitExecutor, std::static_pointer_cast<Plugin>(shared_from_this()));
+    return std::make_shared<ExecutableNetwork>(
+        transformed_network, cfg, waitExecutor,
+        std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(
@@ -155,7 +135,8 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     }
 
     // 2. It is needed to apply all transformations as it is done in LoadExeNetworkImpl
-    auto transformedFunction = TransformNetwork(function);
+    auto transformedFunction =
+        transformer_.transform(network.getFunction(), config);
 
     // 3. The same input node can be transformed into supported and unsupported backend node
     // So we need store as supported either unsupported node sets
