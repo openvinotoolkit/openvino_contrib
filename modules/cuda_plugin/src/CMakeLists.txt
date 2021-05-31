@@ -49,8 +49,8 @@ target_link_libraries(${TARGET_NAME}
                       GSL
                       fmt-header-only
                       CUDA::cudart
-                      cudnn
                       CUDA::cublas
+                      CUDA::cudnn
                       CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
 target_link_libraries(${TARGET_NAME}_test_static
@@ -60,8 +60,8 @@ target_link_libraries(${TARGET_NAME}_test_static
                       GSL
                       fmt-header-only
                       CUDA::cudart
-                      cudnn
                       CUDA::cublas
+                      CUDA::cudnn
                       CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
 if(TARGET IE::inference_engine_plugin_api)
