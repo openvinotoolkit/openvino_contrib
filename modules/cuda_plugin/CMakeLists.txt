@@ -8,9 +8,12 @@ project(InferenceEngineCUDAPlugin CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-set(CMAKE_CUDA_STANDARD_REQUIRED TRUE)
+
+# cmake 3.13 doesn't understand CMAKE_CUDA_STANDARD 17 yet
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(CMAKE_CUDA_FLAGS "-std=c++17")
+endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
 set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
 
@@ -56,6 +59,14 @@ add_library(cutensor SHARED IMPORTED GLOBAL)
 set_target_properties(cutensor PROPERTIES IMPORTED_LOCATION ${CUTENSOR_PATH})
 add_library(CUDA::cutensor ALIAS cutensor)
 
+find_library(CUDNN_PATH
+             NAMES cudnn
+             HINTS ${CUDA_TOOLKIT_ROOT_DIR}
+             ENV CUDA_PATH
+             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
+add_library(CUDA::cudnn SHARED IMPORTED GLOBAL)
+set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION ${CUDNN_PATH})
+
 include(FetchContent)
 
 # In this example we are picking a specific tag.
@@ -73,6 +84,8 @@ if(${CMAKE_VERSION} VERSION_LESS "3.14.0")
 else()
     FetchContent_MakeAvailable(GSL)
 endif()
+# it contains c++14 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+set_property(TARGET GSL PROPERTY INTERFACE_COMPILE_FEATURES)
 
 FetchContent_Declare(fmt-header-only
                      GIT_REPOSITORY "https://github.com/fmtlib/fmt"
@@ -87,6 +100,8 @@ if(${CMAKE_VERSION} VERSION_LESS "3.14.0")
 else()
     FetchContent_MakeAvailable(fmt-header-only)
 endif()
+# it contains c++11 requirement, which overrides c++17 setting in CMAKE_CUDA_FLAGS
+set_property(TARGET fmt-header-only PROPERTY INTERFACE_COMPILE_FEATURES)
 
 add_subdirectory(src)
 #add_subdirectory(thirdparty)

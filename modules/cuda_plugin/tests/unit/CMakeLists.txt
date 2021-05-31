@@ -13,6 +13,8 @@ addIeTargetTest(
         LINK_LIBRARIES
         unitTestUtils
         CUDAPlugin_test_static
+# it looks like cmake 3.13 can't derive cudnn dep from elsewhere
+        CUDA::cudnn
         GSL
         fmt-header-only
         ngraph_backend
