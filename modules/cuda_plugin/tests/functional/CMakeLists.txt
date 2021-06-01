@@ -9,7 +9,6 @@ set(TARGET_NAME CudaFuncTests)
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
-        ADDITIONAL_SOURCE_DIRS ${OpenVINO_MAIN_SOURCE_DIR}/tests/stress_tests/common
         DEPENDENCIES
         CUDAPlugin
         LINK_LIBRARIES

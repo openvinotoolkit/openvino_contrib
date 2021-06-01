@@ -16,24 +16,13 @@ ie_add_plugin(NAME ${TARGET_NAME}
               SOURCES ${SOURCES} ${HEADERS}
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_plugin.cpp)
-# Adds test object library
-add_library(${TARGET_NAME}_test_static OBJECT EXCLUDE_FROM_ALL ${SOURCES} ${HEADERS})
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
-    set_property(TARGET ${TARGET_NAME}_test_static PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
 else()
     set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
-    set_property(TARGET ${TARGET_NAME}_test_static PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
 endif()
 
 target_include_directories(${TARGET_NAME}
-                           PUBLIC
-                           "${CUDAToolkit_INCLUDE_DIRS}"
-                           PRIVATE
-                           "${CMAKE_CURRENT_SOURCE_DIR}"
-                           "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-                           "${InferenceEngine_C_API_SOURCE_DIR}/include")
-target_include_directories(${TARGET_NAME}_test_static
                            PUBLIC
                            "${CUDAToolkit_INCLUDE_DIRS}"
                            PRIVATE
@@ -53,30 +42,9 @@ target_link_libraries(${TARGET_NAME}
                       CUDA::cudnn
                       CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
-target_link_libraries(${TARGET_NAME}_test_static
-                      PRIVATE
-                      IE::inference_engine
-                      IE::inference_engine_transformations
-                      GSL
-                      fmt-header-only
-                      CUDA::cudart
-                      CUDA::cublas
-                      CUDA::cudnn
-                      CUDA::cutensor
-                      ${NGRAPH_LIBRARIES})
-if(TARGET IE::inference_engine_plugin_api)
-    target_link_libraries(${TARGET_NAME}_test_static PRIVATE IE::inference_engine_plugin_api)
-else()
-    target_link_libraries(${TARGET_NAME}_test_static PRIVATE inference_engine_plugin_api)
-endif()
-
+				  
 # Link inference backend library to plugin. Here we use ngraph interpreter_backend as example
 target_link_libraries(${TARGET_NAME}
-                      PRIVATE
-                      IE::ngraph_backend
-                      IE::interpreter_backend
-                      CUDA::cudart)
-target_link_libraries(${TARGET_NAME}_test_static
                       PRIVATE
                       IE::ngraph_backend
                       IE::interpreter_backend
