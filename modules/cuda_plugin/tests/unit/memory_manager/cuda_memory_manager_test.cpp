@@ -3,6 +3,7 @@
 //
 
 #include <gtest/gtest.h>
+#include <details/ie_exception.hpp>
 
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"

@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <details/ie_exception.hpp>
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
