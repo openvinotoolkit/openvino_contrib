@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <chrono>
 #include <optional>
+#include <atomic>
 
 #include <ie_common.h>
 #include <cpp_interfaces/impl/ie_infer_request_internal.hpp>
@@ -19,7 +20,6 @@
 #include <openvino/itt.hpp>
 
 #include <ngraph/runtime/tensor.hpp>
-#include <executable.hpp>
 
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
