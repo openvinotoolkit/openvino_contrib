@@ -62,7 +62,6 @@ static void AllocateImpl(const BlobDataMap& userDataMap,
                          GetNetworkPrecisionF&& GetNetworkPrecision) {
     for (auto&& userData : userDataMap) {
         auto& dims = userData.second->getTensorDesc().getDims();
-        const auto devicePrecision = Precision::FP32;
         const auto deviceLayout = TensorDesc::getLayoutByDims(dims);
         auto userPrecision = userData.second->getTensorDesc().getPrecision();
         auto userLayout = userData.second->getTensorDesc().getLayout();
@@ -72,11 +71,18 @@ static void AllocateImpl(const BlobDataMap& userDataMap,
             case Precision::U8: {
                 userBlob = InferenceEngine::make_shared_blob<std::uint8_t>({userPrecision, dims, userLayout});
             } break;
+            case Precision::I16: {
+                userBlob = InferenceEngine::make_shared_blob<std::int16_t>({userPrecision, dims, userLayout});
+            } break;
+//            case Precision::FP16: { // This does not work
+//                userBlob = InferenceEngine::make_shared_blob<ngraph::float16>({userPrecision, dims, userLayout});
+//            } break;
             case Precision::FP32 : {
                 userBlob = InferenceEngine::make_shared_blob<float>({userPrecision, dims, userLayout});
             } break;
-            default: //IE_THROW() << "Cuda Plugin: Unsupported Input/Output Precision";
-                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output Presision";
+            // TODO add FP16
+            default: //IE_THROW() << "Cuda Plugin: Unsupported Input/Output Precision" << userPrecision;
+                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output Precision " << userPrecision;
         }
         userBlob->allocate();
         userBlobMap[userData.first] = userBlob;
@@ -85,14 +91,28 @@ static void AllocateImpl(const BlobDataMap& userDataMap,
         Blob::Ptr deviceBlob;
         switch (networkPrecision) {
             case ngraph::element::Type_t::f32 : {
-                if (userPrecision == devicePrecision && userLayout == deviceLayout) {
+                if (userPrecision == Precision::FP32 && userLayout == deviceLayout) {
                     deviceBlob = userBlob;
                 } else {
-                    deviceBlob = InferenceEngine::make_shared_blob<float>({devicePrecision, dims, deviceLayout});
+                    deviceBlob = InferenceEngine::make_shared_blob<float>({Precision::FP32, dims, deviceLayout});
                 }
             } break;
-            default: //IE_THROW() << "Cuda Plugin: Unsupported network Input/Output Presision";
-                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported network Input/Output Presision";
+            case ngraph::element::Type_t::i16 : {
+                if (userPrecision == Precision::I16 && userLayout == deviceLayout) {
+                    deviceBlob = userBlob;
+                } else {
+                    deviceBlob = InferenceEngine::make_shared_blob<std::int16_t>({Precision::I16, dims, deviceLayout});
+                }
+            } break;
+            case ngraph::element::Type_t::u8 : {
+                if (userPrecision == Precision::U8 && userLayout == deviceLayout) {
+                    deviceBlob = userBlob;
+                } else {
+                    deviceBlob = InferenceEngine::make_shared_blob<uint8_t>({Precision::U8, dims, deviceLayout});
+                }
+            } break;
+            default: //IE_THROW() << "Cuda Plugin: Unsupported network Input/Output Precision " << networkPrecision;
+                     THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported network Input/Output Precision " << networkPrecision;
         }
         // preprocessing converts user input blob to desired device input blob automatically
         // NOTE: this is not supported for output user blobs yet
