@@ -142,7 +142,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     // So we need store as supported either unsupported node sets
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
-    auto opset = ngraph::get_opset4();
+    auto opset = ngraph::get_opset6();
     for (auto&& node : transformedFunction->get_ops()) {
         // Extract transformation history from transformed node as list of nodes
         for (auto&& fusedLayerName : ngraph::getFusedNamesVector(node)) {
