@@ -8,7 +8,7 @@
 #include "memory_manager/cuda_device_mem_block.hpp"
 #include <vector>
 #include <cuda_runtime_api.h>
-
+#include <details/ie_exception.hpp>
 
 TEST(ImmutableMemoryBlockBuilder, BuildEmpty) {
   using namespace CUDAPlugin;

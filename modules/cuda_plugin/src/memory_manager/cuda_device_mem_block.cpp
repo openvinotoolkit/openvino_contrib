@@ -8,29 +8,18 @@
 
 #include <iostream>
 #include <cuda_runtime_api.h>
+#include <cuda/runtime.hpp>
 
 namespace CUDAPlugin {
 
 DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model)
   : model_{ model }, device_mem_ptr_{ nullptr }
 {
-  auto err = ::cudaMalloc(&device_mem_ptr_, model_->deviceMemoryBlockSize());
-  if (err != cudaSuccess)
-    THROW_IE_EXCEPTION
-      << "::cudaMalloc() failed: "
-      << "code " << err
-      << ", description: " << cudaGetErrorString(err);
+  CUDA::throwIfError(::cudaMalloc(&device_mem_ptr_, model_->deviceMemoryBlockSize()));
 }
 
 DeviceMemBlock::~DeviceMemBlock() {
-  auto err = ::cudaFree(device_mem_ptr_);
-  if (err != cudaSuccess) {
-    std::cerr << "::cudaFree() failed: "
-              << "code " << err
-              << ", description: " << cudaGetErrorString(err)
-              << std::endl;
-  }
-  assert(err == cudaSuccess);
+  CUDA::throwIfError(::cudaFree(device_mem_ptr_));
 }
 
 void* DeviceMemBlock::deviceTensorPtr(MemoryModel::TensorID id) {
