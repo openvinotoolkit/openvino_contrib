@@ -33,7 +33,8 @@ struct Configuration {
 
     int deviceId                = 0;
     bool perfCount              = true;
-    InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
+    std::string cuda_throughput_streams_{std::to_string(1)};
+    InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
 };
 // ! [configuration:header]
 

@@ -19,6 +19,7 @@ class ResultOp : public OperationBase {
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors) override;
+    static std::string GetOutputTensorName(const ngraph::Node& node);
 
  private:
     std::string output_tensor_name_;
