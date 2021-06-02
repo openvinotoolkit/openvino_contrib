@@ -18,12 +18,15 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 };
 
 const std::vector<std::map<std::string, std::string>> configs = {
-    {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}},
-    {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_NUMA}},
+    {{CONFIG_KEY(CPU_THROUGHPUT_STREAMS), InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}},
+    {{CONFIG_KEY(CPU_THROUGHPUT_STREAMS), InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_NUMA}},
+    {{CONFIG_KEY(CPU_THROUGHPUT_STREAMS), "8"}},
+    {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), InferenceEngine::CUDAConfigParams::CUDA_THROUGHPUT_AUTO}},
     {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), "8"}},
 };
 
 const std::vector<std::map<std::string, std::string>> inconfigs = {
+    {{CONFIG_KEY(CPU_THROUGHPUT_STREAMS), CONFIG_VALUE(NO)}},
     {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), CONFIG_VALUE(NO)}},
 };
 

@@ -12,17 +12,11 @@
 
 namespace CUDAPlugin {
 
-std::string get_name_from(const ngraph::Node& node) {
-    return node.inputs().size() == 0
-           ? node.get_friendly_name()
-           : node.input(0).get_source_output().get_node()->get_friendly_name();
-}
-
 ResultOp::ResultOp(const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
-    output_tensor_name_ = get_name_from(node);
+    output_tensor_name_ = GetOutputTensorName(node);
 }
 
 void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
@@ -32,6 +26,15 @@ void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
   auto blob = context.GetOutputBlob(output_tensor_name_);
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
   context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
+}
+
+std::string ResultOp::GetOutputTensorName(const ngraph::Node& node) {
+    auto previousOutput = node.get_input_source_output(0);
+    auto outputName = previousOutput.get_node()->get_friendly_name();
+    if (previousOutput.get_node()->get_output_size() > 1) {
+        outputName += '.' + std::to_string(previousOutput.get_index());
+    }
+    return outputName;
 }
 
 OPERATION_REGISTER(ResultOp, Result);

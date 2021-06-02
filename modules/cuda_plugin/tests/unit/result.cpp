@@ -8,8 +8,10 @@
 #include <ops/result.hpp>
 #include <typeinfo>
 #include <gtest/gtest.h>
+#include <ngraph/function.hpp>
 
 #include "nodes/result_stub_node.hpp"
+#include "nodes/parameter_stub_node.hpp"
 
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
@@ -33,6 +35,17 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
   }
 }
 
+template<>
+class ngraph::Output<ParameterStubNode> : public ngraph::Output<ngraph::Node> {
+ public:
+    explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node)
+        : ngraph::Output<ngraph::Node>(node, 0) {
+        auto tensor = std::make_shared<ngraph::descriptor::Tensor>(
+            ngraph::element::Type{}, ngraph::PartialShape{1}, ParameterStubNode::type_info.name);
+        node->m_outputs.emplace_back(node.get(), 0, tensor);
+    }
+};
+
 class ResultRegistryTest : public testing::Test {
   void SetUp() override {
   }
@@ -45,18 +58,22 @@ struct ResultTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
     auto& registry { OperationRegistry::getInstance() };
-    auto node = std::make_shared<ResultStubNode>();
+    auto paramNode = std::make_shared<ParameterStubNode>();
+    paramNode->set_friendly_name(ParameterStubNode::type_info.name);
+    auto resultNode = std::make_shared<ResultStubNode>();
+    auto outputParameterNode = std::make_shared<ngraph::Output<ParameterStubNode>>(paramNode);
+    resultNode->set_argument(0, *outputParameterNode);
     auto inputIDs  = std::vector<unsigned>{0};
     auto outputIDs = std::vector<unsigned>{};
-    node->set_friendly_name(ResultStubNode::type_info.name);
-    ASSERT_TRUE(registry.hasOperation(node));
-    operation = registry.createOperation(node, inputIDs, outputIDs);
+    resultNode->set_friendly_name(ResultStubNode::type_info.name);
+    ASSERT_TRUE(registry.hasOperation(resultNode));
+    operation = registry.createOperation(resultNode, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto resultOp = dynamic_cast<ResultOp*>(operation.get());
     ASSERT_TRUE(resultOp);
     allocate();
     fillBlobRandom<uint8_t>(blob);
-    blobs.insert({node->get_friendly_name(), blob});
+    blobs.insert({paramNode->get_friendly_name(), blob});
   }
   void TearDown() override {
     if (outputs.size() > 0)

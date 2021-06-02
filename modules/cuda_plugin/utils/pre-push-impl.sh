@@ -5,7 +5,7 @@ SUITES=(CudaUnitTests CudaFuncTests)
 declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_AvgPool*netPRC=FP32*\
 :*smoke_MatMul*netPRC=FP32*:*smoke_MaxPool*netPRC=FP32*:*smoke_Convert*netPRC=FP32*\
 :*smoke_*SqueezeUnsqueeze*netPRC=FP32*:*SoftMax*netPRC=FP32*:*smoke_*Transpose*\
-:*smoke_*ConvolutionLayerTest*:*smoke_Add*:*smoke_Multiply*')
+:*smoke_*ConvolutionLayerTest*:*smoke_Add*:*smoke_Multiply*:*SplitLayerTest*:*smoke_*Config*Tests*')
 
 # $EXIT_CODE variable
 EXIT_CODE=0

@@ -44,6 +44,8 @@ public:
    */
   std::shared_ptr<DeviceMemBlock> build();
 
+  size_t deviceMemoryBlockSize() const;
+
 private:
   ImmutableMemoryModelBuilder model_builder_;
   struct AllocRecord {
