@@ -26,6 +26,7 @@ addIeTargetTest(
         IE::interpreter_backend
         IE::inference_engine_plugin_api
         IE::ngraph_backend
+        ngraphFunctions
         fmt-header-only
         CUDA::cudart
         CUDA::cudnn

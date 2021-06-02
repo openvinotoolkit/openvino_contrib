@@ -15,6 +15,8 @@
 #define deprecated(...)
 
 #include <ngraph/node.hpp>
+#include <ngraph/op/split.hpp>
+#include <ngraph/op/constant.hpp>
 
 #pragma pop_macro("deprecated")
 

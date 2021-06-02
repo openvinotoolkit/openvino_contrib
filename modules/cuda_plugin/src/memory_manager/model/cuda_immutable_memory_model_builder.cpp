@@ -22,7 +22,11 @@ void ImmutableMemoryModelBuilder::addAllocation(TensorID id, size_t bsize) {
   end_offset_ += applyAllignment(bsize);
 }
 
-MemoryModel::Ptr ImmutableMemoryModelBuilder::build() {
+size_t ImmutableMemoryModelBuilder::deviceMemoryBlockSize() const {
+    return end_offset_;
+}
+
+MemoryModel::Ptr ImmutableMemoryModelBuilder::build() const {
   return std::make_shared<MemoryModel>(end_offset_, offsets_);
 }
 

@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <gsl/gsl_assert>
 #include <cuda/cutensor.hpp>
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 using namespace std::string_literals;
 
