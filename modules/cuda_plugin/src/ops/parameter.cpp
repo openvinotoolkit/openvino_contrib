@@ -15,8 +15,7 @@ ParameterOp::ParameterOp(const ngraph::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
     : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
-    auto prevNode = node.output(0);
-    input_tensor_name_ = prevNode.get_node()->get_friendly_name();
+    input_tensor_name_ = GetInputTensorName(node);
 }
 
 void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
@@ -26,6 +25,10 @@ void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs,
   auto blob = context.GetInputBlob(input_tensor_name_);
   auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->rmap();
   context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->byteSize());
+}
+
+std::string ParameterOp::GetInputTensorName(const ngraph::Node& node) {
+    return node.get_friendly_name();
 }
 
 OPERATION_REGISTER(ParameterOp, Parameter);

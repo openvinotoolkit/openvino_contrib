@@ -65,8 +65,8 @@ private:
     friend class CudaInferRequest;
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
-    std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor,
-            std::size_t numStreams);
+    std::size_t GetOptimalNumberOfStreams(std::size_t constBlobSize, std::size_t memoryBlobSize) const;
+    std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
     int GetCudaDeviceId() const noexcept;
 
     std::atomic<std::size_t>                    request_id_ = {0};

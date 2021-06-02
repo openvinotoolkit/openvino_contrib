@@ -41,6 +41,7 @@ namespace CUDAConfigParams {
  * @brief Shortcut for defining Template device configuration keys
  */
 #define CUDA_CONFIG_KEY(name) InferenceEngine::CUDAConfigParams::_CONFIG_KEY(CUDA_##name)
+#define CUDA_CONFIG_VALUE(name) InferenceEngine::CUDAConfigParams::CUDA_##name
 
 #define DECLARE_CUDA_CONFIG_KEY(name) DECLARE_CONFIG_KEY(CUDA_##name)
 #define DECLARE_CUDA_CONFIG_VALUE(name) DECLARE_CONFIG_VALUE(CUDA_##name)
@@ -49,6 +50,7 @@ namespace CUDAConfigParams {
 /**
  * @brief Defines the number of throutput streams used by CUDA plugin.
  */
+DECLARE_CUDA_CONFIG_VALUE(THROUGHPUT_AUTO);
 DECLARE_CUDA_CONFIG_KEY(THROUGHPUT_STREAMS);
 
 
