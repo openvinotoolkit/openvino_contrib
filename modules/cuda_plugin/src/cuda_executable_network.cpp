@@ -17,6 +17,8 @@
 #include "cuda_operation_registry.hpp"
 #include "cuda_graph_transformer.hpp"
 
+#include "ops/parameter.hpp"
+#include "ops/result.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
@@ -102,15 +104,10 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
-        auto previousOutput = result->get_input_source_output(0);
-        auto outputName = previousOutput.get_node()->get_friendly_name();
-        if (previousOutput.get_node()->get_output_size() > 1) {
-            outputName += '.' + std::to_string(previousOutput.get_index());
-        }
-        output_index_.emplace(outputName, function_->get_result_index(result));
+        output_index_.emplace(ResultOp::GetOutputTensorName(*result), function_->get_result_index(result));
     }
     for (auto&& parameter : function_->get_parameters()) {
-        input_index_.emplace(parameter->get_friendly_name(), function_->get_parameter_index(parameter));
+        input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), function_->get_parameter_index(parameter));
     }
 
     const auto& orderedNodes = function_->get_ordered_ops();
@@ -130,26 +127,47 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
         exec_sequence_.push_back(operation);
     }
 
-    const std::string numStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
-    memory_manager_pool_ = CreateMemoryManagerPool(opBuffersExtractor, std::stoi(numStreams));
+    memory_manager_pool_ = CreateMemoryManagerPool(opBuffersExtractor);
 }
 
 void ExecutableNetwork::InitExecutor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
     auto streamsExecutorConfig =
-        InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(cfg_._streamsExecutorConfig);
+        InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(cfg_.streams_executor_config_);
     streamsExecutorConfig._name = "CudaCPUPreprocessExecutor";
     // As Inference Engine CPU Streams Executor creates some additional therads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
     // So Inference Engone provides executors cache.
     _taskExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
-     _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
+    _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
+}
+
+std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize, const std::size_t memoryBlobSize) const {
+    if (memoryBlobSize == 0) {
+        THROW_IE_EXCEPTION << "Model is not loaded properly. Size of tensors for model is 0 !!";
+    }
+    CUDA::throwIfError(cudaSetDevice(cfg_.deviceId));
+    std::size_t free;
+    [[maybe_unused]] std::size_t total;
+    CUDA::throwIfError(cudaMemGetInfo(&free, &total));
+    auto availableInferRequests = (free - constBlobSize) / memoryBlobSize;
+    if (0 == availableInferRequests) {
+        THROW_IE_EXCEPTION << "Not enough memory even for single InferRequest !!";
+    }
+
+    const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    if (throughputStreams == CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+        return availableInferRequests;
+    } else {
+        const std::size_t numStreams = std::stoi(throughputStreams);
+        return std::min(numStreams, availableInferRequests);
+    }
 }
 
 std::shared_ptr<MemoryManagerPool>
-ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBuffersExtractor, std::size_t numStreams) {
+ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBuffersExtractor) {
     ImmutableMemoryBlockBuilder constants_block_builder;
     MemoryModelBuilder mutable_model_builder;
 
@@ -164,11 +182,16 @@ ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBu
                 opBuffersExtractor.mutableBufferLifespanEnd(index),
                 opBuffersExtractor.mutableBufferSize(index));
 
-    // Build shared constants memory block
-    auto shared_constants_blob = constants_block_builder.build();
-
     // Build memory model for mutable memory block
     auto memory_model = mutable_model_builder.build();
+
+    const auto constBlobSize = constants_block_builder.deviceMemoryBlockSize();
+    const auto memoryBlobSize = memory_model->deviceMemoryBlockSize();
+
+    const auto numStreams = GetOptimalNumberOfStreams(constBlobSize, memoryBlobSize);
+
+    // Build shared constants memory block
+    auto shared_constants_blob = constants_block_builder.build();
 
     // Later on, for each infer request
     return std::make_shared<MemoryManagerPool>(numStreams, shared_constants_blob, memory_model);
@@ -220,6 +243,7 @@ ExecutableNetwork::GetMetric(const std::string& name) const {
         std::vector<std::string> configKeys = {
             CONFIG_KEY(DEVICE_ID),
             CONFIG_KEY(PERF_COUNT),
+            CONFIG_KEY(CPU_THROUGHPUT_STREAMS),
             CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
@@ -230,7 +254,7 @@ ExecutableNetwork::GetMetric(const std::string& name) const {
         auto networkName = function_->get_friendly_name();
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
     } else if (EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
-        unsigned int value = cfg_._streamsExecutorConfig._streams;
+        const unsigned value = memory_manager_pool_->Size();
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
         THROW_IE_EXCEPTION << fmt::format("Unsupported ExecutableNetwork metric: {}", name);

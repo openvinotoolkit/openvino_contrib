@@ -19,6 +19,7 @@
 
 #include "nodes/parameter_stub_node.hpp"
 #include "nodes/result_stub_node.hpp"
+#include "test_networks.hpp"
 
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
@@ -29,6 +30,7 @@ using cdevptr_t = DevicePointer<const void*>;
 
 class PluginTest : public testing::Test {
     void SetUp() override {
+        function_ = CreateMatMulTestNetwork();
     }
 
     void TearDown() override {
@@ -40,12 +42,11 @@ class PluginTest : public testing::Test {
     Blob::Ptr inBlob;
     Blob::Ptr outBlob;
     InferenceEngine::BlobMap blobs;
+    std::shared_ptr<ngraph::Function> function_;
 };
 
 TEST_F(PluginTest, LoadExecNetwork_Success) {
-    auto dummyFunction = std::make_shared<ngraph::Function>(
-        ngraph::NodeVector{}, ngraph::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
+    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     ASSERT_NO_THROW(plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}}));
@@ -77,9 +78,7 @@ TEST_F(PluginTest, LoadExecNetwork_OutRangeId_Failed) {
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyFunction = std::make_shared<ngraph::Function>(
-        ngraph::NodeVector{}, ngraph::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
+    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});
@@ -118,9 +117,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_Success) {
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyFunction = std::make_shared<ngraph::Function>(
-        ngraph::NodeVector{}, ngraph::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
+    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});
@@ -160,9 +157,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Heavy_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyFunction = std::make_shared<ngraph::Function>(
-        ngraph::NodeVector{}, ngraph::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
+    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});

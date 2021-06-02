@@ -20,6 +20,10 @@ ImmutableMemoryBlockBuilder::addAllocation(TensorID id, const void* data, size_t
   allocations_.emplace_back(AllocRecord {id, data, bsize});
 }
 
+size_t ImmutableMemoryBlockBuilder::deviceMemoryBlockSize() const {
+    return model_builder_.deviceMemoryBlockSize();
+}
+
 std::shared_ptr<DeviceMemBlock>
 ImmutableMemoryBlockBuilder::build() {
   auto memory_block = std::make_shared<DeviceMemBlock>(model_builder_.build());

@@ -30,9 +30,14 @@ public:
   void addAllocation(TensorID id, size_t bsize);
 
   /**
+   * @returns The size of memory block
+   */
+  size_t deviceMemoryBlockSize() const;
+
+  /**
    * Creates and initializes MemoryModel object.
    */
-  MemoryModel::Ptr build();
+  MemoryModel::Ptr build() const;
 
 private:
   ptrdiff_t end_offset_;
