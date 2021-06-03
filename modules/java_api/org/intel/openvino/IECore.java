@@ -23,7 +23,7 @@ public class IECore extends IEWrapper {
     }
 
     private static String getLibraryName(String name, String linux_ver) {
-        final String osName = System.getProperty("os.name").toLowerCase();
+        String osName = System.getProperty("os.name").toLowerCase();
         if (osName.contains("win")) {
             return name + ".dll";
         } else if (osName.contains("mac")) {
@@ -53,9 +53,10 @@ public class IECore extends IEWrapper {
             "inference_engine_java_api"
         };
 
+        InputStream resources_list = null;
         try {
             // Get a list of all native resources (libraries, plugins and other files).
-            InputStream resources_list =
+            resources_list =
                     IECore.class.getClassLoader().getResourceAsStream("resources_list.txt");
             BufferedReader r = new BufferedReader(new InputStreamReader(resources_list));
 
@@ -65,6 +66,17 @@ public class IECore extends IEWrapper {
 
             String file;
             while ((file = r.readLine()) != null) {
+                // Check that file name is valid
+                if (!file.chars()
+                        .allMatch(
+                                c ->
+                                        Character.isLetterOrDigit(c)
+                                                || c == '.'
+                                                || c == '_'
+                                                || c == '-')) {
+                    throw new IOException("Invalid file path: " + file);
+                }
+
                 URL url = IECore.class.getClassLoader().getResource(file);
                 if (url == null) {
                     logger.warning("Resource not found: " + file);
@@ -76,7 +88,6 @@ public class IECore extends IEWrapper {
                     Files.copy(in, nativeLibTmpFile.toPath());
                 }
             }
-            resources_list.close();
 
             // Load native libraries.
             for (String lib : nativeLibs) {
@@ -91,6 +102,15 @@ public class IECore extends IEWrapper {
                 }
             }
         } catch (IOException ex) {
+            logger.warning("Failed to load native Inference Engine libraries: " + ex.getMessage());
+        } finally {
+            if (resources_list != null) {
+                try {
+                    resources_list.close();
+                } catch (IOException ex) {
+                    logger.warning("Failed to read native libraries list");
+                }
+            }
         }
     }
 
