@@ -51,8 +51,8 @@ private:
     CUDA::DnnTensorDescriptor input_desc_;
     CUDA::DnnTensorDescriptor output_desc_;
     CUDA::DnnFilterDescriptor filter_desc_;
+    const cudnnDataType_t tensor_element_type_;
     CUDA::DnnConvolutionDescriptor conv_desc_;
-    CUDA::ScalingParameters scaling_params_;
     cudnnConvolutionFwdAlgoPerf_t algo_perf_;
 };
 

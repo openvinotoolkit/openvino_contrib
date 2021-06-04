@@ -36,7 +36,6 @@ class CuDnnTensorOpBase : public OperationCuDnn {
     IoParams in1;
     IoParams out;
     CUDA::DnnOpTensorDescriptor op_desc_;
-    CUDA::ScalingParameters scaling_params_;
     int bias_index_ = 0;
     int dest_index_ = 1;
 };

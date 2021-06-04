@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "cudnn_tensor_op_base.hpp"
+#include "constant_factory.hpp"
+#include "converters.hpp"
 
 #include <cuda_operation_registry.hpp>
 #include <ngraph/op/util/attr_types.hpp>
@@ -59,7 +61,6 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const std::shared_ptr<ngraph::Node>& node,
   const auto size = in0.array_.size();
   Expects(in1.array_.size() == size);
   Expects(out.array_.size() == size);
-  scaling_params_.set(out.type_, 1.0, 0.0);
   bool has_0_broadcasts = false;
   bool has_1_broadcasts = false;
   for (int i = 0; i < size; ++i) {
@@ -97,17 +98,15 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context, Inputs i
   Expects(outputTensors.size() == 1);
   const auto& bias_input = bias_index_ == 0 ? in0 : in1;
   const auto& dest_input = bias_index_ == 0 ? in1 : in0;
-  const auto alpha = scaling_params_.alpha();
-  const auto beta = scaling_params_.beta();
   context.getThreadContext().dnnHandle().opTensor(op_desc_,
-      &alpha, dest_input.desc_, inputTensors[dest_index_].get(),
-      &alpha, bias_input.desc_, inputTensors[bias_index_].get(),
-      &beta, out.desc_, outputTensors[0].get());
+      &DynamicConst<constants::one>(out.type_), dest_input.desc_, inputTensors[dest_index_].get(),
+      &DynamicConst<constants::one>(out.type_), bias_input.desc_, inputTensors[bias_index_].get(),
+      &DynamicConst<constants::zero>(out.type_), out.desc_, outputTensors[0].get());
 }
 
 CuDnnTensorOpBase::IoParams::IoParams(const ngraph::Node& node, const Type& io_type, int index)
-    : type_(CUDA::toDataType(io_type == Type::INPUT ? node.get_input_element_type(index)
-                                                    : node.get_output_element_type(index))),
+    : type_(convertDataType<cudnnDataType_t>(io_type == Type::INPUT ? node.get_input_element_type(index)
+                                                                    : node.get_output_element_type(index))),
       shape_(io_type == Type::INPUT ? node.get_input_shape(index)
                                     : node.get_output_shape(index)),
       array_(toArray<int, max_supported_shape_size>(shape_)),
