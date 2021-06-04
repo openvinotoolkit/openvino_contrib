@@ -14,6 +14,7 @@
 
 #include "converters.hpp"
 #include "matmul.hpp"
+#include "constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -28,8 +29,6 @@ MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
     Expects(convertDataType<cudaDataType_t>(op->get_input_element_type(0)) == convertDataType<cudaDataType_t>(op->get_input_element_type(1)));
     data_type_ = convertDataType<cudaDataType_t>(op->get_input_element_type(0));
     compute_type_ = GetComputeType(data_type_, convertDataType<cudaDataType_t>(op->get_output_element_type(0)));
-    alpha_ = ScalingAlphaConstant(compute_type_);
-    beta_ = ScalingBetaConstant(compute_type_);
     auto inputAShape = op->get_input_shape(0);
     auto inputBShape = op->get_input_shape(1);
     auto outputCShape = op->get_output_shape(0);
@@ -64,8 +63,6 @@ MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
     Ensures(ld_b_ != 0);
     Ensures(ld_c_ != 0);
     Ensures(batch_count_ != 0);
-    Ensures(alpha_ != nullptr);
-    Ensures(beta_ != nullptr);
 }
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
@@ -98,50 +95,6 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
         }
         default: THROW_IE_EXCEPTION << fmt::format("Not supported combination of A and B types [{}] with C type [{}]",
                                                    abDataType, cDataType);
-    }
-}
-
-const void* MatMulOp::ScalingAlphaConstant(cudaDataType_t computeType) {
-    switch (computeType) {
-        case CUDA_R_64F: {
-            static constexpr double alpha = 1.0;
-            return &alpha;
-        }
-        case CUDA_R_32F: {
-            static constexpr float alpha = 1.0;
-            return &alpha;
-        }
-        case CUDA_R_16F: {
-            static const __half alpha = 1.0;
-            return &alpha;
-        }
-        case CUDA_R_32I: {
-            static constexpr uint32_t alpha = 1;
-            return &alpha;
-        }
-        default: THROW_IE_EXCEPTION << fmt::format("Not supported computeType [{}]", computeType);
-    }
-}
-
-const void* MatMulOp::ScalingBetaConstant(cudaDataType_t computeType) {
-    switch (computeType) {
-        case CUDA_R_64F: {
-            static double beta = 0.0;
-            return &beta;
-        }
-        case CUDA_R_32F: {
-            static float beta = 0.0;
-            return &beta;
-        }
-        case CUDA_R_16F: {
-            static __half beta = 0.0;
-            return &beta;
-        }
-        case CUDA_R_32I: {
-            static uint32_t beta = 0;
-            return &beta;
-        }
-        default: THROW_IE_EXCEPTION << fmt::format("Not supported computeType [{}]", computeType);
     }
 }
 
@@ -208,10 +161,10 @@ void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
     CUDA::throwIfError(cublasGemmStridedBatchedEx(
         cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_,
         n_, m_, k_,
-        alpha_,
+        &DynamicConst<constants::one>(compute_type_),
         matrixB.get(), data_type_, ld_b_, stride_b_,
         matrixA.get(), data_type_, ld_a_, stride_a_,
-        beta_,
+        &DynamicConst<constants::zero>(compute_type_),
         matrixC.get(), data_type_, ld_c_, stride_c_,
         batch_count_,
         compute_type_,

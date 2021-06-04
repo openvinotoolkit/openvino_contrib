@@ -4,6 +4,7 @@
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
 #include <ngraph/node.hpp>
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 namespace  {
@@ -26,7 +27,7 @@ CUDA::DnnTensorDescriptor desc(
   strides.back() = 1;
   for (int i = dims.size() - 1; i > 0; i--)
     strides[i - 1] = strides[i] * dims[i];
-  return {CUDA::toDataType(type), dims.size(), dims.data(), strides.data()};
+  return {convertDataType<cudnnDataType_t>(type), dims.size(), dims.data(), strides.data()};
 }
 
 CUDA::DnnTensorDescriptor inputDesc(const ngraph::Node& node, int n) {
