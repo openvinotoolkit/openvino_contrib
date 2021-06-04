@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "converters.hpp"
 #include "transpose.hpp"
+#include "constant_factory.hpp"
 #include <cuda_operation_registry.hpp>
 #include <ngraph/op/constant.hpp>
 #include <algorithm>
@@ -13,39 +15,6 @@
 using namespace std::string_literals;
 
 namespace CUDAPlugin {
-constexpr cudaDataType_t toDataType(const ngraph::element::Type_t& type) {
-    using ngraph::element::Type_t;
-    switch (type) {
-    case Type_t::bf16:
-        return CUDA_R_16BF;
-    case Type_t::f16:
-        return CUDA_R_16F;
-    case Type_t::f32:
-        return CUDA_R_32F;
-    case Type_t::f64:
-        return CUDA_R_64F;
-    case Type_t::i8:
-        return CUDA_R_8I;
-    case Type_t::i16:
-        return CUDA_R_16I;
-    case Type_t::i32:
-        return CUDA_R_32I;
-    case Type_t::i64:
-        return CUDA_R_64I;
-    case Type_t::u8:
-        return CUDA_R_8U;
-    case Type_t::u16:
-        return CUDA_R_16U;
-    case Type_t::u32:
-        return CUDA_R_32U;
-    case Type_t::u64:
-        return CUDA_R_64U;
-    default:
-        CUDA::throwIEException("Invalid type conversion. Attempting to convert "s
-            + ngraph::element::Type {type}.c_type_string() + "to cuda type."s);
-    }
-}
-
 
 TransposeOp::TransposeOp(const std::shared_ptr<ngraph::Node>& node,
     std::vector<unsigned>&& inputIds, std::vector<unsigned>&& outputIds) :
@@ -58,12 +27,10 @@ TransposeOp::TransposeOp(const std::shared_ptr<ngraph::Node>& node,
         inputMode_ { extractInputMode(dimsNumber_) },
         outputMode_ { tryToExtractPermutation(*node) },
         extents_ { extractExtents(inputExtents_) },
-        inputElementsType_ { toDataType(node->input(0).get_element_type()) },
-        permutationElementsType_ { extractPermutationElementsType(*node) },
-        alpha_ { makeAlpha(inputElementsType_) } {
+        inputElementsType_ { convertDataType<cudaDataType_t>(node->input(0).get_element_type()) },
+        permutationElementsType_ { extractPermutationElementsType(*node) } {
     inputExtents_.size();
 }
-
 
 void TransposeOp::Execute(const InferenceRequestContext& context,
     Inputs inputTensors, Outputs outputTensors) {
@@ -91,7 +58,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
             CUTENSOR_OP_IDENTITY);
 
     CUDA::throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
-            &alpha_,
+            &DynamicConst<constants::one>(inputElementsType_),
             inputTensors[0].get(),
             &inputDesc,
             inputMode_.data(),
@@ -229,37 +196,6 @@ inline std::vector<int> TransposeOp::downloadPermutationVector(
     context.getThreadContext().stream().synchronize();
     std::copy(perm.begin(), perm.end(), std::back_inserter(result));
     return result;
-}
-
-
-TransposeOp::AlphaValue TransposeOp::makeAlpha(cudaDataType_t dt) {
-    switch (dt) {
-    case CUDA_R_16F:
-        return { .fp16 = __float2half(1.f) };
-    case CUDA_R_16BF:
-        return TransposeOp::AlphaValue{ .bf16 = __float2bfloat16(1.f) };
-    case CUDA_R_32F:
-        return { .fp32 = 1.f };
-    case CUDA_R_64F:
-        return { .fp64 = 1. };
-    case CUDA_R_8I:
-        return { .i8 = 1 };
-    case CUDA_R_8U:
-        return { .u8 = 1 };
-    case CUDA_R_16I:
-        return { .i16 = 1 };
-    case CUDA_R_16U:
-        return { .u16 = 1 };
-    case CUDA_R_32I:
-        return { .i32 = 1 };
-    case CUDA_R_32U:
-        return { .u32 = 1 };
-    case CUDA_R_64I:
-        return { .i64 = 1 };
-    case CUDA_R_64U:
-        return { .u64 = 1 };
-    }
-    CUDA::throwIEException(fmt::format("Transpose operation initialization failed. Type {} is not supported.", dt));
 }
 
 

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "converters.hpp"
 #include "pooling_impl.hpp"
+#include "constant_factory.hpp"
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
@@ -16,8 +18,6 @@ static constexpr size_t max_spatial_dims_{3};
 static constexpr size_t min_total_dims_{min_spatial_dims_ + non_spatial_dims_};
 static constexpr size_t max_total_dims_{max_spatial_dims_ + non_spatial_dims_};
 static constexpr size_t default_stride_{1};
-static constexpr float alpha_scaling_factor_ = 1.0f;
-static constexpr float beta_scaling_factor_ = 0.0f;
 
 PoolingImpl::PoolingImpl(const ngraph::op::v1::MaxPool& node)
     : mode_{CUDNN_POOLING_MAX},
@@ -30,11 +30,11 @@ PoolingImpl::PoolingImpl(const ngraph::op::v1::MaxPool& node)
                               .data(),
                           spatial_shape_from_ngraph(node.get_strides()).data()},
       input_tensor_descriptor_{
-          CUDA::toDataType(node.get_element_type()), max_total_dims_,
+          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
           tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
           tensor_strides_from_ngraph(node.get_input_shape(input_index)).data()},
       output_tensor_descriptor_{
-          CUDA::toDataType(node.get_element_type()), max_total_dims_,
+          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
           tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
           tensor_strides_from_ngraph(node.get_output_shape(output_index))
               .data()} {
@@ -55,11 +55,11 @@ PoolingImpl::PoolingImpl(const ngraph::op::AvgPool& node)
                               .data(),
                           spatial_shape_from_ngraph(node.get_strides()).data()},
       input_tensor_descriptor_{
-          CUDA::toDataType(node.get_element_type()), max_total_dims_,
+          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
           tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
           tensor_strides_from_ngraph(node.get_input_shape(input_index)).data()},
       output_tensor_descriptor_{
-          CUDA::toDataType(node.get_element_type()), max_total_dims_,
+          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
           tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
           tensor_strides_from_ngraph(node.get_output_shape(output_index))
               .data()} {
@@ -72,10 +72,10 @@ void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
                             void* output_tensor_device_ptr) {
   CUDA::throwIfError(cudnnPoolingForward(cudnn_context_handle.get(),       //
                                          pooling_descriptor_.get(),        //
-                                         &alpha_scaling_factor_,           //
+                                         &constants::one<float>::value,           //
                                          input_tensor_descriptor_.get(),   //
                                          input_tensor_device_ptr,          //
-                                         &beta_scaling_factor_,            //
+                                         &constants::zero<float>::value,            //
                                          output_tensor_descriptor_.get(),  //
                                          output_tensor_device_ptr));
 }

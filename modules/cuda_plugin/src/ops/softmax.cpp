@@ -7,6 +7,8 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
 #include "softmax.hpp"
+#include "converters.hpp"
+#include "constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -103,37 +105,11 @@ void SoftmaxOp::mapRankAxis(const ngraph::Shape& shape, int axis) {
   }
 }
 
-/**
- * @brief Converts OpenVINO data type to cuDNN data type
- */
-constexpr cudnnDataType_t convertDataType(const ngraph::element::Type& type) {
-  using ngraph::element::Type_t;
-  switch (static_cast<Type_t>(type)) {
-    case Type_t::bf16:
-      return CUDNN_DATA_BFLOAT16;
-    case Type_t::f16:
-      return CUDNN_DATA_HALF;
-    case Type_t::f32:
-      return CUDNN_DATA_FLOAT;
-    case Type_t::f64:
-      return CUDNN_DATA_DOUBLE;
-    case Type_t::i8:
-      return CUDNN_DATA_INT8;
-    case Type_t::i32:
-      return CUDNN_DATA_INT32;
-    case Type_t::i64:
-      return CUDNN_DATA_INT64;
-    default:
-      THROW_IE_EXCEPTION << "Unsupported ngraph element type "  << type.c_type_string();
-  }
-}
-
 SoftmaxOp::SoftmaxOp(const NodeOp& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
   : OperationCuDnn{node, move(inputIds), move(outputIds) },
-    type_ {convertDataType(node.input(0).get_element_type())} {
-      scaling_params_.set(type_, 1.0, 0.0);
+    type_ {convertDataType<cudnnDataType_t>(node.input(0).get_element_type())} {
       const int axis = node.get_axis();
       mapRankAxis(node.input(0).get_shape(), axis);
       tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());
@@ -142,16 +118,14 @@ SoftmaxOp::SoftmaxOp(const NodeOp& node,
 void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 1);
-  const auto alpha = scaling_params_.alpha();
-  const auto beta = scaling_params_.beta();
   CUDA::throwIfError(cudnnSoftmaxForward(
       context.getThreadContext().dnnHandle().get(),
       cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
       cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
-      &alpha,
+      &constants::one<float>::value,
       tensor_descriptor_.get(),
       inputs[0].get(),
-      &beta,
+      &constants::zero<float>::value,
       tensor_descriptor_.get(),
       outputs[0].get()));
 }
