@@ -27,18 +27,6 @@ private:
      */
     static cudaDataType_t GetComputeType(cudaDataType_t abDataType, cudaDataType_t cDataType);
     /**
-     * Get scaling alpha constant according compute type
-     * @param computeType Data type for getting constant
-     * @return Pointer to constant
-     */
-    static const void* ScalingAlphaConstant(cudaDataType_t computeType);
-    /**
-     * Get scaling beta constant according compute type
-     * @param computeType Data type for getting constant
-     * @return Pointer to constant
-     */
-    static const void* ScalingBetaConstant(cudaDataType_t computeType);
-    /**
      * Get number of batches that equals to product between dimensions in range [matrixShape.begin(), matrixShape.end()-2)
      * @param matrixShape Matrix to calculate number of batches
      * @return Number of batches
@@ -71,8 +59,6 @@ private:
     int batch_count_ = 0;
     cublasOperation_t cublas_transpose_a_ = CUBLAS_OP_N;
     cublasOperation_t cublas_transpose_b_ = CUBLAS_OP_N;
-    const void* alpha_ = nullptr;
-    const void* beta_ = nullptr;
 };
 
 } // namespace CUDAPlugin

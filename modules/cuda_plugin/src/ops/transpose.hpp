@@ -26,20 +26,6 @@ public:
 
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;
-    union AlphaValue {
-        __half fp16;
-        __nv_bfloat16 bf16;
-        float fp32;
-        double fp64;
-        std::int8_t i8;
-        std::uint8_t u8;
-        std::int16_t i16;
-        std::uint16_t u16;
-        std::int32_t i32;
-        std::uint32_t u32;
-        std::int64_t i64;
-        std::uint64_t u64;
-    };
 
     static std::vector<std::int64_t> extractInputExtents(const ngraph::Node& node);
 
@@ -61,8 +47,6 @@ private:
 
     ngraph::element::Type_t extractPermutationElementsType(const ngraph::Node& node);
 
-    static AlphaValue makeAlpha(cudaDataType_t dt);
-
     template<typename T>
     static std::vector<int> downloadPermutationVector(const InferenceRequestContext& context,
             InferenceEngine::gpu::DevicePointer<const void*>, unsigned numDims);
@@ -78,7 +62,6 @@ private:
     ExtentsMap extents_;
     cudaDataType_t inputElementsType_;
     ngraph::element::Type_t permutationElementsType_;
-    AlphaValue alpha_;
 };
 
 } // namespace CUDAPlugin

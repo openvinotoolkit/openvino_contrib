@@ -7,6 +7,8 @@
 
 #include "convolution_cudnn.hpp"
 #include "convolution.hpp"
+#include "converters.hpp"
+#include "constant_factory.hpp"
 #include <cudnn.h>
 
 namespace CUDAPlugin {
@@ -23,8 +25,8 @@ ConvolutionCuDnn::ConvolutionCuDnn(ngraph::element::Type_t element_type,
                                    const ngraph::CoordinateDiff& padding_after)
     : input_desc_{ MakeTensorDescriptor(element_type, input_shape) }
     , output_desc_{ MakeTensorDescriptor(element_type, output_shape) }
-    , filter_desc_{ MakeFilterDescriptor(element_type, filter_shape) } {
-    const cudnnDataType_t tensor_element_type = CUDA::toDataType(element_type);
+    , filter_desc_{ MakeFilterDescriptor(element_type, filter_shape) }
+    , tensor_element_type_{convertDataType<cudnnDataType_t>(element_type)} {
     ConvParams conv_params {};
 
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should already be
@@ -58,23 +60,16 @@ ConvolutionCuDnn::ConvolutionCuDnn(ngraph::element::Type_t element_type,
 
     // Create convolution descriptor and ask cuDNN to select appropriate algorithm.
     CUDA::DnnHandle dnnHandle {};
-    SelectAlgo(dnnHandle, conv_params, tensor_element_type);
-
-    // Init scaling parameters. The storage data types for alpha and beta are:
-    //  - float for HALF and FLOAT tensors, and
-    //  - double for DOUBLE tensors.
-    scaling_params_.set(tensor_element_type, 1.0, 0.0);
+    SelectAlgo(dnnHandle, conv_params, tensor_element_type_);
 }
 
 void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
-    const auto alpha = scaling_params_.alpha();
-    const auto beta = scaling_params_.beta();
     const CUDA::Allocation workSpace = context.getThreadContext().stream().malloc(algo_perf_.memory);
     cudnnStatus_t status = ::cudnnConvolutionForward(
                                 context.getThreadContext().dnnHandle().get(),
-                                &alpha,
+                                &DynamicConst<constants::one>(tensor_element_type_),
                                 input_desc_.get(),
                                 inputs[ConvolutionOp::ArgIndices::input].get(),
                                 filter_desc_.get(),
@@ -83,7 +78,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs in
                                 algo_perf_.algo,
                                 workSpace.get(),
                                 algo_perf_.memory,
-                                &beta,
+                                &DynamicConst<constants::zero>(tensor_element_type_),
                                 output_desc_.get(),
                                 outputs[ConvolutionOp::ArgIndices::output].get());
     CUDA::throwIfError(status);
@@ -130,7 +125,7 @@ bool ConvolutionCuDnn::SelectAlgoForConvDataType(const CUDA::DnnHandle& dnnHandl
 CUDA::DnnTensorDescriptor
 ConvolutionCuDnn::MakeTensorDescriptor(ngraph::element::Type_t element_type,
                                        const ngraph::Shape& shape) {
-    const cudnnDataType_t datatype = CUDA::toDataType(element_type);
+    const cudnnDataType_t datatype = convertDataType<cudnnDataType_t>(element_type);
     const int nbDims = shape.size();
 
     if (nbDims < 4 || nbDims > 5)
@@ -146,7 +141,7 @@ ConvolutionCuDnn::MakeTensorDescriptor(ngraph::element::Type_t element_type,
 CUDA::DnnFilterDescriptor
 ConvolutionCuDnn::MakeFilterDescriptor(ngraph::element::Type_t element_type,
                                        const ngraph::Shape& shape) {
-    const cudnnDataType_t datatype = CUDA::toDataType(element_type);
+    const cudnnDataType_t datatype = convertDataType<cudnnDataType_t>(element_type);
     const int nbDims = shape.size();
 
     if (nbDims < 4 || nbDims > 5)

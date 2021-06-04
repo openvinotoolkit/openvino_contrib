@@ -4,6 +4,12 @@
 
 #pragma once
 
+#include <ngraph/type/element_type.hpp>
+#include <cuda_runtime.h>
+#include <cudnn.h>
+#include <details/ie_exception.hpp>
+#include <fmt/format.h>
+
 namespace CUDAPlugin {
 
  /**
@@ -28,11 +34,31 @@ inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::el
         case Type_t::f64: return CUDA_R_64F;
         case Type_t::i8: return CUDA_R_8I;
         case Type_t::u8: return CUDA_R_8U;
+        case Type_t::i16: return CUDA_R_16I;
+        case Type_t::u16: return CUDA_R_16U;
         case Type_t::i32: return CUDA_R_32I;
         case Type_t::u32: return CUDA_R_32U;
         case Type_t::i64: return CUDA_R_64I;
         case Type_t::u64: return CUDA_R_64U;
-        default:THROW_IE_EXCEPTION << "Unsupported ngraph element type " << type.c_type_string();
+        default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuda library", type.c_type_string());
+    }
+}
+
+/**
+ * @brief Converts OpenVINO data type to cuDNN data type
+ */
+template <>
+inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::element::Type& type) {
+    using ngraph::element::Type_t;
+    switch (static_cast<Type_t>(type)) {
+        case Type_t::bf16: return CUDNN_DATA_BFLOAT16;
+        case Type_t::f16: return CUDNN_DATA_HALF;
+        case Type_t::f32: return CUDNN_DATA_FLOAT;
+        case Type_t::f64: return CUDNN_DATA_DOUBLE;
+        case Type_t::i8: return CUDNN_DATA_INT8;
+        case Type_t::i32: return CUDNN_DATA_INT32;
+        case Type_t::i64: return CUDNN_DATA_INT64;
+        default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuDNN library", type.c_type_string());
     }
 }
 
