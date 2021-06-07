@@ -29,6 +29,7 @@
 using namespace InferenceEngine;
 
 namespace CUDAPlugin {
+using namespace utils;
 
 using Time = std::chrono::steady_clock;
 
@@ -103,18 +104,25 @@ void CudaInferRequest::inferPreprocess() {
 }
 
 void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
+    const bool perfCount = _executableNetwork->cfg_.perfCount;
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
+    infer_count_++;
     auto start = Time::now();
     memory_manager_proxy_ =
         _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
     auto& manager = memory_manager_proxy_->Get();
     InferenceRequestContext inferRequestContext{_deviceInputs, _networkOutputBlobs, threadContext};
+    unsigned execution_index {};
+    if (perfCount) exec_timing_.setStart(threadContext.stream());
     for (auto& op : _executableNetwork->exec_sequence_) {
       cancellation_token_.Check();
       auto inputTensors = manager.inputTensorPointers(*op);
       auto outputTensors = manager.outputTensorPointers(*op);
+      if (perfCount) addStartEvent(threadContext.stream(), *op, ++execution_index);
       op->Execute(inferRequestContext, inputTensors, outputTensors);
+      if (perfCount) addStopEvent(threadContext.stream(), *op);
     }
+    if (perfCount) exec_timing_.setStop(threadContext.stream());
     _durations[StartPipeline] = Time::now() - start;
 }
 
@@ -143,30 +151,111 @@ void CudaInferRequest::inferPostprocess() {
         }
     }
     _durations[Postprocess] = Time::now() - start;
+    processPerfEvents();
 }
 
 void CudaInferRequest::Cancel() {
     cancellation_token_.Cancel();
     _executableNetwork->memory_manager_pool_->Interrupt();
 }
+InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
+  InferenceEngineProfileInfo result {};
+  op.GetCategory().copy(result.exec_type, sizeof(result.exec_type)-1);
+  op.GetTypeName().copy(result.layer_type, sizeof(result.layer_type)-1);
+  result.execution_index = execution_index;
+  return result;
+}
 
-std::map<std::string, InferenceEngineProfileInfo> CudaInferRequest::GetPerformanceCounts() const {
-    std::map<std::string, InferenceEngineProfileInfo> perfMap;
-    InferenceEngineProfileInfo info;
-    info.execution_index = 0;
-    info.status = InferenceEngineProfileInfo::EXECUTED;
+InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const std::string& layer, const std::string_view& exec_type) {
+  InferenceEngineProfileInfo result {};
+  exec_type.copy(result.exec_type, sizeof(result.exec_type)-1);
+  layer.copy(result.layer_type, sizeof(result.layer_type)-1);
+  result.execution_index = 0;
+  return result;
+}
 
-    info.cpu_uSec = info.realTime_uSec = _durations[Preprocess].count();
-    perfMap["1. input preprocessing"] = info;
-    info.cpu_uSec = info.realTime_uSec = 0;
-    perfMap["2. input transfer to a device"] = info;
-    info.cpu_uSec = info.realTime_uSec = _durations[StartPipeline].count();
-    perfMap["3. execution time"] = info;
-    info.cpu_uSec = info.realTime_uSec = 0;
-    perfMap["4. output transfer from a device"] = info;
-    info.cpu_uSec = info.realTime_uSec = _durations[Postprocess].count();
-    perfMap["5. output postprocessing"] = info;
-    return perfMap;
+constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long realTime_uSec, long long cpuTime_uSec = 0) noexcept {
+  return InferenceEngineProfileInfo {
+    InferenceEngineProfileInfo::EXECUTED,
+    realTime_uSec,
+    cpuTime_uSec
+  };
+}
+
+void CudaInferRequest::addStartEvent(const CUDA::Stream& stream, const IOperationMeta& op, unsigned index) {
+  const auto& name = op.GetName();
+  const auto& type = op.GetTypeName();
+  auto perf = perf_counters_.find(name);
+  if (perf == perf_counters_.cend())
+    perf_counters_.emplace(name, makeProfileInfo(op, index));
+  perf = perf_counters_.find(type);
+  if (perf == perf_counters_.cend()) {
+    perf_counters_.emplace(type, makeProfileInfo(op.GetTypeName(), op.GetCategory()));
+  } else {
+    // Layers of the same type may have different exec_type, in sych case we clear exec_type
+    if (perf->second.exec_type[0] && op.GetCategory().compare(perf->second.exec_type) != 0)
+      perf->second.exec_type[0] = 0;
+  }
+  const auto timing = perf_timings_.find(name);
+  if (timing == perf_timings_.cend()) {
+    perf_timings_.emplace(name, PerformaceTiming{stream});
+  } else {
+    timing->second.setStart(stream);
+  }
+}
+
+void CudaInferRequest::addStopEvent(const CUDA::Stream& stream, const IOperationMeta& op) {
+  auto timing = perf_timings_.find(op.GetName());
+  if (timing != perf_timings_.cend())
+    timing->second.setStop(stream);
+}
+
+void CudaInferRequest::clearPerfEvents() {
+  for (auto& t : perf_timings_) {
+    t.second.clear();
+  }
+}
+
+CudaInferRequest::PerformaceCounters CudaInferRequest::GetPerformanceCounts() const {
+  return perf_counters_;
+}
+
+void CudaInferRequest::processPerfEvents() {
+  if (infer_count_ == 0) return;
+  constexpr float ms2us = 1000.0;
+  std::map<std::string, float> layer_timing {};
+  for (auto& timing : perf_timings_) {
+    timing.second.measure();
+    const auto perf = perf_counters_.find(timing.first);
+    if (perf != perf_counters_.cend()) {
+       perf->second.realTime_uSec = timing.second.duration() * ms2us / infer_count_;
+       perf->second.status = InferenceEngineProfileInfo::EXECUTED;
+       if (perf->second.layer_type[0]) {
+         layer_timing[perf->second.layer_type] += timing.second.duration();
+       }
+    }
+  }
+  for (auto const& timing : layer_timing) {
+    const auto summary = perf_counters_.find(timing.first);
+    if (summary != perf_counters_.cend()) {
+        summary->second.realTime_uSec = timing.second * ms2us / infer_count_;
+        summary->second.status = InferenceEngineProfileInfo::EXECUTED;
+    }
+  }
+
+  auto param_timing = layer_timing.find("Parameter");
+  auto result_timing = layer_timing.find("Result");
+  // Adding some overall performance counters
+  perf_counters_["1. input preprocessing"] = makeProfileInfo(0, _durations[Preprocess].count());
+  perf_counters_["2. input transfer to a device"] = makeProfileInfo(
+      // Sum of all Parameters divided by count of infer requests
+      param_timing == layer_timing.cend() ? 0 : param_timing->second * ms2us / infer_count_);
+  perf_counters_["3. execution time"] = makeProfileInfo(
+      exec_timing_.measure() * ms2us / infer_count_, _durations[StartPipeline].count());
+  perf_counters_["4. output transfer from a device"] = makeProfileInfo(
+      // Sum of all Results divided by count of infer requests
+      result_timing == layer_timing.cend() ? 0 : result_timing->second * ms2us / infer_count_);
+  perf_counters_["5. output postprocessing"] = makeProfileInfo(0, _durations[Postprocess].count());
 }
 
 std::shared_ptr<ExecutableNetwork>
