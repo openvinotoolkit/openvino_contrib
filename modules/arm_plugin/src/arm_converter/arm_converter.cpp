@@ -107,6 +107,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::ArmConvert>();
     Register<opset::ArmConcat>();
     Register<opset::ArmGather>();
+    Register<opset::ArmFFT>();
     if (ref) {
         Register<opset::MVN>();
         Register<opset::NormalizeL2>();
@@ -167,6 +168,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::GRUSequence>();
         Register<opset::RNNSequence>();
         Register<opset::Bucketize>();
+        Register<opset::DFT>();
+        Register<opset::IDFT>();
     }
     Register<opset::Result>();
 
