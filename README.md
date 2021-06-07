@@ -11,6 +11,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**arm_plugin**](./modules/arm_plugin): ARM CPU Plugin -- allows to perform deep neural networks inference on ARM CPUs, using OpenVINO API.
 * [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
 * [**mo_pytorch**](./modules/mo_pytorch): PyTorch extensions for Model Optimizer -- native PyTorch to OpenVINO IR converter
+* [**custom_layers**](./modules/custom_layers): Custom CPU layers - extends OpenVINO with custom layers
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.

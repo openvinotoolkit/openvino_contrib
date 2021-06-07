@@ -135,3 +135,29 @@ jobs:
       PYTHONPATH: "$(OPENVINO_REPO_DIR)/model-optimizer:$(BIN_DIR)/lib/python_api/python3.6:$(REPO_DIR)/modules/mo_pytorch"
     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
     displayName: 'PyTorch conversion tests'
+
+  - task: CMake@1
+    inputs:
+      cmakeArgs: >
+        -GNinja
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DInferenceEngine_DIR=$(BUILD_DIR)
+        -Dngraph_DIR=$(BUILD_DIR)/ngraph
+        user_ie_extensions
+      workingDirectory: $(REPO_DIR)/modules/custom_layers
+    displayName: '[CMake] Custom layers module'
+
+  - script: |
+      ninja
+      EXT_LIB=$(ls *.so) python3 setup.py build bdist_wheel
+    workingDirectory: $(REPO_DIR)/modules/custom_layers
+    displayName: '[Build] Custom layers module'
+
+  - script: |
+      python3 -m pip install ../dist/*.whl
+      python3 run_tests.py
+    env:
+      LD_LIBRARY_PATH: $(BIN_DIR)/lib
+      PYTHONPATH: "$(OPENVINO_REPO_DIR)/model-optimizer:$(BIN_DIR)/lib/python_api/python3.6"
+    workingDirectory: $(REPO_DIR)/modules/custom_layers/test
+    displayName: '[Test] Custom layers module'
