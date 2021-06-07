@@ -131,7 +131,7 @@ constexpr cudnnDataType_t convertDataType(const ngraph::element::Type& type) {
 SoftmaxOp::SoftmaxOp(const NodeOp& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
-  : OperationBase{node, move(inputIds), move(outputIds) },
+  : OperationCuDnn{node, move(inputIds), move(outputIds) },
     type_ {convertDataType(node.input(0).get_element_type())} {
       scaling_params_.set(type_, 1.0, 0.0);
       const int axis = node.get_axis();
