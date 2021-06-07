@@ -14,7 +14,7 @@
 
 namespace CUDAPlugin {
 
-class SoftmaxOp : public OperationBase {
+class SoftmaxOp : public OperationCuDnn {
  public:
   using InferenceRequestContext = InferenceEngine::gpu::InferenceRequestContext;
   using NodeOp = ngraph::op::v1::Softmax;
