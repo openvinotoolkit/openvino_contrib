@@ -5,6 +5,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <memory>
 
@@ -35,8 +36,17 @@ class IOperationExec {
 
 class IOperationMeta {
  public:
+  struct Category {
+    static constexpr std::string_view CUDA { "CUDA" };
+    static constexpr std::string_view cuBLAS { "cuBLAS" };
+    static constexpr std::string_view cuDNN { "cuDNN" };
+    static constexpr std::string_view cuTENSOR { "cuTENSOR" };
+  };
+
   virtual ~IOperationMeta() = default;
+  virtual const std::string_view& GetCategory() const = 0;
   virtual const std::string& GetName() const = 0;
+  virtual const std::string& GetTypeName() const = 0;
   virtual gsl::span<const unsigned> GetInputIds() const = 0;
   virtual gsl::span<const unsigned> GetOutputIds() const = 0;
 };
@@ -52,14 +62,21 @@ class OperationBase
   OperationBase(const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
+
  protected:
   OperationBase(const std::shared_ptr<ngraph::Node>& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds)
     : OperationBase(*node, move(inputIds), move(outputIds)) {}
  public:
+  const std::string_view& GetCategory() const override {
+    return Category::CUDA;
+  }
   const std::string& GetName() const override {
     return node_name_;
+  }
+  const std::string& GetTypeName() const override {
+    return type_name_;
   }
   gsl::span<const unsigned> GetInputIds() const override {
     return input_ids_;
@@ -70,9 +87,25 @@ class OperationBase
 
  protected:
   std::string node_name_;
+  std::string type_name_;
   const std::vector<unsigned> input_ids_;
   const std::vector<unsigned> output_ids_;
 };
+
+template<auto CategoryString>
+class CategorizedOperationBase : public OperationBase {
+ protected:
+  using OperationBase::OperationBase;
+ public:
+  const std::string_view& GetCategory() const override {
+    static_assert(std::is_same_v<decltype(CategoryString), decltype(&Category::CUDA)>);
+    return *CategoryString;
+  }
+};
+
+using OperationCuDnn = CategorizedOperationBase<&IOperationMeta::Category::cuDNN>;
+using OperationCuBlas = CategorizedOperationBase<&IOperationMeta::Category::cuBLAS>;
+using OperationCuTensor = CategorizedOperationBase<&IOperationMeta::Category::cuTENSOR>;
 
 /**
  * @brief Downcasts a shared node pointer to a ConcreteOperator reference

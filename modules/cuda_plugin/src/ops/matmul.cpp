@@ -20,7 +20,7 @@ namespace CUDAPlugin {
 MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
                    std::vector<unsigned>&& inputIds,
                    std::vector<unsigned>&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationCuBlas(node, std::move(inputIds), std::move(outputIds)) {
     auto op = dynamic_cast<ngraph::op::v0::MatMul*>(node.get());
     Expects(op);
     Expects(op->get_input_size() == 2);

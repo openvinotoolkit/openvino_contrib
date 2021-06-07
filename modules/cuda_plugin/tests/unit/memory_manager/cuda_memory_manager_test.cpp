@@ -56,6 +56,14 @@ public: // CUDAPlugin::IOperationMeta
     static std::string empty;
     return empty;
   }
+  const std::string& GetTypeName() const override {
+    return GetName();
+  }
+  const std::string_view& GetCategory() const override {
+    static constexpr std::string_view empty { "" };
+    return empty;
+  }
+
   gsl::span<const unsigned> GetInputIds() const override { return inputIds_; }
   gsl::span<const unsigned> GetOutputIds() const override { return outputIds_; }
 };
