@@ -42,9 +42,8 @@ constexpr bool constructibleWithNodeOpRef(int) {
         const typename TOperation::NodeOp&,
         OperationBase::IndexCollection&&,
         OperationBase::IndexCollection&&>::value;
-  } else {
-    return false;
   }
+  return false;
 }
 
 template<typename TOperation>
