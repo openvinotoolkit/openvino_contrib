@@ -9,7 +9,7 @@
 
 namespace CUDAPlugin {
 
-class CuDnnTensorOpBase : public OperationBase {
+class CuDnnTensorOpBase : public OperationCuDnn {
   public:
     static constexpr std::size_t max_supported_shape_size = 5;
 

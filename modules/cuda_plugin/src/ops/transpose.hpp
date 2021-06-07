@@ -15,7 +15,7 @@
 
 namespace CUDAPlugin {
 
-class TransposeOp : public OperationBase {
+class TransposeOp : public OperationCuTensor {
 public:
     TransposeOp(const std::shared_ptr<ngraph::Node>& node,
              std::vector<unsigned>&& inputIds,

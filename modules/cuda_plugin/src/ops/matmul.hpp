@@ -9,7 +9,7 @@
 
 namespace CUDAPlugin {
 
-class MatMulOp : public OperationBase {
+class MatMulOp : public OperationCuBlas {
 public:
     MatMulOp(const std::shared_ptr<ngraph::Node>& node,
              std::vector<unsigned>&& inputIds,

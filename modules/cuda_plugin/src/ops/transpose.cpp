@@ -13,7 +13,6 @@
 using namespace std::string_literals;
 
 namespace CUDAPlugin {
-
 constexpr cudaDataType_t toDataType(const ngraph::element::Type_t& type) {
     using ngraph::element::Type_t;
     switch (type) {
@@ -50,7 +49,7 @@ constexpr cudaDataType_t toDataType(const ngraph::element::Type_t& type) {
 
 TransposeOp::TransposeOp(const std::shared_ptr<ngraph::Node>& node,
     std::vector<unsigned>&& inputIds, std::vector<unsigned>&& outputIds) :
-        OperationBase(node, std::move(inputIds), std::move(outputIds)),
+    OperationCuTensor(node, std::move(inputIds), std::move(outputIds)),
         inputExtents_ { extractInputExtents(*node) },
         dimsNumber_ { inputExtents_.size() },
         outputExtents_ { extractOutputExtents(*node) },
