@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # cmake build targets / test suities to run
-SUITES=(CudaUnitTests)
+SUITES=(CudaUnitTests CudaFuncTests)
+declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_AvgPool*netPRC=FP32*:*smoke_MatMul*netPRC=FP32*:*smoke_MaxPool*netPRC=FP32*:*smoke_Convert*netPRC=FP32*:*smoke_*SqueezeUnsqueeze*netPRC=FP32*:*SoftMax*netPRC=FP32*:*smoke_*Transpose*')
 
 # $EXIT_CODE variable
 EXIT_CODE=0
@@ -77,7 +78,7 @@ fi
 # to $EXIT_CODE variable
 for SUITE in ${SUITES[@]}; do
   if [ -f $SUITE ]; then
-    eval ./$SUITE
+    eval ./"$SUITE" "${SUITES_ARGS[$SUITE]}"
     ((EXIT_CODE=EXIT_CODE | $?))
   else
     echo "Couldn't find $SUITE"
