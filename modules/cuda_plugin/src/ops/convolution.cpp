@@ -22,7 +22,7 @@ constexpr int CONV_1D_DIMS_NUMBER = NOT_SPATIAL_DIMS_NUMBER + 1;
 ConvolutionOp::ConvolutionOp(const NodeOp& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationCuDnn(node, std::move(inputIds), std::move(outputIds)) {
     const auto element_type = node.get_input_element_type(ArgIndices::input);
     Expects(element_type == node.get_input_element_type(ArgIndices::filter));
     Expects(element_type == node.get_output_element_type(ArgIndices::output));

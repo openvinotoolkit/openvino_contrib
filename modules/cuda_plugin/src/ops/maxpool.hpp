@@ -10,9 +10,8 @@
 
 namespace CUDAPlugin {
 
-class MaxPoolOp : public OperationBase {
+class MaxPoolOp : public OperationCuDnn {
  public:
-  using OperationBase::OperationBase;
   explicit MaxPoolOp(const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds);

@@ -10,9 +10,8 @@
 
 namespace CUDAPlugin {
 
-class AvgPoolOp : public OperationBase {
+class AvgPoolOp : public OperationCuDnn {
  public:
-  using OperationBase::OperationBase;
   explicit AvgPoolOp(const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds);

@@ -37,7 +37,7 @@ CUDA::DnnTensorDescriptor outputDesc(const ngraph::Node& node, int n) {
   return desc(node.get_output_element_type(n), node.get_output_shape(n));
 }
 
-class Relu : public OperationBase {
+class Relu : public OperationCuDnn {
   CUDA::ReluDescriptor reluDesc;
   CUDA::DnnTensorDescriptor xDesc;
   CUDA::DnnTensorDescriptor yDesc;
@@ -47,7 +47,7 @@ class Relu : public OperationBase {
  public:
   Relu(const std::shared_ptr<ngraph::Node>& node,
        std::vector<unsigned> inputIds, std::vector<unsigned> outputIds)
-      : OperationBase{node, move(inputIds), move(outputIds)},
+      : OperationCuDnn{node, move(inputIds), move(outputIds)},
         xDesc{inputDesc(*node, 0)},
         yDesc{outputDesc(*node, 0)} {}
   void Execute(const InferenceRequestContext& context, Inputs inputTensors,
