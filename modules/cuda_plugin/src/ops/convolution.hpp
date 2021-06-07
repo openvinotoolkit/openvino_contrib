@@ -10,7 +10,7 @@
 
 namespace CUDAPlugin {
 
-class ConvolutionOp : public OperationBase {
+class ConvolutionOp : public OperationCuDnn {
 public:
     using NodeOp = ngraph::op::v1::Convolution;
     ConvolutionOp(const NodeOp& node,
