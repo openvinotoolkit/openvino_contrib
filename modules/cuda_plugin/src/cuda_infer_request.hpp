@@ -21,6 +21,7 @@
 
 #include <ngraph/runtime/tensor.hpp>
 
+#include "utils/perf_timing.hpp"
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
@@ -34,7 +35,8 @@ class ExecutableNetwork;
 // ! [infer_request:header]
 class CudaInferRequest : public InferenceEngine::InferRequestInternal {
 public:
-    typedef std::shared_ptr<CudaInferRequest> Ptr;
+    using Ptr = std::shared_ptr<CudaInferRequest>;
+    using PerformaceCounters = std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>;
 
     CudaInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
                          const InferenceEngine::OutputsDataMap&    networkOutputs,
@@ -43,7 +45,7 @@ public:
     void InferImpl() override {
         THROW_IE_EXCEPTION_WITH_STATUS(NOT_IMPLEMENTED);
     }
-    std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> GetPerformanceCounts() const override;
+    PerformaceCounters GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular executor
@@ -77,6 +79,25 @@ private:
     template<typename SrcT, typename DstT>
     static void convertPrecision(const InferenceEngine::Blob::Ptr& src, const InferenceEngine::Blob::Ptr& dst);
 
+    /**
+     * Add a start event for an operator
+     */
+    void addStartEvent(const CUDA::Stream&, const IOperationMeta&, unsigned index);
+    /**
+     * Adds a stop event for an operator
+     */
+    void addStopEvent(const CUDA::Stream& stream, const IOperationMeta& op);
+    /**
+     * Clears performance events
+     */
+    void clearPerfEvents();
+    /**
+     * Processes performance events into performance counters
+     */
+    void processPerfEvents();
+
+
+    using PerformaceTimings = std::map<std::string, utils::PerformaceTiming>;
     enum {
         Preprocess,
         Postprocess,
@@ -100,6 +121,11 @@ private:
 
     std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
     CancellationToken                                       cancellation_token_;
+    // PerformaceCounters and PerformaceTimings have life cycle per infer request
+    PerformaceCounters                                      perf_counters_ {};
+    PerformaceTimings                                       perf_timings_ {};
+    utils::PerformaceTiming                                 exec_timing_{};
+    size_t                                                  infer_count_ {};
 };
 // ! [infer_request:header]
 
