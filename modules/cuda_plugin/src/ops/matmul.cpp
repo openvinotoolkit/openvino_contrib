@@ -161,10 +161,10 @@ void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
     CUDA::throwIfError(cublasGemmStridedBatchedEx(
         cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_,
         n_, m_, k_,
-        &DynamicConst<constants::one>(compute_type_),
+        &NumericConst<constants::one>(compute_type_),
         matrixB.get(), data_type_, ld_b_, stride_b_,
         matrixA.get(), data_type_, ld_a_, stride_a_,
-        &DynamicConst<constants::zero>(compute_type_),
+        &NumericConst<constants::zero>(compute_type_),
         matrixC.get(), data_type_, ld_c_, stride_c_,
         batch_count_,
         compute_type_,

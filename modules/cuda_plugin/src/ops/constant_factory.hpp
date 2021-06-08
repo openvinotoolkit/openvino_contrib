@@ -13,8 +13,10 @@
 namespace CUDAPlugin {
 
 namespace constants {
-
-union TypePlaceholder {
+/**
+ * AnyNumeric - a union, combining all numeric types in use
+ */
+union AnyNumeric {
     std::int8_t i8;
     std::uint8_t u8;
     std::int16_t i16;
@@ -27,88 +29,92 @@ union TypePlaceholder {
     __nv_bfloat16 bh16;
     float f32;
     double f64;
+    AnyNumeric() = delete;
+    AnyNumeric(const AnyNumeric&) = delete;
+    AnyNumeric(AnyNumeric&&) = delete;
+    AnyNumeric& operator=(AnyNumeric&) = delete;
 
-    constexpr TypePlaceholder(std::int8_t c)
+    explicit constexpr AnyNumeric(std::int8_t c)
         : i8{c} {
     }
-    constexpr TypePlaceholder(std::uint8_t c)
+    explicit constexpr AnyNumeric(std::uint8_t c)
         : u8{c} {
     }
-    constexpr TypePlaceholder(std::int16_t c)
+    explicit constexpr AnyNumeric(std::int16_t c)
         : i16{c} {
     }
-    constexpr TypePlaceholder(std::uint16_t c)
+    explicit constexpr AnyNumeric(std::uint16_t c)
         : u16{c} {
     }
-    constexpr TypePlaceholder(std::int32_t c)
+    explicit constexpr AnyNumeric(std::int32_t c)
         : i32{c} {
     }
-    constexpr TypePlaceholder(std::uint32_t c)
+    explicit constexpr AnyNumeric(std::uint32_t c)
         : u32{c} {
     }
-    constexpr TypePlaceholder(std::uint64_t c)
+    explicit constexpr AnyNumeric(std::uint64_t c)
         : u64{c} {
     }
-    constexpr TypePlaceholder(std::int64_t c)
+    explicit constexpr AnyNumeric(std::int64_t c)
         : i64{c} {
     }
-    constexpr TypePlaceholder(__half c)
+    explicit constexpr AnyNumeric(__half c)
         : h16{c} {
     }
-    constexpr TypePlaceholder(__nv_bfloat16 c)
+    explicit constexpr AnyNumeric(__nv_bfloat16 c)
         : bh16{c} {
     }
-    constexpr TypePlaceholder(float c)
+    explicit constexpr AnyNumeric(float c)
         : f32{c} {
     }
-    constexpr TypePlaceholder(double c)
+    explicit constexpr AnyNumeric(double c)
         : f64{c} {
     }
 };
 
 template<class T>
 struct one {
-    constexpr inline static TypePlaceholder value = static_cast<T>(1);
+    constexpr inline static AnyNumeric value { static_cast<T>(1) };
 };
 
 template<>
 struct one<__half> {
-    inline static TypePlaceholder value = __float2half(1.0f);
+    const inline static AnyNumeric value { __float2half(1.0f) };
 };
 
 template<>
 struct one<__nv_bfloat16> {
-    inline static TypePlaceholder value = __float2bfloat16(1.0f);
+    const inline static AnyNumeric value { __float2bfloat16(1.0f) };
 };
 
 template<class T>
 struct zero {
-    constexpr inline static TypePlaceholder value = static_cast<T>(0);
+    constexpr inline static AnyNumeric value { static_cast<T>(0) };
 };
 
 template<>
 struct zero<__half> {
-    inline static TypePlaceholder value = __float2half(0.0f);
+    const inline static AnyNumeric value { __float2half(0.0f) };
 };
 
 template<>
 struct zero<__nv_bfloat16> {
-    inline static TypePlaceholder value = __float2bfloat16(0.0f);
+    const inline static AnyNumeric value { __float2bfloat16(0.0f) };
 };
 
 } // namespace constants
 
 /**
- * Function that returns pointer to constant
+ * Function that returns reference to static constant
  * Usage:
- * &TypePlaceholder<constants::one>(computeType);
- * &TypePlaceholder<constants::zero>(computeType);
- * @tparam I Identifier of constant
+ * &NumericConst<constants::one>(computeType);
+ * &NumericConst<constants::zero>(computeType);
+ * @tparam C a class declaring the constant as its static member value
  * @param computeType Type of constant that should returned
- * @return Pointer to constant by computeType
+ * @return Reference to AnyNumeric, containing constant as dictated by computeType
  */
 template <template<typename T> class C>
-inline const constants::TypePlaceholder& DynamicConst(cudaDataType_t computeType) {
+inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
     switch (computeType) {
         case CUDA_R_16F: {
             return C<__half>::value;
@@ -151,7 +157,7 @@ inline const constants::TypePlaceholder& DynamicConst(cudaDataType_t computeType
 }
 
 template <template<typename T> class C>
-inline const constants::TypePlaceholder& DynamicConst(cudnnDataType_t computeType) {
+inline const constants::AnyNumeric& NumericConst(cudnnDataType_t computeType) {
     switch (computeType) {
         case CUDNN_DATA_DOUBLE: {
             return C<double>::value;
