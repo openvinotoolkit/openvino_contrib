@@ -28,7 +28,7 @@ CUDA::DnnTensorDescriptor desc(
   strides.back() = 1;
   for (int i = dims.size() - 1; i > 0; i--)
     strides[i - 1] = strides[i] * dims[i];
-  return { type, dims.size(), dims.data(), strides.data() };
+  return { type, static_cast<int>(dims.size()), dims.data(), strides.data() };
 }
 }  // namespace
 
@@ -99,9 +99,9 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context, Inputs i
   const auto& bias_input = bias_index_ == 0 ? in0 : in1;
   const auto& dest_input = bias_index_ == 0 ? in1 : in0;
   context.getThreadContext().dnnHandle().opTensor(op_desc_,
-      &DynamicConst<constants::one>(out.type_), dest_input.desc_, inputTensors[dest_index_].get(),
-      &DynamicConst<constants::one>(out.type_), bias_input.desc_, inputTensors[bias_index_].get(),
-      &DynamicConst<constants::zero>(out.type_), out.desc_, outputTensors[0].get());
+      &NumericConst<constants::one>(out.type_), dest_input.desc_, inputTensors[dest_index_].get(),
+      &NumericConst<constants::one>(out.type_), bias_input.desc_, inputTensors[bias_index_].get(),
+      &NumericConst<constants::zero>(out.type_), out.desc_, outputTensors[0].get());
 }
 
 CuDnnTensorOpBase::IoParams::IoParams(const ngraph::Node& node, const Type& io_type, int index)

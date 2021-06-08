@@ -17,6 +17,7 @@ addIeTargetTest(
         INCLUDES
         "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
         "${OpenVINO_MAIN_SOURCE_DIR}/tests"
+        "${CUTENSOR_INCLUDE_DIR}"
         LABELS
         CUDA
 )

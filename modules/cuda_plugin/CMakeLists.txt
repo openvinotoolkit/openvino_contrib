@@ -19,7 +19,10 @@ set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
 
 include(cmake/features.cmake)
 
+set(HAS_REQUIRED REQUIRED)
+
 if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
+    set(HAS_REQUIRED)
     find_package(CUDA REQUIRED)
     set(CUDAToolkit_VERSION_MAJOR ${CUDA_VERSION_MAJOR})
     set(CUDAToolkit_INCLUDE_DIRS ${CUDA_INCLUDE_DIRS})
@@ -33,39 +36,48 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
     # Search for CUDA Driver Library
     find_library(CUDA_DRIVER_PATH
                  NAMES cuda
-                 HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-                 ENV CUDA_PATH
+                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
                  PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
     add_library(cuda_driver SHARED IMPORTED GLOBAL)
-    set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION ${CUDA_DRIVER_PATH})
+    set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION "${CUDA_DRIVER_PATH}")
     add_library(CUDA::cuda_driver ALIAS cuda_driver)
     # Search for CUBLAS Library
     find_library(CUBLAS_PATH
                  NAMES cublas
-                 HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-                 ENV CUDA_PATH
+                 HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
                  PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
     add_library(cublas SHARED IMPORTED GLOBAL)
-    set_target_properties(cublas PROPERTIES IMPORTED_LOCATION ${CUBLAS_PATH})
+    set_target_properties(cublas PROPERTIES IMPORTED_LOCATION "${CUBLAS_PATH}")
     add_library(CUDA::cublas ALIAS cublas)
 else()
     find_package(CUDAToolkit REQUIRED)
 endif()
-find_library(CUTENSOR_PATH
-             NAMES cutensor
-             HINTS ${CUDA_TOOLKIT_ROOT_DIR} ${CUDA_PATH} ENV CUTENSOR_PATH
-             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-add_library(cutensor SHARED IMPORTED GLOBAL)
-set_target_properties(cutensor PROPERTIES IMPORTED_LOCATION ${CUTENSOR_PATH})
-add_library(CUDA::cutensor ALIAS cutensor)
 
 find_library(CUDNN_PATH
              NAMES cudnn
-             HINTS ${CUDA_TOOLKIT_ROOT_DIR}
-             ENV CUDA_PATH
+             ${HAS_REQUIRED}
+             HINTS "$ENV{CUDNN_PATH}"  "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-add_library(CUDA::cudnn SHARED IMPORTED GLOBAL)
-set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION ${CUDNN_PATH})
+
+find_library(CUTENSOR_PATH
+             NAMES cutensor
+             ${HAS_REQUIRED}
+             HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}" 
+             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib lib/11)
+get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
+get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
+
+message("-- [CUDAPlugin] CUTENSOR_PATH ${CUTENSOR_PATH}")
+message("-- [CUDAPlugin] CUTENSOR_INCLUDE_DIR ${CUTENSOR_INCLUDE_DIR}")
+message("-- [CUDAPlugin] CUDNN_PATH ${CUDNN_PATH}")
+message("-- [CUDAPlugin] CUBLAS_PATH ${CUBLAS_PATH}")
+
+add_library(CUDA::cudnn SHARED IMPORTED)
+set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION "${CUDNN_PATH}")
+set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_IMPLIB "${CUDNN_PATH}")
+add_library(CUDA::cutensor SHARED IMPORTED)
+set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PATH}")
+set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_IMPLIB "${CUTENSOR_PATH}")
 
 include(FetchContent)
 
