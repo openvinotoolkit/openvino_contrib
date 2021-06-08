@@ -69,7 +69,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs in
     const CUDA::Allocation workSpace = context.getThreadContext().stream().malloc(algo_perf_.memory);
     cudnnStatus_t status = ::cudnnConvolutionForward(
                                 context.getThreadContext().dnnHandle().get(),
-                                &DynamicConst<constants::one>(tensor_element_type_),
+                                &NumericConst<constants::one>(tensor_element_type_),
                                 input_desc_.get(),
                                 inputs[ConvolutionOp::ArgIndices::input].get(),
                                 filter_desc_.get(),
@@ -78,7 +78,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs in
                                 algo_perf_.algo,
                                 workSpace.get(),
                                 algo_perf_.memory,
-                                &DynamicConst<constants::zero>(tensor_element_type_),
+                                &NumericConst<constants::zero>(tensor_element_type_),
                                 output_desc_.get(),
                                 outputs[ConvolutionOp::ArgIndices::output].get());
     CUDA::throwIfError(status);

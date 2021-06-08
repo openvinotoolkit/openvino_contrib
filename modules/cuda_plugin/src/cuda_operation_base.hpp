@@ -92,13 +92,12 @@ class OperationBase
   const std::vector<unsigned> output_ids_;
 };
 
-template<auto CategoryString>
+template <decltype(&IOperationMeta::Category::CUDA) CategoryString>
 class CategorizedOperationBase : public OperationBase {
  protected:
   using OperationBase::OperationBase;
  public:
   const std::string_view& GetCategory() const override {
-    static_assert(std::is_same_v<decltype(CategoryString), decltype(&Category::CUDA)>);
     return *CategoryString;
   }
 };
