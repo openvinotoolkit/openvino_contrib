@@ -18,7 +18,6 @@ class PoolingImpl {
   explicit PoolingImpl(const ngraph::op::AvgPool& node);
 
   ~PoolingImpl() = default;
-
   void Execute(const CUDA::DnnHandle& handle,
                const void* input_tensor_device_ptr,
                void* output_tensor_device_ptr);
