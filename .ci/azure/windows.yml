@@ -115,3 +115,28 @@ jobs:
       gradle clean build -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
     workingDirectory: $(REPO_DIR)\modules\java_api
     displayName: 'Java tests'
+
+  - script: |
+      set PATH=$(WORK_DIR)\ninja-win;%PATH%
+      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DInferenceEngine_DIR=$(BUILD_DIR) -Dngraph_DIR=$(BUILD_DIR)\ngraph -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" user_ie_extensions
+    workingDirectory: $(REPO_DIR)\modules\custom_layers
+    displayName: '[CMake] Custom layers module'
+
+  - script: |
+      set PATH=$(WORK_DIR)\ninja-win;%PATH%
+      call "$(MSVS_VARS_PATH)" && "C:\Program Files (x86)\IncrediBuild\BuildConsole.exe" /COMMAND="ninja" /MaxCPUS=40
+      dir .
+      dir $(BIN_DIR)
+      set EXT_LIB=user_cpu_extension.dll
+      python3 setup.py build bdist_wheel
+    workingDirectory: $(REPO_DIR)\modules\custom_layers
+    displayName: '[Build] Custom layers module'
+
+  - script: |
+      python3 -m pip install ..\dist\*.whl
+      python3 run_tests.py
+    env:
+      LD_LIBRARY_PATH: $(BIN_DIR)\lib
+      PYTHONPATH: "$(OPENVINO_REPO_DIR)\model-optimizer:$(BIN_DIR)\lib\python_api\python3.6"
+    workingDirectory: $(REPO_DIR)\modules\custom_layers\test
+    displayName: '[Test] Custom layers module'
