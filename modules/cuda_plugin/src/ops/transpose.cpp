@@ -58,7 +58,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
             CUTENSOR_OP_IDENTITY);
 
     CUDA::throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
-            &DynamicConst<constants::one>(inputElementsType_),
+            &NumericConst<constants::one>(inputElementsType_),
             inputTensors[0].get(),
             &inputDesc,
             inputMode_.data(),
