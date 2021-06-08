@@ -25,6 +25,7 @@ endif()
 target_include_directories(${TARGET_NAME}
                            PUBLIC
                            "${CUDAToolkit_INCLUDE_DIRS}"
+                           "${CUTENSOR_INCLUDE_DIR}"
                            PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
@@ -42,7 +43,7 @@ target_link_libraries(${TARGET_NAME}
                       CUDA::cudnn
                       CUDA::cutensor
                       ${NGRAPH_LIBRARIES})
-				  
+
 # Link inference backend library to plugin. Here we use ngraph interpreter_backend as example
 target_link_libraries(${TARGET_NAME}
                       PRIVATE

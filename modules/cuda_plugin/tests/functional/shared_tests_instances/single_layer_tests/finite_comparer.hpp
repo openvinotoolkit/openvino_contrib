@@ -8,6 +8,31 @@
 
 namespace LayerTestsDefinitions {
 
+namespace details {
+   // A workaround for an MSVC 19 bug, complaining 'fpclassify': ambiguous call
+  template<typename T>
+  constexpr bool equal_infs(const T&, const T& b) {
+    static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
+    return false;
+  }
+  template<>
+  bool equal_infs<float>(const float& a, const float& b) {
+    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+  }
+  template<>
+  bool equal_infs<double>(const double& a, const double& b) {
+    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+  }
+  template<>
+  bool equal_infs<ngraph::float16>(const ngraph::float16& a, const ngraph::float16& b) {
+    return equal_infs<float>(a, b); // Explicit conversion to floats
+  }
+  template<>
+  bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16& a, const ngraph::bfloat16& b) {
+    return equal_infs<float>(a, b); // Explicit conversion to floats
+  }
+} //namespace details
+
 template <typename BaseLayerTest>
 class FiniteComparer : public BaseLayerTest {
     static_assert(std::is_base_of<LayerTestsUtils::LayerTestsCommon, BaseLayerTest>::value,
@@ -18,7 +43,7 @@ class FiniteComparer : public BaseLayerTest {
         for (std::size_t i = 0; i < size; ++i) {
             const auto &ref = expected[i];
             const auto &res = actual[i];
-            if (std::isinf(ref) && std::isinf(res)) {
+            if (details::equal_infs<T>(ref, res)) {
                 continue;
             }
             const auto absoluteDifference = CommonTestUtils::ie_abs(res - ref);
