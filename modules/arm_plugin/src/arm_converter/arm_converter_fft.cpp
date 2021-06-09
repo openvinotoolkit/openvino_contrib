@@ -21,7 +21,7 @@ void wrap_fft(const D* data,
         fft_data[i] = static_cast<float>(data[i]);
     }
     std::vector<float> fft_result(ngraph::shape_size(output_shape), 0.0f);
-    wrap_fft(fft_data.data(), data_shape, axes, axes_shape, fft_result.data(), output_shape, kind);
+    wrap_fft<float>(fft_data.data(), data_shape, axes, axes_shape, fft_result.data(), output_shape, kind);
     for (size_t i = 0; i < fft_result.size(); ++i) {
         out[i] = D(fft_result[i]);
     }
