@@ -10,6 +10,20 @@ using namespace LayerTestsDefinitions;
 
 namespace {
 
+// Common parameters
+const std::vector<ngraph::helpers::InputLayerType> input_layer_types = {
+    ngraph::helpers::InputLayerType::CONSTANT,
+    ngraph::helpers::InputLayerType::PARAMETER
+};
+
+const std::vector<InferenceEngine::Precision> input_precisions = {
+    InferenceEngine::Precision::FP16,
+    InferenceEngine::Precision::FP32
+};
+
+const std::map<std::string, std::string> additional_config = {};
+
+// Smoke parameters
 const std::vector<std::vector<std::vector<size_t>>> smoke_shapes = {
     { { 1, 2, 3, 4, 5 }, { 1, 2, 3, 4, 5 } },
     { { 2, 3, 4, 5 }, { 2, 3, 4, 1 } },
@@ -20,39 +34,41 @@ const std::vector<std::vector<std::vector<size_t>>> smoke_shapes = {
     { { 10, 10}, { 1 } }
 };
 
-const std::vector<ngraph::helpers::InputLayerType> smoke_input_layer_types = {
-    ngraph::helpers::InputLayerType::CONSTANT,
-    ngraph::helpers::InputLayerType::PARAMETER
-};
-
 const std::vector<CommonTestUtils::OpType> smoke_op_types = {
      CommonTestUtils::OpType::SCALAR,
      CommonTestUtils::OpType::VECTOR
 };
 
-const std::vector<InferenceEngine::Precision> smoke_inputPrecisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32
-};
-
-const std::map<std::string, std::string> smoke_additional_config = {};
-
 INSTANTIATE_TEST_CASE_P(smoke_Add, EltwiseLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(smoke_shapes),
                             ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
-                            ::testing::ValuesIn(smoke_input_layer_types),
+                            ::testing::ValuesIn(input_layer_types),
                             ::testing::ValuesIn(smoke_op_types),
-                            ::testing::ValuesIn(smoke_inputPrecisions),
+                            ::testing::ValuesIn(input_precisions),
                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(smoke_additional_config)),
+                            ::testing::Values(additional_config)),
                         EltwiseLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_CASE_P(smoke_Multiply, EltwiseLayerTest,
+                        ::testing::Combine(
+                            ::testing::ValuesIn(smoke_shapes),
+                            ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
+                            ::testing::ValuesIn(input_layer_types),
+                            ::testing::ValuesIn(smoke_op_types),
+                            ::testing::ValuesIn(input_precisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Layout::ANY),
+                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                            ::testing::Values(additional_config)),
+                        EltwiseLayerTest::getTestCaseName);
 
-const std::vector<std::vector<std::vector<size_t>>> renset50_vgg16_shapes = {
+// Resnet-50 and VGG-16 Add parameters
+const std::vector<std::vector<std::vector<size_t>>> renset50_vgg16_add_shapes = {
     { { 1, 1000 }, { 1, 1000 } },
     { { 1, 1001 }, { 1, 1001 } },
     { { 1, 1024, 14, 14 }, { 1, 1024, 1, 1 } },
@@ -77,34 +93,22 @@ const std::vector<std::vector<std::vector<size_t>>> renset50_vgg16_shapes = {
     { { 1, 64, 56, 56 }, { 1, 64, 1, 1 } }
 };
 
-const std::vector<ngraph::helpers::InputLayerType> renset50_vgg16_input_layer_types = {
-    ngraph::helpers::InputLayerType::CONSTANT,
-    ngraph::helpers::InputLayerType::PARAMETER
-};
-
 const std::vector<CommonTestUtils::OpType> renset50_vgg16_op_types = {
      CommonTestUtils::OpType::VECTOR
 };
 
-const std::vector<InferenceEngine::Precision> renset50_vgg16_inputPrecisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32
-};
-
-const std::map<std::string, std::string> renset50_vgg16_additional_config = {};
-
 INSTANTIATE_TEST_CASE_P(Add, EltwiseLayerTest,
                         ::testing::Combine(
-                            ::testing::ValuesIn(renset50_vgg16_shapes),
+                            ::testing::ValuesIn(renset50_vgg16_add_shapes),
                             ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
-                            ::testing::ValuesIn(renset50_vgg16_input_layer_types),
+                            ::testing::ValuesIn(input_layer_types),
                             ::testing::ValuesIn(renset50_vgg16_op_types),
-                            ::testing::ValuesIn(renset50_vgg16_inputPrecisions),
+                            ::testing::ValuesIn(input_precisions),
                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(renset50_vgg16_additional_config)),
+                            ::testing::Values(additional_config)),
                         EltwiseLayerTest::getTestCaseName);
 
 } // namespace

@@ -2,7 +2,10 @@
 
 # cmake build targets / test suities to run
 SUITES=(CudaUnitTests CudaFuncTests)
-declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_AvgPool*netPRC=FP32*:*smoke_MatMul*netPRC=FP32*:*smoke_MaxPool*netPRC=FP32*:*smoke_Convert*netPRC=FP32*:*smoke_*SqueezeUnsqueeze*netPRC=FP32*:*SoftMax*netPRC=FP32*:*smoke_*Transpose*:*smoke_*ConvolutionLayerTest*:*smoke_Add*')
+declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_AvgPool*netPRC=FP32*\
+:*smoke_MatMul*netPRC=FP32*:*smoke_MaxPool*netPRC=FP32*:*smoke_Convert*netPRC=FP32*\
+:*smoke_*SqueezeUnsqueeze*netPRC=FP32*:*SoftMax*netPRC=FP32*:*smoke_*Transpose*\
+:*smoke_*ConvolutionLayerTest*:*smoke_Add*:*smoke_Multiply*')
 
 # $EXIT_CODE variable
 EXIT_CODE=0
