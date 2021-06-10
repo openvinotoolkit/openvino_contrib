@@ -8,10 +8,10 @@
 
 namespace CUDAPlugin {
 
-class AddOp : public CuDnnTensorOpBase {
+class MultiplyOp : public CuDnnTensorOpBase {
   public:
-    AddOp(const std::shared_ptr<ngraph::Node>& node,
-          IndexCollection&& inputIds, IndexCollection&& outputIds);
+    MultiplyOp(const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputIds, IndexCollection&& outputIds);
 };
 
 }  // namespace CUDAPlugin
