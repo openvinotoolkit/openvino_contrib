@@ -5,49 +5,24 @@
 
 set(TARGET_NAME CudaUnitTests)
 
-file(GLOB_RECURSE SOURCES ${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src/*.cpp ${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src/*.cu)
-file(GLOB_RECURSE HEADERS ${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src/*.hpp ${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src/*.cuh)
-
-set_source_files_properties(*.cu  PROPERTIES LANGUAGE CUDA)
-set_source_files_properties(*.cuh PROPERTIES LANGUAGE CUDA)
-
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
-        DEPENDENCIES
-        CUDAPlugin
+        LINK_LIBRARIES_WHOLE_ARCHIVE
+        CUDAPlugin_OBJ
         LINK_LIBRARIES
         unitTestUtils
-        GSL
-        itt
-        IE::inference_engine
-        IE::ngraph
-        IE::inference_engine_transformations
-        IE::interpreter_backend
-        IE::inference_engine_plugin_api
-        IE::ngraph_backend
         ngraphFunctions
-        fmt-header-only
-        CUDA::cudart
-        CUDA::cudnn
-        CUDA::cublas
-        CUDA::cutensor
-        INCLUDES
-        "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-        "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src"
-        "${InferenceEngine_C_API_SOURCE_DIR}/include"
-        "${CUTENSOR_INCLUDE_DIR}"
         ADD_CPPLINT
         LABELS
         CUDA
 )
 
-target_sources(${TARGET_NAME} PRIVATE ${SOURCES})
-
-addVersionDefines(${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/src/cuda_plugin.cpp CI_BUILD_NUMBER)
-
-if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
-    set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
-else()
-    set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
-endif()
+# unitTestUtils brings in USE_STATIC_IE element in INTERFACE_COMPILE_DEFINITIONS, which breaks
+# INFERENCE_ENGINE_API_CLASS() and friends since we really link to ie dlls.
+# there's no easy way to override it(something like "remove from definitions" property on client)
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)
+   target_compile_options(${TARGET_NAME} PRIVATE -UUSE_STATIC_IE)
+else(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)
+   target_compile_options(${TARGET_NAME} PRIVATE /U USE_STATIC_IE)
+endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)
