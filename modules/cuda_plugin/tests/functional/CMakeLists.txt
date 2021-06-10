@@ -9,18 +9,13 @@ set(TARGET_NAME CudaFuncTests)
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
-        DEPENDENCIES
-        CUDAPlugin
+        LINK_LIBRARIES_WHOLE_ARCHIVE
+        CUDAPlugin_OBJ
         LINK_LIBRARIES
         IE::funcSharedTests
-        CUDA::cudart
         INCLUDES
-        "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-        "${OpenVINO_MAIN_SOURCE_DIR}/tests"
-        "${CUTENSOR_INCLUDE_DIR}"
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
         LABELS
         CUDA
 )
-target_include_directories(${TARGET_NAME} PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 # [cmake:functional_tests]
