@@ -11,6 +11,10 @@
 
 namespace CUDAPlugin {
 
+/**
+ * @brief Implements `ngraph::op::v1::Convolution` using cuDNN API
+ * which doesn't support asymmetric padding.
+ */
 class ConvolutionCuDnn : public IOperationExec {
 public:
     ConvolutionCuDnn(ngraph::element::Type_t element_type,
