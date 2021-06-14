@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuda_runtime_api.h>
+#include <vector>
 
 namespace CUDAPlugin {
 
@@ -14,6 +15,7 @@ class CudaDevice {
     static std::vector<cudaDeviceProp> GetAllDevicesProp();
     static size_t GetDeviceConcurrentKernels(const cudaDeviceProp& devProp);
     static unsigned GetMaxGridBlockSizeParams(unsigned deviceId);
+    static size_t GetMemoryAllignment();
 };
 
 } // namespace CUDAPlugin
