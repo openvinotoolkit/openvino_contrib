@@ -13,7 +13,7 @@
 
 namespace CUDAPlugin {
 
-constexpr int NOT_SPATIAL_DIMS_COUNT = 2;
+constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
 
 ConvolutionCuDnn::ConvolutionCuDnn(ngraph::element::Type_t element_type,
                                    const ngraph::Shape& input_shape,
@@ -31,7 +31,7 @@ ConvolutionCuDnn::ConvolutionCuDnn(ngraph::element::Type_t element_type,
 
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should already be
     // turned into 2D at this point.
-    const int arrayLength = static_cast<int>(input_shape.size()) - NOT_SPATIAL_DIMS_COUNT;
+    const int arrayLength = static_cast<int>(input_shape.size()) - NON_SPATIAL_DIMS_NUMBER;
     Expects((arrayLength == 2) || (arrayLength == 3));
     Expects(arrayLength == strides.size());
     Expects(arrayLength == dilations.size());
