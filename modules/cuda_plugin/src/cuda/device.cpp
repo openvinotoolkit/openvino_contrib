@@ -59,4 +59,8 @@ CudaDevice::GetMaxGridBlockSizeParams(unsigned deviceId) {
     return devices[deviceId].maxThreadsPerBlock;
 }
 
+size_t CudaDevice::GetMemoryAllignment() {
+    return 256;
+}
+
 } // namespace CUDAPlugin
