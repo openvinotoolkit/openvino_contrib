@@ -13,11 +13,12 @@
 
 #include "cuda_operation_registry.hpp"
 #include "convolution_cudnn.hpp"
+#include "convolution_cudnn_be.hpp"
 
 namespace CUDAPlugin {
 
-constexpr int NOT_SPATIAL_DIMS_NUMBER = 2;
-constexpr int CONV_1D_DIMS_NUMBER = NOT_SPATIAL_DIMS_NUMBER + 1;
+constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
+constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
 
 ConvolutionOp::ConvolutionOp(const NodeOp& node,
                              IndexCollection&& inputIds,
@@ -57,7 +58,7 @@ ConvolutionOp::InferPadding(const ngraph::op::v1::Convolution& op) {
         {
             PaddingBeforeAndAfter padding {};
             const ngraph::Shape& filter_shape = op.get_input_shape(ArgIndices::filter);
-            const ngraph::Shape filter_spatial_shape {filter_shape.begin() + NOT_SPATIAL_DIMS_NUMBER,
+            const ngraph::Shape filter_spatial_shape {filter_shape.begin() + NON_SPATIAL_DIMS_NUMBER,
                                                       filter_shape.end()};
             ngraph::infer_auto_padding(input_shape, filter_spatial_shape,
                                        op.get_strides(), op.get_dilations(), pad_type,
@@ -68,7 +69,7 @@ ConvolutionOp::InferPadding(const ngraph::op::v1::Convolution& op) {
         return std::make_pair(op.get_pads_begin(), op.get_pads_end());
     case ngraph::op::PadType::VALID:
         {
-            size_t spatial_dims_number = input_shape.size() - NOT_SPATIAL_DIMS_NUMBER;
+            size_t spatial_dims_number = input_shape.size() - NON_SPATIAL_DIMS_NUMBER;
             return std::make_pair(ngraph::CoordinateDiff(spatial_dims_number, 0),
                                   ngraph::CoordinateDiff(spatial_dims_number, 0));
         }
@@ -86,11 +87,11 @@ void ConvolutionOp::Create1DImpl(ngraph::element::Type_t element_type,
                                  PaddingBeforeAndAfter padding) {
     // Turn 1D Convolution into 2D.
     Expects(input_shape.size() == CONV_1D_DIMS_NUMBER);
-    input_shape.insert(input_shape.begin() + NOT_SPATIAL_DIMS_NUMBER, 1);
+    input_shape.insert(input_shape.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     Expects(filter_shape.size() == CONV_1D_DIMS_NUMBER);
-    filter_shape.insert(filter_shape.begin() + NOT_SPATIAL_DIMS_NUMBER, 1);
+    filter_shape.insert(filter_shape.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     Expects(output_shape.size() == CONV_1D_DIMS_NUMBER);
-    output_shape.insert(output_shape.begin() + NOT_SPATIAL_DIMS_NUMBER, 1);
+    output_shape.insert(output_shape.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
     padding.first.insert(padding.first.begin(), 0);
@@ -107,7 +108,7 @@ void ConvolutionOp::Create2D3DImpl(ngraph::element::Type_t element_type,
                                    const ngraph::Strides& dilations,
                                    const PaddingBeforeAndAfter& padding) {
     const size_t dims_number = input_shape.size();
-    const size_t spatial_dims_number = dims_number - NOT_SPATIAL_DIMS_NUMBER;
+    const size_t spatial_dims_number = dims_number - NON_SPATIAL_DIMS_NUMBER;
     Expects(input_shape.size() == dims_number);
     Expects(filter_shape.size() == dims_number);
     Expects(output_shape.size() == dims_number);
@@ -117,6 +118,15 @@ void ConvolutionOp::Create2D3DImpl(ngraph::element::Type_t element_type,
     Expects(padding.second.size() == spatial_dims_number);
 
     std::stringstream exception_msg;
+
+    try {
+        impl_ = std::make_unique<ConvolutionCuDnnBE>(
+                    element_type, input_shape, filter_shape, output_shape,
+                    strides, dilations, padding.first, padding.second);
+        return;
+    } catch(const std::exception& e) {
+        exception_msg << "Failed to create ConvolutionCuDnnBE impl: " << e.what() << std::endl;
+    }
 
     try {
         impl_ = std::make_unique<ConvolutionCuDnn>(
