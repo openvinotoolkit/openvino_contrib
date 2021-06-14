@@ -4,7 +4,9 @@ import glob
 import json
 
 from json import JSONEncoder
+
 from bs4 import BeautifulSoup as bs
+from jinja2 import Template
 
 
 def get_arguments():
@@ -20,6 +22,13 @@ def get_arguments():
                         default='all',
                         nargs='*',
                         help='Which operations to search')
+    parser.add_argument('--generator',
+                        metavar='GEN',
+                        type=str,
+                        default='jinja2',
+                        nargs=1,
+                        choices=['jinja2', 'json'],
+                        help='Which generator to use')
     return parser.parse_args()
 
 
@@ -40,6 +49,12 @@ class OperationPort:
 
     def __hash__(self):
         return hash(self.shape)
+
+    def __repr__(self):
+        return OperationEncoder.to_cpp_init_list(self.shape)
+
+    def __str__(self):
+        return OperationEncoder.to_cpp_init_list(self.shape)
 
 
 class OperationShape:
@@ -87,7 +102,7 @@ def parse_output_shapes(layer):
 class OperationEncoder(JSONEncoder):
     @staticmethod
     def to_cpp_init_list(shape):
-        return f"{shape}".replace("(", "{").replace(")", "}")
+        return f"{shape}".replace("(", "{").replace(")", "}").replace(",}", "}")
 
     def default(self, obj):
         if isinstance(obj, (list, dict, str, int, float, bool, type(None))):
@@ -134,9 +149,33 @@ if __name__ == '__main__':
                     output_shapes = parse_output_shapes(layer)
                     operations[layer_type].shapes.add(OperationShape(layer_version, attrs, input_shapes, output_shapes))
 
-    if args.ops == 'all' or args.ops == ['all']:
-        for op_name, op in operations.items():
-            print(f"{json.dumps(op.__dict__, indent=4, cls=OperationEncoder)}\n")
+    if args.generator == 'jinja2':
+        with open('operation_table.jinja2') as f:
+            def group_by_attrs(op):
+                attrs_ops = (dict(), list())
+                for shape in op.shapes:
+                    attrs_str = str(shape.attrs)
+                    if attrs_str != "{}":
+                        if attrs_str not in attrs_ops[0]:
+                            attrs_ops[0][attrs_str] = list()
+                        attrs_ops[0][attrs_str].append(shape)
+                    else:
+                        attrs_ops[1].append(shape)
+                ops.append((op.name, attrs_ops))
+
+            template = Template(f.read())
+            ops = []
+            if args.ops == 'all' or args.ops == ['all']:
+                for layer, op in operations.items():
+                    group_by_attrs(op)
+            else:
+                for op in args.ops:
+                    group_by_attrs(operations[op])
+            print(template.render(operators=ops))
     else:
-        for op in args.ops:
-            print(f"{json.dumps(operations[op].__dict__, indent=4, cls=OperationEncoder)}\n")
+        if args.ops == 'all' or args.ops == ['all']:
+            for op_name, op in operations.items():
+                print(f"{json.dumps(op.__dict__, indent=4, cls=OperationEncoder)}\n")
+        else:
+            for op in args.ops:
+                print(f"{json.dumps(operations[op].__dict__, indent=4, cls=OperationEncoder)}\n")
