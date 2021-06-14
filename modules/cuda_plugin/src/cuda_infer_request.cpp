@@ -104,26 +104,33 @@ void CudaInferRequest::inferPreprocess() {
 }
 
 void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
-    const bool perfCount = _executableNetwork->cfg_.perfCount;
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
-    infer_count_++;
-    auto start = Time::now();
-    memory_manager_proxy_ =
-        _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
-    auto& manager = memory_manager_proxy_->Get();
-    InferenceRequestContext inferRequestContext{_deviceInputs, _networkOutputBlobs, threadContext};
-    unsigned execution_index {};
-    if (perfCount) exec_timing_.setStart(threadContext.stream());
-    for (auto& op : _executableNetwork->exec_sequence_) {
-      cancellation_token_.Check();
-      auto inputTensors = manager.inputTensorPointers(*op);
-      auto outputTensors = manager.outputTensorPointers(*op);
-      if (perfCount) addStartEvent(threadContext.stream(), *op, ++execution_index);
-      op->Execute(inferRequestContext, inputTensors, outputTensors);
-      if (perfCount) addStopEvent(threadContext.stream(), *op);
+    try {
+        const bool perfCount = _executableNetwork->cfg_.perfCount;
+        OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
+        infer_count_++;
+        auto start = Time::now();
+        memory_manager_proxy_ =
+                _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
+        auto& manager = memory_manager_proxy_->Get();
+        InferenceRequestContext inferRequestContext{_deviceInputs, _networkOutputBlobs, threadContext};
+        unsigned execution_index {};
+        if (perfCount) exec_timing_.setStart(threadContext.stream());
+        for (auto& op : _executableNetwork->exec_sequence_) {
+            cancellation_token_.Check();
+            auto inputTensors = manager.inputTensorPointers(*op);
+            auto outputTensors = manager.outputTensorPointers(*op);
+            if (perfCount) addStartEvent(threadContext.stream(), *op, ++execution_index);
+            op->Execute(inferRequestContext, inputTensors, outputTensors);
+            if (perfCount) addStopEvent(threadContext.stream(), *op);
+        }
+        if (perfCount) exec_timing_.setStop(threadContext.stream());
+        _durations[StartPipeline] = Time::now() - start;
+    } catch(...) {
+        // TODO:
+        // Log error once logger is available
+        memory_manager_proxy_.reset();
+        throw;
     }
-    if (perfCount) exec_timing_.setStop(threadContext.stream());
-    _durations[StartPipeline] = Time::now() - start;
 }
 
 void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
