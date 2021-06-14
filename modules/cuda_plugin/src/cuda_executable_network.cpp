@@ -148,21 +148,23 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
     if (memoryBlobSize == 0) {
         THROW_IE_EXCEPTION << "Model is not loaded properly. Size of tensors for model is 0 !!";
     }
-    CUDA::throwIfError(cudaSetDevice(cfg_.deviceId));
+    CUDA::Device device{cfg_.deviceId};
+    device.setCurrent();
     std::size_t free;
     [[maybe_unused]] std::size_t total;
     CUDA::throwIfError(cudaMemGetInfo(&free, &total));
-    auto availableInferRequests = (free - constBlobSize) / memoryBlobSize;
+    const std::size_t maxStreamsSupported = maxConcurrentStreams(device);
+    const auto availableInferRequests = (free - constBlobSize) / memoryBlobSize;
     if (0 == availableInferRequests) {
         THROW_IE_EXCEPTION << "Not enough memory even for single InferRequest !!";
     }
 
     const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
     if (throughputStreams == CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
-        return availableInferRequests;
+        return std::min(maxStreamsSupported, availableInferRequests);
     } else {
         const std::size_t numStreams = std::stoi(throughputStreams);
-        return std::min(numStreams, availableInferRequests);
+        return std::min({ maxStreamsSupported, numStreams, availableInferRequests });
     }
 }
 
