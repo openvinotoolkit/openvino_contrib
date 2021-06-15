@@ -36,7 +36,7 @@ cloneSrcTree()
     SRCURL=$1
     shift
     while [ $# -gt 0 ]; do
-        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
+        git clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
         shift
     done
     return 1
@@ -74,11 +74,11 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git master
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
-checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.3-openvino master
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2021.4 releases/2021/4
+checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git 2021.4 releases/2021/4
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git develop
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git 2021.4 release
 fi
 
 #cleanup package destination folder
