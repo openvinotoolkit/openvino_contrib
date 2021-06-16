@@ -3,7 +3,9 @@
 #
 
 cmake_minimum_required(VERSION 3.13)
-
+if(CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION EQUAL 17)
+    message(FATAL_ERROR "cmake versions 3.17 is not supported, please either upgrade or downgrade")
+endif(CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION EQUAL 17)
 project(InferenceEngineCUDAPlugin CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
