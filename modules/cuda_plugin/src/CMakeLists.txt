@@ -5,19 +5,21 @@
 set(TARGET_NAME CUDAPlugin)
 set(OBJ_NAME ${TARGET_NAME}_OBJ)
 
-file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/*.cu)
-file(GLOB_RECURSE HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp ${CMAKE_CURRENT_SOURCE_DIR}/*.cuh)
+file(GLOB_RECURSE SOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS *.cpp *.cu)
+file(GLOB_RECURSE HEADERS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" *.hpp *.cuh)
+list(REMOVE_ITEM SOURCES cuda_create_plugin.cpp)
 
 set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
 
 add_library(${OBJ_NAME} STATIC ${SOURCES})
+target_compile_definitions(${OBJ_NAME} PRIVATE IMPLEMENT_INFERENCE_ENGINE_PLUGIN)
 
 # Adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "CUDA"
-              SOURCES ${HEADERS}
+              SOURCES ${HEADERS} cuda_create_plugin.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
-              VERSION_DEFINES_FOR cuda_plugin.cpp)
+              VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
 else()
