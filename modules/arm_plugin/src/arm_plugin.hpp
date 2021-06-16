@@ -34,7 +34,9 @@ struct Plugin : public InferenceEngine::IInferencePlugin {
                                          const std::map<std::string, InferenceEngine::Parameter>& options) const override;
     InferenceEngine::Parameter GetMetric(const std::string& name,
                                          const std::map<std::string, InferenceEngine::Parameter> & options) const override;
+    std::shared_ptr<ngraph::Function> Transform(const std::shared_ptr<const ngraph::Function>& function,
+                                                const Configuration& config) const;
 
-    Configuration       _cfg;
+    Configuration _cfg;
 };
 }  // namespace ArmPlugin

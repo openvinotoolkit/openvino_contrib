@@ -10,7 +10,7 @@
 
 namespace ArmPlugin {
 template <typename T>
-static void wrap_concat(const std::vector<Argument<arm_compute::ITensor*>>& inputs,
+static void wrap_concat(const std::vector<Argument<Tensor*>>& inputs,
                         T* out,
                         const std::vector<ngraph::Shape>& inp_shapes,
                         const ngraph::Shape& out_shape,

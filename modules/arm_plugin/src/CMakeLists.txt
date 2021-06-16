@@ -32,6 +32,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
     arm_compute::half
     ${NGRAPH_LIBRARIES}
     IE::inference_engine_transformations
+    IE::inference_engine_lp_transformations
     IE::ngraph_reference
 )
 

@@ -25,7 +25,6 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
     for (auto&& c : config) {
         const auto& key = c.first;
         const auto& value = c.second;
-
         if ((streamExecutorConfigKeys.end() !=
              std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key))) {
             _streamsExecutorConfig.SetConfig(key, value);
@@ -34,6 +33,8 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _perfCount = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
+        } else if (CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE) == key) {
+            _lpt = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
         }
@@ -51,6 +52,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
+    } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
+        return {_lpt};
     } else {
         IE_THROW(NotFound) << ": " << name;
     }

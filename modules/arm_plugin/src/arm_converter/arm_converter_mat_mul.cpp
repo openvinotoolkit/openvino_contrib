@@ -7,7 +7,7 @@
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
-enum Input {Features, Weights, Bias};
+enum InputArg {Features, Weights, Bias};
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& node) {
     if (node.get_transpose_a()) {
         IE_THROW() << "Can not create MatMul layer with transpose first input";

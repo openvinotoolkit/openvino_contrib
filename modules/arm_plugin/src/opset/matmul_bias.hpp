@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
+#include "quantize.hpp"
 
 #include "ngraph_opset.hpp"
 
@@ -15,8 +16,7 @@ namespace opset {
 
 class MatMulBias : public MatMul {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"MatMulBias", 1};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
+    NGRAPH_RTTI_DECLARATION;
     MatMulBias() = default;
     ~MatMulBias() override;
 
@@ -26,6 +26,7 @@ public:
                const bool& transpose_b = false);
 
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
+
 private:
     bool m_transpose_b;
 };

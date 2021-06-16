@@ -15,7 +15,7 @@ using namespace std;
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::MatMulBias::type_info;
+NGRAPH_RTTI_DEFINITION(opset::MatMulBias, "MatMulBias", 0);
 
 opset::MatMulBias::~MatMulBias() {}
 

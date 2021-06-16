@@ -30,6 +30,7 @@ struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDe
                            InferenceEngine::OutputsDataMap networkOutputs) override;
     InferenceEngine::Parameter GetMetric(const std::string& name) const override;
     InferenceEngine::Parameter GetConfig(const std::string& name) const override;
+    InferenceEngine::CNNNetwork GetExecGraphInfo() override;
 
     void RegistorTranslations();
     void Translate(std::shared_ptr<const ngraph::Function> function);

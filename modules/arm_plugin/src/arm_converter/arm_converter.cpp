@@ -7,6 +7,8 @@
 #include "arm_converter/arm_converter.hpp"
 #include "opset/opset.hpp"
 
+#include <low_precision/transformer.hpp>
+
 
 using namespace InferenceEngine::details;
 
@@ -26,6 +28,7 @@ arm_compute::TensorShape ShapeCast(const ngraph::Shape& shape) {
 arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
     switch (static_cast<ngraph::element::Type_t>(type)) {
         case ngraph::element::Type_t::u8    : return arm_compute::DataType::U8;
+        case ngraph::element::Type_t::i8    : return arm_compute::DataType::S8;
         case ngraph::element::Type_t::i16   : return arm_compute::DataType::S16;
         case ngraph::element::Type_t::u16   : return arm_compute::DataType::U16;
         case ngraph::element::Type_t::i32   : return arm_compute::DataType::S32;
@@ -33,7 +36,7 @@ arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
         case ngraph::element::Type_t::f16   : return arm_compute::DataType::F16;
         case ngraph::element::Type_t::f32   : return arm_compute::DataType::F32;
         case ngraph::element::Type_t::bf16  : return arm_compute::DataType::BFLOAT16;
-        default: IE_THROW() << "Unsupported Data Type " << type; return {};
+        default: IE_THROW() << "Unsupported Data Type " << type;
     }
 }
 
@@ -108,6 +111,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::ArmConcat>();
     Register<opset::ArmGather>();
     Register<opset::ArmFFT>();
+    Register<opset::ArmQuantize>();
+    Register<opset::ArmDequantize>();
     if (ref) {
         Register<opset::MVN>();
         Register<opset::NormalizeL2>();
@@ -170,18 +175,44 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::Bucketize>();
         Register<opset::DFT>();
         Register<opset::IDFT>();
+        Register<opset::FakeQuantize>();
     }
+    Register<opset::ArmNoOp>();
     Register<opset::Result>();
-
     for (auto&& node : function->get_ordered_ops()) {
-        auto& layer = _layers[node->get_friendly_name()];
-        for (auto sourceOutput : node->input_values()) {
-            layer._inputs.emplace_back(_layers.at(sourceOutput.get_node()->get_friendly_name())._outputs.at(sourceOutput.get_index()).get());
+        auto& layer = _layers[node->get_instance_id()];
+        for (auto&& input : node->inputs()) {
+            auto sourceOutput = input.get_source_output();
+            layer._inputs.emplace(input, &(_layers.at(sourceOutput.get_node()->get_instance_id())._outputs.at(sourceOutput)));
         }
-        for (auto output : node->outputs()) {
+        for (auto&& output : node->outputs()) if (!ngraph::op::is_output(node)) {
             std::unique_ptr<arm_compute::Tensor> tensor(new arm_compute::Tensor);
-            tensor->allocator()->init({ShapeCast(output.get_partial_shape().get_max_shape()), 1, DataTypeCast(output.get_element_type())});
-            layer._outputs.emplace_back(std::move(tensor));
+            auto tensorShape = ShapeCast(output.get_partial_shape().get_max_shape());
+            auto outputDataType = output.get_element_type();
+            auto quantizedOutput = (outputDataType == ngraph::element::u8 || outputDataType == ngraph::element::i8);
+            auto& rt_info = node->get_rt_info();
+            auto itInfo = rt_info.find("QuantizationInfo");
+            auto hasQuantizationInfo = (itInfo != rt_info.end());
+            arm_compute::TensorInfo tensorInfo;
+            if (quantizedOutput && hasQuantizationInfo) {
+                auto& quantizationInfo = std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                arm_compute::DataType dataType;
+                switch (outputDataType) {
+                    case ngraph::element::Type_t::u8 : dataType = arm_compute::DataType::QASYMM8; break;
+                    case ngraph::element::Type_t::i8 : dataType = arm_compute::DataType::QASYMM8_SIGNED; break;
+                    default: IE_THROW() << "Arm Plugin: Unsupported Data Type: " << outputDataType << " " << *node;
+                }
+                auto allZeroPointsAreZero = std::all_of(
+                    std::begin(quantizationInfo.offset()), std::end(quantizationInfo.offset()), [] (auto v) {return v == 0;});
+                if (allZeroPointsAreZero && (quantizationInfo.offset().size() > 1) && ngraph::is_type<opset::Constant>(node.get())) {
+                    dataType = arm_compute::DataType::QSYMM8_PER_CHANNEL;
+                }
+                tensorInfo = {tensorShape, 1, dataType, quantizationInfo};
+            } else {
+                tensorInfo = {tensorShape, 1, DataTypeCast(output.get_element_type())};
+            }
+            tensor->allocator()->init(tensorInfo);
+            layer._outputs.emplace(output, Tensor{std::move(tensor)});
         }
     }
 }
@@ -192,37 +223,40 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
     std::string unsupported;
     for (auto&& node : orderedOps) {
         if (!contains(_conversions, node->get_type_info())) {
-            unsupported += (node->get_friendly_name() + " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ") ");
+            unsupported += ("\t" + node->get_friendly_name() + " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")\n");
         }
     }
     if (!unsupported.empty()) {
-        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported by plugin: " << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported by plugin:\n" << unsupported;
     }
     for (const auto& node : orderedOps) {
         Conversion::Ptr conversion;
         try {
             conversion = _conversions.at(node->get_type_info())(*node);
         } catch(std::exception& e) {
-            unsupported += (node->get_friendly_name() + " (" + node->get_type_name() + ")- " + e.what() + ";");
+            unsupported += ("\t" + node->get_friendly_name() +
+                " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + e.what() + ";\n");
         }
         if (conversion != nullptr) {
             auto status = conversion->Validate();
             if (status.error_code() != arm_compute::ErrorCode::OK) {
-                unsupported += (node->get_friendly_name() + " (" + node->get_type_name() + ")- " + status.error_description() + ";");
+                unsupported += ("\t" + node->get_friendly_name() +
+                    " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + status.error_description() + ";\n");
             }
         }
     }
     if (!unsupported.empty()) {
-        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported: " << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported:\n" << unsupported;
     }
     std::map<ngraph::Output<ngraph::Node>, std::size_t> counter;
     for (auto&& node : orderedOps) {
-        const auto& nodeName = node->get_friendly_name();
+        const auto& nodeID = node->get_instance_id();
         if (ngraph::op::is_constant(node)) {
             auto constNode = std::dynamic_pointer_cast<opset::Constant>(node);
-            _layers.at(nodeName)._outputs.at(0)->allocator()->import_memory(const_cast<void*>(constNode->get_data_ptr()));
-        } else if (!ngraph::op::is_parameter(node) && !ngraph::op::is_output(node)) {
+            _layers.at(nodeID)._outputs.begin()->second._tensor->allocator()->import_memory(const_cast<void*>(constNode->get_data_ptr()));
+        } else if (!ngraph::op::is_parameter(node) && !ngraph::op::is_output(node) && !ngraph::is_type<opset::ArmNoOp>(node.get())) {
             auto conversion = _conversions.at(node->get_type_info())(*node);
+            _layers.at(nodeID)._execType = conversion->ExecType();
             for (auto&& output : node->outputs()) {
                 auto targetInputs = output.get_target_inputs();
                 bool isNetworkOutput = std::any_of(std::begin(targetInputs), std::end(targetInputs), [] (auto& targetInput) {
@@ -230,17 +264,45 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
                 });
                 if (!isNetworkOutput) {
                     counter.emplace(output, targetInputs.size());
-                    memoryGroup.manage(_layers.at(nodeName)._outputs.at(output.get_index()).get());
+                    memoryGroup.manage(_layers.at(nodeID)._outputs.at(output)._tensor.get());
                 }
             }
             if (conversion != nullptr) {
                 conversion->Configure(memoryManager);
             }
-            for (auto&& input : node->inputs()) {
+
+            auto skipNoOpInput = [] (ngraph::Input<ngraph::Node> input) {
+                auto index = input.get_index();
+                for (auto node = input.get_node();;) {
+                    auto prevNode = node->input_value(index).get_node();
+                    if (!ngraph::is_type<opset::ArmNoOp>(prevNode)) {
+                        return node->input(index);
+                    } else {
+                        node = prevNode;
+                        index = 0;
+                    }
+                }
+            };
+
+            for (auto&& maybeNoOpInput : node->inputs()) {
+                auto input = skipNoOpInput(maybeNoOpInput);
+                auto tensor = _layers.at(input.get_node()->get_instance_id())._inputs.at(input);
+                if (tensor->_tensor->info()->has_padding() && (tensor->_notPaddedTensor != nullptr)) {
+                    tensor->_notPaddedTensor->allocator()->init({tensor->_tensor->info()->tensor_shape(), 1, tensor->_tensor->info()->data_type()});
+                    memoryGroup.manage(tensor->_notPaddedTensor.get());
+                }
+            }
+            for (auto&& maybeNoOpInput : node->inputs()) {
+                auto input = skipNoOpInput(maybeNoOpInput);
+                auto tensor = _layers.at(input.get_node()->get_instance_id())._inputs.at(input);
                 auto itCounter = counter.find(input.get_source_output());
                 if (itCounter != counter.end()) {
                     if ((--(itCounter->second)) == 0) {
-                        _layers.at(nodeName)._inputs.at(input.get_index())->allocator()->allocate();
+                        tensor->_tensor->allocator()->allocate();
+                        if (tensor->_tensor->info()->has_padding() && (tensor->_notPaddedTensor != nullptr)) {
+                            tensor->_notPaddedTensor->allocator()->allocate();
+                        }
+                        counter.erase(itCounter);
                     }
                 }
             }
@@ -258,6 +320,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Result& no
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Constant& node) {
+    return {};
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmNoOp& node) {
     return {};
 }
 }  //  namespace ArmPlugin

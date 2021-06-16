@@ -52,6 +52,7 @@ else()
     file(GLOB_RECURSE SOURCES
         ${ARM_COMPURE_SOURCE_DIR}/*.cpp
         ${ARM_COMPURE_SOURCE_DIR}/*.hpp
+        ${ARM_COMPURE_SOURCE_DIR}/*.h
     )
 
     set(extra_cxx_flags "-fPIC ${CMAKE_CXX_FLAGS} -Wno-undef")

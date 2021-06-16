@@ -9,9 +9,9 @@ addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-                armPlugin
+                armPlugin IE::lptNgraphFunctions
         LINK_LIBRARIES
-                IE::funcSharedTests
+                IE::funcSharedTests IE::lptNgraphFunctions
         INCLUDES
             "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include"
         ADD_CPPLINT

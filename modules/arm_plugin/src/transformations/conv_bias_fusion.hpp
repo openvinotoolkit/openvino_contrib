@@ -26,28 +26,28 @@ public:
 
 class ConvBiasFusionBase: public ngraph::pass::MatcherPass {
 protected:
-    template <class Conv>
-    ngraph::matcher_pass_callback fuse_conv_with_bias();
+    template <class Conv, class Bias>
+    void registerMatcher(const std::string& name);
 };
 
-class ConvBiasFusion: public ConvBiasFusionBase {
+class ConvAddFusion: public ConvBiasFusionBase {
 public:
-    ConvBiasFusion();
+    ConvAddFusion();
 };
 
-class GroupConvBiasFusion: public ConvBiasFusionBase {
+class GroupConvAddFusion: public ConvBiasFusionBase {
 public:
-    GroupConvBiasFusion();
+    GroupConvAddFusion();
 };
 
-class ConvBiasActivationFusion: public ngraph::pass::GraphRewrite {
+class ConvBiasFusion: public ngraph::pass::GraphRewrite {
 public:
-    ConvBiasActivationFusion() {
+    ConvBiasFusion() {
         add_matcher<ConvertSingleConvolutionToArm>();
         add_matcher<ConvertGroupConvolutionToArm>();
 
-        add_matcher<ConvBiasFusion>();
-        add_matcher<GroupConvBiasFusion>();
+        add_matcher<ConvAddFusion>();
+        add_matcher<GroupConvAddFusion>();
     }
 };
 }  // namespace pass

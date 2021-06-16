@@ -12,8 +12,7 @@ namespace opset {
 
 class ArmMVN : public ngraph::op::Op {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmMVN", 0};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
+    NGRAPH_RTTI_DECLARATION;
     ArmMVN() = default;
     ~ArmMVN() override;
 

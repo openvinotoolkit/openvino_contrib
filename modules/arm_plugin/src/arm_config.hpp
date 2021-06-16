@@ -9,6 +9,7 @@
 
 #include <ie_parameter.hpp>
 #include <threading/ie_istreams_executor.hpp>
+#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 
 namespace ArmPlugin {
 using ConfigMap = std::map<std::string, std::string>;
@@ -29,6 +30,7 @@ struct Configuration {
 
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
+    bool _lpt                    = true;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin
