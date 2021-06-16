@@ -266,5 +266,3 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
     }
 }
 
-static const InferenceEngine::Version version = {{2, 1}, CI_BUILD_NUMBER, "CUDAPlugin"};
-IE_DEFINE_PLUGIN_CREATE_FUNCTION(Plugin, version)
