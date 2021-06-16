@@ -7,7 +7,7 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmConvolution::type_info;
+NGRAPH_RTTI_DEFINITION(opset::ArmConvolution, "ArmConvolution", 0);
 
 opset::ArmConvolution::~ArmConvolution() {}
 

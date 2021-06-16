@@ -16,12 +16,13 @@
 #include <blob_transform.hpp>
 #include <precision_utils.h>
 #include <ngraph/function.hpp>
+#include <ie_ngraph_utils.hpp>
+#include <ngraph/runtime/reference/convert.hpp>
 
 #include "arm_infer_request.hpp"
 #include "arm_executable_network.hpp"
 #include "arm_plugin.hpp"
 
-#include <half/half.hpp>
 
 using namespace ArmPlugin;
 using namespace InferenceEngine;
@@ -36,16 +37,15 @@ ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&          
                                  const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork) :
     IInferRequestInternal(networkInputs, networkOutputs),
     _executableNetwork(executableNetwork),
+#if 1
     _lifetime{std::make_shared<arm_compute::OffsetLifetimeManager>()},
+#else
+    _lifetime{std::make_shared<arm_compute::BlobLifetimeManager>()},
+#endif
     _pool{std::make_shared<arm_compute::PoolManager>()},
     _memoryManager{std::make_shared<arm_compute::MemoryManagerOnDemand>(_lifetime, _pool)},
     _memoryGroup{_memoryManager} {
     auto requestID = std::to_string(_executableNetwork->_requestId.fetch_add(1));
-    _profilingTasks =  {
-        openvino::itt::handle("Arm_Preproc_" + _executableNetwork->_function->get_friendly_name() + "_" + requestID),
-        openvino::itt::handle("Arm_Run_" + _executableNetwork->_function->get_friendly_name() + "_" + requestID),
-        openvino::itt::handle("Arm_Postproc_" + _executableNetwork->_function->get_friendly_name() + "_" + requestID),
-    };
     Layer::Map layers;
     IE_ASSERT(_executableNetwork->_executor != nullptr);
     _executableNetwork->_executor->runAndWait({
@@ -53,216 +53,258 @@ ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&          
             layers = Converter{_executableNetwork->_function}.Configure(_memoryManager, _memoryGroup);
         }
     });
+    auto allocateMemory = [] (const auto& blobName, const auto& blobDataMap, auto& blobs, auto tensor, auto output) {
+        auto itData = blobDataMap.find(blobName);
+        if (tensor->info()->has_padding() || (itData == blobDataMap.end())) {
+            tensor->allocator()->allocate();
+        }
+        auto networkPresion = InferenceEngine::details::convertPrecision(output.get_element_type());
+        InferenceEngine::Blob::Ptr networkBlob;
+        if  (itData != blobDataMap.end()) {
+            auto& blobData = itData->second;
+            auto& blob = blobs[blobName];
+            if (ngraph::op::is_constant(output.get_node())) {
+                if (networkPresion == blobData->getTensorDesc().getPrecision()) {
+                    networkBlob = blob = make_blob_with_precision(blobData->getTensorDesc(),
+                                                                static_cast<arm_compute::Tensor*>(tensor)->buffer());
+                } else {
+                    blob = make_blob_with_precision(blobData->getTensorDesc());
+                    blob->allocate();
+                    networkBlob = make_blob_with_precision({networkPresion,
+                                                            blobData->getTensorDesc().getDims(),
+                                                            blobData->getTensorDesc().getLayout()},
+                                                            static_cast<arm_compute::Tensor*>(tensor)->buffer());
+                }
+            } else {
+                blob = make_blob_with_precision(blobData->getTensorDesc());
+                blob->allocate();
+                if (networkPresion == blobData->getTensorDesc().getPrecision()) {
+                    networkBlob = blob;
+                } else {
+                    networkBlob = make_blob_with_precision({networkPresion,
+                                                            blobData->getTensorDesc().getDims(),
+                                                            blobData->getTensorDesc().getLayout()});
+                    networkBlob->allocate();
+                }
+            }
+        }
+        return networkBlob;
+    };
     for (auto&& node : _executableNetwork->_function->get_parameters()) {
+        auto nodeName = node->get_friendly_name();
+        IE_ASSERT(node->outputs().size() == 1);
         for (auto&& output : node->outputs()) {
-            auto& tensor = layers.at(node->get_friendly_name())._outputs.at(output.get_index());
-            if (tensor->info()->has_padding()) {
-                tensor->allocator()->allocate();
-            }
-            _inputTensors.emplace(node->get_friendly_name(), tensor.get());
+            auto tensor = layers.at(node->get_instance_id())._outputs.at(output)._tensor.get();
+            auto str = _executableNetwork->_function->get_friendly_name() + "_" +
+                     requestID + "_preprocessing_" +
+                     node->get_friendly_name() + "_" +
+                     std::to_string(node->get_instance_id());
+            _inputInfo.emplace_back(IOInfo{
+                output,
+                tensor,
+                openvino::itt::handle(str),
+                allocateMemory(nodeName,
+                               _networkInputs,
+                               _inputs,
+                               tensor,
+                               output),
+                _inputs.find(nodeName),
+                "Preprocessing"});
         }
     }
+
     for (auto&& node : _executableNetwork->_function->get_results()) {
-        for (auto&& input : node->inputs()) {
-            auto& tensor = layers.at(node->get_friendly_name())._inputs.at(input.get_index());
-            if (tensor->info()->has_padding()) {
-                tensor->allocator()->allocate();
-            }
-            auto sourceOutput = input.get_source_output();
-            auto outputName = sourceOutput.get_node()->get_friendly_name();
-            if (sourceOutput.get_node()->get_output_size() > 1) {
-                outputName += '.' + std::to_string(sourceOutput.get_index());
-            }
-            _outputTensors.emplace(outputName, tensor);
-        }
+        IE_ASSERT(node->inputs().size() == 1);
+        auto outputName = std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
+            node->get_rt_info().at("ResultName"))->get();
+        auto input = node->input(0);
+        auto sourceOutput = input.get_source_output();
+        auto tensor = layers.at(node->get_instance_id())._inputs.at(input)->_tensor.get();
+        auto str = _executableNetwork->_function->get_friendly_name() + "_" +
+                   requestID + "_postprocessing_" +
+                   outputName + "_" +
+                   std::to_string(node->get_instance_id());
+        _outputInfo.emplace_back(IOInfo{
+            sourceOutput,
+            tensor,
+            openvino::itt::handle(str),
+            allocateMemory(outputName,
+                           _networkOutputs,
+                           _outputs,
+                           tensor,
+                           sourceOutput),
+            _outputs.find(outputName),
+            "Postprocessing"});
     }
+    IE_ASSERT(!_outputInfo.empty());
     _memoryManager->populate(_allocator, 1);
+    _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(_memoryGroup);
     for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
-        _layers.emplace_back(std::move(layers.at(node->get_friendly_name())));
-        _layerNames.emplace_back(node->get_friendly_name());
-        _layerTypes.emplace(node->get_friendly_name(), std::string {node->get_type_name()} + '.' + std::to_string(node->get_type_info().version));
+        auto& layer = layers.at(node->get_instance_id());
+        if (ngraph::is_type<opset::ArmNoOp>(node.get())) {
+            IE_ASSERT(node->inputs().size() == 1);
+            for (auto&& output : node->outputs()) {
+                layer._outputs.at(output)._tensor->allocator()->import_memory(
+                    layer._inputs.at(node->input(0))->_tensor->buffer());
+            }
+        }
+        auto execType = layer._execType;
+        _layers.emplace_back(LayerInfo{
+            std::move(layer),
+            node.get(),
+            openvino::itt::handle(_executableNetwork->_function->get_friendly_name() + "_" +
+                                  requestID + "_" +
+                                  node->get_friendly_name() + "_" +
+                                  std::to_string(node->get_instance_id())),
+            execType});
     }
-    allocateBlobs();
 }
 
 ArmInferRequest::~ArmInferRequest() {
     _executableNetwork->_requestId--;
 }
 
-void ArmInferRequest::allocateBlobs() {
-    auto allocateImpl = [] (auto&& blobDataMap, auto& blobMap, auto& networkBlobMap, auto&& tensors) {
-        for (auto&& blobData : blobDataMap) {
-            auto& inferRequestBlob = blobMap[blobData.first];
-            inferRequestBlob = make_blob_with_precision(blobData.second->getTensorDesc());
-            inferRequestBlob->allocate();
-            auto& precision = blobData.second->getTensorDesc().getPrecision();
-            auto dataTypeCast = [] (const arm_compute::DataType type) {
-                switch (type) {
-                    case arm_compute::DataType::U8          : return InferenceEngine::Precision::U8;
-                    case arm_compute::DataType::S16         : return InferenceEngine::Precision::I16;
-                    case arm_compute::DataType::U16         : return InferenceEngine::Precision::U16;
-                    case arm_compute::DataType::S32         : return InferenceEngine::Precision::I32;
-                    case arm_compute::DataType::S64         : return InferenceEngine::Precision::I64;
-                    case arm_compute::DataType::F16         : return InferenceEngine::Precision::FP16;
-                    case arm_compute::DataType::F32         : return InferenceEngine::Precision::FP32;
-                    case arm_compute::DataType::BFLOAT16    : return InferenceEngine::Precision::BF16;
-                    default: IE_THROW() << "Unsupported Data Type ";
-                }
-            };
-            auto networkPresion = dataTypeCast(tensors.at(blobData.first)->info()->data_type());
-            auto& networkBlob = networkBlobMap[blobData.first];
-            if (networkPresion == precision) {
-                networkBlob = inferRequestBlob;
-            } else {
-                auto& dims = blobData.second->getTensorDesc().getDims();
-                auto layout = blobData.second->getTensorDesc().getLayout();
-                networkBlob = make_blob_with_precision(TensorDesc{networkPresion, dims, layout});
-            }
-            if (inferRequestBlob != networkBlob) {
-                networkBlob->allocate();
-            }
-        }
+struct StaticCast {
+    template<typename T> operator T*() {return static_cast<T*>(_ptr);}
+    void* _ptr;
+};
+static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto apply = [&] (auto convert) {
+        convert(
+            StaticCast{InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<void*>()},
+            StaticCast{InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<void*>()},
+            src->size());
     };
-    allocateImpl(_networkInputs, _inputs, _networkInputBlobs, _inputTensors);
-    allocateImpl(_networkOutputs, _outputs, _networkOutputBlobs, _outputTensors);
-}
 
-template<typename SrcT, typename DstT>
-static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
-    std::copy_n(InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const SrcT*>(),
-                src->size(),
-                InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<DstT*>());
-}
-
-static void blobCopy(const Blob::Ptr& src, const Blob::Ptr& dst) {
-#define DST_CASE(srcT, dstP, dstT)    \
-    case Precision::dstP : blobCopy<srcT, dstT>(src, dst); break;
-#define SRC_CASE(srcP, srcT)                                                \
-   case Precision::srcP : switch (dst->getTensorDesc().getPrecision()) {    \
-        DST_CASE(srcT, U8,    std::uint8_t)                                 \
-        DST_CASE(srcT, I16,   std::int16_t)                                 \
-        DST_CASE(srcT, U16,   std::uint16_t)                                \
-        DST_CASE(srcT, I32,   std::int32_t)                                 \
-        DST_CASE(srcT, U32,   std::uint32_t)                                \
-        DST_CASE(srcT, I64,   std::int64_t)                                 \
-        DST_CASE(srcT, U64,   std::uint64_t)                                \
-        DST_CASE(srcT, FP16,  ngraph::float16)                             \
-        DST_CASE(srcT, FP32,  float)                                        \
-        default: IE_THROW() << "Unsupported Data Type " << dst->getTensorDesc().getPrecision();            \
-    } break;
-    switch (src->getTensorDesc().getPrecision()) {
-        SRC_CASE(BOOL,  bool)
-        SRC_CASE(U8,    std::uint8_t)
-        SRC_CASE(I16,   std::int16_t)
-        SRC_CASE(U16,   std::uint16_t)
-        SRC_CASE(I32,   std::int32_t)
-        SRC_CASE(U32,   std::uint32_t)
-        SRC_CASE(I64,   std::int64_t)
-        SRC_CASE(U64,   std::uint64_t)
-        SRC_CASE(FP16,  ngraph::float16)
-        SRC_CASE(FP32,  float)
-        default: IE_THROW() << "Unsupported Data Type " << src->getTensorDesc().getPrecision();
-    }
-#undef SRC_CASE
-#undef DST_CASE
+    CallSwitch(
+        AP_WRAP(apply, ngraph::runtime::reference::convert),
+        InferenceEngine::details::convertPrecision(src->getTensorDesc().getPrecision()), merge(allTypes, boolType),
+        InferenceEngine::details::convertPrecision(dst->getTensorDesc().getPrecision()), allTypes);
 }
 
 void ArmInferRequest::InferImpl() {
-    arm_compute::MemoryGroupResourceScope memoryGroupScope(_memoryGroup);
     {
-        OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, _profilingTasks[Preprocessing]);
-        auto start = Time::now();
-        IInferRequestInternal::execDataPreprocessing(_inputs);
-        for (auto&& input : _inputs) {
-            auto inputBlob = input.second;
-            auto networkInput = _networkInputBlobs[input.first];
-            if (inputBlob->getTensorDesc().getPrecision() == networkInput->getTensorDesc().getPrecision()) {
-                networkInput = inputBlob;
-            } else {
-                blobCopy(inputBlob, networkInput);
+        execDataPreprocessing(_inputs);
+        for (auto&& input : _inputInfo) {
+            auto start = Time::now();
+            OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, input._profilingTask);
+            const auto& inputBlob = input._itBlob->second;
+            if (inputBlob != input._blob) {
+                if (input._blob->getTensorDesc() == inputBlob->getTensorDesc()) {
+                    input._blob = inputBlob;
+                } else {
+                    blobCopy(inputBlob, input._blob);
+                }
             }
-            auto inputTensor = _inputTensors[input.first];
-            if (inputTensor->info()->has_padding()) {
-                arm_compute::Tensor networkInputTensor;
-                networkInputTensor.allocator()->init({inputTensor->info()->tensor_shape(), 1, inputTensor->info()->data_type()});
-                networkInputTensor.allocator()->import_memory(
-                    InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput)->rmap().as<void*>());
-                inputTensor->copy_from(networkInputTensor);
+            if (input._tensor->info()->has_padding()) {
+                arm_compute::Tensor inputTensor;
+                inputTensor.allocator()->init({input._tensor->info()->tensor_shape(), 1, input._tensor->info()->data_type()});
+                inputTensor.allocator()->import_memory(
+                    InferenceEngine::as<InferenceEngine::MemoryBlob>(input._blob)->rmap().as<void*>());
+                input._tensor->copy_from(inputTensor);
             } else {
-                static_cast<arm_compute::Tensor*>(inputTensor)->allocator()->import_memory(
-                    InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput)->rmap().as<void*>());
+                static_cast<arm_compute::Tensor*>(input._tensor)->allocator()->import_memory(
+                    InferenceEngine::as<InferenceEngine::MemoryBlob>(input._blob)->rmap().as<void*>());
+            }
+            input._duration += Time::now() - start;
+            input._counter++;
+        }
+        for (auto&& output : _outputInfo) {
+            if (output._blob != nullptr) {
+                const auto& outputBlob = output._itBlob->second;
+                if (!ngraph::op::is_constant(output._output.get_node())) {
+                    if (outputBlob != output._blob) {
+                        if (output._blob->getTensorDesc() == outputBlob->getTensorDesc()) {
+                            output._blob = outputBlob;
+                        }
+                    }
+                    if (!output._tensor->info()->has_padding()) {
+                        static_cast<arm_compute::Tensor*>(output._tensor)->allocator()->import_memory(
+                            InferenceEngine::as<InferenceEngine::MemoryBlob>(output._blob)->wmap().as<void*>());
+                    }
+                }
             }
         }
-        for (auto output : _outputTensors) {
-            auto outputTensor = output.second;
-            if (_networkOutputBlobs.find(output.first) == _networkOutputBlobs.end()) {
-                if (!outputTensor->info()->has_padding()) {
-                    static_cast<arm_compute::Tensor*>(outputTensor)->allocator()->allocate();
-                }
-            } else {
-                auto networkOutput = _networkOutputBlobs[output.first];
-                auto outputBlob = _outputs[output.first];
-                if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
-                    networkOutput = outputBlob;
-                }
-                if (!outputTensor->info()->has_padding() && _layerTypes[output.first] != "Constant.0") {
-                    static_cast<arm_compute::Tensor*>(outputTensor)->allocator()->import_memory(
-                        InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
-                }
-            }
-        }
-        _durations["Preprocessing"] = Time::now() - start;
     }
     {
-        OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, _profilingTasks[Run]);
-        for (std::size_t i = 0; i < _layers.size(); ++i) {
-            if (_layers[i]._function != nullptr) {
+        for (auto&& layer : _layers) {
+            if (layer._layer._function != nullptr) {
+                OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, layer._profilingTask);
                 auto start = Time::now();
-                _layers[i]._function->run();
-                _durations[_layerNames[i]] = Time::now() - start;
+                layer._layer._function->run();
+                layer._duration += Time::now() - start;
+                layer._counter++;
             }
         }
     }
     {
-        OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, _profilingTasks[Postprocessing]);
-        auto start = Time::now();
-        for (auto&& output : _outputs) {
-            auto networkOutput = _networkOutputBlobs[output.first];
-            auto outputTensor = _outputTensors[output.first];
-            if (outputTensor->info()->has_padding() || _layerTypes[output.first] == "Constant.0") {
-                arm_compute::Tensor networkOutputTensor;
-                networkOutputTensor.allocator()->init({outputTensor->info()->tensor_shape(), 1, outputTensor->info()->data_type()});
-                networkOutputTensor.allocator()->import_memory(
-                    InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
-                networkOutputTensor.copy_from(*outputTensor);
-            }
-            auto outputBlob = output.second;
-            if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision() ||
-                _layerTypes[output.first] == "Constant.0") {
-                blobCopy(networkOutput, outputBlob);
+        for (auto&& output : _outputInfo) {
+            if (output._blob != nullptr) {
+                auto start = Time::now();
+                OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, output._profilingTask);
+                const auto& outputBlob = output._itBlob->second;
+                if (ngraph::op::is_constant(output._output.get_node())) {
+                    if (outputBlob != output._blob) {
+                        blobCopy(output._blob, outputBlob);
+                    }
+                } else {
+                    if (output._tensor->info()->has_padding()) {
+                        arm_compute::Tensor outputTensor;
+                        outputTensor.allocator()->init({output._tensor->info()->tensor_shape(), 1, output._tensor->info()->data_type()});
+                        outputTensor.allocator()->import_memory(
+                            InferenceEngine::as<InferenceEngine::MemoryBlob>(output._blob)->wmap().as<void*>());
+                        outputTensor.copy_from(*(output._tensor));
+                    }
+                    if (outputBlob != output._blob) {
+                        if (output._blob->getTensorDesc() != outputBlob->getTensorDesc()) {
+                            blobCopy(output._blob, outputBlob);
+                        }
+                    }
+                }
+                output._duration += Time::now() - start;
+                output._counter++;
             }
         }
-        _durations["Postprocessing"] = Time::now() - start;
     }
 }
 
 std::map<std::string, InferenceEngineProfileInfo> ArmInferRequest::GetPerformanceCounts() const {
     std::map<std::string, InferenceEngineProfileInfo> perfMap;
-    InferenceEngineProfileInfo info;
-    info.execution_index = 0;
-    info.status = InferenceEngineProfileInfo::EXECUTED;
-    info.cpu_uSec = 0;
-    for (auto&& value : _durations) {
-        info.realTime_uSec = value.second.count();
-        auto itType = _layerTypes.find(value.first);
-        if (itType != _layerTypes.end()) {
-            auto& layerType = itType->second;
-            auto pos = std::copy_n(layerType.c_str(), std::min(sizeof(info.layer_type) - 1, layerType.size()), info.layer_type);
+    int executionIndex = 0;
+    auto fillInfo = [&] (const auto& layer, ngraph::Node* node, auto& name) {
+        InferenceEngineProfileInfo info;
+        info.execution_index = executionIndex;
+        ++executionIndex;
+        info.status = InferenceEngineProfileInfo::EXECUTED;
+        info.cpu_uSec = 0;
+        info.realTime_uSec = layer._duration.count() / layer._counter;
+        auto type = std::string {node->get_type_name()}
+            + '.' + std::to_string(node->get_type_info().version);
+        {
+            auto pos = std::copy_n(type.c_str(), std::min(sizeof(info.layer_type) - 1, type.size()), info.layer_type);
             *pos = '\0';
-        } else {
-            info.layer_type[0] = '\0';
         }
-        perfMap[value.first] = info;
+        {
+            std::stringstream strm;
+            strm << node->get_output_element_type(0);
+            auto str = layer._execType + "." + strm.str();
+            auto pos = std::copy_n(str.c_str(), std::min(sizeof(info.exec_type) - 1, str.size()), info.exec_type);
+            *pos = '\0';
+        }
+        perfMap.emplace(name, info);
+    };
+    for (auto&& input : _inputInfo) {
+        fillInfo(input, input._output.get_node(), input._itBlob->first);
+    }
+    for (auto&& layer : _layers) {
+        if (layer._layer._function != nullptr) {
+            fillInfo(layer, layer._node, layer._node->get_friendly_name());
+        }
+    }
+    for (auto&& output : _outputInfo) {
+        if (output._blob != nullptr) {
+            fillInfo(output, output._output.get_node(), output._itBlob->first);
+        }
     }
     return perfMap;
 }

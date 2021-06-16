@@ -6,6 +6,7 @@
 
 #include <openvino/pp.hpp>
 #include <ie_common.h>
+#include <ie_algorithm.hpp>
 #include <ngraph/function.hpp>
 
 #include <arm_compute/runtime/IFunction.h>
@@ -22,74 +23,6 @@ struct D2 {enum D2_e{H, W};};
 arm_compute::TensorShape ShapeCast(const ngraph::Shape& shape);
 arm_compute::DataType DataTypeCast(const ngraph::element::Type type);
 std::size_t AxisCast(const std::size_t axis, const std::size_t shapeSize);
-
-template<typename Arg>
-struct Argument {
-    operator Arg() {
-        return _arg;
-    }
-    template<typename T, typename = std::enable_if_t<std::is_constructible<T, Arg>::value>>
-    operator T() {
-        return T{_arg};
-    }
-    Arg _arg;
- };
-
-enum class ArgumentType : bool {Input, Output};
-template<>
-struct Argument<arm_compute::ITensor*> {
-    Argument(arm_compute::ITensor* tensor, ArgumentType type) :
-        _type{type},
-        _tensor{tensor} {
-        if (_tensor->info()->has_padding()) {
-            _notPaddedTensor.allocator()->init({_tensor->info()->tensor_shape(), 1, _tensor->info()->data_type()});
-        }
-    }
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
-    operator T*() {
-        if (_tensor->info()->has_padding()) {
-            return static_cast<T*>(static_cast<void*>(_notPaddedTensor.buffer()));
-        } else {
-            return static_cast<T*>(static_cast<void*>(_tensor->buffer()));
-        }
-    }
-
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
-    operator const T*() const {
-        return const_cast<Argument<arm_compute::ITensor*>*>(this)->operator T*();
-    }
-    ArgumentType            _type;
-    arm_compute::ITensor*   _tensor;
-    arm_compute::Tensor     _notPaddedTensor;
-};
-
-struct HostTensors {
-    ngraph::HostTensorVector _hosts;
-    const ngraph::Node*      _node = nullptr;
-};
-
-template<>
-struct Argument<HostTensors> {
-    Argument(const HostTensors& hosts, const std::vector<arm_compute::ITensor*>& tensors, ArgumentType type) :
-        _type{type},
-        _tensors(tensors),
-        _hosts{hosts._hosts} {
-        _notPaddedTensors.resize(_tensors.size());
-        for (size_t i = 0; i < _tensors.size(); i++) {
-            if (_tensors[i]->info()->has_padding()) {
-                _notPaddedTensors[i].allocator()->init({_tensors[i]->info()->tensor_shape(), 1, _tensors[i]->info()->data_type()});
-            }
-        }
-    }
-    operator ngraph::HostTensorVector() {
-        return _hosts;
-    }
-
-    ArgumentType                       _type;
-    std::vector<arm_compute::ITensor*> _tensors;
-    ngraph::HostTensorVector           _hosts;
-    std::vector<arm_compute::Tensor>   _notPaddedTensors;
-};
 
 struct Converter;
 template<typename Arg>
@@ -122,24 +55,103 @@ struct FunctionArgument<Index, ReturnType(*&)(Arguments...)> {
     using type = std::tuple_element_t<Index, std::tuple<Arguments...>>;
 };
 
-struct Layer {
-    using Map = std::unordered_map<std::string, Layer>;
-    std::unique_ptr<arm_compute::IFunction>             _function;
-    std::vector<arm_compute::Tensor*>                   _inputs;
-    std::vector<std::unique_ptr<arm_compute::Tensor>>   _outputs;
+struct Input : ngraph::Input<ngraph::Node> {
+    Input(const ngraph::Input<ngraph::Node>& input) : ngraph::Input<ngraph::Node>{input} {}
+    Input(const ngraph::Input<const ngraph::Node>& input) :
+    Input{reinterpret_cast<const ngraph::Input<ngraph::Node>&>(input)} {}
 };
 
-static const std::string& GetNodeName(const ngraph::Input<const ngraph::Node>& input) {
-    return input.get_node()->get_friendly_name();
+struct Output : ngraph::Output<ngraph::Node> {
+    Output(const ngraph::Output<ngraph::Node>& output) : ngraph::Output<ngraph::Node>{output} {}
+    Output(const ngraph::Output<const ngraph::Node>& output) :
+    Output{reinterpret_cast<const ngraph::Output<ngraph::Node>&>(output)} {}
+};
+
+struct Tensor {
+    std::unique_ptr<arm_compute::Tensor>    _tensor;
+    std::unique_ptr<arm_compute::Tensor>    _notPaddedTensor;
+};
+
+template<typename Arg>
+struct Argument {
+    operator Arg() {
+        return _arg;
+    }
+    template<typename T, typename = std::enable_if_t<std::is_constructible<T, Arg>::value>>
+    operator T() {
+        return T{_arg};
+    }
+    Arg _arg;
+ };
+
+enum class ArgumentType : bool {Input, Output};
+template<>
+struct Argument<Tensor*> {
+    Argument(Tensor* tensor, ArgumentType type) :
+        _type{type},
+        _tensor{tensor} {
+        _tensor->_notPaddedTensor = std::make_unique<arm_compute::Tensor>();
+    }
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    operator T*() {
+        if (_tensor->_tensor->info()->has_padding()) {
+            return static_cast<T*>(static_cast<void*>(_tensor->_notPaddedTensor->buffer()));
+        } else {
+            return static_cast<T*>(static_cast<void*>(_tensor->_tensor->buffer()));
+        }
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    operator const T*() const {
+        return const_cast<Argument<Tensor*>*>(this)->operator T*();
+    }
+    ArgumentType            _type;
+    Tensor*                 _tensor;
+};
+
+struct HostTensors {
+    ngraph::HostTensorVector _hosts;
+    const ngraph::Node*      _node = nullptr;
+};
+
+template<>
+struct Argument<HostTensors> {
+    Argument(const HostTensors& hosts, const std::vector<Tensor*>& tensors, ArgumentType type) :
+        _type{type},
+        _tensors(tensors),
+        _hosts{hosts._hosts} {
+        for (auto tensor : _tensors) {
+            tensor->_notPaddedTensor = std::make_unique<arm_compute::Tensor>();
+        }
+    }
+    operator ngraph::HostTensorVector() {
+        return _hosts;
+    }
+
+    ArgumentType                _type;
+    std::vector<Tensor*>        _tensors;
+    ngraph::HostTensorVector    _hosts;
+};
+
+struct Layer {
+    using Map = std::unordered_map<std::size_t, Layer>;
+    std::unique_ptr<arm_compute::IFunction>     _function;
+    std::map<Input, Tensor*>                    _inputs;
+    std::map<Output, Tensor>                    _outputs;
+    std::string                                 _execType;
+};
+
+static std::size_t GetNodeId(const ngraph::Input<const ngraph::Node>& input) {
+    return input.get_node()->get_instance_id();
 }
-static const std::string& GetNodeName(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
-    return inputs.front().get_node()->get_friendly_name();
+static std::size_t GetNodeId(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
+    return inputs.front().get_node()->get_instance_id();
 }
-static const std::string& GetNodeName(const ngraph::Output<const ngraph::Node>& output) {
-    return output.get_node()->get_friendly_name();
+static std::size_t GetNodeId(const ngraph::Output<const ngraph::Node>& output) {
+    return output.get_node()->get_instance_id();
 }
-static const std::string& GetNodeName(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
-    return outputs.front().get_node()->get_friendly_name();
+static std::size_t GetNodeId(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
+    return outputs.front().get_node()->get_instance_id();
 }
 
 template<typename ACFunction, bool Flag>
@@ -165,12 +177,16 @@ struct Converter {
         virtual ~Conversion() = default;
         virtual arm_compute::Status Validate() = 0;
         virtual void Configure(const std::shared_ptr<arm_compute::IMemoryManager>&) = 0;
+        virtual std::string ExecType() const = 0;
     };
     template<typename ACFunction, typename... Args>
     struct ConversionImpl final : public Conversion {
         ConversionImpl(Converter& converter, Args&& ... args) :
             _converter{converter},
             _args{std::forward<Args>(args)...} {
+        }
+        std::string ExecType() const override {
+            return "Arm Compute";
         }
         template<typename Arg>
         auto MakeConversionArg(Arg&& arg) {
@@ -199,7 +215,7 @@ struct Converter {
             auto function = MakeFunction<ACFunction,
                 std::is_constructible<ACFunction, std::shared_ptr<arm_compute::IMemoryManager>>::value>::Make(memoryManager);
             function->configure(MakeConversionArg(std::get<I>(_args))...);
-            _converter._layers.at(GetNodeName(std::get<0>(_args)))._function = std::move(function);
+            _converter._layers.at(GetNodeId(std::get<0>(_args)))._function = std::move(function);
         }
         void Configure(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager) override {
             ConfigureImpl(memoryManager, std::make_index_sequence<sizeof...(Args)>{});
@@ -221,90 +237,27 @@ struct Converter {
             _args{std::forward<Args>(args)...} {
         }
 
+        std::string ExecType() const override {
+            return "ngraph Reference";
+        }
+
         template<typename ... RunArgs>
         struct CallableFunction final : public arm_compute::IFunction {
-            template<typename T>
-            void StartArgumentLifeTime(T&) {}
-
-            void StartArgumentLifeTime(Argument<arm_compute::ITensor*>& tensorArgument) {
-                if (tensorArgument._tensor->info()->has_padding()) {
-                    _memoryGroup.manage(&(tensorArgument._notPaddedTensor));
-                }
-            }
-
-            void StartArgumentLifeTime(Argument<HostTensors>& hostsArgument) {
-                for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
-                    if (hostsArgument._tensors[i]->info()->has_padding()) {
-                        _memoryGroup.manage(&(hostsArgument._notPaddedTensors[i]));
-                    }
-                }
-            }
-
-            void StartArgumentLifeTimeImpl() {}
-
-            template<typename H, typename ... T>
-            void StartArgumentLifeTimeImpl(H&& h, T&& ... t) {
-                StartArgumentLifeTime(std::forward<H>(h));
-                StartArgumentLifeTimeImpl(std::forward<T>(t)...);
-            }
-
-            template<std::size_t ... I>
-            void StartLifeTime(std::index_sequence<I...>) {
-                StartArgumentLifeTimeImpl(std::get<I>(_args)...);
-            }
-
-            template<typename T>
-            void EndArgumentLifeTime(T&&) {}
-
-            void EndArgumentLifeTime(Argument<arm_compute::ITensor*>& tensorArgument) {
-                if (tensorArgument._tensor->info()->has_padding()) {
-                    tensorArgument._notPaddedTensor.allocator()->allocate();
-                }
-            }
-
-            void EndArgumentLifeTime(Argument<HostTensors>& hostsArgument) {
-                for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
-                    if (hostsArgument._tensors[i]->info()->has_padding()) {
-                        hostsArgument._notPaddedTensors[i].allocator()->allocate();
-                    }
-                }
-            }
-
-            template<typename H>
-            void EndArgumentLifeTimeImpl(H&& h) {
-                EndArgumentLifeTime(std::forward<H>(h));
-            }
-
-            template<typename H, typename ... T>
-            void EndArgumentLifeTimeImpl(H&& h, T&& ... t) {
-                EndArgumentLifeTime(std::forward<H>(h));
-                EndArgumentLifeTimeImpl(std::forward<T>(t)...);
-            }
-
-            template<std::size_t ... I>
-            void EndLifeTime(std::index_sequence<I...>) {
-                EndArgumentLifeTimeImpl(std::get<I>(_args)...);
-            }
-
-            CallableFunction(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager,
-                             Callable&& callable,
+            CallableFunction(Callable&& callable,
                              RunArgs&& ... args) :
-                _memoryGroup{memoryManager},
                 _callable{std::forward<Callable>(callable)},
                 _args{std::forward<RunArgs>(args)...} {
-                StartLifeTime(std::make_index_sequence<sizeof...(RunArgs)>{});
-                EndLifeTime(std::make_index_sequence<sizeof...(RunArgs)>{});
             }
 
             template<typename T>
             void CopyArgument(ArgumentType, T&&) {}
 
-            void CopyArgument(ArgumentType type, Argument<arm_compute::ITensor*>& tensorArgument) {
-                if (tensorArgument._tensor->info()->has_padding()) {
+            void CopyArgument(ArgumentType type, Argument<Tensor*>& tensorArgument) {
+                if (tensorArgument._tensor->_tensor->info()->has_padding()) {
                     if (tensorArgument._type == type) {
                         switch (type) {
-                        case ArgumentType::Input  : tensorArgument._notPaddedTensor.copy_from(*(tensorArgument._tensor)); break;
-                        case ArgumentType::Output : tensorArgument._tensor->copy_from(tensorArgument._notPaddedTensor); break;
+                        case ArgumentType::Input  : tensorArgument._tensor->_notPaddedTensor->copy_from(*(tensorArgument._tensor->_tensor)); break;
+                        case ArgumentType::Output : tensorArgument._tensor->_tensor->copy_from(*(tensorArgument._tensor->_notPaddedTensor)); break;
                         }
                     }
                 }
@@ -313,21 +266,21 @@ struct Converter {
             void CopyArgument(ArgumentType type, Argument<HostTensors>& hostsArgument) {
                 for (std::size_t i = 0; i < hostsArgument._hosts.size(); i++) {
                     void* host_ptr = static_cast<void*>(hostsArgument._hosts[i]->get_data_ptr());
-                    void* tensor_ptr = static_cast<void*>(hostsArgument._tensors[i]->buffer());
+                    void* tensor_ptr = static_cast<void*>(hostsArgument._tensors[i]->_tensor->buffer());
                     if (host_ptr != tensor_ptr) {
                         hostsArgument._hosts[i] = std::make_shared<ngraph::HostTensor>(
                                                     hostsArgument._hosts[i]->get_element_type(),
                                                     hostsArgument._hosts[i]->get_shape(),
                                                     tensor_ptr);
                     }
-                    if (hostsArgument._tensors[i]->info()->has_padding()) {
+                    if (hostsArgument._tensors[i]->_tensor->info()->has_padding()) {
                         if (hostsArgument._type == type) {
                             switch (type) {
                             case ArgumentType::Input  :
-                                hostsArgument._notPaddedTensors[i].copy_from(*(hostsArgument._tensors[i]));
+                                hostsArgument._tensors[i]->_notPaddedTensor->copy_from(*(hostsArgument._tensors[i]->_tensor));
                                 break;
                             case ArgumentType::Output :
-                                hostsArgument._tensors[i]->copy_from(hostsArgument._notPaddedTensors[i]);
+                                hostsArgument._tensors[i]->_tensor->copy_from(*(hostsArgument._tensors[i]->_notPaddedTensor));
                                 break;
                             }
                         }
@@ -353,7 +306,6 @@ struct Converter {
                 RunImpl(std::make_index_sequence<sizeof...(RunArgs)>{});
             }
 
-            arm_compute::MemoryGroup                        _memoryGroup;
             std::decay_t<Callable>                          _callable;
             std::tuple<std::decay_t<RunArgs>...>            _args;
         };
@@ -371,46 +323,43 @@ struct Converter {
         }
 
         template<std::size_t I>
-        Argument<arm_compute::ITensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
+        Argument<Tensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (input.get_element_type() != type) {
                 IE_THROW() << "Argument types should be the same " << input << " " << type;
             }
-            return {_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()),
-                    ArgumentType::Input};
+            return {_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input), ArgumentType::Input};
         }
 
         template<std::size_t I>
-        Argument<arm_compute::ITensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
+        Argument<Tensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             if (output.get_element_type() != type) {
                 IE_THROW() << "Argument types should be the same " << output << " " << type;
             }
-            return {_converter._layers.at(output.get_node()->get_friendly_name())._outputs.at(output.get_index()).get(),
-                    ArgumentType::Output};
+            return {&(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)), ArgumentType::Output};
         }
 
         template<std::size_t I>
         Argument<HostTensors> MakeArgument(HostTensors& hosts) {
-            std::vector<arm_compute::ITensor*> tensors;
+            std::vector<Tensor*> tensors;
             IE_ASSERT(hosts._node != nullptr);
-            for (std::size_t i = 0; i < hosts._hosts.size(); i++) {
-                tensors.push_back(_converter._layers.at(hosts._node->get_friendly_name())._outputs.at(i).get());
+            for (auto&& output : hosts._node->outputs()) {
+                tensors.push_back(&(_converter._layers.at(hosts._node->get_instance_id())._outputs.at(output)));
             }
+            IE_ASSERT(tensors.size() == hosts._hosts.size());
             return {hosts, tensors, ArgumentType::Output};
         }
 
         template<std::size_t I>
-        std::vector<Argument<arm_compute::ITensor*>> MakeArgument(std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
-            std::vector<Argument<arm_compute::ITensor*>> input_tensors;
+        std::vector<Argument<Tensor*>> MakeArgument(std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
+            std::vector<Argument<Tensor*>> tensors;
             for (const auto& input : inputs) {
-                Argument<arm_compute::ITensor*> tensor{_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()),
-                                                        ArgumentType::Input};
-                input_tensors.push_back(std::move(tensor));
+                tensors.emplace_back(_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input), ArgumentType::Input);
             }
-            return input_tensors;
+            return tensors;
         }
 
         arm_compute::Status Validate() override {
@@ -418,18 +367,17 @@ struct Converter {
         }
 
         template<typename ... RunArgs>
-        auto makeCallableFunction(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager, Callable&& callable, RunArgs&& ... args) {
-            return std::make_unique<CallableFunction<RunArgs...>>(
-                memoryManager, std::forward<Callable>(callable), std::forward<RunArgs>(args)...);
+        auto makeCallableFunction(Callable&& callable, RunArgs&& ... args) {
+            return std::make_unique<CallableFunction<RunArgs...>>(std::forward<Callable>(callable), std::forward<RunArgs>(args)...);
         }
 
         template<std::size_t... I>
-        void ConfigureImpl(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager, std::index_sequence<I...>) {
-            auto function = makeCallableFunction(memoryManager, _callable, MakeArgument<I>(std::get<I>(_args))...);
-            _converter._layers.at(GetNodeName(std::get<0>(_args)))._function = std::move(function);
+        void ConfigureImpl(std::index_sequence<I...>) {
+            auto function = makeCallableFunction(_callable, MakeArgument<I>(std::get<I>(_args))...);
+            _converter._layers.at(GetNodeId(std::get<0>(_args)))._function = std::move(function);
         }
-        void Configure(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager) override {
-            ConfigureImpl(memoryManager, std::make_index_sequence<sizeof...(Args)>{});
+        void Configure(const std::shared_ptr<arm_compute::IMemoryManager>&) override {
+            ConfigureImpl(std::make_index_sequence<sizeof...(Args)>{});
         }
 
         Converter&                          _converter;
@@ -453,8 +401,11 @@ struct Converter {
     using ConvertFn = std::function<Conversion::Ptr(const ngraph::Node&)>;
     template<typename NodeType>
     void Register() {
-        _conversions.emplace(NodeType::type_info,
-            [this] (const ngraph::Node& node) {return Convert(dynamic_cast<const NodeType&>(node));});
+        _conversions.emplace(NodeType::type_info, [this] (const ngraph::Node& node) {
+            auto nodePtr = ngraph::as_type<const NodeType>(&node);
+            IE_ASSERT(nodePtr != nullptr);
+            return Convert(*nodePtr);
+        });
     }
 
     std::map<ngraph::Node::type_info_t, ConvertFn>  _conversions;
@@ -465,10 +416,10 @@ struct Converter {
 template<>
 struct ConversionArg<ngraph::Input<const ngraph::Node>&> {
     operator arm_compute::ITensorInfo*() {
-        return _converter._layers.at(_input.get_node()->get_friendly_name())._inputs.at(_input.get_index())->info();
+        return _converter._layers.at(_input.get_node()->get_instance_id())._inputs.at(_input)->_tensor->info();
     }
     operator arm_compute::ITensor*() {
-        return _converter._layers.at(_input.get_node()->get_friendly_name())._inputs.at(_input.get_index());
+        return _converter._layers.at(_input.get_node()->get_instance_id())._inputs.at(_input)->_tensor.get();
     }
     Converter&                    _converter;
     ngraph::Input<const ngraph::Node>&  _input;
@@ -477,10 +428,10 @@ struct ConversionArg<ngraph::Input<const ngraph::Node>&> {
 template<>
 struct ConversionArg<ngraph::Output<const ngraph::Node>&> {
     operator arm_compute::ITensorInfo*() {
-        return _converter._layers.at(_output.get_node()->get_friendly_name())._outputs.at(_output.get_index())->info();
+        return _converter._layers.at(_output.get_node()->get_instance_id())._outputs.at(_output)._tensor->info();
     }
     operator arm_compute::ITensor*() {
-        return _converter._layers.at(_output.get_node()->get_friendly_name())._outputs.at(_output.get_index()).get();
+        return _converter._layers.at(_output.get_node()->get_instance_id())._outputs.at(_output)._tensor.get();
     }
     Converter&                    _converter;
     ngraph::Output<const ngraph::Node>&  _output;
@@ -491,14 +442,14 @@ struct ConversionArg<std::vector<ngraph::Input<const ngraph::Node>>&> {
     operator std::vector<const arm_compute::ITensorInfo*>() const {
         std::vector<const arm_compute::ITensorInfo*> infos;
         for (auto&& input : _inputs) {
-            infos.emplace_back(_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index())->info());
+            infos.emplace_back(_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input)->_tensor->info());
         }
         return infos;
     }
     operator std::vector<const arm_compute::ITensor*>() const {
         std::vector<const arm_compute::ITensor*> tensors;
         for (auto&& input : _inputs) {
-            tensors.emplace_back(_converter._layers.at(input.get_node()->get_friendly_name())._inputs.at(input.get_index()));
+            tensors.emplace_back(_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input)->_tensor.get());
         }
         return tensors;
     }
@@ -510,36 +461,19 @@ struct ConversionArg<std::vector<ngraph::Output<const ngraph::Node>>&> {
     operator std::vector<arm_compute::ITensorInfo*>() const {
         std::vector<arm_compute::ITensorInfo*> infos;
         for (auto&& output : _outputs) {
-            infos.emplace_back(_converter._layers.at(output.get_node()->get_friendly_name())._outputs.at(output.get_index())->info());
+            infos.emplace_back(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)._tensor->info());
         }
         return infos;
     }
     operator std::vector<arm_compute::ITensor*>() const {
         std::vector<arm_compute::ITensor*> tensors;
         for (auto&& output : _outputs) {
-            tensors.emplace_back(_converter._layers.at(output.get_node()->get_friendly_name())._outputs.at(output.get_index()).get());
+            tensors.emplace_back(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)._tensor.get());
         }
         return tensors;
     }
     Converter&                                          _converter;
     std::vector<ngraph::Output<const ngraph::Node>>&    _outputs;
-};
-
-template<>
-struct ConversionArg<std::pair<ngraph::Input<const ngraph::Node>, arm_compute::TensorInfo>&> {
-    enum {NodeInput, TensorInfo};
-    operator arm_compute::ITensorInfo*() const {
-        return &(std::get<TensorInfo>(_input));
-    }
-    operator arm_compute::ITensor*() const {
-        auto& input = std::get<NodeInput>(_input);
-        auto sourceOutput = input.get_source_output();
-        auto& tensor = _converter._layers.at(sourceOutput.get_node()->get_friendly_name())._outputs.at(sourceOutput.get_index());
-        static_cast<arm_compute::Tensor*>(tensor.get())->allocator()->init(std::get<TensorInfo>(_input));
-        return tensor.get();
-    }
-    Converter&                                                              _converter;
-    std::pair<ngraph::Input<const ngraph::Node>, arm_compute::TensorInfo>&  _input;
 };
 
 #define AP_WRAP(MAKE, F) [&](auto ... v) {return MAKE(F<decltype(v)...>);}
@@ -553,40 +487,46 @@ static auto get_element_type(const ngraph::element::Type& type) {
     return type;
 }
 
-template<typename ... PT, typename F>
-Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&& f) {
+template<typename, typename ... PT, typename F>
+auto CallSwitchPT(std::tuple<int, PT...>, F&& f) {
         return f(PT{} ...);
 }
 
-template<typename ... PT, typename F, typename IO, typename ... TRest>
-[[noreturn]] Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, std::tuple<int>, F&& f, const IO& io, TRest ... args) {
+template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... TRest>
+[[noreturn]] ReturnT CallSwitchPT(std::tuple<int, PT...>, std::tuple<int>, F&& f, const IO& io, TRest ... args) {
     IE_THROW() << "Unsupported Type: " << io;
 }
 
-template<typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
-Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&&, const IO&, std::tuple<T...>, TRest ... args);
+template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
+auto CallSwitchPT(std::tuple<int, PT...>, F&&, const IO&, std::tuple<T...>, TRest ... args);
 
-template<typename ... PT, typename H, typename ... T, typename F, typename IO, typename ... TRest>
-Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, std::tuple<int, H, T...>, F&& f, const IO& io, TRest ... args) {
+template<typename, typename ... PT, typename H, typename ... T, typename F, typename IO, typename ... TRest>
+auto CallSwitchPT(std::tuple<int, PT...>, std::tuple<int, H, T...>, F&& f, const IO& io, TRest ... args) {
     if (ngraph::element::from<H>() == get_element_type(io)) {
-        return CallSwitchPT(std::tuple<int, PT ... , H>{}, std::forward<F>(f), args...);
+        return CallSwitchPT<void>(std::tuple<int, PT ... , H>{}, std::forward<F>(f), args...);
     } else {
-        return CallSwitchPT(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
+        return CallSwitchPT<
+            decltype(CallSwitchPT<void>(std::tuple<int, PT ... , H>{}, std::forward<F>(f), args...))
+        >(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
     }
 }
 
-template<typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
-Converter::Conversion::Ptr CallSwitchPT(std::tuple<int, PT...>, F&& f, const IO& io, std::tuple<T...>, TRest ... args) {
-        return CallSwitchPT(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
+template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
+auto CallSwitchPT(std::tuple<int, PT...>, F&& f, const IO& io, std::tuple<T...>, TRest ... args) {
+        return CallSwitchPT<ReturnT>(std::tuple<int, PT...>{}, std::tuple<int, T...>{}, std::forward<F>(f), io, args...);
 }
 
 template<typename F, typename IO, typename ... T, typename ... TRest>
 auto CallSwitch(F&& f, const IO& io, std::tuple<T...>, TRest ... args) {
-        return CallSwitchPT(std::tuple<int>{}, std::forward<F>(f), io, std::tuple<T...>{}, args...);
+        return CallSwitchPT<void>(std::tuple<int>{}, std::forward<F>(f), io, std::tuple<T...>{}, args...);
 }
 
-constexpr static auto allTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, ngraph::float16, float>{};
+template<typename ...T0, typename ...T1>
+constexpr static std::tuple<T0..., T1...> merge(std::tuple<T0...>, std::tuple<T1...>) {return {};}
+
+constexpr static auto boolType = std::tuple<bool>{};
 constexpr static auto intTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
 constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
 constexpr static auto floatTypes = std::tuple<ngraph::float16, float>{};
+constexpr static auto allTypes = merge(intTypes, floatTypes);
 }  //  namespace ArmPlugin

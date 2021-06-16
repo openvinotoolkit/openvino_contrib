@@ -16,5 +16,7 @@
 #include "strided_slice_arm.hpp"
 #include "transpose_arm.hpp"
 #include "fft_arm.hpp"
+#include "quantize.hpp"
+#include "noop_arm.hpp"
 #include "ngraph_opset.hpp"
 #include "utils.hpp"

@@ -55,10 +55,11 @@ Plugin::~Plugin() {
     ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
 }
 
-static std::shared_ptr<ngraph::Function> Transform(const std::shared_ptr<const ngraph::Function>& function) {
+std::shared_ptr<ngraph::Function> Plugin::Transform(const std::shared_ptr<const ngraph::Function>& function,
+                                                    const Configuration& config) const {
     auto transformedFunction = ngraph::clone_function(*function);
     ngraph::pass::Manager passManager;
-    passManager.register_pass<pass::ArmOptimizations>();
+    passManager.register_pass<pass::ArmOptimizations>(config._lpt);
     passManager.run_passes(transformedFunction);
     return transformedFunction;
 }
@@ -73,7 +74,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     if (function == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
-    return std::make_shared<ExecutableNetwork>(Transform(function), cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
+    return std::make_shared<ExecutableNetwork>(Transform(function, cfg), cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigMap& config) const {
@@ -87,7 +88,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     for (auto&& node : function->get_ops()) {
         originalOps.emplace(node->get_friendly_name());
     }
-    auto transformedFunction = Transform(function);
+    auto transformedFunction = Transform(function, cfg);
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
     Converter converter{transformedFunction};
@@ -175,7 +176,8 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(PERF_COUNT) };
+            CONFIG_KEY(PERF_COUNT),
+            CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);

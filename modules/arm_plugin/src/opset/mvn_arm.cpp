@@ -7,7 +7,7 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmMVN::type_info;
+NGRAPH_RTTI_DEFINITION(opset::ArmMVN, "ArmMVN", 0);
 
 opset::ArmMVN::~ArmMVN() {}
 

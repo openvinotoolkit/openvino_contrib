@@ -11,6 +11,7 @@
 
 #include <ie_metric_helpers.hpp>
 #include <ie_plugin_config.hpp>
+#include <ie_ngraph_utils.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <ngraph/function.hpp>
 
@@ -53,11 +54,7 @@ ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsData
 }
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::string& name) const {
-    if (name == CONFIG_KEY(PERF_COUNT)) {
-        return _cfg.Get(name);
-    } else {
-        IE_THROW() << "Unsupported ExecutableNetwork config key: " << name;
-    }
+    return _cfg.Get(name);
 }
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::string& name) const {
@@ -70,7 +67,8 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(PERF_COUNT)};
+            CONFIG_KEY(PERF_COUNT),
+            CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);
@@ -84,4 +82,16 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
     } else {
         IE_THROW() << "Unsupported ExecutableNetwork metric: " << name;
     }
+}
+
+InferenceEngine::CNNNetwork ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
+    for (auto&& node : _function->get_ops()) {
+        auto& rtInfo = node->get_rt_info();
+        rtInfo.emplace("layerType",
+                       std::make_shared<ngraph::VariantWrapper<std::string>>(node->get_type_name()));
+        rtInfo.emplace("runtimePrecision",
+                       std::make_shared<ngraph::VariantWrapper<std::string>>(
+                            InferenceEngine::details::convertPrecision(node->output(0).get_element_type()).name()));
+    }
+    return InferenceEngine::CNNNetwork{std::const_pointer_cast<ngraph::Function>(_function)};
 }
