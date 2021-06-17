@@ -19,7 +19,8 @@ class CuDnnTensorOpBase : public OperationCuDnn {
                    const cudnnNanPropagation_t& nanPropogationType =
                       cudnnNanPropagation_t::CUDNN_PROPAGATE_NAN);
     void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-                Outputs outputTensors) override;
+                Outputs outputTensors,
+                const Workbuffers& workbuffers) override;
 
   private:
     struct IoParams {

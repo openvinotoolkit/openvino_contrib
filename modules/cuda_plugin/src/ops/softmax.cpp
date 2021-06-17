@@ -115,7 +115,7 @@ SoftmaxOp::SoftmaxOp(const NodeOp& node,
       tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());
   }
 
-void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 1);
   CUDA::throwIfError(cudnnSoftmaxForward(

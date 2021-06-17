@@ -18,7 +18,13 @@ public:
                   IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers&) override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
+
+    void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
+    const WorkbufferIndices& GetWorkbufferIds() const override;
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override;
 
     struct ArgIndices {
         static constexpr size_t input = 0;

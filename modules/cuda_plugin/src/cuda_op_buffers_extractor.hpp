@@ -11,6 +11,8 @@
 #include <vector>
 #include <gsl/span>
 
+#include "memory_manager/cuda_workbuffers.hpp"
+
 namespace CUDAPlugin {
 
 /**
@@ -95,6 +97,20 @@ public:
      */
     std::vector<unsigned> immutableBuffersIndices() const;
 
+    /**
+     * Handles work buffers request for the named operation
+     * @param node_idx node index
+     * @param request workbuffer request
+     * @returns workbuffer indices
+     */
+    WorkbufferIndices processWorkbufferRequest(int node_idx, const WorkbufferRequest& request);
+
+    /**
+     * @returns sizes of immutable workbuffers
+     */
+    const std::unordered_map<unsigned, size_t>& immutableWorkbufferSizes() const {
+      return immutable_workbuffers_;
+    }
 private:
     /**
      * Internal buffer representation
@@ -118,7 +134,7 @@ private:
      * Should be incremented if new buffer was added.
      * @param node_idx Current node index
      */
-    void extractMutableBuffers(const NodePtr& node, int node_idx, unsigned& buffer_idx);
+    void extractMutableBuffers(const NodePtr& node, int node_idx);
 
     /**
      * Encapsulates immutable buffers extraction for the given node
@@ -127,7 +143,7 @@ private:
      * Should be incremented if new buffer was added.
      * @param node_idx Current node index
      */
-    void extractImmutableBuffers(const NodePtr& node, unsigned& buffer_idx);
+    void extractImmutableBuffers(const NodePtr& node);
 
     /**
      * Provides buffer size for the given output
@@ -190,11 +206,12 @@ private:
      * Exception helper
      */
     static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
-
 private:
     std::unordered_map<unsigned, BufferDesc> mutable_buffers_;
     std::unordered_map<unsigned, gsl::span<const Byte>> immutable_buffers_;
+    std::unordered_map<unsigned, size_t> immutable_workbuffers_;
     std::unordered_map<std::string, unsigned> buffer_names_;
+    unsigned buffer_idx_ {};
 };
 
 } // namespace CUDAPlugin

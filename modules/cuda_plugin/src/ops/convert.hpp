@@ -17,7 +17,8 @@ class ConvertOp : public OperationBase {
               IndexCollection&& inputIds, IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
     using Type_t = ngraph::element::Type_t;
     using convert_t = void(*)(const CUDA::Stream&, size_t,
                          InferenceEngine::gpu::DevicePointer<void*>,

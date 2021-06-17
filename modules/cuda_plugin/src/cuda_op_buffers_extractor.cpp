@@ -17,15 +17,14 @@ namespace CUDAPlugin {
 
 OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes) {
     const auto num_ordered_nodes = ordered_nodes.size();
-    unsigned buffer_idx { 0 };
     for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
         const auto& node = ordered_nodes[node_idx];
         if (IsResultNode(*node))
             continue;
         else if (IsConstantNode(*node))
-            extractImmutableBuffers(node, buffer_idx);
+            extractImmutableBuffers(node);
         else
-            extractMutableBuffers(node, node_idx, buffer_idx);
+            extractMutableBuffers(node, node_idx);
     }
     for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
         for (const auto& input : ordered_nodes[node_idx]->inputs()) {
@@ -117,7 +116,7 @@ std::size_t OperationBuffersExtractor::GetBufferSize(const ngraph::Input<ngraph:
     return output.get_element_type().size() * shape_size(output.get_shape());
 }
 
-void OperationBuffersExtractor::extractMutableBuffers(const NodePtr& node, int node_idx, unsigned& buffer_idx) {
+void OperationBuffersExtractor::extractMutableBuffers(const NodePtr& node, int node_idx) {
     if (isReshapeOnlyNode(*node)) {
         try {
             Expects(node->inputs().size() >= 1);
@@ -132,21 +131,38 @@ void OperationBuffersExtractor::extractMutableBuffers(const NodePtr& node, int n
         }
     } else {
         for (const auto& output : node->outputs()) {
-            mutable_buffers_.emplace(std::make_pair(buffer_idx, BufferDesc { node_idx,
+            mutable_buffers_.emplace(std::make_pair(buffer_idx_, BufferDesc { node_idx,
                     node_idx, GetBufferSize(output) }));
-            buffer_names_.emplace(GetBufferNameInternal(output), buffer_idx);
-            buffer_idx++;
+            buffer_names_.emplace(GetBufferNameInternal(output), buffer_idx_);
+            buffer_idx_++;
         }
     }
 }
 
-void OperationBuffersExtractor::extractImmutableBuffers(const NodePtr& node, unsigned& buffer_idx) {
+void OperationBuffersExtractor::extractImmutableBuffers(const NodePtr& node) {
     auto constant = std::dynamic_pointer_cast<ngraph::op::v0::Constant>(node);
     const Byte * ptr = reinterpret_cast<const Byte*>(constant->get_data_ptr());
     auto span = gsl::make_span(ptr, GetBufferSize(node->output(0)));
-    immutable_buffers_.emplace(std::make_pair(buffer_idx, span));
-    buffer_names_.emplace(GetBufferNameInternal(node->output(0)), buffer_idx);
-    buffer_idx++;
+    immutable_buffers_.emplace(std::make_pair(buffer_idx_, span));
+    buffer_names_.emplace(GetBufferNameInternal(node->output(0)), buffer_idx_);
+    buffer_idx_++;
+}
+
+WorkbufferIndices
+OperationBuffersExtractor::processWorkbufferRequest(int node_idx, const WorkbufferRequest& request) {
+  WorkbufferIndices result {};
+  for(auto size : request.immutable_sizes) {
+    immutable_workbuffers_.emplace(std::make_pair(buffer_idx_, size));
+    result.immutableIndices.push_back(buffer_idx_);
+    buffer_idx_++;
+  }
+  for(auto size : request.mutable_sizes) {
+    // mutable workbuffers share the same memory space with mutable I/O buffers
+    mutable_buffers_.emplace(std::make_pair(buffer_idx_, BufferDesc { node_idx, node_idx, size }));
+    result.mutableIndices.push_back(buffer_idx_);
+    buffer_idx_++;
+  }
+  return result;
 }
 
 bool OperationBuffersExtractor::IsResultNode(const ngraph::Node& node) {

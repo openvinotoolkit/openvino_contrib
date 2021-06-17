@@ -120,7 +120,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
             auto inputTensors = manager.inputTensorPointers(*op);
             auto outputTensors = manager.outputTensorPointers(*op);
             if (perfCount) addStartEvent(threadContext.stream(), *op, ++execution_index);
-            op->Execute(inferRequestContext, inputTensors, outputTensors);
+            op->Execute(inferRequestContext, inputTensors, outputTensors, manager.workBuffers(*op));
             if (perfCount) addStopEvent(threadContext.stream(), *op);
         }
         if (perfCount) exec_timing_.setStop(threadContext.stream());

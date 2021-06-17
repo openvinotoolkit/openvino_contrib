@@ -80,7 +80,7 @@ SplitOp::SplitOp(const ngraph::Node& node,
     Ensures(num_split_chunks_ != 0);
 }
 
-void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == num_splits_);
     auto& threadContext = context.getThreadContext();
