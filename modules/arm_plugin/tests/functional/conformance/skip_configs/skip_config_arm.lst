@@ -8,3 +8,5 @@
 .*MaxPool_334685.*
 .*VariadicSplit_629649.*
 .*VariadicSplit_642662.*
+# Skip the test below because it takes ~5 hrs. to pass it
+.*Broadcast_748166.*
