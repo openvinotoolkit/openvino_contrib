@@ -11,9 +11,11 @@
 namespace CUDAPlugin {
 
 MemoryManager::MemoryManager(std::shared_ptr<DeviceMemBlock> immutableTensors,
-                             MemoryModel::Ptr mutableMemoryModel)
+                             MemoryModel::Ptr mutableMemoryModel,
+                             std::shared_ptr<DeviceMemBlock> immutableWorkbufferMemory)
   : immutable_tensors_{ immutableTensors },
-    mutable_tensors_{ std::make_unique<DeviceMemBlock>(mutableMemoryModel) }
+    mutable_tensors_{ std::make_unique<DeviceMemBlock>(mutableMemoryModel) },
+    immutable_workbuffers_ { immutableWorkbufferMemory }
 {
 }
 
@@ -39,6 +41,23 @@ MemoryManager::outputTensorPointers(const IOperationMeta& operation) {
 
     IE_ASSERT(ptr != nullptr) << "Tensor not found. ID is " << id;
     result.emplace_back(ptr);
+  }
+  return result;
+}
+
+Workbuffers
+MemoryManager::workBuffers(const IOperationExec& operation) const {
+  Workbuffers result {};
+  const auto& indices = operation.GetWorkbufferIds();
+  for(const auto immutable_index : indices.immutableIndices) {
+    void* ptr = immutable_workbuffers_->deviceTensorPtr(immutable_index);
+    IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_index;
+    result.immutable_buffers.emplace_back(ptr);
+  }
+  for(const auto mutable_index : indices.mutableIndices) {
+    void* ptr = mutable_tensors_->deviceTensorPtr(mutable_index);
+    IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << mutable_index;
+    result.mutable_buffers.emplace_back(ptr);
   }
   return result;
 }

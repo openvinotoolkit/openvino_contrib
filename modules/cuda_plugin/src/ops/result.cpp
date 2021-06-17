@@ -19,7 +19,7 @@ ResultOp::ResultOp(const NodeOp& node,
     output_tensor_name_ = GetOutputTensorName(node);
 }
 
-void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 0);
   Expects(context.HasOutputBlob(output_tensor_name_));

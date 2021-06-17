@@ -12,7 +12,8 @@ namespace CUDAPlugin {
 
 void SaxpyOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
-                      Outputs outputTensors) {
+                      Outputs outputTensors,
+                      const Workbuffers&) {
     size_t size = 10000;
     const unsigned maxBlockSize = context.getThreadContext().device().props().maxThreadsPerBlock;
     const unsigned gridSize = size / maxBlockSize;

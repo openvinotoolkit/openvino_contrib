@@ -67,12 +67,15 @@ class MemoryManagerPool
      * Creates MemoryManagerPool that owns @num MemoryManager-s
      * @param num Number of MemoryManager-s in pool
      * @param sharedConstantsBlob Blob with constants
-     * @param memoryModel MemoryModel that is used by each MemoryManager to map
-     *                    device pointer to tensors
+     * @param memoryModel MemoryModel that is used by each MemoryManager as a layout of memory blob
+     *                    containing mutable/intermediate tensors".
+     * @param immutableWorkbufferMemory Blob for immutable workbuffers
      */
   MemoryManagerPool(size_t num,
                     std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
-                    std::shared_ptr<MemoryModel> memoryModel);
+                    std::shared_ptr<MemoryModel> memoryModel,
+                    std::shared_ptr<DeviceMemBlock> immutableWorkbufferMemory = nullptr);
+
   /**
    * Interrupt waiting of MemoryManager Proxy object
    */

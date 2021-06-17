@@ -107,7 +107,7 @@ TEST_F(ResultTest, canExecuteSync) {
   auto mem = blob->as<MemoryBlob>()->rmap();
   auto& stream = context.getThreadContext().stream();
   stream.upload(inputs[0].as_mutable(), mem, size);
-  operation->Execute(context, inputs, outputs);
+  operation->Execute(context, inputs, outputs, {});
   auto data = std::make_unique<uint8_t[]>(size);
   stream.download(data.get(), inputs[0], size);
   stream.synchronize();
@@ -119,7 +119,7 @@ TEST_F(ResultTest, canExecuteAsync) {
   auto& stream = context.getThreadContext().stream();
   auto mem = blob->as<MemoryBlob>()->rmap();
   stream.upload(inputs[0].as_mutable(), mem, size);
-  operation->Execute(context, inputs, outputs);
+  operation->Execute(context, inputs, outputs, {});
   auto data = std::make_unique<uint8_t[]>(size);
   stream.download(data.get(), inputs[0], size);
   ASSERT_NO_THROW(stream.synchronize());

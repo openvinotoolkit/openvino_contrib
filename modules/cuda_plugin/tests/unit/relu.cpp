@@ -65,7 +65,7 @@ TEST_F(ReluTest, canExecuteSync) {
     else
       correct[i] = c;
   stream.upload(inAlloc, in.data(), size);
-  operation->Execute(context, inputs, outputs);
+  operation->Execute(context, inputs, outputs, {});
   std::array<ElementType, length> out;
   out.fill(-1);
   stream.download(out.data(), outputs[0], size);

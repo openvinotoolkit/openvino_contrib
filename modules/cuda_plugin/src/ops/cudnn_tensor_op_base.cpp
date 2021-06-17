@@ -93,7 +93,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const std::shared_ptr<ngraph::Node>& node,
 }
 
 void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context, Inputs inputTensors,
-                    Outputs outputTensors) {
+                    Outputs outputTensors, const Workbuffers&) {
   Expects(inputTensors.size() == 2);
   Expects(outputTensors.size() == 1);
   const auto& bias_input = bias_index_ == 0 ? in0 : in1;

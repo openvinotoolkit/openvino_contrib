@@ -13,7 +13,8 @@ class SaxpyOp : public OperationBase {
     using OperationBase::OperationBase;
     void Execute(const InferenceRequestContext& context,
                Inputs inputTensors,
-               Outputs outputTensors) override;
+               Outputs outputTensors,
+               const Workbuffers& workbuffers) override;
 };
 
 } // namespace CUDAPlugin

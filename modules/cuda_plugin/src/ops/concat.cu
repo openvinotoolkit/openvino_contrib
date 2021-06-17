@@ -59,23 +59,31 @@ ConcatOp::ConcatOp(const NodeOp& concatOp,
     Ensures(chunks_.size() == num_chunks);
 }
 
-void ConcatOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+WorkbufferRequest ConcatOp::GetWorkBufferRequest() const {
+  return { {immutableWbSize()}, {mutableWbSize()} };
+}
+
+void ConcatOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
+  Expects(buffers.size() == 1);
+  CUDA::DefaultStream::stream().upload(buffers[0], chunks_.data(), immutableWbSize());  
+}
+
+void ConcatOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
     Expects(inputs.size() == num_inputs_);
     Expects(outputs.size() == 1);
+    Expects(workbuffers.immutable_buffers.size()==1);
+    Expects(workbuffers.mutable_buffers.size()==1);
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
     const unsigned maxBlockSize = threadContext.device().props().maxThreadsPerBlock;
     const unsigned numBlocks = (chunks_.size() + maxBlockSize - 1) / maxBlockSize;
     const unsigned threadsPerBlock = (numBlocks == 1) ? chunks_.size() : maxBlockSize;
-    const CUDA::Allocation src {stream.malloc(sizeof(float *) * inputs.size())};
-    const CUDA::Allocation buffer {stream.malloc(sizeof(Chunk) * chunks_.size())};
-    stream.upload(src, inputs.data(), sizeof(void *) * inputs.size());
-    stream.upload(buffer, chunks_.data(), sizeof(Chunk) * chunks_.size());
+    stream.upload(workbuffers.mutable_buffers[0], inputs.data(), mutableWbSize());
     kernel::concat<<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
-        reinterpret_cast<const Chunk*>(buffer.get()),
+        reinterpret_cast<const Chunk*>(workbuffers.immutable_buffers[0].get()),
         chunks_.size(),
         chunk_size_,
-        reinterpret_cast<const void * const *>(src.get()),
+        reinterpret_cast<const void * const *>(workbuffers.mutable_buffers[0].get()),
         outputs[0].get());
 }
 
