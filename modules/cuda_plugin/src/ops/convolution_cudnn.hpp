@@ -28,7 +28,15 @@ public:
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers&) override;
+    void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
+    WorkbufferRequest GetWorkBufferRequest() const override;
+    const WorkbufferIndices&  GetWorkbufferIds() const { return workbuffer_ids_; }
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
+      workbuffer_ids_ = workbufferIds;
+      return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+    }
 
 private:
     struct ConvParams {
@@ -52,6 +60,7 @@ private:
         MakeConvolutionDescriptor(const ConvParams& conv_params, cudnnDataType_t convDataType);
 
 private:
+    WorkbufferIndices workbuffer_ids_;
     CUDA::DnnTensorDescriptor input_desc_;
     CUDA::DnnTensorDescriptor output_desc_;
     CUDA::DnnFilterDescriptor filter_desc_;

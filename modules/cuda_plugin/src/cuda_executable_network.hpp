@@ -68,6 +68,9 @@ private:
     std::size_t GetOptimalNumberOfStreams(std::size_t constBlobSize, std::size_t memoryBlobSize) const;
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
     int GetCudaDeviceId() const noexcept;
+    void InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
+    std::vector<InferenceEngine::gpu::DevicePointer<void*>>
+    getSharedWorkbuffers(const IOperationExec& operation);
 
     std::atomic<std::size_t>                    request_id_ = {0};
     InferenceEngine::CNNNetwork                 cnn_network_;
@@ -79,6 +82,7 @@ private:
     std::map<std::string, std::size_t>          input_index_;
     std::map<std::string, std::size_t>          output_index_;
     std::shared_ptr<MemoryManagerPool>          memory_manager_pool_;
+    std::shared_ptr<DeviceMemBlock>             immutable_workbuffers_;
 };
 
 }  // namespace CUDAPlugin

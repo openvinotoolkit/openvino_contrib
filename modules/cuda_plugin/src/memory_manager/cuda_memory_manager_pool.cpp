@@ -10,12 +10,13 @@ namespace CUDAPlugin {
 
 MemoryManagerPool::MemoryManagerPool(
     const size_t num, std::shared_ptr<DeviceMemBlock> sharedConstantsBlob,
-    std::shared_ptr<MemoryModel> memoryModel) {
+    std::shared_ptr<MemoryModel> memoryModel,
+    std::shared_ptr<DeviceMemBlock> immutableWorkbufferMemory) {
   memory_managers_.reserve(num);
   try {
       for (int i = 0; i < num; ++i) {
           memory_managers_.push_back(
-              std::make_unique<MemoryManager>(sharedConstantsBlob, memoryModel));
+              std::make_unique<MemoryManager>(sharedConstantsBlob, memoryModel, immutableWorkbufferMemory));
       }
   } catch(const std::exception& ex) {
     // TODO: Added log message when logging mechanism will be supported

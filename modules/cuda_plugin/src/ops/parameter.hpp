@@ -16,7 +16,8 @@ class ParameterOp : public OperationBase {
                 IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
     static std::string GetInputTensorName(const ngraph::Node& node);
 
  private:

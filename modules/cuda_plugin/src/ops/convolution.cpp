@@ -48,8 +48,20 @@ ConvolutionOp::ConvolutionOp(const NodeOp& node,
     }
 }
 
-void ConvolutionOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
-    impl_->Execute(context, inputs, outputs);
+void ConvolutionOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
+    impl_->Execute(context, inputs, outputs, workbuffers);
+}
+
+WorkbufferRequest ConvolutionOp::GetWorkBufferRequest() const {
+    return impl_->GetWorkBufferRequest();
+}
+
+const WorkbufferIndices& ConvolutionOp::GetWorkbufferIds() const {
+    return impl_->GetWorkbufferIds();
+}
+
+IOperationExec::WorkbufferStatus ConvolutionOp::SetWorkbufferIds(WorkbufferIndices&& workbufferIds) {
+  return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 
 ConvolutionOp::PaddingBeforeAndAfter

@@ -18,7 +18,7 @@ ParameterOp::ParameterOp(const ngraph::Node& node,
     input_tensor_name_ = GetInputTensorName(node);
 }
 
-void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void ParameterOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
   Expects(inputs.size() == 0);
   Expects(outputs.size() == 1);
   Expects(context.HasInputBlob(input_tensor_name_));

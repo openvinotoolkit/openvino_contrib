@@ -142,7 +142,7 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
 
 // NOTE: Multiply the arrays A and B on GPU and save the result in C
 // C(m,n) = A(m,k) * B(k,n), C is stored as row-major matrix
-void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
     auto& cuBlasHandle = context.getThreadContext().cuBlasHandle();

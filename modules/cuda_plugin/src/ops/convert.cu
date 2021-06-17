@@ -52,7 +52,7 @@ ConvertOp::ConvertOp(const std::shared_ptr<ngraph::Node>& node,
     convert_kernel_ = getConvertKernel(output_element_type, input_element_type);
 }
 
-void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
     const auto& stream = context.getThreadContext().stream();

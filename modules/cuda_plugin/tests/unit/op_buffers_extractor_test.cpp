@@ -57,12 +57,13 @@ class OperationBufferExtractorTest: public testing::Test {
 
         auto relu = std::make_shared<ngraph::opset1::Relu>(unsqueese);
 
-        std::vector<int32_t> squeese_axes_values = { 1 };
-        auto squeese_axes = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::i32, ngraph::Shape { 1 }, squeese_axes_values);
-        auto squeese = std::make_shared<ngraph::opset1::Squeeze>(relu, squeese_axes);
+        std::vector<int32_t> squeeze_axes_values = { 1 };
+        auto squeeze_axes = std::make_shared<ngraph::opset1::Constant>(
+                ngraph::element::i32, ngraph::Shape { 1 }, squeeze_axes_values);
+        auto squeeze = std::make_shared<ngraph::opset1::Squeeze>(relu, squeeze_axes);
+        auto squeeze_id = squeeze->get_instance_id();
 
-        auto add_1 = std::make_shared<ngraph::opset1::Add>(squeese, multiply);
+        auto add_1 = std::make_shared<ngraph::opset1::Add>(squeeze, multiply);
 
         std::vector<int32_t> reshape_pattern_values = { 0, 1 };
         auto reshape_pattern = std::make_shared<ngraph::opset1::Constant>(
@@ -76,6 +77,8 @@ class OperationBufferExtractorTest: public testing::Test {
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
         extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
+        CUDAPlugin::WorkbufferRequest request {{128}, {256}};
+        buffer_indices_ = extractor_->processWorkbufferRequest(squeeze_id, request);
     }
 
 protected:
@@ -109,6 +112,8 @@ protected:
       constexpr static Type Constant_Squeeze_Axes = 7;
       constexpr static Type Add_Squeeze_Multiply = 8;
       constexpr static Type Constant_Reshape_Pattern = 9;
+      constexpr static Type Squeeze_Imutable_Workbuffer = 10;
+      constexpr static Type Squeeze_Mutable_Workbuffer = 11;
     };
 
     std::vector<unsigned> inputBufferIndices(OpIndex::Type op_idx) {
@@ -132,6 +137,7 @@ protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
     std::vector<std::shared_ptr<ngraph::Node>> exec_sequence_;
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
+    CUDAPlugin::WorkbufferIndices buffer_indices_;
 };
 
 
@@ -164,7 +170,8 @@ TEST_F(OperationBufferExtractorTest, CheckMutableBuffersIndices) {
         OutputBufferIndex::Multiply,
         OutputBufferIndex::Add_Bias,
         OutputBufferIndex::Relu,
-        OutputBufferIndex::Add_Squeeze_Multiply));
+        OutputBufferIndex::Add_Squeeze_Multiply,
+        OutputBufferIndex::Squeeze_Mutable_Workbuffer));
 }
 
 
@@ -296,3 +303,16 @@ TEST_F(OperationBufferExtractorTest, CheckSameInputOutputForReshapeOnlyOps) {
     EXPECT_EQ(inputBufferIndices(OpIndex::Squeeze).at(0), outputBufferIndices(OpIndex::Squeeze).at(0));
     EXPECT_EQ(inputBufferIndices(OpIndex::Reshape).at(0), outputBufferIndices(OpIndex::Reshape).at(0));
 }
+
+TEST_F(OperationBufferExtractorTest, CheckMutableWorkbufferIndices) {
+    using ::testing::ElementsAre;
+    ASSERT_THAT(buffer_indices_.mutableIndices, ElementsAre(OutputBufferIndex::Squeeze_Mutable_Workbuffer));
+}
+
+TEST_F(OperationBufferExtractorTest, CheckImmutableWorkbufferIndices) {
+    using ::testing::ElementsAre;
+    using CUDAPlugin::WorkbufferRequest;
+    WorkbufferRequest request {{246}, {}};
+    ASSERT_THAT(buffer_indices_.immutableIndices, ElementsAre(OutputBufferIndex::Squeeze_Imutable_Workbuffer));
+}
+

@@ -13,6 +13,8 @@
 #include <gpu/device_pointers.hpp>
 #include <ie_layouts.h>
 
+#include "memory_manager/cuda_workbuffers.hpp"
+
 namespace ngraph {
 
 class Node;
@@ -27,11 +29,21 @@ class IOperationExec {
  public:
   using Inputs = gsl::span<InferenceEngine::gpu::DevicePointer<const void*>>;
   using Outputs = gsl::span<InferenceEngine::gpu::DevicePointer<void*>>;
+  using Buffers = std::vector<InferenceEngine::gpu::DevicePointer<void*>>;
+  enum class WorkbufferStatus {
+    NoInitNeeded,
+    InitNeeded
+  };
 
   virtual ~IOperationExec() = default;
   virtual void Execute(const InferenceRequestContext& context,
                        Inputs inputTensors,
-                       Outputs outputTensors) = 0;
+                       Outputs outputTensors,
+                       const Workbuffers& workbuffers) = 0;
+  virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
+  virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
+  virtual const WorkbufferIndices& GetWorkbufferIds() const = 0;
+  virtual WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) = 0;
 };
 
 class IOperationMeta {
@@ -63,6 +75,10 @@ class OperationBase
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
 
+  WorkbufferRequest GetWorkBufferRequest() const override {
+    return {}; // Most operators do not need workbuffers
+  }
+  void InitSharedImmutableWorkbuffers(const Buffers&) override {}
  protected:
   OperationBase(const std::shared_ptr<ngraph::Node>& node,
                 IndexCollection&& inputIds,
@@ -84,12 +100,20 @@ class OperationBase
   gsl::span<const unsigned> GetOutputIds() const override {
     return output_ids_;
   }
+  const WorkbufferIndices& GetWorkbufferIds() const override {
+    return workbuffer_ids_;
+  }
+  WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
+    workbuffer_ids_ = workbufferIds;
+    return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+  }
 
  protected:
   std::string node_name_;
   std::string type_name_;
-  const std::vector<unsigned> input_ids_;
-  const std::vector<unsigned> output_ids_;
+  const IndexCollection input_ids_;
+  const IndexCollection output_ids_;
+  WorkbufferIndices workbuffer_ids_;
 };
 
 template <decltype(&IOperationMeta::Category::CUDA) CategoryString>

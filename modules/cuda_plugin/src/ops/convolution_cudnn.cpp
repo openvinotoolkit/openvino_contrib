@@ -63,10 +63,10 @@ ConvolutionCuDnn::ConvolutionCuDnn(ngraph::element::Type_t element_type,
     SelectAlgo(dnnHandle, conv_params, tensor_element_type_);
 }
 
-void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
-    const CUDA::Allocation workSpace = context.getThreadContext().stream().malloc(algo_perf_.memory);
+    void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     cudnnStatus_t status = ::cudnnConvolutionForward(
                                 context.getThreadContext().dnnHandle().get(),
                                 &NumericConst<constants::one>(tensor_element_type_),
@@ -76,12 +76,19 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs in
                                 inputs[ConvolutionOp::ArgIndices::filter].get(),
                                 conv_desc_.get(),
                                 algo_perf_.algo,
-                                workSpace.get(),
+                                workbuffer,
                                 algo_perf_.memory,
                                 &NumericConst<constants::zero>(tensor_element_type_),
                                 output_desc_.get(),
                                 outputs[ConvolutionOp::ArgIndices::output].get());
     CUDA::throwIfError(status);
+}
+
+WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
+    if (algo_perf_.memory != 0)
+      return {{}, {algo_perf_.memory}};
+    else
+      return {{}, {}};
 }
 
 void ConvolutionCuDnn::SelectAlgo(const CUDA::DnnHandle& dnnHandle,

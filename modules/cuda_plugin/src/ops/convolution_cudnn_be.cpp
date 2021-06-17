@@ -103,12 +103,24 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(ngraph::element::Type_t element_type,
         THROW_IE_EXCEPTION << "cuDNN BE API: Unsupported convolution";
 }
 
-void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
+    int64_t size {};
+    // Finding the max memory size needed
+    for(const auto& plan : exec_plans_) {
+        size = std::max(size, plan.getWorkspaceSize());
+    }
+    if (size > 0)
+        return {{}, {static_cast<size_t>(size)}};
+    else
+        return {};
+}
+
+void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
-
+    auto workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     for (size_t planIndex = exec_plan_index_hint_; planIndex < exec_plans_.size(); ++planIndex) {
-        if (TryExecutePlan(context, inputs, outputs, exec_plans_[planIndex])) {
+        if (TryExecutePlan(context, inputs, outputs, workbuffer, exec_plans_[planIndex])) {
             exec_plan_index_hint_ = planIndex;
             return;
         }
@@ -119,6 +131,7 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs 
 
 bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
                                         Inputs inputs, Outputs outputs,
+                                        void* workbuffer,
                                         const CUDA::DnnBEExecutionPlanDescriptor& plan) {
     CUDA::DnnBEVariantPackDescriptor variantPack;
     std::array<int64_t, 3> uids = { DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output };
@@ -129,9 +142,7 @@ bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
     };
     variantPack.setTensorPointers(uids, data_ptrs);
 
-    const CUDA::Allocation workSpace =
-        context.getThreadContext().stream().malloc(plan.getWorkspaceSize());
-    variantPack.setWorkspase(workSpace.get());
+    variantPack.setWorkspase(workbuffer);
     variantPack.finalize();
 
     cudnnStatus_t status = ::cudnnBackendExecute(
