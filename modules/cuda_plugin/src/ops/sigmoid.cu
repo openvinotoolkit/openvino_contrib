@@ -37,7 +37,8 @@ SigmoidOp::SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
     output_size_ = std::accumulate(output_shape.begin(), output_shape.end(), 1, std::multiplies<size_t>());
 }
 
-void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, 
+                        const Workbuffers& workbuffers) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
     auto& tc = context.getThreadContext();

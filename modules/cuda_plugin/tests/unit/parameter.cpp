@@ -87,7 +87,7 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 TEST_F(ParameterTest, canExecuteSync) {
   InferenceRequestContext context{blobs, empty, threadContext};
   auto& stream = context.getThreadContext().stream();
-  operation->Execute(context, inputs, outputs);
+  operation->Execute(context, inputs, outputs, {});
   auto data = std::make_unique<uint8_t[]>(size);
   stream.download(data.get(), outputs[0], size);
   stream.synchronize();
@@ -98,7 +98,7 @@ TEST_F(ParameterTest, canExecuteSync) {
 TEST_F(ParameterTest, canExecuteAsync) {
   InferenceRequestContext context{blobs, empty, threadContext};
   auto& stream = context.getThreadContext().stream();
-  operation->Execute(context, inputs, outputs);
+  operation->Execute(context, inputs, outputs, {});
   auto data = std::make_unique<uint8_t[]>(size);
   stream.download(data.get(), outputs[0], size);
   ASSERT_NO_THROW(stream.synchronize());
