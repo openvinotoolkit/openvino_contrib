@@ -17,7 +17,7 @@ MaxPoolOp::MaxPoolOp(const std::shared_ptr<ngraph::Node>& node,
       impl_{dynamic_cast<const ngraph::op::v1::MaxPool&>(*node)} {}
 
 void MaxPoolOp::Execute(const InferenceRequestContext& context, Inputs inputs,
-                        Outputs outputs) {
+                        Outputs outputs, const Workbuffers&) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 1);
 

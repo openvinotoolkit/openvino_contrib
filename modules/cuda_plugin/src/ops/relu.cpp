@@ -52,7 +52,7 @@ class Relu : public OperationCuDnn {
         xDesc{inputDesc(*node, 0)},
         yDesc{outputDesc(*node, 0)} {}
   void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-               Outputs outputTensors) override {
+               Outputs outputTensors, const Workbuffers&) override {
     context.getThreadContext().dnnHandle().activationForward(
         reluDesc, &one, xDesc, inputTensors[0].get(), &zero, yDesc,
         outputTensors[0].get());

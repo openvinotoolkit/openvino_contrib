@@ -73,8 +73,13 @@ struct ConcatTest : testing::Test {
     }
     mem.emplace_back(stream.malloc(output_size));
     outputs.emplace_back(devptr_t { mem.back().get()});
-
-    operation->Execute(context, inputs, outputs);
+    auto wb_request = operation->GetWorkBufferRequest();
+    ASSERT_EQ(wb_request.immutable_sizes.size(), 1);
+    ASSERT_EQ(wb_request.mutable_sizes.size(), 1);
+    auto& immutable_wb = mem.emplace_back(stream.malloc(wb_request.immutable_sizes[0]));
+    auto& mutable_wb = mem.emplace_back(stream.malloc(wb_request.mutable_sizes[0]));
+    operation->InitSharedImmutableWorkbuffers({immutable_wb.get()});
+    operation->Execute(context, inputs, outputs, {{immutable_wb.get()}, {mutable_wb.get()}});
     auto data = std::make_unique<float[]>(output_size / sizeof(float));
     stream.synchronize();
     stream.download(data.get(), outputs[0], output_size);

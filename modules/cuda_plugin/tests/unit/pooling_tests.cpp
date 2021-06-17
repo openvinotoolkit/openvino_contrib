@@ -130,7 +130,7 @@ struct PoolingTest : testing::Test {
     auto operation = registry.createOperation(node, inputIDs, outputIDs);
     initializeCudaBuffers(input, output);
 
-    operation->Execute(context, {inputs}, {outputs});
+    operation->Execute(context, {inputs}, {outputs}, {});
     threadContext.stream().synchronize();
 
     auto data = std::make_unique<float[]>(output.size());
