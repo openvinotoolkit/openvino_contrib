@@ -118,6 +118,27 @@ jobs:
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Lin'
 
+  - script: >
+      docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
+      docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
+      openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1
+      bash -c "cd /root/w/build && cmake -GNinja
+      -DVERBOSE_BUILD=ON
+      -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+      -DIE_EXTRA_MODULES=/root/repos/openvino_contrib/modules
+      -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
+      -DENABLE_MKL_DNN=OFF
+      -DENABLE_CLDNN=OFF
+      -DENABLE_VPU=OFF
+      -DENABLE_GNA=OFF
+      -DBUILD_java_api=OFF
+      -DENABLE_PYTHON=OFF
+      -DPYTHON_EXECUTABLE=/usr/bin/python3
+      /root/repos/openvino &&
+      /root/w/ninja"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Docker build Lin'
+
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List bin files'
 
