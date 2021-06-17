@@ -22,7 +22,10 @@ class ConcatOp : public OperationBase {
             IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
+    void InitSharedImmutableWorkbuffers(const Buffers&) override;
 
     using VoidDevPtr = InferenceEngine::gpu::DevicePointer<void*>;
     using ConstVoidDevPtr = InferenceEngine::gpu::DevicePointer<const void*>;
@@ -32,6 +35,8 @@ class ConcatOp : public OperationBase {
     };
 
  private:
+    size_t immutableWbSize() const { return sizeof(Chunk) * chunks_.size(); }
+    size_t mutableWbSize() const { return sizeof(float *) * num_inputs_; }
     ngraph::element::Type_t element_type_;
     size_t num_inputs_ {};
     size_t chunk_size_ {};

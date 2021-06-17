@@ -23,7 +23,8 @@ class SoftmaxOp : public OperationCuDnn {
             IndexCollection&& outputIds);
   void Execute(const InferenceRequestContext& context,
                Inputs inputTensors,
-               Outputs outputTensors) override;
+               Outputs outputTensors,
+               const Workbuffers& workbuffers) override;
  private:
   void mapRankAxis(const ngraph::Shape& shape, int axis);
   std::array<int, 4> shape_;

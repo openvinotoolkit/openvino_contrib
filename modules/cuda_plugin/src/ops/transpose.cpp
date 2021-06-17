@@ -33,7 +33,7 @@ TransposeOp::TransposeOp(const std::shared_ptr<ngraph::Node>& node,
 }
 
 void TransposeOp::Execute(const InferenceRequestContext& context,
-    Inputs inputTensors, Outputs outputTensors) {
+    Inputs inputTensors, Outputs outputTensors, const Workbuffers&) {
     Expects(inputTensors.size() == 1 || inputTensors.size() == 2);
     Expects(outputTensors.size() == 1);
 

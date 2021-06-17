@@ -16,7 +16,8 @@ class SigmoidOp : public OperationBase {
               IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
-                 Outputs outputTensors) override;
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
 
  private:
     size_t input_size_;
