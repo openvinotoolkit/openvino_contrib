@@ -243,9 +243,9 @@ struct Converter {
 
         template<typename ... RunArgs>
         struct CallableFunction final : public arm_compute::IFunction {
-            CallableFunction(Callable&& callable,
+            CallableFunction(std::decay_t<Callable>& callable,
                              RunArgs&& ... args) :
-                _callable{std::forward<Callable>(callable)},
+                _callable{callable},
                 _args{std::forward<RunArgs>(args)...} {
             }
 
@@ -367,8 +367,8 @@ struct Converter {
         }
 
         template<typename ... RunArgs>
-        auto makeCallableFunction(Callable&& callable, RunArgs&& ... args) {
-            return std::make_unique<CallableFunction<RunArgs...>>(std::forward<Callable>(callable), std::forward<RunArgs>(args)...);
+        auto makeCallableFunction(std::decay_t<Callable>& callable, RunArgs&& ... args) {
+            return std::make_unique<CallableFunction<RunArgs...>>(callable, std::forward<RunArgs>(args)...);
         }
 
         template<std::size_t... I>
@@ -525,7 +525,7 @@ template<typename ...T0, typename ...T1>
 constexpr static std::tuple<T0..., T1...> merge(std::tuple<T0...>, std::tuple<T1...>) {return {};}
 
 constexpr static auto boolType = std::tuple<bool>{};
-constexpr static auto intTypes = std::tuple<std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
+constexpr static auto intTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
 constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
 constexpr static auto floatTypes = std::tuple<ngraph::float16, float>{};
 constexpr static auto allTypes = merge(intTypes, floatTypes);

@@ -266,38 +266,45 @@ ArmPlugin::pass::DeqMulAddToArmDequantizeConvert::DeqMulAddToArmDequantizeConver
 
             auto inputType = mul->get_input_element_type(0);
             auto outputType = mul->get_output_element_type(0);
-            auto noOp = mul->input_value(0).get_node_shared_ptr();
+            if (mul->get_input_element_type(0) != ngraph::element::i8 && mul->get_input_element_type(0) != ngraph::element::u8) {
+                ngraph::insert_new_node_between(
+                    mul->input_value(0).get_node_shared_ptr(),
+                    mul,
+                    std::make_shared<opset::Convert>(mul->input_value(0), outputType));
+            } else {
+                auto noOp = mul->input_value(0).get_node_shared_ptr();
 
-            if (!ngraph::is_type<opset::ArmNoOp>(noOp) ||
-                (ngraph::is_type<opset::ArmNoOp>(noOp) && (noOp->outputs().size() != 1))) {
-                noOp = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmNoOp>>(
-                    Types{inputType}, Types{inputType},
-                    mul->input_value(0));
-                noOp->set_friendly_name(mul->get_friendly_name() + "_arm_noop");
+                if (!ngraph::is_type<opset::ArmNoOp>(noOp) ||
+                    (ngraph::is_type<opset::ArmNoOp>(noOp) && (noOp->outputs().size() != 1))) {
+                    noOp = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmNoOp>>(
+                        Types{inputType}, Types{inputType},
+                        mul->input_value(0));
+                    noOp->set_friendly_name(mul->get_friendly_name() + "_arm_noop");
+                }
+
+                auto scaleShape = scale->get_output_shape(0);
+                auto fqConst = std::make_shared<opset::Constant>(mul->get_input_element_type(1), scaleShape);
+
+                auto armDequantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(
+                    Types{inputType},
+                    Types{outputType},
+                    noOp,
+                    fqConst, fqConst, fqConst, fqConst, 256);
+
+                auto scales = getFloatVector(*scale);
+                auto floatOffsets = getFloatVector(*offset);
+                std::vector<std::int32_t> offsets(scales.size());
+                for (std::size_t i = 0; i < scales.size(); ++i) {
+                    offsets[i] = -std::round(floatOffsets[i]/scales[i]);
+                }
+
+                noOp->get_rt_info()["QuantizationInfo"] =
+                    std::make_shared<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(arm_compute::QuantizationInfo{scales, offsets});
+
+                ngraph::copy_runtime_info({mul, add}, armDequantize);
+                armDequantize->set_friendly_name(add->get_friendly_name());
+                ngraph::replace_node(add, armDequantize);
             }
-
-            auto scaleShape = scale->get_output_shape(0);
-            auto fqConst = std::make_shared<opset::Constant>(mul->get_input_element_type(1), scaleShape);
-
-            auto armDequantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(
-                Types{inputType},
-                Types{outputType},
-                noOp,
-                fqConst, fqConst, fqConst, fqConst, 256);
-
-            auto scales = getFloatVector(*scale);
-            auto floatOffsets = getFloatVector(*offset);
-            std::vector<std::int32_t> offsets(scales.size());
-            for (std::size_t i = 0; i < scales.size(); ++i) {
-                offsets[i] = -std::round(floatOffsets[i]/scales[i]);
-            }
-
-            noOp->get_rt_info()["QuantizationInfo"] =
-                std::make_shared<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(arm_compute::QuantizationInfo{scales, offsets});
-
-            ngraph::copy_runtime_info({mul, add}, armDequantize);
-            armDequantize->set_friendly_name(add->get_friendly_name());
-            ngraph::replace_node(add, armDequantize);
             return true;
         });
 }
@@ -320,41 +327,53 @@ ArmPlugin::pass::DeqMulToArmDequantizeConvert::DeqMulToArmDequantizeConvert() {
 
             auto inputType = mul->get_input_element_type(0);
             auto outputType = mul->get_output_element_type(0);
-            auto noOp = mul->input_value(0).get_node_shared_ptr();
-            if (!ngraph::is_type<opset::ArmNoOp>(noOp) ||
-                (ngraph::is_type<opset::ArmNoOp>(noOp) && (noOp->outputs().size() != 1))) {
-                auto noOp = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmNoOp>>(
-                    Types{inputType}, Types{inputType},
-                    mul->input_value(0));
-                noOp->set_friendly_name(mul->get_friendly_name() + "_arm_noop");
+
+            if (mul->get_input_element_type(0) != ngraph::element::i8 && mul->get_input_element_type(0) != ngraph::element::u8) {
+                ngraph::insert_new_node_between(
+                    mul->input_value(0).get_node_shared_ptr(),
+                    mul,
+                    std::make_shared<opset::Convert>(mul->input_value(0), outputType));
+            } else {
+                auto noOp = mul->input_value(0).get_node_shared_ptr();
+                if (!ngraph::is_type<opset::ArmNoOp>(noOp) ||
+                    (ngraph::is_type<opset::ArmNoOp>(noOp) && (noOp->outputs().size() != 1))) {
+                    auto noOp = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmNoOp>>(
+                        Types{inputType}, Types{inputType},
+                        mul->input_value(0));
+                    noOp->set_friendly_name(mul->get_friendly_name() + "_arm_noop");
+                }
+                auto scaleShape = scale->get_output_shape(0);
+                auto scaleConst = std::make_shared<opset::Constant>(mul->get_input_element_type(1), scaleShape);
+
+                auto armDequantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(
+                            Types{inputType},
+                            Types{outputType},
+                            noOp,
+                            scaleConst, scaleConst, scaleConst, scaleConst, 256);
+
+                auto scales = getFloatVector(*scale);
+                noOp->get_rt_info()["QuantizationInfo"] =
+                    std::make_shared<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(
+                        arm_compute::QuantizationInfo{scales});
+
+                ngraph::copy_runtime_info(mul, armDequantize);
+                armDequantize->set_friendly_name(mul->get_friendly_name());
+                ngraph::replace_node(mul, armDequantize);
             }
-            auto scaleShape = scale->get_output_shape(0);
-            auto scaleConst = std::make_shared<opset::Constant>(mul->get_input_element_type(1), scaleShape);
-
-            auto armDequantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(
-                        Types{inputType},
-                        Types{outputType},
-                        noOp,
-                        scaleConst, scaleConst, scaleConst, scaleConst, 256);
-
-            auto scales = getFloatVector(*scale);
-            noOp->get_rt_info()["QuantizationInfo"] =
-                std::make_shared<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(
-                    arm_compute::QuantizationInfo{scales});
-
-            ngraph::copy_runtime_info(mul, armDequantize);
-            armDequantize->set_friendly_name(mul->get_friendly_name());
-            ngraph::replace_node(mul, armDequantize);
             return true;
         });
 }
 
-template <class Node>
-void ArmPlugin::pass::AddArmDequantizeOnInputsBase::registerMatcher(const std::string& name) {
-    auto node_pattern = ngraph::pattern::wrap_type<Node>();
-    register_matcher(std::make_shared<ngraph::pattern::Matcher>(node_pattern, name),
-        [=](ngraph::pattern::Matcher& m) {
-            auto node = m.get_pattern_value_map()[node_pattern].get_node_shared_ptr();
+ArmPlugin::pass::AddDequantizeOnInputs::AddDequantizeOnInputs() {
+    auto node_pattern = ngraph::pattern::wrap_type<
+        opset::ArmConvolution,
+        opset::ArmGroupConvolution,
+        opset::MatMul,
+        opset::Add,
+        opset::Subtract>();
+    register_matcher(std::make_shared<ngraph::pattern::Matcher>(node_pattern, "AddDequantizeOnInputs"),
+        [](ngraph::pattern::Matcher& m) {
+            auto node = m.get_match_root();
 
             auto inputs = node->inputs();
             if (node->outputs().size() != 1) {
@@ -362,13 +381,11 @@ void ArmPlugin::pass::AddArmDequantizeOnInputsBase::registerMatcher(const std::s
             }
             auto outputType = node->get_output_element_type(0);
 
-            Types inputTypes;
-            std::vector<ngraph::Output<ngraph::Node>> newInputs;
-
             auto nodeHasQuantizedInputs = std::any_of(std::begin(inputs), std::end(inputs), [] (auto& input) {
                 return input.get_element_type().is_quantized();
             });
 
+            bool result = false;
             if (nodeHasQuantizedInputs && outputType.is_real()) {
                 for (auto&& input : inputs) {
                     auto inputType = input.get_element_type();
@@ -392,43 +409,16 @@ void ArmPlugin::pass::AddArmDequantizeOnInputsBase::registerMatcher(const std::s
                                         constant, constant, constant, constant, 256);
                             newInputOp->set_friendly_name(node->get_friendly_name() + "_on_input_" + std::to_string(input.get_index()) + "_arm_dequantize");
                         }
-                        newInputs.emplace_back(
-                            ngraph::op::TemporaryReplaceOutputType{newInputOp, outputType}.get());
-                    } else {
-                        newInputs.emplace_back(input.get_source_output());
+                        ngraph::insert_new_node_between(
+                            input.get_source_output().get_node_shared_ptr(),
+                            node,
+                            newInputOp);
+                        result = true;
                     }
                 }
-            } else {
-                return false;
             }
-
-            auto nodeWithRealInputs = std::make_shared<ngraph::op::TypeRelaxed<Node>>(
-                *std::static_pointer_cast<Node>(node->copy_with_new_inputs(newInputs)),
-                inputTypes,
-                Types{outputType});
-
-            ngraph::copy_runtime_info(node, nodeWithRealInputs);
-            nodeWithRealInputs->set_friendly_name(node->get_friendly_name());
-            ngraph::replace_node(node, nodeWithRealInputs);
-
-            return true;
+            return result;
         });
-}
-
-ArmPlugin::pass::AddArmDequantizeOnInputsConv::AddArmDequantizeOnInputsConv() {
-    registerMatcher<opset::ArmConvolution>("AddArmDequantizeOnInputsConv");
-}
-
-ArmPlugin::pass::AddArmDequantizeOnInputsGroupConv::AddArmDequantizeOnInputsGroupConv() {
-    registerMatcher<opset::ArmGroupConvolution>("AddArmDequantizeOnInputsGroupConv");
-}
-
-ArmPlugin::pass::AddArmDequantizeOnInputsAdd::AddArmDequantizeOnInputsAdd() {
-    registerMatcher<opset::Add>("AddArmDequantizeOnInputsAdd");
-}
-
-ArmPlugin::pass::AddArmDequantizeOnInputsSubtract::AddArmDequantizeOnInputsSubtract() {
-    registerMatcher<opset::Subtract>("AddArmDequantizeOnInputsSubtract");
 }
 
 ArmPlugin::pass::ConvertBiasToI32::ConvertBiasToI32() {

@@ -140,6 +140,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
     manager.register_pass<ngraph::pass::ConvertMVN1ToMVN6>();
     manager.register_pass<ngraph::pass::ConvertQuantizeDequantize>();
+    #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
+        manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
+    #endif
 
     auto pass_config = manager.get_pass_config();
 
@@ -176,6 +179,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
         transformer.transform(f);
     }
+
+    ngraph::pass::VisualizeTree{"after_lpt.dot"}.run_on_function(f);
 
     {
         ngraph::pass::Manager manager;
@@ -238,13 +243,12 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
-    #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-        manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-    #endif
         manager.register_pass<pass::AlignNodePrecision>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(f);
     }
+
+    ngraph::pass::VisualizeTree{"before_arm_quantize.dot"}.run_on_function(f);
 
     if (quantized) {
         ngraph::pass::Manager manager;
@@ -252,7 +256,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<pass::QuantizeFusion>();
         manager.register_pass<pass::DeqMulAddToArmDequantizeConvert>();
         manager.register_pass<pass::DeqMulToArmDequantizeConvert>();
-        manager.register_pass<pass::AddArmDequantizeOnInputs>();
+        manager.register_pass<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertQuantize>();
         manager.register_pass<pass::ConvertBiasToI32>();
@@ -260,6 +264,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<PropogateQuantizationInfo>();
         manager.run_passes(f);
     }
+
+    ngraph::pass::VisualizeTree{"final_graph.dot"}.run_on_function(f);
 
     return false;
 }

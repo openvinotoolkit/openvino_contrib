@@ -71,34 +71,8 @@ struct DeqMulToArmDequantizeConvert: public ngraph::pass::MatcherPass {
     DeqMulToArmDequantizeConvert();
 };
 
-struct AddArmDequantizeOnInputsBase: public ngraph::pass::MatcherPass {
-    template <class Node>
-    void registerMatcher(const std::string& name);
-};
-
-struct AddArmDequantizeOnInputsConv: public AddArmDequantizeOnInputsBase {
-    AddArmDequantizeOnInputsConv();
-};
-
-struct AddArmDequantizeOnInputsGroupConv: public AddArmDequantizeOnInputsBase {
-    AddArmDequantizeOnInputsGroupConv();
-};
-
-struct AddArmDequantizeOnInputsAdd: public AddArmDequantizeOnInputsBase {
-    AddArmDequantizeOnInputsAdd();
-};
-
-struct AddArmDequantizeOnInputsSubtract: public AddArmDequantizeOnInputsBase {
-    AddArmDequantizeOnInputsSubtract();
-};
-
-struct AddArmDequantizeOnInputs: public ngraph::pass::GraphRewrite {
-    AddArmDequantizeOnInputs() {
-        add_matcher<AddArmDequantizeOnInputsConv>();
-        add_matcher<AddArmDequantizeOnInputsGroupConv>();
-        add_matcher<AddArmDequantizeOnInputsAdd>();
-        add_matcher<AddArmDequantizeOnInputsSubtract>();
-    }
+struct AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
+    AddDequantizeOnInputs();
 };
 
 struct ConvertBiasToI32: public ngraph::pass::MatcherPass {
