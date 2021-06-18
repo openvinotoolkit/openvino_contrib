@@ -20,15 +20,18 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto input = split->input_value(0).get_node_shared_ptr();
         auto axes = std::dynamic_pointer_cast<opset::Constant>(split->input_value(1).get_node_shared_ptr());
         auto split_lengths = std::dynamic_pointer_cast<opset::Constant>(split->input_value(2).get_node_shared_ptr());
+        auto input_shape = input->get_shape();
+        auto size = input_shape.size();
+
 
         if (!axes || !split_lengths) {
             IE_THROW() << "Unsupported VariadicSplit op with inconstant axes or split_lengths";
         }
-
         auto axis = axes->cast_vector<int64_t>()[0];
+
+        axis = (axis < 0) ? (size + axis) : axis;
+
         auto splits = split_lengths->cast_vector<int64_t>();
-        auto input_shape = input->get_shape();
-        auto size = input_shape.size();
 
         if (axis >= input_shape.size()) {
             IE_THROW() << "axis should be less than " << size;

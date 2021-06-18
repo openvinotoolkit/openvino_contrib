@@ -22,6 +22,19 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
     auto dst = node.get_convert_element_type();
 
     switch (src) {
+        case ngraph::element::Type_t::i8 :
+            switch (dst) {
+                case ngraph::element::Type_t::i32 :
+                    return make(ngraph::runtime::reference::convert<std::int8_t, std::int32_t>);
+                case ngraph::element::Type_t::u32 :
+                    return make(ngraph::runtime::reference::convert<std::int8_t, std::uint32_t>);
+                case ngraph::element::Type_t::f16 :
+                    return make(ngraph::runtime::reference::convert<std::int8_t, ngraph::float16>);
+                case ngraph::element::Type_t::f32 :
+                    return make(ngraph::runtime::reference::convert<std::int8_t, float>);
+            default:
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
+            }
         case ngraph::element::Type_t::u8 :
             switch (dst) {
                 case ngraph::element::Type_t::i32 :
