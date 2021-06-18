@@ -90,6 +90,7 @@
 #include <low_precision/fuse_convert.hpp>
 #include <low_precision/fuse_multiply_to_fake_quantize.hpp>
 #include <low_precision/fuse_subtract_to_fake_quantize.hpp>
+#include "transformations/serialize.hpp"
 
 
 #include "arm_optimizations.hpp"
@@ -97,6 +98,10 @@
 
 bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::Function> f) {
     ngraph::pass::Manager manager;
+
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_initial.dot"}.run_on_function(f);
+    }
 
     auto quantized = _lpt && ngraph::pass::low_precision::LowPrecisionTransformer::isFunctionQuantized(f);
 
@@ -160,6 +165,10 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
     manager.run_passes(f);
 
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_lpt.dot"}.run_on_function(f);
+    }
+
     if (quantized) {
         using namespace ngraph::pass::low_precision;
         auto params = LayerTransformation::Params(
@@ -180,7 +189,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         transformer.transform(f);
     }
 
-    ngraph::pass::VisualizeTree{"after_lpt.dot"}.run_on_function(f);
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_arm_transformations.dot"}.run_on_function(f);
+    }
 
     {
         ngraph::pass::Manager manager;
@@ -248,7 +259,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.run_passes(f);
     }
 
-    ngraph::pass::VisualizeTree{"before_arm_quantize.dot"}.run_on_function(f);
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_arm_lpt.dot"}.run_on_function(f);
+    }
 
     if (quantized) {
         ngraph::pass::Manager manager;
@@ -265,7 +278,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.run_passes(f);
     }
 
-    ngraph::pass::VisualizeTree{"final_graph.dot"}.run_on_function(f);
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_final.dot"}.run_on_function(f);
+    }
 
     return false;
 }

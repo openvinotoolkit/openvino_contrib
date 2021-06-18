@@ -11,6 +11,12 @@
 #include <threading/ie_istreams_executor.hpp>
 #include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 
+namespace InferenceEngine {
+namespace PluginConfigInternalParams {
+DECLARE_CONFIG_KEY(DUMP_GRAPH);
+}  // namespace PluginConfigInternalParams
+}  // namespace InferenceEngine
+
 namespace ArmPlugin {
 using ConfigMap = std::map<std::string, std::string>;
 struct Configuration {
@@ -31,6 +37,7 @@ struct Configuration {
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
     bool _lpt                    = true;
+    bool _dump                   = false;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin

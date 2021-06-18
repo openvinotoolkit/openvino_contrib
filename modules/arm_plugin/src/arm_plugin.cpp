@@ -59,7 +59,7 @@ std::shared_ptr<ngraph::Function> Plugin::Transform(const std::shared_ptr<const 
                                                     const Configuration& config) const {
     auto transformedFunction = ngraph::clone_function(*function);
     ngraph::pass::Manager passManager;
-    passManager.register_pass<pass::ArmOptimizations>(config._lpt);
+    passManager.register_pass<pass::ArmOptimizations>(config._lpt, config._dump);
     passManager.run_passes(transformedFunction);
     return transformedFunction;
 }
@@ -177,7 +177,8 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
             CONFIG_KEY(PERF_COUNT),
-            CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)};
+            CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE),
+            CONFIG_KEY_INTERNAL(DUMP_GRAPH)};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);

@@ -35,7 +35,9 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE) == key) {
             _lpt = (CONFIG_VALUE(YES) == value);
-        } else if (throwOnUnsupported) {
+        } else if (CONFIG_KEY_INTERNAL(DUMP_GRAPH) == key) {
+            _dump = (CONFIG_VALUE(YES) == value);
+        }  else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
         }
     }
@@ -54,7 +56,9 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_exclusiveAsyncRequests};
     } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
         return {_lpt};
-    } else {
+    } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
+        return {_dump};
+    }  else {
         IE_THROW(NotFound) << ": " << name;
     }
 }
