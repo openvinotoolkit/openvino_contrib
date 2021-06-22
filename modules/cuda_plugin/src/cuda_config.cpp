@@ -53,7 +53,7 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     if (name == CONFIG_KEY(DEVICE_ID)) {
         return {std::to_string(deviceId)};
     } else if (name == CONFIG_KEY(PERF_COUNT)) {
-        return {perfCount};
+        return { std::string{perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)}};
     } else if (name == CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
         return {cuda_throughput_streams_};
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
