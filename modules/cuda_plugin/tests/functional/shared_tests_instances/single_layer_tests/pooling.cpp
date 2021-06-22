@@ -179,7 +179,7 @@ INSTANTIATE_TEST_CASE_P(
     costly_Maxpool_Phase1, PoolingLayerTest,
     ::testing::Combine(
         resnet50_vgg16_maxpool_params,
-        ::testing::Values(InferenceEngine::Precision::FP32),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
@@ -210,7 +210,7 @@ INSTANTIATE_TEST_CASE_P(
     costly_Avg_Phase1, PoolingLayerTest,
     ::testing::Combine(
         resnet50_avgpool_params,
-        ::testing::Values(InferenceEngine::Precision::FP32),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
