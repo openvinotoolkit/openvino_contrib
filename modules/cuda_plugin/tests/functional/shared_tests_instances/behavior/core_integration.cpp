@@ -117,9 +117,9 @@ INSTANTIATE_TEST_CASE_P(
         smoke_IEClassGetConfigTest, IEClassGetConfigTest,
         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-using IEClassGetConfigTestTEMPLATE = IEClassNetworkTest;
+using IEClassGetConfigTestCUDA = IEClassNetworkTest;
 
-TEST_F(IEClassGetConfigTestTEMPLATE, smoke_GetConfigNoThrow) {
+TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
     Core ie;
     Parameter p;
     std::string deviceName = CommonTestUtils::DEVICE_CUDA;
@@ -132,7 +132,7 @@ TEST_F(IEClassGetConfigTestTEMPLATE, smoke_GetConfigNoThrow) {
             std::string defaultDeviceID = ie.GetConfig(deviceName, CONFIG_KEY(DEVICE_ID));
             std::cout << CONFIG_KEY(DEVICE_ID) << " : " << defaultDeviceID << std::endl;
         } else if (CONFIG_KEY(PERF_COUNT) == confKey) {
-            bool defaultPerfCount = ie.GetConfig(deviceName, CONFIG_KEY(PERF_COUNT));
+            bool defaultPerfCount = ie.GetConfig(deviceName, CONFIG_KEY(PERF_COUNT)) == CONFIG_VALUE(YES);
             std::cout << CONFIG_KEY(PERF_COUNT) << " : " << defaultPerfCount << std::endl;
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == confKey) {
             bool defaultExclusive = ie.GetConfig(deviceName, CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS));
