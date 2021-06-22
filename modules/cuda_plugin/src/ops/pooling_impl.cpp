@@ -72,10 +72,10 @@ void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
                             void* output_tensor_device_ptr) {
   CUDA::throwIfError(cudnnPoolingForward(cudnn_context_handle.get(),       //
                                          pooling_descriptor_.get(),        //
-                                         &constants::one<float>::value,           //
+                                         &constants::one<float>::value,    //
                                          input_tensor_descriptor_.get(),   //
                                          input_tensor_device_ptr,          //
-                                         &constants::zero<float>::value,            //
+                                         &constants::zero<float>::value,   //
                                          output_tensor_descriptor_.get(),  //
                                          output_tensor_device_ptr));
 }
