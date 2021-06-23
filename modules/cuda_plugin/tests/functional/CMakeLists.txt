@@ -9,6 +9,8 @@ set(TARGET_NAME CudaFuncTests)
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDENCIES
+        CUDAPlugin
         LINK_LIBRARIES_WHOLE_ARCHIVE
         CUDAPlugin_OBJ
         LINK_LIBRARIES
