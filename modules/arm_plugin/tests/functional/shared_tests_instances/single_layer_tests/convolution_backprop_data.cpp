@@ -18,7 +18,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 
 const std::vector<size_t> numOutChannels = {1, 5};
 const std::vector<std::vector<size_t >> emptyOutputShape = {{}};
-const std::vector<std::vector<size_t >> emptyOutputPadding = {{}};
+const std::vector<std::vector<ptrdiff_t >> emptyOutputPadding = {{}};
 
 /* ============= 2D ConvolutionBackpropData ============= */
 const std::vector<std::vector<size_t >> inputShapes2D = {{1, 3, 10, 11}};
