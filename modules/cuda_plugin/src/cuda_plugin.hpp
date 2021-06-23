@@ -10,7 +10,7 @@
 
 #include "backend.hpp"
 #include "cuda_thread_pool.hpp"
-#include "cuda_graph_transformer.hpp"
+#include "transformer/cuda_graph_transformer.hpp"
 
 namespace CUDAPlugin {
 
