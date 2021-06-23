@@ -229,8 +229,12 @@ class DefaultAllocation {
   void* get() const noexcept { return p.get(); }
 };
 
+inline auto cudaStreamNonBlockingConstructor(cudaStream_t* native) {
+  return cudaStreamCreateWithFlags(native, cudaStreamNonBlocking);
+};
+
 class Stream
-    : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream_t> {
+    : public UniqueBase<cudaStreamNonBlockingConstructor, cudaStreamDestroy, cudaStream_t> {
   void uploadImpl(void* dst, const void* src, std::size_t count) const {
     throwIfError(
         cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));
@@ -247,6 +251,12 @@ class Stream
   void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src,
               std::size_t count) const {
     uploadImpl(dst.get(), src, count);
+  }
+  void transfer(InferenceEngine::gpu::DevicePointer<void*> dst,
+                InferenceEngine::gpu::DevicePointer<const void*> src,
+                std::size_t count) const {
+    throwIfError(
+        cudaMemcpyAsync(dst.get(), src.get(), count, cudaMemcpyDeviceToDevice, get()));
   }
   void upload(const Allocation& dst, const void* src, std::size_t count) const {
     uploadImpl(dst.get(), src, count);

@@ -2,43 +2,44 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "matmul.hpp"
+
+#include <cublas_v2.h>
+
+#include <cuda/cublas_handle.hpp>
+#include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <cuda_operation_registry.hpp>
-#include <utility>
-
 #include <ngraph/op/constant.hpp>
 #include <ngraph/op/matmul.hpp>
-#include <cublas_v2.h>
-#include <cuda/cublas_handle.hpp>
+#include <transformer/nodes/fully_connected.hpp>
+#include <utility>
 
-#include "converters.hpp"
-#include "matmul.hpp"
 #include "constant_factory.hpp"
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 
-MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
+template <typename TOperation>
+MatMulOp::MatMulOp(const TOperation& op,
                    std::vector<unsigned>&& inputIds,
                    std::vector<unsigned>&& outputIds)
-    : OperationCuBlas(node, std::move(inputIds), std::move(outputIds)) {
-    auto op = dynamic_cast<ngraph::op::v0::MatMul*>(node.get());
-    Expects(op);
-    Expects(op->get_input_size() == 2);
-    Expects(op->get_output_size() == 1);
-    Expects(convertDataType<cudaDataType_t>(op->get_input_element_type(0)) == convertDataType<cudaDataType_t>(op->get_input_element_type(1)));
-    data_type_ = convertDataType<cudaDataType_t>(op->get_input_element_type(0));
-    compute_type_ = GetComputeType(data_type_, convertDataType<cudaDataType_t>(op->get_output_element_type(0)));
-    auto inputAShape = op->get_input_shape(0);
-    auto inputBShape = op->get_input_shape(1);
-    auto outputCShape = op->get_output_shape(0);
+    : OperationCuBlas(op, std::move(inputIds), std::move(outputIds)) {
+    Expects(op.get_input_size() >= 2);
+    Expects(op.get_output_size() == 1);
+    Expects(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) == convertDataType<cudaDataType_t>(op.get_input_element_type(1)));
+    data_type_ = convertDataType<cudaDataType_t>(op.get_input_element_type(0));
+    compute_type_ = GetComputeType(data_type_, convertDataType<cudaDataType_t>(op.get_output_element_type(0)));
+    auto inputAShape = op.get_input_shape(0);
+    auto inputBShape = op.get_input_shape(1);
+    auto outputCShape = op.get_output_shape(0);
     Expects(inputAShape.size() > 0);
     Expects(inputBShape.size() > 0);
-    bool transposeA = op->get_transpose_a();
-    bool transposeB = op->get_transpose_b();
+    bool transposeA = op.get_transpose_a();
+    bool transposeB = op.get_transpose_b();
     BroadcastShapes(inputAShape, transposeA, inputBShape, transposeB, outputCShape);
-    int batchACount = GetNumBatches(inputAShape);
-    int batchBCount = GetNumBatches(inputBShape);
+    int batchACount = GetMatrixNumBatches(inputAShape);
+    int batchBCount = GetMatrixNumBatches(inputBShape);
     batch_count_ = std::max(batchACount, batchBCount);
     const size_t rowsA = *(inputAShape.end()-!transposeA-1);
     const size_t colsA = *(inputAShape.end()-transposeA-1);
@@ -56,6 +57,11 @@ MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
     stride_c_ = (m_ * n_);
     cublas_transpose_a_ = transposeA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublas_transpose_b_ = transposeB ? CUBLAS_OP_T : CUBLAS_OP_N;
+    if constexpr (std::is_same_v<TOperation, nodes::FullyConnected>) {
+        beta_ = &NumericConst<constants::one>(compute_type_);
+    } else {
+        beta_ = &NumericConst<constants::zero>(compute_type_);
+    }
     Ensures(m_ != 0);
     Ensures(k_ != 0);
     Ensures(n_ != 0);
@@ -64,6 +70,8 @@ MatMulOp::MatMulOp(const std::shared_ptr<ngraph::Node>& node,
     Ensures(ld_c_ != 0);
     Ensures(batch_count_ != 0);
 }
+template MatMulOp::MatMulOp(const ngraph::op::MatMul&, std::vector<unsigned>&&, std::vector<unsigned>&&);
+template MatMulOp::MatMulOp(const nodes::FullyConnected&, std::vector<unsigned>&&, std::vector<unsigned>&&);
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
     constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr {
@@ -98,7 +106,7 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
     }
 }
 
-int MatMulOp::GetNumBatches(const ngraph::Shape& matrixShape) {
+int MatMulOp::GetMatrixNumBatches(const ngraph::Shape& matrixShape) {
     Expects(matrixShape.size() >= 2);
     return std::accumulate(matrixShape.begin(), matrixShape.end()-2, 1, std::multiplies<size_t>());
 }
@@ -128,7 +136,7 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
         transposeB = false;
     } else if (matrixAShape.size() > 1 && matrixBShape.size() > 1) {
         // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
-        Expects(GetNumBatches(matrixAShape) == GetNumBatches(matrixBShape));
+        Expects(GetMatrixNumBatches(matrixAShape) == GetMatrixNumBatches(matrixBShape));
     }
     Expects(*(matrixAShape.end()-transposeA-1) == *(matrixBShape.end()-!transposeB-1));
     if (matrixAShape.size() > matrixBShape.size()) {
@@ -138,6 +146,12 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
     }
     *(matrixCShape.end()-2) = *(matrixAShape.end()-!transposeA-1);
     *(matrixCShape.end()-1) = *(matrixBShape.end()-transposeB-1);
+}
+
+void MatMulOp::BroadcastToMatrix(ngraph::Shape& shape) {
+    if (shape.size() < 2) {
+        shape.insert(shape.begin(), 2-shape.size(), 1);
+    }
 }
 
 // NOTE: Multiply the arrays A and B on GPU and save the result in C
@@ -164,7 +178,7 @@ void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
         &NumericConst<constants::one>(compute_type_),
         matrixB.get(), data_type_, ld_b_, stride_b_,
         matrixA.get(), data_type_, ld_a_, stride_a_,
-        &NumericConst<constants::zero>(compute_type_),
+        beta_,
         matrixC.get(), data_type_, ld_c_, stride_c_,
         batch_count_,
         compute_type_,

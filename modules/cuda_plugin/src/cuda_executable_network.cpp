@@ -15,7 +15,7 @@
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
-#include "cuda_graph_transformer.hpp"
+#include "transformer/cuda_graph_transformer.hpp"
 
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
