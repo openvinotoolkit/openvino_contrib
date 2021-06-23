@@ -186,7 +186,8 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
                 supported.erase(node->get_friendly_name());
             }
         } else if (ngraph::op::is_output(node)) {
-            if (!InferenceEngine::details::contains(supported, node->input_values().begin()->get_node()->get_friendly_name())) {
+            auto name = node->input_values().begin()->get_node()->get_friendly_name();
+            if (!InferenceEngine::details::contains(supported, name)) {
                 supported.erase(node->get_friendly_name());
             }
         }

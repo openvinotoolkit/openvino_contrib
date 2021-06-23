@@ -9,7 +9,7 @@
 #include <transformations/init_node_info.hpp>
 
 #include "cuda/cuda_config.hpp"
-#include "cuda_pattern_transformation.hpp"
+#include "cuda_fullyconnected_transformation.hpp"
 
 using namespace CUDAPlugin;
 
@@ -20,10 +20,15 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
 
   ngraph::pass::Manager manager;
 
+  [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
+
   manager.register_pass<ngraph::pass::InitNodeInfo>();
   manager.register_pass<ngraph::pass::CommonOptimizations>();
+  manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
 
   manager.run_passes(transformed_function);
+
+  [[maybe_unused]] const auto& transformedOps = transformed_function->get_ordered_ops();
 
   return transformed_function;
 }
