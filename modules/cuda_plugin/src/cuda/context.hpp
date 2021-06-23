@@ -12,7 +12,7 @@ namespace CUDA {
 
 class ThreadContext {
   CUDA::Device device_;
-  CUDA::Stream stream_;
+  CUDA::Stream stream_{};
   CUDA::DnnHandle dnnHandle_{stream_};
   CUDA::CuBlasHandle cuBlasHandle_{stream_};
   CUDA::CuTensorHandle cuTensorHandle_;
