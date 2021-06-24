@@ -150,7 +150,7 @@ bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
                                 plan.get(),
                                 variantPack.get());
     if (status != CUDNN_STATUS_NOT_SUPPORTED) {
-        CUDA::logIfError(status);
+      logIfError(status);
     }
     return (status == CUDNN_STATUS_SUCCESS);
 }

@@ -179,7 +179,7 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
     device.setCurrent();
     std::size_t free;
     [[maybe_unused]] std::size_t total;
-    CUDA::throwIfError(cudaMemGetInfo(&free, &total));
+    throwIfError(cudaMemGetInfo(&free, &total));
     const std::size_t maxStreamsSupported = maxConcurrentStreams(device);
     const auto availableInferRequests = (free - constBlobSize) / memoryBlobSize;
     if (0 == availableInferRequests) {

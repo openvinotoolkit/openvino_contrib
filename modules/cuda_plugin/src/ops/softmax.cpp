@@ -118,15 +118,12 @@ SoftmaxOp::SoftmaxOp(const NodeOp& node,
 void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
   Expects(inputs.size() == 1);
   Expects(outputs.size() == 1);
-  CUDA::throwIfError(cudnnSoftmaxForward(
+  throwIfError(cudnnSoftmaxForward(
       context.getThreadContext().dnnHandle().get(),
       cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
       cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
-      &constants::one<float>::value,
-      tensor_descriptor_.get(),
-      inputs[0].get(),
-      &constants::zero<float>::value,
-      tensor_descriptor_.get(),
+      &constants::one<float>::value, tensor_descriptor_.get(), inputs[0].get(),
+      &constants::zero<float>::value, tensor_descriptor_.get(),
       outputs[0].get()));
 }
 

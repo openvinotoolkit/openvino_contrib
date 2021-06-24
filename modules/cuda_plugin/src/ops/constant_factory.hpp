@@ -4,11 +4,12 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cuda.h>
-#include <cudnn.h>
-#include <details/ie_exception.hpp>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cudnn_ops_infer.h>
 #include <fmt/format.h>
+
+#include <details/ie_exception.hpp>
 
 namespace CUDAPlugin {
 
