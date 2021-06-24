@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda/tensor.hpp>
 #include "converters.hpp"
 #include "transpose.hpp"
 #include "constant_factory.hpp"
@@ -9,7 +10,6 @@
 #include <ngraph/op/constant.hpp>
 #include <algorithm>
 #include <gsl/gsl_assert>
-#include <cuda/cutensor.hpp>
 #include <fmt/format.h>
 
 using namespace std::string_literals;
@@ -57,16 +57,12 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
             inputElementsType_,
             CUTENSOR_OP_IDENTITY);
 
-    CUDA::throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
-            &NumericConst<constants::one>(inputElementsType_),
-            inputTensors[0].get(),
-            &inputDesc,
-            inputMode_.data(),
-            outputTensors[0].get(),
-            &outputDesc,
-            outputMode.data(),
-            inputElementsType_,
-            context.getThreadContext().stream().get()));
+    throwIfError(cutensorPermutation(
+        &threadContext.cuTensorHandle().get(),
+        &NumericConst<constants::one>(inputElementsType_),
+        inputTensors[0].get(), &inputDesc, inputMode_.data(),
+        outputTensors[0].get(), &outputDesc, outputMode.data(),
+        inputElementsType_, context.getThreadContext().stream().get()));
 }
 
 

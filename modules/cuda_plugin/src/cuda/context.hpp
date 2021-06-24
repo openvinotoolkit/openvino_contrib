@@ -4,9 +4,9 @@
 
 #pragma once
 
+#include "blas.hpp"
 #include "dnn.hpp"
-#include "cublas_handle.hpp"
-#include "cutensor.hpp"
+#include "tensor.hpp"
 
 namespace CUDA {
 

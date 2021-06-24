@@ -4,9 +4,7 @@
 
 #include "matmul.hpp"
 
-#include <cublas_v2.h>
-
-#include <cuda/cublas_handle.hpp>
+#include <cuda/blas.hpp>
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
@@ -172,17 +170,12 @@ void MatMulOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
      *       we compute Ct = Bt x At (where t means transposed)
      *       As result Ct would be row-major matrix
      */
-    CUDA::throwIfError(cublasGemmStridedBatchedEx(
-        cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_,
-        n_, m_, k_,
-        &NumericConst<constants::one>(compute_type_),
-        matrixB.get(), data_type_, ld_b_, stride_b_,
-        matrixA.get(), data_type_, ld_a_, stride_a_,
-        beta_,
-        matrixC.get(), data_type_, ld_c_, stride_c_,
-        batch_count_,
-        compute_type_,
-        CUBLAS_GEMM_DEFAULT));
+    throwIfError(cublasGemmStridedBatchedEx(
+        cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_, n_, m_,
+        k_, &NumericConst<constants::one>(compute_type_), matrixB.get(),
+        data_type_, ld_b_, stride_b_, matrixA.get(), data_type_, ld_a_,
+        stride_a_, beta_, matrixC.get(), data_type_, ld_c_, stride_c_,
+        batch_count_, compute_type_, CUBLAS_GEMM_DEFAULT));
 }
 
 OPERATION_REGISTER(MatMulOp, MatMul);

@@ -15,12 +15,10 @@ namespace CUDAPlugin {
 DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model)
   : model_{ model }, device_mem_ptr_{ nullptr }
 {
-  CUDA::throwIfError(::cudaMalloc(&device_mem_ptr_, model_->deviceMemoryBlockSize()));
+  throwIfError(::cudaMalloc(&device_mem_ptr_, model_->deviceMemoryBlockSize()));
 }
 
-DeviceMemBlock::~DeviceMemBlock() {
-  CUDA::throwIfError(::cudaFree(device_mem_ptr_));
-}
+DeviceMemBlock::~DeviceMemBlock() { throwIfError(::cudaFree(device_mem_ptr_)); }
 
 void* DeviceMemBlock::deviceTensorPtr(MemoryModel::TensorID id) {
   ptrdiff_t offset = 0;

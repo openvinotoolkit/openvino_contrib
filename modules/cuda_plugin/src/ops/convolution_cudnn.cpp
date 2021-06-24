@@ -81,7 +81,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context, Inputs in
                                 &NumericConst<constants::zero>(tensor_element_type_),
                                 output_desc_.get(),
                                 outputs[ConvolutionOp::ArgIndices::output].get());
-    CUDA::throwIfError(status);
+    throwIfError(status);
 }
 
 WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
@@ -179,7 +179,7 @@ ConvolutionCuDnn::MakeConvolutionDescriptor(const ConvParams& conv_params,
     // Enable computations on Tensor Core hardware which requires at least Volta GPU
     // (compute capability 7.0).
     const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
-    CUDA::throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
+    throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
 
     return conv_desc;
 }
