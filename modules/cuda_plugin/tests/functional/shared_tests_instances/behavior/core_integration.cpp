@@ -132,7 +132,7 @@ TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
             std::string defaultDeviceID = ie.GetConfig(deviceName, CONFIG_KEY(DEVICE_ID));
             std::cout << CONFIG_KEY(DEVICE_ID) << " : " << defaultDeviceID << std::endl;
         } else if (CONFIG_KEY(PERF_COUNT) == confKey) {
-            bool defaultPerfCount = ie.GetConfig(deviceName, CONFIG_KEY(PERF_COUNT)) == CONFIG_VALUE(YES);
+            bool defaultPerfCount = ie.GetConfig(deviceName, CONFIG_KEY(PERF_COUNT)) == std::string(CONFIG_VALUE(YES));
             std::cout << CONFIG_KEY(PERF_COUNT) << " : " << defaultPerfCount << std::endl;
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == confKey) {
             bool defaultExclusive = ie.GetConfig(deviceName, CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS));
