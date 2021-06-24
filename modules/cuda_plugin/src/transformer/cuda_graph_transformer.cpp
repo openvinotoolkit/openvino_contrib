@@ -7,6 +7,7 @@
 #include <ngraph/pass/manager.hpp>
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/init_node_info.hpp>
+#include <transformer/fuse_conv2d_biasadd_activation.hpp>
 
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
@@ -23,6 +24,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
   [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
 
   manager.register_pass<ngraph::pass::InitNodeInfo>();
+  // TODO: enable whenever Conv2DBiasAdd Op implementation available
+  // manager.register_pass<ngraph::pass::CudaFuseConv2DBiasAddActivation>();
   manager.register_pass<ngraph::pass::CommonOptimizations>();
   manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
 
