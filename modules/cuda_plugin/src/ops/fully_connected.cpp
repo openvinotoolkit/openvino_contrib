@@ -4,9 +4,7 @@
 
 #include "fully_connected.hpp"
 
-#include <cublas_v2.h>
-
-#include <cuda/cublas_handle.hpp>
+#include <cuda/blas.hpp>
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>

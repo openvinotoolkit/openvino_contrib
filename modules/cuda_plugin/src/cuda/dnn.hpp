@@ -4,8 +4,25 @@
 
 #pragma once
 
-#include "runtime.hpp"
+#include <cudnn.h>
+
 #include <ngraph/type/element_type.hpp>
+
+#include "runtime.hpp"
+
+inline void throwIfError(cudnnStatus_t err,
+                         const std::experimental::source_location& location =
+                             std::experimental::source_location::current()) {
+  if (err != CUDNN_STATUS_SUCCESS)
+    CUDA::throwIEException(cudnnGetErrorString(err), location);
+}
+
+inline void logIfError(cudnnStatus_t err,
+                       const std::experimental::source_location& location =
+                           std::experimental::source_location::current()) {
+  if (err != CUDNN_STATUS_SUCCESS)
+    CUDA::logError(cudnnGetErrorString(err), location);
+}
 
 namespace CUDA {
 
