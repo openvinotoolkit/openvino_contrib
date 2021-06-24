@@ -78,7 +78,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -89,7 +89,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ConvolutionLayerTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -175,7 +175,7 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -187,7 +187,7 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
