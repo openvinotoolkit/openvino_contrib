@@ -8,5 +8,7 @@
 .*MaxPool_334685.*
 .*VariadicSplit_629649.*
 .*VariadicSplit_642662.*
-# Skip the test below because it takes ~5 hrs. to pass it
+# Skip the tests below because it takes too long to complete them
 .*Broadcast_748166.*
+.*Convolution_80631.*
+.*ConvolutionBackpropData_1046455.*
