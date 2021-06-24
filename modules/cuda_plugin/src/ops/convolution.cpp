@@ -13,7 +13,11 @@
 
 #include "cuda_operation_registry.hpp"
 #include "convolution_cudnn.hpp"
+
+#undef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
+#ifdef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
 #include "convolution_cudnn_be.hpp"
+#endif // ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
 
 namespace CUDAPlugin {
 
@@ -119,6 +123,8 @@ void ConvolutionOp::Create2D3DImpl(ngraph::element::Type_t element_type,
 
     std::stringstream exception_msg;
 
+#undef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
+#ifdef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
     try {
         impl_ = std::make_unique<ConvolutionCuDnnBE>(
                     element_type, input_shape, filter_shape, output_shape,
@@ -127,6 +133,7 @@ void ConvolutionOp::Create2D3DImpl(ngraph::element::Type_t element_type,
     } catch(const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnnBE impl: " << e.what() << std::endl;
     }
+#endif // ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
 
     try {
         impl_ = std::make_unique<ConvolutionCuDnn>(
