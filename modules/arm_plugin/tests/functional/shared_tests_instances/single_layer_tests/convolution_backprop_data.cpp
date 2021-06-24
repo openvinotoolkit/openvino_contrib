@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "single_layer_tests/convolution_backprop_data.hpp"
+#include "single_layer_tests/convolution_backprop.hpp"
 #include "common_test_utils/test_constants.hpp"
 
 using namespace LayerTestsDefinitions;
@@ -17,6 +17,8 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 };
 
 const std::vector<size_t> numOutChannels = {1, 5};
+const std::vector<std::vector<size_t >> emptyOutputShape = {{}};
+const std::vector<std::vector<ptrdiff_t >> emptyOutputPadding = {{}};
 
 /* ============= 2D ConvolutionBackpropData ============= */
 const std::vector<std::vector<size_t >> inputShapes2D = {{1, 3, 10, 11}};
@@ -33,7 +35,8 @@ const auto conv2DParams_ExplicitPadding = ::testing::Combine(
         ::testing::ValuesIn(padEnds2D),
         ::testing::ValuesIn(dilations2D),
         ::testing::ValuesIn(numOutChannels),
-        ::testing::Values(ngraph::op::PadType::EXPLICIT)
+        ::testing::Values(ngraph::op::PadType::EXPLICIT),
+        ::testing::ValuesIn(emptyOutputPadding)
 );
 const auto conv2DParams_AutoPadValid = ::testing::Combine(
         ::testing::ValuesIn(kernels2D),
@@ -42,10 +45,11 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(
         ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
         ::testing::ValuesIn(dilations2D),
         ::testing::ValuesIn(numOutChannels),
-        ::testing::Values(ngraph::op::PadType::VALID)
+        ::testing::Values(ngraph::op::PadType::VALID),
+        ::testing::ValuesIn(emptyOutputPadding)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, ConvolutionBackpropDataLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, ConvolutionBackpropLayerTest,
                         ::testing::Combine(
                                 conv2DParams_ExplicitPadding,
                                 ::testing::ValuesIn(netPrecisions),
@@ -54,10 +58,11 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, Convolu
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
+                                ::testing::ValuesIn(emptyOutputShape),
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU)),
-                        ConvolutionBackpropDataLayerTest::getTestCaseName);
+                        ConvolutionBackpropLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackpropDataLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackpropLayerTest,
                         ::testing::Combine(
                                 conv2DParams_AutoPadValid,
                                 ::testing::ValuesIn(netPrecisions),
@@ -66,6 +71,7 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, Convolutio
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                 ::testing::ValuesIn(inputShapes2D),
+                                ::testing::ValuesIn(emptyOutputShape),
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU)),
-                        ConvolutionBackpropDataLayerTest::getTestCaseName);
+                        ConvolutionBackpropLayerTest::getTestCaseName);
 }  // namespace
