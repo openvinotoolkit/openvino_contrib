@@ -4,9 +4,7 @@
 
 #pragma once
 
-#include <cudnn.h>
-#include <cublas_v2.h>
-#include <cutensor.h>
+#include <cuda_runtime.h>
 
 #include <gpu/device_pointers.hpp>
 #if __has_include(<experimental/source_location>)
@@ -23,72 +21,28 @@ struct source_location {
 }  // namespace std::experimental
 #endif
 namespace CUDA {
-inline
-std::string cublasGetErrorString(cublasStatus_t status) {
-    switch (status) {
-        case CUBLAS_STATUS_SUCCESS: return "CuBlas Status Success";
-        case CUBLAS_STATUS_NOT_INITIALIZED: return "CuBlas Status Not Initialized";
-        case CUBLAS_STATUS_ALLOC_FAILED: return "CuBlas Status Allocation Failed";
-        case CUBLAS_STATUS_INVALID_VALUE: return "CuBlas Status Invalid Value";
-        case CUBLAS_STATUS_ARCH_MISMATCH: return "CuBlas Status Architecture Mismatched";
-        case CUBLAS_STATUS_MAPPING_ERROR: return "CuBlas Status mapping Error";
-        case CUBLAS_STATUS_EXECUTION_FAILED: return "CuBlas Status Execution Failed";
-        case CUBLAS_STATUS_INTERNAL_ERROR: return "CuBlas Status Internal Error";
-        case CUBLAS_STATUS_NOT_SUPPORTED: return "CuBlas Status Not Supported";
-        case CUBLAS_STATUS_LICENSE_ERROR: return "CuBlas Status License Error";
-        default: return "CuBlas Unknown Status";
-    }
-}
 [[gnu::cold, noreturn]] void throwIEException(
     const std::string& msg, const std::experimental::source_location& location =
                                 std::experimental::source_location::current());
-inline void throwIfError(cudaError_t err,
-                         const std::experimental::source_location& location =
-                             std::experimental::source_location::current()) {
-  if (err != cudaSuccess) throwIEException(cudaGetErrorString(err), location);
-}
-inline void throwIfError(cudnnStatus_t err,
-                         const std::experimental::source_location& location =
-                             std::experimental::source_location::current()) {
-  if (err != CUDNN_STATUS_SUCCESS)
-    throwIEException(cudnnGetErrorString(err), location);
-}
-inline void throwIfError(cublasStatus_t err,
-                         const std::experimental::source_location& location =
-                         std::experimental::source_location::current()) {
-  if (err != CUBLAS_STATUS_SUCCESS)
-    throwIEException(cublasGetErrorString(err), location);
-}
-inline void throwIfError(cutensorStatus_t err,
-                         const std::experimental::source_location& location =
-                             std::experimental::source_location::current()) {
-  if (err != CUTENSOR_STATUS_SUCCESS)
-    throwIEException(cutensorGetErrorString(err), location);
-}
-
 [[gnu::cold]] void logError(const std::string& msg,
                             const std::experimental::source_location& location =
                                 std::experimental::source_location::current());
+}  // namespace CUDA
+
+inline void throwIfError(cudaError_t err,
+                         const std::experimental::source_location& location =
+                             std::experimental::source_location::current()) {
+  if (err != cudaSuccess)
+    CUDA::throwIEException(cudaGetErrorString(err), location);
+}
+
 inline void logIfError(cudaError_t err,
                        const std::experimental::source_location& location =
                            std::experimental::source_location::current()) {
-  if (err != cudaSuccess) logError(cudaGetErrorString(err), location);
+  if (err != cudaSuccess) CUDA::logError(cudaGetErrorString(err), location);
 }
-inline void logIfError(cudnnStatus_t err,
-                       const std::experimental::source_location& location =
-                           std::experimental::source_location::current()) {
-  if (err != CUDNN_STATUS_SUCCESS) logError(cudnnGetErrorString(err), location);
-}
-inline void logIfError(cublasStatus_t err,
-                       const std::experimental::source_location& location =
-                       std::experimental::source_location::current()) {
-    if (err != CUBLAS_STATUS_SUCCESS) logError(cublasGetErrorString(err), location);
-}
-inline void logIfError(cutensorStatus_t err,
-                       const std::experimental::source_location& location =
-                           std::experimental::source_location::current()) {
-  if (err != CUTENSOR_STATUS_SUCCESS) logError(cutensorGetErrorString(err), location);
-}
+
+namespace CUDA {
 
 template <typename T, typename R, typename... Args>
 T create(R (*creator)(T*, Args... args), Args... args) {

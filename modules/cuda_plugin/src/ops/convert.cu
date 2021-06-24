@@ -84,7 +84,9 @@ struct Convert {
     using TInput = typename cuda_type_traits<input_type>::value_type;
     if (OutputType == InputType) {
       if (output.get() == input.get()) return;
-      CUDA::throwIfError(cudaMemcpyAsync(output.get(), input.get(), size * sizeof(TOutput), cudaMemcpyDeviceToDevice, stream.get()));
+      throwIfError(cudaMemcpyAsync(output.get(), input.get(),
+                                   size * sizeof(TOutput),
+                                   cudaMemcpyDeviceToDevice, stream.get()));
     } else {
       convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
           size, static_cast<TOutput *>(output.get()), static_cast<const TInput *>(input.get()));
