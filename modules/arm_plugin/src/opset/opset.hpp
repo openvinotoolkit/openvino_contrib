@@ -5,6 +5,7 @@
 #pragma once
 
 #include "concat_arm.hpp"
+#include "split_arm.hpp"
 #include "conv_arm.hpp"
 #include "convert_arm.hpp"
 #include "gather_arm.hpp"

@@ -48,6 +48,7 @@
 #include "convert_batch_norm.hpp"
 #include "convert_ceiling.hpp"
 #include "convert_convert.hpp"
+#include "convert_split.hpp"
 #include "convert_concat.hpp"
 #include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
@@ -95,13 +96,46 @@
 
 #include "arm_optimizations.hpp"
 
+void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix) {
+    if (_dump) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix + ".dot", [&] (const ngraph::Node& node, std::vector<std::string>& attributes) {
+            auto& rt_info = node.get_rt_info();
+            auto itInfo = rt_info.find("QuantizationInfo");
+            if (itInfo != rt_info.end()) {
+                std::stringstream strm;
+                auto printVec = [&] (const std::string& name, auto& vec) {
+                    strm << "\\n" + name + ": [";
+                    int i = 0;
+                    for (auto&& v : vec) {
+                        if (i > 5) {
+                            strm << "...";
+                            break;
+                        } else {
+                            strm << v << ", ";
+                            i++;
+                        }
+                    }
+                    strm << "]";
+                };
+                const auto& quantizationInfo = std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                printVec("Scale", quantizationInfo.scale());
+                printVec("Offset", quantizationInfo.offset());
+
+                auto itLabel = std::find_if(std::begin(attributes), std::end(attributes), [] (const std::string& str) {
+                    return str.find("label") != std::string::npos;
+                });
+                IE_ASSERT(itLabel != attributes.end());
+                itLabel->pop_back();
+                (*itLabel) += strm.str() + '\"';
+            }
+        }}.run_on_function(f);
+    }
+}
 
 bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::Function> f) {
     ngraph::pass::Manager manager;
 
-    if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_initial.dot"}.run_on_function(f);
-    }
+    Dump(f, "initial");
 
     auto quantized = _lpt && ngraph::pass::low_precision::LowPrecisionTransformer::isFunctionQuantized(f);
 
@@ -165,9 +199,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
     manager.run_passes(f);
 
-    if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_lpt.dot"}.run_on_function(f);
-    }
+    Dump(f, "before_lpt");
 
     if (quantized) {
         using namespace ngraph::pass::low_precision;
@@ -189,9 +221,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         transformer.transform(f);
     }
 
-    if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_arm_transformations.dot"}.run_on_function(f);
-    }
+    Dump(f, "before_arm_transformations");
 
     {
         ngraph::pass::Manager manager;
@@ -247,6 +277,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<pass::ConvertEltwise>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertTile>();
+        manager.register_pass<pass::ConvertSplit>();
         manager.register_pass<pass::ConvertConcat>();
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
@@ -259,16 +290,12 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.run_passes(f);
     }
 
-    if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_before_arm_lpt.dot"}.run_on_function(f);
-    }
+    Dump(f, "before_arm_lpt");
 
     if (quantized) {
         ngraph::pass::Manager manager;
-        manager.register_pass<pass::DetectMaybeQuantized>();
-        manager.register_pass<pass::QuantizeFusion>();
-        manager.register_pass<pass::DeqMulAddToArmDequantizeConvert>();
-        manager.register_pass<pass::DeqMulToArmDequantizeConvert>();
+        manager.register_pass<pass::NodeQuantizeFusion>();
+        manager.register_pass<pass::DequantizeNodeFusion>();
         manager.register_pass<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertQuantize>();
@@ -278,9 +305,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.run_passes(f);
     }
 
-    if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_final.dot"}.run_on_function(f);
-    }
+    Dump(f, "final");
 
     return false;
 }

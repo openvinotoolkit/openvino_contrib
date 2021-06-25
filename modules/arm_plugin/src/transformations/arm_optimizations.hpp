@@ -8,10 +8,12 @@
 
 namespace ArmPlugin {
 namespace pass {
-class ArmOptimizations: public ngraph::pass::FunctionPass {
-public:
+struct ArmOptimizations: public ngraph::pass::FunctionPass {
     ArmOptimizations(const bool lpt, const bool dump) : _lpt{lpt}, _dump{dump} {}
     bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+
+    void Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix);
+
     bool _lpt = false;
     bool _dump = false;
 };

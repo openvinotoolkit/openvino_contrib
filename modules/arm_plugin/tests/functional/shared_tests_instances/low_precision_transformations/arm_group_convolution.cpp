@@ -15,12 +15,13 @@
 namespace ngraph {
 namespace builder {
 namespace subgraph {
-static std::shared_ptr<ngraph::Function> FakeQuantizeAndArmConvolutionFunctionGet(
+static std::shared_ptr<ngraph::Function> FakeQuantizeAndArmGroupConvolutionFunctionGet(
     const ngraph::element::Type precision,
     const ngraph::Shape& inputShape,
     const FakeQuantizeOnData& fqOnData,
     const FakeQuantizeOnWeights& fqOnWeights,
-    const FakeQuantizeOnData& fqOnOutput) {
+    const FakeQuantizeOnData& fqOnOutput,
+    const bool withRelu) {
 
     const auto input = std::make_shared<ngraph::opset1::Parameter>(precision, ngraph::Shape(inputShape));
     const auto fakeQuantizeOnActivations = fqOnData.empty() ?
@@ -30,32 +31,41 @@ static std::shared_ptr<ngraph::Function> FakeQuantizeAndArmConvolutionFunctionGe
             fqOnData.inputLowValues, fqOnData.inputHighValues, fqOnData.outputLowValues, fqOnData.outputHighValues);
 
     const size_t inputChannelsCount = inputShape[1];
-    const size_t outputChannelsCount = 2 * inputShape[1];
     const auto weights = ngraph::opset1::Constant::create(
         precision,
-        ngraph::Shape{ outputChannelsCount, inputChannelsCount, 1, 1 },
-        std::vector<float>(outputChannelsCount * inputChannelsCount, 1));
+        ngraph::Shape{inputChannelsCount, 1, 1, 1 },
+        std::vector<float>(inputChannelsCount, 1));
 
-    const auto convolution = std::make_shared<ngraph::opset1::Convolution>(
+    const auto convolution = std::make_shared<ngraph::opset1::GroupConvolution>(
         fqOnData.empty() ? input : fakeQuantizeOnActivations,
-        fqOnWeights.empty() ? weights->output(0) :
-        ngraph::builder::makeFakeQuantize(
-            weights, precision, fqOnWeights.quantizationLevel, fqOnWeights.constantShape,
-            fqOnWeights.inputLowValues, fqOnWeights.inputHighValues, fqOnWeights.outputLowValues, fqOnWeights.outputHighValues),
+        std::make_shared<ngraph::op::v1::Reshape>(
+            fqOnWeights.empty() ? weights->output(0) :
+            ngraph::builder::makeFakeQuantize(
+                weights, precision, fqOnWeights.quantizationLevel, fqOnWeights.constantShape,
+                fqOnWeights.inputLowValues, fqOnWeights.inputHighValues, fqOnWeights.outputLowValues, fqOnWeights.outputHighValues),
+            ngraph::opset1::Constant::create(
+                ngraph::element::i32, ngraph::Shape{5},
+                std::vector<std::int32_t>{static_cast<std::int32_t>(inputChannelsCount), 1, 1, 1, 1}), false),
         ngraph::Strides{ 1, 1 },
         ngraph::CoordinateDiff{ 0, 0 },
         ngraph::CoordinateDiff{ 0, 0 },
         ngraph::Strides{ 1, 1 });
     convolution->set_friendly_name("convolution");
 
+    std::shared_ptr<ngraph::Node> beforeFqNode = convolution;
+    if (withRelu) {
+        beforeFqNode = std::make_shared<ngraph::op::Relu>(convolution);
+    }
+
     const auto fakeQuantizeOnOutput = fqOnOutput.empty() ?
-        nullptr :
+        beforeFqNode :
         ngraph::builder::makeFakeQuantize(
-            convolution, precision, fqOnOutput.quantizationLevel, fqOnOutput.constantShape,
+            beforeFqNode, precision,
+            fqOnOutput.quantizationLevel, fqOnOutput.constantShape,
             fqOnOutput.inputLowValues, fqOnOutput.inputHighValues, fqOnOutput.outputLowValues, fqOnOutput.outputHighValues);
 
     ngraph::ResultVector results{ std::make_shared<ngraph::opset1::Result>(fakeQuantizeOnOutput) };
-    return std::make_shared<ngraph::Function>(results, ngraph::ParameterVector{ input }, "FakeQuantizeAndArmConvolutionFunction");
+    return std::make_shared<ngraph::Function>(results, ngraph::ParameterVector{ input }, "FakeQuantizeAndArmGroupConvolutionFunction");
 }
 }  // namespace subgraph
 }  // namespace builder
@@ -63,7 +73,7 @@ static std::shared_ptr<ngraph::Function> FakeQuantizeAndArmConvolutionFunctionGe
 
 namespace LayerTestsDefinitions {
 
-struct ArmConvolutionTransformationParam {
+struct ArmGroupConvolutionTransformationParam {
     ngraph::builder::subgraph::FakeQuantizeOnData fakeQuantizeOnData;
     bool asymmetricQuantizationOnData;
     ngraph::builder::subgraph::FakeQuantizeOnWeights fakeQuantizeOnWeights;
@@ -78,27 +88,30 @@ typedef std::tuple<
     ngraph::Shape,
     std::string,
     ngraph::pass::low_precision::LayerTransformation::Params,
-    ArmConvolutionTransformationParam
-> ArmConvolutionTransformationParams;
+    ArmGroupConvolutionTransformationParam,
+    bool // with Relu
+> ArmGroupConvolutionTransformationParams;
 
 
-class ArmConvolutionTransformation :
-    public testing::WithParamInterface<ArmConvolutionTransformationParams>,
+class ArmGroupConvolutionTransformation :
+    public testing::WithParamInterface<ArmGroupConvolutionTransformationParams>,
     public LayerTestsUtils::LayerTransformation {
 public:
-    static std::string getTestCaseName(testing::TestParamInfo<ArmConvolutionTransformationParams> obj) {
+    static std::string getTestCaseName(testing::TestParamInfo<ArmGroupConvolutionTransformationParams> obj) {
         ngraph::element::Type netPrecision;
         ngraph::Shape inputShape;
         std::string targetDevice;
         ngraph::pass::low_precision::LayerTransformation::Params params;
-        ArmConvolutionTransformationParam param;
-        std::tie(netPrecision, inputShape, targetDevice, params, param) = obj.param;
+        ArmGroupConvolutionTransformationParam param;
+        bool withRelu;
+        std::tie(netPrecision, inputShape, targetDevice, params, param, withRelu) = obj.param;
 
         std::ostringstream result;
         result << getTestCaseNameByParams(netPrecision, inputShape, targetDevice, params) << "_" <<
             param.fakeQuantizeOnData << "_" <<
             param.fakeQuantizeOnWeights << "_" <<
-            param.fakeQuantizeOnOutput;
+            param.fakeQuantizeOnOutput << "_" <<
+            "withRelu=" << withRelu;
         return result.str();
     }
 protected:
@@ -108,16 +121,18 @@ protected:
         ngraph::element::Type netPrecision;
         ngraph::Shape inputShape;
         ngraph::pass::low_precision::LayerTransformation::Params params;
-        ArmConvolutionTransformationParam param;
-        std::tie(netPrecision, inputShape, targetDevice, params, param) = this->GetParam();
+        ArmGroupConvolutionTransformationParam param;
+        bool withRelu;
+        std::tie(netPrecision, inputShape, targetDevice, params, param, withRelu) = this->GetParam();
 
-        function = ngraph::builder::subgraph::FakeQuantizeAndArmConvolutionFunctionGet(
+        function = ngraph::builder::subgraph::FakeQuantizeAndArmGroupConvolutionFunctionGet(
             netPrecision,
             inputShape,
             // TODO: pass from test parameters
             param.fakeQuantizeOnData,
             param.fakeQuantizeOnWeights,
-            param.fakeQuantizeOnOutput);
+            param.fakeQuantizeOnOutput,
+            withRelu);
 
         validate();
     }
@@ -140,8 +155,9 @@ private:
         ngraph::Shape inputShape;
         std::string targetDevice;
         ngraph::pass::low_precision::LayerTransformation::Params params;
-        ArmConvolutionTransformationParam param;
-        std::tie(netPrecision, inputShape, targetDevice, params, param) = this->GetParam();
+        ArmGroupConvolutionTransformationParam param;
+        bool withRelu;
+        std::tie(netPrecision, inputShape, targetDevice, params, param, withRelu) = this->GetParam();
 
         const auto transformed = transformNGraph(params, getLowPrecisionTransformationsNGraph(params));
         EXPECT_EQ(1ul, transformed->get_output_size());
@@ -149,22 +165,10 @@ private:
         const auto output = transformed->get_output_op(0);
         const auto parent = output->get_input_node_shared_ptr(0);
         ASSERT_FALSE(parent == nullptr);
-
-        // const std::string typeName = parent->get_type_name();
-        // const auto isQuantizationSupported = [](const ngraph::builder::subgraph::FakeQuantizeOnData& fq) {
-        //     return (fq.quantizationLevel == 255) || (fq.quantizationLevel == 256);
-        // };
-
-        // if (param.fakeQuantizeOnData.empty() || (!isQuantizationSupported(param.fakeQuantizeOnData)) ||
-        //     param.fakeQuantizeOnWeights.empty() || (!isQuantizationSupported(param.fakeQuantizeOnWeights))) {
-        //     ASSERT_EQ("ConvolutionIE", typeName);
-        // } else {
-        //     ASSERT_EQ("ScaleShiftIE", typeName);
-        // }
     }
 };
 
-TEST_P(ArmConvolutionTransformation, CompareWithRefImpl) {
+TEST_P(ArmGroupConvolutionTransformation, CompareWithRefImpl) {
     Run();
 };
 
@@ -187,27 +191,16 @@ const std::vector<ngraph::pass::low_precision::LayerTransformation::Params> tran
     // LayerTestsUtils::LayerTransformationParamsNGraphFactory::createParams().setUpdatePrecisions(false),
 };
 
-const std::vector<LayerTestsDefinitions::ArmConvolutionTransformationParam> params = {
+const std::vector<LayerTestsDefinitions::ArmGroupConvolutionTransformationParam> params = {
     {
-        { 256ul, ngraph::Shape { 1 }, { 0.f }, { 255.f }, { 0.f }, { 25.5f } },
+        { 256ul, ngraph::Shape { 1, 1, 1, 1 }, { 0.f }, { 25.5f }, { 0.f }, { 25.5f } },
         true,
-        { 255ul, ngraph::Shape { 1 }, { 0.f }, { 254.f }, { -12.7f }, { 12.7f } },
+        { 255ul, ngraph::Shape { 1, 1, 1, 1 }, { 0.f }, { 254.f }, { -127.f }, { 127.f } },
         true,
-        { 256ul, ngraph::Shape { 1 }, { -128.f }, { 127.f }, { -12.8f }, { 12.7f }},
-        "ArmConvolution",
-        // "U8"
+        { 256ul, ngraph::Shape { 1, 1, 1, 1 }, { 0.f }, { 25.5f }, { 0.f }, { 25.5f } },
+        "ArmGroupConvolution",
         "I8"
     },
-    // {
-    //     { 256ul, ngraph::Shape { 1 }, { -12.8f }, { 12.7f }, { -12.8f }, { 12.7f } },
-    //     true,
-    //     { 255ul, ngraph::Shape { 1, 3, 1, 1 }, { 0.f, 0.f, 0.f }, { 254.f, 254.f, 254.f }, { -12.7f, -12.7f, -12.7f }, { 12.7f, 12.7f, 12.7f } },
-    //     true,
-    //     { 256ul, ngraph::Shape { 1 }, { -12.8f }, { 12.7f }, { -12.8f }, { 12.7f }},
-    //     "ArmConvolution",
-    //     // "U8"
-    //     "I8"
-    // },
 };
 
 const std::vector<ngraph::Shape> shapes = {
@@ -216,13 +209,14 @@ const std::vector<ngraph::Shape> shapes = {
 
 using namespace LayerTestsDefinitions;
 
-INSTANTIATE_TEST_CASE_P(smoke_LPT, ArmConvolutionTransformation,
+INSTANTIATE_TEST_CASE_P(smoke_LPT, ArmGroupConvolutionTransformation,
     ::testing::Combine(
         ::testing::ValuesIn(netPrecisions),
         ::testing::ValuesIn(shapes),
         ::testing::Values(CommonTestUtils::DEVICE_CPU),
         ::testing::ValuesIn(transformationParamValues),
-        ::testing::ValuesIn(params)),
-    ArmConvolutionTransformation::getTestCaseName);
+        ::testing::ValuesIn(params),
+        ::testing::Values(true, false)),
+    ArmGroupConvolutionTransformation::getTestCaseName);
 
 }  // namespace

@@ -362,6 +362,15 @@ struct Converter {
             return tensors;
         }
 
+        template<std::size_t I>
+        std::vector<Argument<Tensor*>> MakeArgument(std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
+            std::vector<Argument<Tensor*>> tensors;
+            for (const auto& output : outputs) {
+                tensors.emplace_back(&(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)), ArgumentType::Output);
+            }
+            return tensors;
+        }
+
         arm_compute::Status Validate() override {
             return {};
         }
