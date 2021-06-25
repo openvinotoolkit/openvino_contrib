@@ -68,7 +68,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Elu>();
     Register<opset::ArmTranspose>();
     Register<opset::Softmax>();
-    Register<opset::Split>();
+    Register<opset::ArmSplit>();
     Register<opset::LRN>();
     Register<opset::Minimum>();
     Register<opset::Maximum>();
@@ -176,6 +176,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::DFT>();
         Register<opset::IDFT>();
         Register<opset::FakeQuantize>();
+        Register<opset::Split>();
     }
     Register<opset::ArmNoOp>();
     Register<opset::Result>();
@@ -263,7 +264,30 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
                     return ngraph::op::is_output(targetInput.get_node());
                 });
                 if (!isNetworkOutput) {
-                    counter.emplace(output, targetInputs.size());
+                    std::size_t targetInputsSize = 0;
+                    std::vector<ngraph::Input<ngraph::Node>> targetMayBeNoOpInputs;
+                    for (auto&& targetInput : targetInputs) {
+                        targetMayBeNoOpInputs.emplace_back(targetInput.get_node(), targetInput.get_index());
+                    }
+                    do {
+                        std::vector<ngraph::Output<ngraph::Node>> afterNoOpInputs;
+                        for (auto&& input : targetMayBeNoOpInputs) {
+                            if (ngraph::is_type<opset::ArmNoOp>(input.get_node())) {
+                                for (auto&& output : input.get_node()->outputs()) {
+                                    for (auto&& targetInput : output.get_target_inputs()) {
+                                        afterNoOpInputs.emplace_back(targetInput.get_node(), targetInput.get_index());
+                                    }
+                                }
+                            } else {
+                                ++targetInputsSize;
+                            }
+                        }
+                        targetMayBeNoOpInputs.clear();
+                        for (auto&& targetInput : afterNoOpInputs) {
+                            targetMayBeNoOpInputs.emplace_back(targetInput.get_node(), targetInput.get_index());
+                        }
+                    } while (!targetMayBeNoOpInputs.empty());
+                    counter.emplace(output, targetInputsSize);
                     memoryGroup.manage(_layers.at(nodeID)._outputs.at(output)._tensor.get());
                 }
             }
