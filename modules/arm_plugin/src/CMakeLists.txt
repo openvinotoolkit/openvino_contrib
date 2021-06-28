@@ -43,15 +43,3 @@ set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_REL
 
 ie_register_plugins(MAIN_TARGET ${TARGET_NAME}
                     POSSIBLE_PLUGINS ${TARGET_NAME})
-
-# ATTENTION: uncomment to install component
-# install
-
-# set(component_name armPlugin)
-# ie_cpack_add_component(${component_name} REQUIRED)
-
-# install(TARGETS ${TARGET_NAME}
-#         RUNTIME DESTINATION ${IE_CPACK_LIBRARY_PATH}
-#         ARCHIVE DESTINATION ${IE_CPACK_LIBRARY_PATH}
-#         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH}
-#         COMPONENT ${component_name})
