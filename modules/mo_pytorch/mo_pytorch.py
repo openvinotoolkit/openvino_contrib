@@ -104,7 +104,7 @@ def _prepare_ir(argv):
     import_extensions.load_dirs(argv.framework, extensions, get_front_classes)
 
     graph = unified_pipeline(argv)
-    return graph
+    return graph, None
 
 
 def convert(model, **args):
@@ -116,6 +116,6 @@ def convert(model, **args):
     for arg, value in args.items():
         parser.set_defaults(**{arg: str(value)})
 
-    err = main(parser, 'pytorch')
+    err = main(parser, None, 'pytorch')
     if err:
         raise Exception('model conversion failed')
