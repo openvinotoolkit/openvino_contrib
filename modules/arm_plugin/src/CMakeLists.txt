@@ -18,7 +18,6 @@ set_source_files_properties(${SOURCES} PROPERTIES COMPILE_FLAGS "${neon_flags}")
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "CPU"
               SOURCES ${SOURCES} ${HEADERS}
-              SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR arm_plugin.cpp)
 
 target_include_directories(${TARGET_NAME} PRIVATE
