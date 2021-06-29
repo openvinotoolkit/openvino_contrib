@@ -33,5 +33,4 @@ endif()
 
 # install
 
-# ATTENTION: uncomment to install component
-# ie_cpack(template)
+ie_cpack(cpu)
