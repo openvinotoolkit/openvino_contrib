@@ -12,7 +12,7 @@ file(GLOB_RECURSE HEADERS
      ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
 ie_arm_neon_optimization_flags(neon_flags)
-set_source_files_properties(${SOURCES} PROPERTIES COMPILE_FLAGS "${neon_flags}")
+set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
 
 # adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
