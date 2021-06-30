@@ -88,11 +88,6 @@ struct Convert {
     } else {
       convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
           size, static_cast<TOutput *>(output.get()), static_cast<const TInput *>(input.get()));
-      TOutput out[32];
-      TInput in[32];
-      stream.synchronize();
-      stream.download(out, output, sizeof(out));
-      stream.download(in, input, sizeof(in));
     }
   }
 };
