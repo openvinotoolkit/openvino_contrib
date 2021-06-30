@@ -137,11 +137,9 @@ static void nms5(const float* boxes_data,
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSuppression& node) {
     auto make = [&] (auto refFunction) {
         ngraph::HostTensorVector hosts;
-        auto name = node.get_friendly_name();
         for (auto output : node.outputs()) {
             auto tensor = std::make_shared<ngraph::HostTensor>(output.get_element_type(),
-                                                               output.get_partial_shape().get_max_shape(),
-                                                               name);
+                                                               output.get_partial_shape().get_max_shape());
             hosts.push_back(tensor);
          }
 
