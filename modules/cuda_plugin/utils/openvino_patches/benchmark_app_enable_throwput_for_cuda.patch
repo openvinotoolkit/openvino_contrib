@@ -1,0 +1,13 @@
+diff --git a/inference-engine/samples/benchmark_app/main.cpp b/inference-engine/samples/benchmark_app/main.cpp
+index a786eef..4879ae4 100644
+--- a/inference-engine/samples/benchmark_app/main.cpp
++++ b/inference-engine/samples/benchmark_app/main.cpp
+@@ -286,6 +286,8 @@ int main(int argc, char *argv[]) {
+ 
+                 if (isFlagSetInCommandLine("nthreads"))
+                     device_config[GNA_CONFIG_KEY(LIB_N_THREADS)] = std::to_string(FLAGS_nthreads);
++            } else if (device == "CUDA") {
++                setThroughputStreams();
+             } else {
+                 std::vector<std::string> supported_config_keys = ie.GetMetric(device, METRIC_KEY(SUPPORTED_CONFIG_KEYS));
+                 auto supported = [&] (const std::string& key) {
