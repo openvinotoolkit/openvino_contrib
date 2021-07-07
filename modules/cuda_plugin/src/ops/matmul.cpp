@@ -19,10 +19,11 @@
 namespace CUDAPlugin {
 
 template <typename TOperation>
-MatMulOp::MatMulOp(const TOperation& op,
+MatMulOp::MatMulOp(const CUDA::Device& device,
+                   const TOperation& op,
                    std::vector<unsigned>&& inputIds,
                    std::vector<unsigned>&& outputIds)
-    : OperationCuBlas(op, std::move(inputIds), std::move(outputIds)) {
+    : OperationCuBlas(device, op, std::move(inputIds), std::move(outputIds)) {
     Expects(op.get_input_size() >= 2);
     Expects(op.get_output_size() == 1);
     Expects(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) == convertDataType<cudaDataType_t>(op.get_input_element_type(1)));
@@ -68,8 +69,8 @@ MatMulOp::MatMulOp(const TOperation& op,
     Ensures(ld_c_ != 0);
     Ensures(batch_count_ != 0);
 }
-template MatMulOp::MatMulOp(const ngraph::op::MatMul&, std::vector<unsigned>&&, std::vector<unsigned>&&);
-template MatMulOp::MatMulOp(const nodes::FullyConnected&, std::vector<unsigned>&&, std::vector<unsigned>&&);
+template MatMulOp::MatMulOp(const CUDA::Device& device, const ngraph::op::MatMul&, std::vector<unsigned>&&, std::vector<unsigned>&&);
+template MatMulOp::MatMulOp(const CUDA::Device& device, const nodes::FullyConnected&, std::vector<unsigned>&&, std::vector<unsigned>&&);
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
     constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr {

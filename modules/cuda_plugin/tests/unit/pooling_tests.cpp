@@ -69,10 +69,11 @@ std::shared_ptr<NGraphPoolingNode> build_ngraph_pooling_dummy() {
 template <class NGraphPoolingNode, class CudnnPoolingNode>
 class PoolingRegistryTest : public testing::Test {
   void SetUp() override {
+    CUDA::Device device{};
     // A CUDA Plugin's Op registration requires at least 1 explicit
     // construction of the node.
     auto ngraph_node_dummy = build_ngraph_pooling_dummy<NGraphPoolingNode>();
-    CudnnPoolingNode registration_dummy(ngraph_node_dummy,
+    CudnnPoolingNode registration_dummy(device, ngraph_node_dummy,
                                         std::vector<unsigned>{dummy_index},
                                         std::vector<unsigned>{dummy_index});
   }
@@ -114,6 +115,7 @@ struct PoolingTest : testing::Test {
   }
   void test(gsl::span<const float> input, std::vector<size_t> in_shape,
             gsl::span<const float> output) {
+    CUDA::Device device{};
     InferenceRequestContext context{empty, empty, threadContext};
     auto& registry{OperationRegistry::getInstance()};
     auto const_input = std::make_shared<ngraph::op::Constant>(
@@ -127,7 +129,7 @@ struct PoolingTest : testing::Test {
     auto node = build_ngraph_pooling_node<NGraphPoolingNode>(
         const_input, strides, pads_begin, pads_end, kernel);
 
-    auto operation = registry.createOperation(node, inputIDs, outputIDs);
+    auto operation = registry.createOperation(device, node, inputIDs, outputIDs);
     initializeCudaBuffers(input, output);
 
     operation->Execute(context, {inputs}, {outputs}, {});

@@ -57,18 +57,6 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
     return false;
   }
 
-  const auto output_shape = m_conv->get_output_shape(0);
-  const auto output_width = output_shape.at(output_shape.size() - 1);
-  const auto output_height = output_shape.at(output_shape.size() - 2);
-  // TODO: When spatial size is less then 8x8, fusion cause cuDNN errors.
-  // This is worked around now using the minimum eligible size (as the
-  // fusion does not improve performance greatly on such small shapes anyway)
-  constexpr auto min_eligible_spatial_dim_size = 8;
-  if (output_width < min_eligible_spatial_dim_size ||
-      output_height < min_eligible_spatial_dim_size) {
-    return false;
-  }
-
   const ngraph::Output<Node> &data = m_conv->input(0).get_source_output();
   const ngraph::Output<Node> &filters = m_conv->input(1).get_source_output();
   const ngraph::Output<Node> &bias = m_const->output(0);
@@ -81,6 +69,7 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
     return false;
   }
   constexpr auto nchw_channel_dim_reverse_offset = 3;
+  const auto output_shape = m_conv->get_output_shape(0);
   if (bias_shape.at(bias_shape.size() - nchw_channel_dim_reverse_offset) !=
       output_shape.at(output_shape.size() - nchw_channel_dim_reverse_offset)) {
     return false;

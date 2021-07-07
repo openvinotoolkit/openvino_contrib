@@ -20,11 +20,12 @@
 
 namespace CUDAPlugin {
 
-ConvolutionOp::ConvolutionOp(const NodeOp& node,
+ConvolutionOp::ConvolutionOp(const CUDA::Device& device,
+                             const NodeOp& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
-    : OperationCuDnn(node, std::move(inputIds), std::move(outputIds)) {
-    CreateImpl(node);
+    : OperationCuDnn(device, node, std::move(inputIds), std::move(outputIds)) {
+    CreateImpl(device, node);
 }
 
 void ConvolutionOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
@@ -43,13 +44,13 @@ IOperationExec::WorkbufferStatus ConvolutionOp::SetWorkbufferIds(WorkbufferIndic
   return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 
-void ConvolutionOp::CreateImpl(const NodeOp& node) {
+void ConvolutionOp::CreateImpl(const CUDA::Device& device, const NodeOp& node) {
     const Convolution::Details::ConvolutionParams params { node };
 
     std::stringstream exception_msg;
 
     try {
-        impl_ = std::make_unique<ConvolutionCuDnn>(params);
+        impl_ = std::make_unique<ConvolutionCuDnn>(device, params);
         return;
     } catch(const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what() << std::endl;
