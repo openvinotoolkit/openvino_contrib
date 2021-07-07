@@ -101,6 +101,7 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
 }
 
 void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function) {
+    CUDA::Device device{cfg_.deviceId};
     function_ = function;
     // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
     // as inference request output names but the name of the layer before.
@@ -127,7 +128,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
         }
         auto inIds = opBuffersExtractor.inputBufferIndices(*node);
         auto outIds = opBuffersExtractor.outputBufferIndices(*node);
-        auto operation = OperationRegistry::getInstance().createOperation(node, move(inIds), move(outIds));
+        auto operation = OperationRegistry::getInstance().createOperation(device, node, move(inIds), move(outIds));
         if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()))) {
           init_sequence.push_back(operation);
         }

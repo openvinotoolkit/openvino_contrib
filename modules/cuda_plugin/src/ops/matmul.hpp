@@ -17,7 +17,8 @@ class MatMulOp : public OperationCuBlas {
 public:
     using NodeOp = ngraph::op::MatMul;
     template <typename TOperation>
-    MatMulOp(const TOperation& node,
+    MatMulOp(const CUDA::Device& device,
+             const TOperation& node,
              std::vector<unsigned>&& inputIds,
              std::vector<unsigned>&& outputIds);
     void Execute(const InferenceRequestContext& context,

@@ -10,7 +10,7 @@ namespace CUDAPlugin {
 
 class AddOp : public CuDnnTensorOpBase {
   public:
-    AddOp(const std::shared_ptr<ngraph::Node>& node,
+    AddOp(const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
           IndexCollection&& inputIds, IndexCollection&& outputIds);
 };
 

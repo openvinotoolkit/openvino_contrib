@@ -17,7 +17,8 @@ namespace CUDAPlugin {
 
 class TransposeOp : public OperationCuTensor {
 public:
-    TransposeOp(const std::shared_ptr<ngraph::Node>& node,
+    TransposeOp(const CUDA::Device& device,
+             const std::shared_ptr<ngraph::Node>& node,
              std::vector<unsigned>&& inputIds,
              std::vector<unsigned>&& outputIds);
     void Execute(const InferenceRequestContext& context,

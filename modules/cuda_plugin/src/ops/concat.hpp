@@ -17,7 +17,8 @@ namespace CUDAPlugin {
 class ConcatOp : public OperationBase {
  public:
   using NodeOp = ngraph::op::Concat;
-  ConcatOp(const NodeOp& node,
+  ConcatOp(const CUDA::Device& device,
+            const NodeOp& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

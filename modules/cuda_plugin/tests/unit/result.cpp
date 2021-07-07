@@ -57,6 +57,7 @@ class ResultRegistryTest : public testing::Test {
 struct ResultTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
+    CUDA::Device device{};
     auto& registry { OperationRegistry::getInstance() };
     auto paramNode = std::make_shared<ParameterStubNode>();
     paramNode->set_friendly_name(ParameterStubNode::type_info.name);
@@ -67,7 +68,7 @@ struct ResultTest : testing::Test {
     auto outputIDs = std::vector<unsigned>{};
     resultNode->set_friendly_name(ResultStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(resultNode));
-    operation = registry.createOperation(resultNode, inputIDs, outputIDs);
+    operation = registry.createOperation(device, resultNode, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto resultOp = dynamic_cast<ResultOp*>(operation.get());
     ASSERT_TRUE(resultOp);

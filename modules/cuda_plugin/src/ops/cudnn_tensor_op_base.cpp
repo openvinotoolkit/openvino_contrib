@@ -32,10 +32,10 @@ CUDA::DnnTensorDescriptor desc(
 }
 }  // namespace
 
-CuDnnTensorOpBase::CuDnnTensorOpBase(const std::shared_ptr<ngraph::Node>& node,
+CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
              IndexCollection&& inputIds, IndexCollection&& outputIds,
              const cudnnOpTensorOp_t& opType, const cudnnNanPropagation_t& nanPropogationType)
-    : OperationCuDnn{node, move(inputIds), move(outputIds)},
+    : OperationCuDnn{device, node, move(inputIds), move(outputIds)},
       in0(*node, IoParams::Type::INPUT, 0),
       in1(*node, IoParams::Type::INPUT, 1),
       out(*node, IoParams::Type::OUTPUT, 0),
