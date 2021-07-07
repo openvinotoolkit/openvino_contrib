@@ -16,7 +16,8 @@ namespace CUDAPlugin {
 
 class SplitOp : public OperationBase {
  public:
-    SplitOp(const ngraph::Node& node,
+    SplitOp(const CUDA::Device& device,
+            const ngraph::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

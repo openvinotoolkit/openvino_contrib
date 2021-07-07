@@ -12,7 +12,8 @@ namespace CUDAPlugin {
 
 class MaxPoolOp : public OperationCuDnn {
  public:
-  explicit MaxPoolOp(const std::shared_ptr<ngraph::Node>& node,
+  explicit MaxPoolOp(const CUDA::Device& device,
+                     const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds);
   void Execute(const InferenceRequestContext& context, Inputs inputTensors,

@@ -42,7 +42,8 @@ private:
  */
 class ConvolutionDescriptorsCuDnn {
 public:
-    ConvolutionDescriptorsCuDnn(const Convolution::Details::ConvolutionParamsCuDnn& params);
+    ConvolutionDescriptorsCuDnn(const CUDA::Device& device,
+            const Convolution::Details::ConvolutionParamsCuDnn& params);
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
     const CUDA::DnnTensorDescriptor& Input() const { return input_; }
@@ -52,9 +53,11 @@ public:
     const cudnnConvolutionFwdAlgoPerf_t& Algo() const { return algo_perf_; }
 
 private:
-    void SelectAlgo(const CUDA::DnnHandle& dnnHandle,
+    void SelectAlgo(const CUDA::Device& device,
+                    const CUDA::DnnHandle& dnnHandle,
                     const Convolution::Details::ConvolutionParamsCuDnn& params);
-    bool SelectAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+    bool SelectAlgoForConvDataType(const CUDA::Device& device,
+                                   const CUDA::DnnHandle& dnnHandle,
                                    const Convolution::Details::ConvolutionParamsCuDnn& params,
                                    cudnnDataType_t convDataType);
 private:
