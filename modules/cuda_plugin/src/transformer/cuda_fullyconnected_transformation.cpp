@@ -62,12 +62,8 @@ bool FullyConnectedTransformation::run_on_function(
         fullyConnectedNode->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] =
             std::make_shared<ngraph::VariantWrapper<std::string>>(originalLayers);
 
-        const Input<Node>* nextNode = nullptr;
-        for (auto& in : addNode->get_output_target_inputs(0)) {
-          nextNode = &in;
-          break;
-        }
-        nextNode->get_node()->set_argument(0, Output<Node>{fullyConnectedNode});
+        auto addOutputNode = addNode->output(0);
+        addOutputNode.replace(Output<Node>{fullyConnectedNode});
 
         isGraphUpdated = true;
       }
