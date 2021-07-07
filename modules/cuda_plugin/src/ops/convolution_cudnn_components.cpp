@@ -81,7 +81,8 @@ ConvolutionParamsCuDnn::MakeConvolutionDescriptor(cudnnDataType_t convDataType) 
 }
 
 
-ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const ConvolutionParamsCuDnn& params)
+ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CUDA::Device& device,
+        const ConvolutionParamsCuDnn& params)
     : tensor_element_type_{ params.ElementType() }
     , input_{ params.MakeInputDescriptor() }
     , filter_{ params.MakeFilterDescriptor() }
@@ -89,41 +90,58 @@ ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const ConvolutionParams
     , conv_{}
     , algo_perf_{} {
     CUDA::DnnHandle dnnHandle {};
-    SelectAlgo(dnnHandle, params);
+    SelectAlgo(device, dnnHandle, params);
 }
 
-void ConvolutionDescriptorsCuDnn::SelectAlgo(const CUDA::DnnHandle& dnnHandle,
+void ConvolutionDescriptorsCuDnn::SelectAlgo(const CUDA::Device& device,
+                                             const CUDA::DnnHandle& dnnHandle,
                                              const ConvolutionParamsCuDnn& params) {
     switch (tensor_element_type_) {
     case CUDNN_DATA_HALF:
-        if (SelectAlgoForConvDataType(dnnHandle, params, CUDNN_DATA_HALF))
+        if (SelectAlgoForConvDataType(device, dnnHandle, params, CUDNN_DATA_HALF))
             return;
-        if (SelectAlgoForConvDataType(dnnHandle, params, CUDNN_DATA_FLOAT))
+        if (SelectAlgoForConvDataType(device, dnnHandle, params, CUDNN_DATA_FLOAT))
             return;
         break;
     default:
-        if (SelectAlgoForConvDataType(dnnHandle, params, tensor_element_type_))
+        if (SelectAlgoForConvDataType(device, dnnHandle, params, tensor_element_type_))
             return;
     }
 
     THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
 }
 
-bool ConvolutionDescriptorsCuDnn::SelectAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+bool ConvolutionDescriptorsCuDnn::SelectAlgoForConvDataType(const CUDA::Device& device,
+                                                            const CUDA::DnnHandle& dnnHandle,
                                                             const ConvolutionParamsCuDnn& params,
                                                             cudnnDataType_t convDataType) {
+    cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
     conv_ = params.MakeConvolutionDescriptor(convDataType);
     const int requestedAlgoCount = 1;
     int returnedAlgoCount = 0;
-    cudnnStatus_t status = ::cudnnGetConvolutionForwardAlgorithm_v7(
-                                dnnHandle.get(),
-                                input_.get(),
-                                filter_.get(),
-                                conv_.get(),
-                                output_.get(),
-                                requestedAlgoCount,
-                                &returnedAlgoCount,
-                                &algo_perf_);
+    if (device.props().major < 7)
+    {
+        status = ::cudnnFindConvolutionForwardAlgorithm(
+                                    dnnHandle.get(),
+                                    input_.get(),
+                                    filter_.get(),
+                                    conv_.get(),
+                                    output_.get(),
+                                    requestedAlgoCount,
+                                    &returnedAlgoCount,
+                                    &algo_perf_);
+    } else
+    {
+        status = ::cudnnGetConvolutionForwardAlgorithm_v7(
+                                    dnnHandle.get(),
+                                    input_.get(),
+                                    filter_.get(),
+                                    conv_.get(),
+                                    output_.get(),
+                                    requestedAlgoCount,
+                                    &returnedAlgoCount,
+                                    &algo_perf_);
+    }
     return (status == CUDNN_STATUS_SUCCESS)
         && (algo_perf_.status == CUDNN_STATUS_SUCCESS)
         && (returnedAlgoCount > 0);

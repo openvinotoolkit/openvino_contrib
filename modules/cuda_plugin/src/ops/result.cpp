@@ -12,10 +12,11 @@
 
 namespace CUDAPlugin {
 
-ResultOp::ResultOp(const NodeOp& node,
+ResultOp::ResultOp(const CUDA::Device& device,
+                   const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
     output_tensor_name_ = GetOutputTensorName(node);
 }
 

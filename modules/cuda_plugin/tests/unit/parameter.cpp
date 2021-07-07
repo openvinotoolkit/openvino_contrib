@@ -43,13 +43,14 @@ class ParameterRegistryTest : public testing::Test {
 struct ParameterTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
+    CUDA::Device device{};
     auto& registry { OperationRegistry::getInstance() };
     auto node = std::make_shared<ParameterStubNode>();
     auto inputIDs  = std::vector<unsigned>{};
     auto outputIDs = std::vector<unsigned>{0};
     node->set_friendly_name(ParameterStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(node));
-    operation = registry.createOperation(node, inputIDs, outputIDs);
+    operation = registry.createOperation(device, node, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto parameterOp = dynamic_cast<ParameterOp*>(operation.get());
     ASSERT_TRUE(parameterOp);

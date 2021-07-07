@@ -23,10 +23,11 @@ static __global__ void sigmoid(const size_t inputSize, const float *x, float *y)
     }
 }
 
-SigmoidOp::SigmoidOp(const std::shared_ptr<ngraph::Node>& node,
+SigmoidOp::SigmoidOp(const CUDA::Device& device,
+                     const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
     auto input_element_type = node->get_input_element_type(0);
     auto output_element_type = node->get_output_element_type(0);
     Expects(input_element_type.is_real());

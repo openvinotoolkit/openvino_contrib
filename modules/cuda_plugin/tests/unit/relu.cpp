@@ -42,12 +42,13 @@ struct ReluTest : testing::Test {
   std::vector<devptr_t> outputs{outAlloc.get()};
   InferenceEngine::BlobMap empty;
   CUDAPlugin::OperationBase::Ptr operation = [this] {
+    CUDA::Device device{};
     auto param = std::make_shared<ngraph::op::v0::Parameter>(
         ngraph::element::f32, ngraph::PartialShape{length});
     auto node = std::make_shared<ngraph::op::v0::Relu>(param->output(0));
     auto& registry = CUDAPlugin::OperationRegistry::getInstance();
     TASSERT_TRUE(registry.hasOperation(node));
-    auto op = registry.createOperation(node, std::array{0u}, std::array{0u});
+    auto op = registry.createOperation(device, node, std::array{0u}, std::array{0u});
     TASSERT_TRUE(op);
     return op;
   }();

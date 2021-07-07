@@ -34,10 +34,11 @@ __global__ void convert_impl(size_t inputSize, TOutput * out, const TInput *in) 
 }
 } //namespace kernel
 
-ConvertOp::ConvertOp(const std::shared_ptr<ngraph::Node>& node,
+ConvertOp::ConvertOp(const CUDA::Device& device,
+                     const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
     Type_t input_element_type = node->get_input_element_type(0);
     Type_t output_element_type = node->get_output_element_type(0);
     Expects(input_element_type >= Type_t::boolean && input_element_type <= Type_t::u64);
