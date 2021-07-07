@@ -14,7 +14,8 @@ namespace CUDAPlugin {
 class ConvolutionOp : public OperationCuDnn {
 public:
     using NodeOp = ngraph::op::v1::Convolution;
-    ConvolutionOp(const NodeOp& node,
+    ConvolutionOp(const CUDA::Device& device,
+                  const NodeOp& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
@@ -30,7 +31,7 @@ public:
     using ArgIndices = Convolution::Details::ConvArgIndices;
 
 private:
-    void CreateImpl(const NodeOp& node);
+    void CreateImpl(const CUDA::Device& device, const NodeOp& node);
 
 private:
     std::unique_ptr<IOperationExec> impl_;

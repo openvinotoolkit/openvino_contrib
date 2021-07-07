@@ -13,7 +13,7 @@ namespace CUDAPlugin {
 
 class ConvertOp : public OperationBase {
  public:
-    ConvertOp(const std::shared_ptr<ngraph::Node>& node,
+    ConvertOp(const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
               IndexCollection&& inputIds, IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,

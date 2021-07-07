@@ -10,10 +10,11 @@
 
 namespace CUDAPlugin {
 
-MaxPoolOp::MaxPoolOp(const std::shared_ptr<ngraph::Node>& node,
+MaxPoolOp::MaxPoolOp(const CUDA::Device& device,
+                     const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds)
-    : OperationCuDnn(node, std::move(inputIds), std::move(outputIds)),
+    : OperationCuDnn(device, node, std::move(inputIds), std::move(outputIds)),
       impl_{dynamic_cast<const ngraph::op::v1::MaxPool&>(*node)} {}
 
 void MaxPoolOp::Execute(const InferenceRequestContext& context, Inputs inputs,

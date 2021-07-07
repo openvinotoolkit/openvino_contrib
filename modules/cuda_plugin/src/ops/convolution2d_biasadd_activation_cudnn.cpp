@@ -14,8 +14,9 @@
 namespace CUDAPlugin {
 
 Convolution2DBiasAddActivationCuDnn::Convolution2DBiasAddActivationCuDnn(
+    const CUDA::Device& device,
     const Convolution::Details::ConvolutionBiasAddActivationParams& params)
-    : conv_descs_{ params.conv_ }
+    : conv_descs_{ device, params.conv_ }
     , bias_desc_{ MakeBiasDescriptor(params.bias_shape_, params.conv_.element_type_) }
     , activation_desc_{ MakeActivationDescriptor(params.activation_) } {
 }

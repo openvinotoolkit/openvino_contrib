@@ -10,7 +10,8 @@
 
 namespace CUDAPlugin {
 
-OperationBase::OperationBase(const ngraph::Node& node,
+OperationBase::OperationBase(const CUDA::Device& /*device*/,
+                             const ngraph::Node& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
     : node_name_{node.get_name()},

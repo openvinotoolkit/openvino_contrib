@@ -23,6 +23,7 @@ class OperationRegistryTest : public testing::Test {
  public:
     std::vector<unsigned> dummyInputTensorIds = std::vector<unsigned>{1, 2, 3};
     std::vector<unsigned> dummyOutputTensorIds = std::vector<unsigned>{4, 5, 6};
+    CUDA::Device device_{};
 };
 
 class SaxpyDummyNode : public ngraph::Node {
@@ -65,23 +66,24 @@ TEST_F(OperationRegistryTest, CheckOperation_NotFound) {
 
 TEST_F(OperationRegistryTest, GetOperationBuilder_Available) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
-    ASSERT_TRUE(OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds));
+    ASSERT_TRUE(OperationRegistry::getInstance().createOperation(device_, saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds));
 }
 
 TEST_F(OperationRegistryTest, GetOperationBuilder_NotFound) {
     auto superOperationDummyNode = std::make_shared<SuperOperationDummyNode>();
-    ASSERT_THROW(OperationRegistry::getInstance().createOperation(superOperationDummyNode, dummyInputTensorIds, dummyOutputTensorIds), std::out_of_range);
+    ASSERT_THROW(OperationRegistry::getInstance().createOperation(device_, superOperationDummyNode, dummyInputTensorIds, dummyOutputTensorIds),
+            std::out_of_range);
 }
 
 TEST_F(OperationRegistryTest, BuildOperation_Saxpy) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
-    auto saxpyOperation = OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
+    auto saxpyOperation = OperationRegistry::getInstance().createOperation(device_, saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
     ASSERT_EQ(std::type_index(typeid(*saxpyOperation.get())), std::type_index(typeid(SaxpyOp)));
 }
 
 TEST_F(OperationRegistryTest, BuildOperationAndCheckTenorIds_Success) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
-    auto saxpyDummyOperation = OperationRegistry::getInstance().createOperation(saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
+    auto saxpyDummyOperation = OperationRegistry::getInstance().createOperation(device_, saxpyDummyNode, dummyInputTensorIds, dummyOutputTensorIds);
     ASSERT_TRUE(saxpyDummyOperation);
     auto inputIds = saxpyDummyOperation->GetInputIds();
     auto outputIds = saxpyDummyOperation->GetOutputIds();
