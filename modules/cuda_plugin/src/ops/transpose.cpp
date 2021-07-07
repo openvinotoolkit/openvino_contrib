@@ -16,9 +16,10 @@ using namespace std::string_literals;
 
 namespace CUDAPlugin {
 
-TransposeOp::TransposeOp(const std::shared_ptr<ngraph::Node>& node,
+TransposeOp::TransposeOp(const CUDA::Device& device,
+    const std::shared_ptr<ngraph::Node>& node,
     std::vector<unsigned>&& inputIds, std::vector<unsigned>&& outputIds) :
-    OperationCuTensor(node, std::move(inputIds), std::move(outputIds)),
+    OperationCuTensor(device, node, std::move(inputIds), std::move(outputIds)),
         inputExtents_ { extractInputExtents(*node) },
         dimsNumber_ { inputExtents_.size() },
         outputExtents_ { extractOutputExtents(*node) },

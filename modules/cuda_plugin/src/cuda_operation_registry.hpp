@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "cuda_operation_base.hpp"
+#include <cuda/runtime.hpp>
 
 namespace CUDAPlugin {
 
@@ -17,12 +18,14 @@ namespace details {
 
 template<typename TOperation>
 constexpr bool isConstructibleWithNodePtr = std::is_constructible<TOperation,
+  const CUDA::Device&,
   const std::shared_ptr<ngraph::Node>&,
   OperationBase::IndexCollection&&,
   OperationBase::IndexCollection&&>::value;
 
 template<typename TOperation>
 constexpr bool isConstructibleWithNodeRef = std::is_constructible<TOperation,
+  const CUDA::Device&,
   const ngraph::Node&,
   OperationBase::IndexCollection&&,
   OperationBase::IndexCollection&&>::value;
@@ -39,6 +42,7 @@ template<typename TOperation>
 constexpr bool constructibleWithNodeOpRef(int) {
   if constexpr(hasNodeOpType<TOperation>(0)) {
     return std::is_constructible<TOperation,
+        const CUDA::Device&,
         const typename TOperation::NodeOp&,
         OperationBase::IndexCollection&&,
         OperationBase::IndexCollection&&>::value;
@@ -58,7 +62,8 @@ class OperationRegistry final {
  public:
   using IndexCollection = OperationBase::IndexCollection;
   using OperationBuilder = std::function<OperationBase::Ptr(
-      const std::shared_ptr<ngraph::Node>&, IndexCollection&&, IndexCollection&&)>;
+          const CUDA::Device&, const std::shared_ptr<ngraph::Node>&,
+          IndexCollection&&, IndexCollection&&)>;
   template <typename TOperation>
   class Register {
   public:
@@ -68,23 +73,27 @@ class OperationRegistry final {
       using namespace details;
       if constexpr(isConstructibleWithNodeOpRef<TOperation>) {
         getInstance().registerOp(opName,
-            [](const std::shared_ptr<ngraph::Node>& node,
+            [](const CUDA::Device& device,
+               const std::shared_ptr<ngraph::Node>& node,
                IndexCollection&& inputs, IndexCollection&& outputs) {
-              return std::make_shared<TOperation>(downcast<const typename TOperation::NodeOp>(node),
-              move(inputs), move(outputs));
+              return std::make_shared<TOperation>(device,
+                  downcast<const typename TOperation::NodeOp>(node),
+                  move(inputs), move(outputs));
             });
       } else { if constexpr(isConstructibleWithNodeRef<TOperation>) {
         getInstance().registerOp(opName,
-            [](const std::shared_ptr<ngraph::Node>& node,
+            [](const CUDA::Device& device,
+               const std::shared_ptr<ngraph::Node>& node,
                IndexCollection&& inputs, IndexCollection&& outputs) {
-              return std::make_shared<TOperation>(*node, move(inputs), move(outputs));
+              return std::make_shared<TOperation>(device, *node, move(inputs), move(outputs));
             });
       } else {
         getInstance().registerOp(
         opName,
-        [](const std::shared_ptr<ngraph::Node>& node,
+        [](const CUDA::Device&device,
+           const std::shared_ptr<ngraph::Node>& node,
            IndexCollection&& inputs, IndexCollection&& outputs) {
-          return std::make_shared<TOperation>(node, move(inputs),
+          return std::make_shared<TOperation>(device, node, move(inputs),
                                               move(outputs));
         });
       }}
@@ -95,11 +104,13 @@ class OperationRegistry final {
 
   bool hasOperation(const std::shared_ptr<ngraph::Node>& node);
 
-  OperationBase::Ptr createOperation(const std::shared_ptr<ngraph::Node>& node,
+  OperationBase::Ptr createOperation(const CUDA::Device& device,
+                                     const std::shared_ptr<ngraph::Node>& node,
                                      IndexCollection&& inIds,
                                      IndexCollection&& outIds);
 
-  OperationBase::Ptr createOperation(const std::shared_ptr<ngraph::Node>& node,
+  OperationBase::Ptr createOperation(const CUDA::Device& device,
+                                     const std::shared_ptr<ngraph::Node>& node,
                                      gsl::span<const unsigned> inIds,
                                      gsl::span<const unsigned> outIds);
 

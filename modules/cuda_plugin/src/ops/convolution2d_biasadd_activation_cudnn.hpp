@@ -14,7 +14,7 @@ namespace CUDAPlugin {
 
 class Convolution2DBiasAddActivationCuDnn : public IOperationExec {
 public:
-    Convolution2DBiasAddActivationCuDnn(
+    Convolution2DBiasAddActivationCuDnn(const CUDA::Device& device,
         const Convolution::Details::ConvolutionBiasAddActivationParams& params);
 
     void Execute(const InferenceRequestContext& context,

@@ -26,10 +26,11 @@ static __global__ void concat(const ConcatOp::Chunk* chunks, const size_t numInp
 }
 } // namespace kernel
 
-ConcatOp::ConcatOp(const NodeOp& concatOp,
+ConcatOp::ConcatOp(const CUDA::Device& device,
+                 const NodeOp& concatOp,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
-    : OperationBase(concatOp, std::move(inputIds), std::move(outputIds)),
+    : OperationBase(device, concatOp, std::move(inputIds), std::move(outputIds)),
       element_type_ {concatOp.get_input_element_type(0)},
       num_inputs_ {concatOp.get_input_size()} {
     auto output_element_type = concatOp.get_output_element_type(0);

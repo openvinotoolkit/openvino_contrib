@@ -18,7 +18,8 @@ class SoftmaxOp : public OperationCuDnn {
  public:
   using InferenceRequestContext = InferenceEngine::gpu::InferenceRequestContext;
   using NodeOp = ngraph::op::v1::Softmax;
-  SoftmaxOp(const NodeOp& node,
+  SoftmaxOp(const CUDA::Device& device,
+            const NodeOp& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
   void Execute(const InferenceRequestContext& context,

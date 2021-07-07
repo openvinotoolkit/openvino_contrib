@@ -11,7 +11,8 @@ namespace CUDAPlugin {
 
 class ParameterOp : public OperationBase {
  public:
-    ParameterOp(const ngraph::Node& node,
+    ParameterOp(const CUDA::Device& device,
+                const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

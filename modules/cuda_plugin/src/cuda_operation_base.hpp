@@ -71,7 +71,8 @@ class OperationBase
   using Ptr = std::shared_ptr<OperationBase>;
   using WeakPtr = std::weak_ptr<OperationBase>;
   using IndexCollection = std::vector<unsigned>;
-  OperationBase(const ngraph::Node& node,
+  OperationBase(const CUDA::Device& device,
+                const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
 
@@ -80,10 +81,11 @@ class OperationBase
   }
   void InitSharedImmutableWorkbuffers(const Buffers&) override {}
  protected:
-  OperationBase(const std::shared_ptr<ngraph::Node>& node,
+  OperationBase(const CUDA::Device& device,
+                const std::shared_ptr<ngraph::Node>& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds)
-    : OperationBase(*node, move(inputIds), move(outputIds)) {}
+    : OperationBase(device, *node, move(inputIds), move(outputIds)) {}
  public:
   const std::string_view& GetCategory() const override {
     return Category::CUDA;

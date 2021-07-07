@@ -51,13 +51,14 @@ struct ConcatTest : testing::Test {
   void SetUp() override { }
   void TearDown() override { }
   void run(size_t axis) {
+    CUDA::Device device{};
     allocate(axis);
     auto& registry { OperationRegistry::getInstance() };
     auto concatNode = std::make_shared<ngraph::op::Concat>(params, axis);
     auto inputIDs  = std::vector<unsigned>{0, 1, 2};
     auto outputIDs = std::vector<unsigned>{0};
     ASSERT_TRUE(registry.hasOperation(concatNode));
-    auto operation = registry.createOperation(concatNode, inputIDs, outputIDs);
+    auto operation = registry.createOperation(device, concatNode, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
     ASSERT_TRUE(concatOp);

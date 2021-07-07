@@ -15,17 +15,18 @@
 namespace CUDAPlugin {
 
 Convolution2DBiasAddActivationOp::Convolution2DBiasAddActivationOp(
+                             const CUDA::Device& device,
                              const NodeOp& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
-    : OperationCuDnn(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationCuDnn(device, node, std::move(inputIds), std::move(outputIds)) {
     const auto element_type = node.get_input_element_type(ArgIndices::input);
     Expects(element_type == node.get_input_element_type(ArgIndices::filter));
     Expects(element_type == node.get_input_element_type(ArgIndices::bias));
     Expects(element_type == node.get_output_element_type(ArgIndices::output));
     Expects(node.inputs().size() == 3); // Conv input, filters, Bias
 
-    CreateImpl(node);
+    CreateImpl(device, node);
 }
 
 void Convolution2DBiasAddActivationOp::Execute(
@@ -47,13 +48,13 @@ Convolution2DBiasAddActivationOp::SetWorkbufferIds(WorkbufferIndices&& workbuffe
   return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 
-void Convolution2DBiasAddActivationOp::CreateImpl(const NodeOp& node) {
+void Convolution2DBiasAddActivationOp::CreateImpl(const CUDA::Device& device, const NodeOp& node) {
     const Convolution::Details::ConvolutionBiasAddActivationParams params { node };
 
     std::stringstream exception_msg;
 
     try {
-        impl_ = std::make_unique<Convolution2DBiasAddActivationCuDnn>(params);
+        impl_ = std::make_unique<Convolution2DBiasAddActivationCuDnn>(device, params);
         return;
     } catch(const std::exception& e) {
         exception_msg << "Failed to create Convolution2DBiasAddActivationCuDnn impl: " << e.what() << std::endl;

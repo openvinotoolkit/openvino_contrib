@@ -32,10 +32,11 @@ static __global__ void split(const size_t numSplitChunks,
     }
 }
 
-SplitOp::SplitOp(const ngraph::Node& node,
+SplitOp::SplitOp(const CUDA::Device& device,
+                 const ngraph::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
-    : OperationBase(node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
     auto splitOp = dynamic_cast<const ngraph::op::v1::Split*>(&node);
     Expects(splitOp);
     auto input_element_type = splitOp->get_input_element_type(0);

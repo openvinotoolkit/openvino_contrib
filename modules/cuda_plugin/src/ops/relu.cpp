@@ -46,9 +46,9 @@ class Relu : public OperationCuDnn {
   static inline float zero = 0;
 
  public:
-  Relu(const std::shared_ptr<ngraph::Node>& node,
+  Relu(const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
        std::vector<unsigned> inputIds, std::vector<unsigned> outputIds)
-      : OperationCuDnn{node, move(inputIds), move(outputIds)},
+      : OperationCuDnn{device, node, move(inputIds), move(outputIds)},
         xDesc{inputDesc(*node, 0)},
         yDesc{outputDesc(*node, 0)} {}
   void Execute(const InferenceRequestContext& context, Inputs inputTensors,

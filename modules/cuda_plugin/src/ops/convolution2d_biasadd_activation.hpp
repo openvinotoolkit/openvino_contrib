@@ -14,8 +14,8 @@ namespace CUDAPlugin {
 class Convolution2DBiasAddActivationOp : public OperationCuDnn {
 public:
     using NodeOp = CUDAPlugin::nodes::Conv2DBiasAddActivation;
-    Convolution2DBiasAddActivationOp(const NodeOp& node, IndexCollection&& inputIds,
-                                     IndexCollection&& outputIds);
+    Convolution2DBiasAddActivationOp(const CUDA::Device& device, const NodeOp& node,
+                                     IndexCollection&& inputIds, IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context, Inputs inputTensors,
                  Outputs outputTensors, const Workbuffers& workbuffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
@@ -27,7 +27,7 @@ public:
     using ArgIndices = Convolution::Details::ConvolutionBiasAddActivationIndices;
 
 private:
-    void CreateImpl(const NodeOp& node);
+    void CreateImpl(const CUDA::Device& device, const NodeOp& node);
     std::unique_ptr<IOperationExec> impl_;
 };
 
