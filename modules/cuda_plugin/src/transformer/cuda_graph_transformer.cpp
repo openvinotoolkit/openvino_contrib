@@ -24,8 +24,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
   [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
 
   manager.register_pass<ngraph::pass::InitNodeInfo>();
-  // TODO: enable whenever Conv2DBiasAdd Op implementation available
-  // manager.register_pass<ngraph::pass::CudaFuseConv2DBiasAddActivation>();
+  manager.register_pass<ngraph::pass::CudaFuseConv2DBiasAddActivation>();
   manager.register_pass<ngraph::pass::CommonOptimizations>();
   manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
 

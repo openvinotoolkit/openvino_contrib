@@ -7,26 +7,28 @@
 #include <cuda_operation_base.hpp>
 #include <memory>
 #include <transformer/nodes/convolution2d_biasadd_activation.hpp>
+#include "convolution_components.hpp"
 
 namespace CUDAPlugin {
 
 class Convolution2DBiasAddActivationOp : public OperationCuDnn {
- public:
-  using NodeOp = CUDAPlugin::nodes::Conv2DBiasAddActivation;
-  Convolution2DBiasAddActivationOp(const NodeOp& node, IndexCollection&& inputIds,
-                                 IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-               Outputs outputTensors, const Workbuffers& workbuffers) override;
+public:
+    using NodeOp = CUDAPlugin::nodes::Conv2DBiasAddActivation;
+    Convolution2DBiasAddActivationOp(const NodeOp& node, IndexCollection&& inputIds,
+                                     IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context, Inputs inputTensors,
+                 Outputs outputTensors, const Workbuffers& workbuffers) override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
 
-  struct ArgIndices {
-    static constexpr size_t input = 0;
-    static constexpr size_t filter = 1;
-    static constexpr size_t bias = 2;
-    static constexpr size_t output = 0;
-  };
+    void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
+    const WorkbufferIndices& GetWorkbufferIds() const override;
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override;
 
- private:
-  std::unique_ptr<IOperationExec> impl_;
+    using ArgIndices = Convolution::Details::ConvolutionBiasAddActivationIndices;
+
+private:
+    void CreateImpl(const NodeOp& node);
+    std::unique_ptr<IOperationExec> impl_;
 };
 
 }  // namespace CUDAPlugin
