@@ -9,18 +9,13 @@
 #include <sstream>
 #include <fmt/format.h>
 
-#include <ngraph/validation_util.hpp>
-
 #include "cuda_operation_registry.hpp"
-#include "convolution_cudnn.hpp"
-#include "convolution_cudnn_be.hpp"
+#include "convolution2d_biasadd_activation_cudnn.hpp"
 
 namespace CUDAPlugin {
 
-constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
-constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
-
-Convolution2DBiasAddActivationOp::Convolution2DBiasAddActivationOp(const NodeOp& node,
+Convolution2DBiasAddActivationOp::Convolution2DBiasAddActivationOp(
+                             const NodeOp& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
     : OperationCuDnn(node, std::move(inputIds), std::move(outputIds)) {
@@ -29,14 +24,44 @@ Convolution2DBiasAddActivationOp::Convolution2DBiasAddActivationOp(const NodeOp&
     Expects(element_type == node.get_input_element_type(ArgIndices::bias));
     Expects(element_type == node.get_output_element_type(ArgIndices::output));
     Expects(node.inputs().size() == 3); // Conv input, filters, Bias
+
+    CreateImpl(node);
 }
 
 void Convolution2DBiasAddActivationOp::Execute(
     const InferenceRequestContext& context, Inputs inputs, Outputs outputs,
     const Workbuffers& workbuffers) {
-  std::cout << "Error: Convolution2DBiasAddActivationOp not implemented!\n";
-  if (impl_) impl_->Execute(context, inputs, outputs, workbuffers);
+    impl_->Execute(context, inputs, outputs, workbuffers);
 }
 
-OPERATION_REGISTER(Convolution2DBiasAddActivationOp, ConvolutionBiasAddActivation);
+WorkbufferRequest Convolution2DBiasAddActivationOp::GetWorkBufferRequest() const {
+    return impl_->GetWorkBufferRequest();
+}
+
+const WorkbufferIndices& Convolution2DBiasAddActivationOp::GetWorkbufferIds() const {
+    return impl_->GetWorkbufferIds();
+}
+
+IOperationExec::WorkbufferStatus
+Convolution2DBiasAddActivationOp::SetWorkbufferIds(WorkbufferIndices&& workbufferIds) {
+  return impl_->SetWorkbufferIds(std::move(workbufferIds));
+}
+
+void Convolution2DBiasAddActivationOp::CreateImpl(const NodeOp& node) {
+    const Convolution::Details::ConvolutionBiasAddActivationParams params { node };
+
+    std::stringstream exception_msg;
+
+    try {
+        impl_ = std::make_unique<Convolution2DBiasAddActivationCuDnn>(params);
+        return;
+    } catch(const std::exception& e) {
+        exception_msg << "Failed to create Convolution2DBiasAddActivationCuDnn impl: " << e.what() << std::endl;
+    }
+
+    THROW_IE_EXCEPTION << fmt::format("unsupported `{}` node:\n {}",
+                                      node.get_type_info().name, exception_msg.str());
+}
+
+OPERATION_REGISTER(Convolution2DBiasAddActivationOp, Conv2DBiasAddActivation);
 } // namespace CUDAPlugin

@@ -1,0 +1,101 @@
+// Copyright (C) 2018-2021 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "convolution_components.hpp"
+
+#include <gsl/gsl_assert>
+#include <ngraph/validation_util.hpp>
+
+
+namespace CUDAPlugin::Convolution::Details {
+
+constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
+
+ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node)
+    : element_type_{ node.get_input_element_type(ConvArgIndices::input) }
+    , input_shape_{ node.get_input_shape(ConvArgIndices::input) }
+    , filter_shape_{ node.get_input_shape(ConvArgIndices::filter) }
+    , output_shape_{ node.get_output_shape(ConvArgIndices::output) }
+    , strides_{ node.get_strides() }
+    , dilations_{ node.get_dilations() }
+    , padding_before_{ node.get_pads_begin() }
+    , padding_after_{ node.get_pads_end() }
+{
+    Expects(input_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
+    Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
+    Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
+
+    InferPadding(node);
+
+    if (input_shape_.size() == CONV_1D_DIMS_NUMBER)
+        ConvertConv1DToConv2D();
+
+    const size_t dims_number = NumberOfDims();
+    Ensures(input_shape_.size() == dims_number);
+    Ensures(filter_shape_.size() == dims_number);
+    Ensures(output_shape_.size() == dims_number);
+
+    const size_t spatial_dims_number = NumberOfSpatialDims();
+    // Convolution dimension according to op spec is 1D, 2D or 3D.
+    // 1D is already turned into 2D at this point.
+    Ensures((spatial_dims_number == 2) || (spatial_dims_number == 3));
+    Ensures(strides_.size() == spatial_dims_number);
+    Ensures(dilations_.size() == spatial_dims_number);
+    Ensures(padding_before_.size() == spatial_dims_number);
+    Ensures(padding_after_.size() == spatial_dims_number);
+}
+
+void ConvolutionParams::InferPadding(const ngraph::op::v1::Convolution& node) {
+    const ngraph::op::PadType pad_type = node.get_auto_pad();
+    switch (pad_type) {
+    case ngraph::op::PadType::EXPLICIT:
+        break;
+    case ngraph::op::PadType::SAME_LOWER:
+    case ngraph::op::PadType::SAME_UPPER:
+        {
+            const ngraph::Shape filter_spatial_shape {filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
+                                                      filter_shape_.end()};
+            padding_before_.clear();
+            padding_after_.clear();
+            ngraph::infer_auto_padding(input_shape_, filter_spatial_shape, strides_, dilations_,
+                                       pad_type, padding_before_, padding_after_);
+        } break;
+    case ngraph::op::PadType::VALID:
+        {
+            size_t spatial_dims_number = NumberOfSpatialDims();
+            padding_before_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
+            padding_after_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
+        } break;
+    default:
+        Expects(false);
+    }
+}
+
+void ConvolutionParams::ConvertConv1DToConv2D() {
+    if (input_shape_.size() != CONV_1D_DIMS_NUMBER)
+        return;
+
+    Expects(input_shape_.size() == CONV_1D_DIMS_NUMBER);
+    input_shape_.insert(input_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
+    Expects(filter_shape_.size() == CONV_1D_DIMS_NUMBER);
+    filter_shape_.insert(filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
+    Expects(output_shape_.size() == CONV_1D_DIMS_NUMBER);
+    output_shape_.insert(output_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
+    strides_.insert(strides_.begin(), 1);
+    dilations_.insert(dilations_.begin(), 1);
+    padding_before_.insert(padding_before_.begin(), 0);
+    padding_after_.insert(padding_after_.begin(), 0);
+}
+
+
+ConvolutionBiasAddActivationParams::ConvolutionBiasAddActivationParams(
+                                    const CUDAPlugin::nodes::Conv2DBiasAddActivation& node)
+    : conv_{ node.conv_op() }
+    , bias_shape_{ node.get_input_shape(ConvolutionBiasAddActivationIndices::bias) }
+    , activation_{ node.get_activation() } {
+    Expects(conv_.NumberOfSpatialDims() == 2);
+    Expects(conv_.element_type_ == node.get_input_element_type(ConvolutionBiasAddActivationIndices::bias));
+}
+
+} // namespace CUDAPlugin

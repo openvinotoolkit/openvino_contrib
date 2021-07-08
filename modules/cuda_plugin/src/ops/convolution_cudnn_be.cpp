@@ -24,41 +24,35 @@ struct DnnTensorID {
     static constexpr int64_t output = 'y';
 };
 
-ConvolutionCuDnnBE::ConvolutionCuDnnBE(ngraph::element::Type_t element_type,
-                                       const ngraph::Shape& input_shape,
-                                       const ngraph::Shape& filter_shape,
-                                       const ngraph::Shape& output_shape,
-                                       const ngraph::Strides& strides,
-                                       const ngraph::Strides& dilations,
-                                       const ngraph::CoordinateDiff& padding_before,
-                                       const ngraph::CoordinateDiff& padding_after)
+ConvolutionCuDnnBE::ConvolutionCuDnnBE(const Convolution::Details::ConvolutionParams& params)
     : exec_plan_index_hint_ {0} {
-    const cudnnDataType_t tensor_element_type = convertDataType<cudnnDataType_t>(element_type);
+    const cudnnDataType_t tensor_element_type =
+        convertDataType<cudnnDataType_t>(params.element_type_);
 
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should already be
     // turned into 2D at this point.
-    const int arrayLength = static_cast<int>(input_shape.size()) - NON_SPATIAL_DIMS_NUMBER;
+    const int arrayLength = static_cast<int>(params.input_shape_.size()) - NON_SPATIAL_DIMS_NUMBER;
     Expects((arrayLength == 2) || (arrayLength == 3));
-    Expects(arrayLength == strides.size());
-    Expects(arrayLength == dilations.size());
-    Expects(arrayLength == padding_before.size());
-    Expects(arrayLength == padding_after.size());
+    Expects(arrayLength == params.strides_.size());
+    Expects(arrayLength == params.dilations_.size());
+    Expects(arrayLength == params.padding_before_.size());
+    Expects(arrayLength == params.padding_after_.size());
 
     CUDA::DnnBETensorDescriptor input_desc =
-        MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, input_shape);
+        MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, params.input_shape_);
     CUDA::DnnBETensorDescriptor filter_desc =
-        MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, filter_shape);
+        MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, params.filter_shape_);
     CUDA::DnnBETensorDescriptor output_desc =
-        MakeTensorDescriptor(DnnTensorID::output, tensor_element_type, output_shape);
+        MakeTensorDescriptor(DnnTensorID::output, tensor_element_type, params.output_shape_);
 
     CUDA::DnnBEConvolutionDescriptor conv_desc;
     conv_desc.setMode(CUDNN_CROSS_CORRELATION);
     conv_desc.setComputeType(tensor_element_type);
     conv_desc.setNumberOfSpatialDimensions(arrayLength);
-    conv_desc.setPrePaddings(padding_before);
-    conv_desc.setPostPaddings(padding_after);
-    conv_desc.setDilations(dilations);
-    conv_desc.setFilterStrides(strides);
+    conv_desc.setPrePaddings(params.padding_before_);
+    conv_desc.setPostPaddings(params.padding_after_);
+    conv_desc.setDilations(params.dilations_);
+    conv_desc.setFilterStrides(params.strides_);
     conv_desc.finalize();
 
     CUDA::DnnBEOperationConvolutionForwardDescriptor conv_op_desc;

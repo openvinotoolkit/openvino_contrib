@@ -6,18 +6,16 @@
 
 #include <ngraph/node.hpp>
 
+#include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
 #include "convolution_cudnn_components.hpp"
 
 namespace CUDAPlugin {
 
-/**
- * @brief Implements `ngraph::op::v1::Convolution` using cuDNN API
- * which doesn't support asymmetric padding.
- */
-class ConvolutionCuDnn : public IOperationExec {
+class Convolution2DBiasAddActivationCuDnn : public IOperationExec {
 public:
-    ConvolutionCuDnn(const Convolution::Details::ConvolutionParams& params);
+    Convolution2DBiasAddActivationCuDnn(
+        const Convolution::Details::ConvolutionBiasAddActivationParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -32,8 +30,15 @@ public:
     }
 
 private:
+    static CUDA::DnnTensorDescriptor MakeBiasDescriptor(const ngraph::Shape& shape,
+                                                        ngraph::element::Type_t element_type);
+    static CUDA::DnnActivationDescriptor MakeActivationDescriptor(nodes::ActivationMode mode);
+
+private:
     WorkbufferIndices workbuffer_ids_;
-    Convolution::Details::ConvolutionDescriptorsCuDnn descs_;
+    Convolution::Details::ConvolutionDescriptorsCuDnn conv_descs_;
+    CUDA::DnnTensorDescriptor bias_desc_;
+    CUDA::DnnActivationDescriptor activation_desc_;
 };
 
 } // namespace CUDAPlugin
