@@ -10,8 +10,6 @@ def forward_hook(self, inputs, output):
     if isinstance(output, OpenVINOTensor) and output.node_name:
         return output
 
-    print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-    print(self.__class__.__name__)
 
     graph = inputs[0].graph
     if graph is None:
@@ -254,6 +252,7 @@ def register_functional_hook(func):
 register_functional_hook(F.adaptive_avg_pool2d)
 register_functional_hook(F.linear)
 register_functional_hook(F.dropout)
+register_functional_hook(F.dropout3d)
 
 
 @implements(F.max_pool2d)
@@ -318,6 +317,29 @@ def function_hook(input, *args, **kwargs):
 
     output = F.relu(input.tensor(), *args, **kwargs)
     return forward_hook(ReLU(*args, **kwargs), (input,), output)
+
+
+@implements(torch.sigmoid)
+def function_hook(input, *args, **kwargs):
+
+    class Sigmoid(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    output = torch.sigmoid(input.tensor(), *args, **kwargs)
+    return forward_hook(Sigmoid(*args, **kwargs), (input,), output)
+
+
+@implements(F.leaky_relu)
+def function_hook(input, *args, **kwargs):
+
+    class LeakyReLU(nn.Module):
+        def __init__(self, negative_slope, inplace):
+            super().__init__()
+            self.negative_slope = negative_slope
+
+    output = F.leaky_relu(input.tensor(), *args, **kwargs)
+    return forward_hook(LeakyReLU(*args, **kwargs), (input,), output)
 
 
 @implements(F.batch_norm)

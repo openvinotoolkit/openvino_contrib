@@ -27,3 +27,12 @@ class DropoutFrontExtractor(FrontExtractorOp):
     def extract(cls, node):
         Identity.update_node_stat(node)
         return cls.enabled
+
+class Dropout3dFrontExtractor(FrontExtractorOp):
+    op = 'Dropout3d'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        Identity.update_node_stat(node)
+        return cls.enabled
