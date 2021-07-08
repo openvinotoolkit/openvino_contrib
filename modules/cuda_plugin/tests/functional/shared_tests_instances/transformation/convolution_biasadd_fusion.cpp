@@ -9,8 +9,7 @@ using namespace NGraphConversionTestsDefinitions;
 
 namespace {
 
-// TODO: enable whenever Conv2DBiasAdd Op implementation available
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Basic, ConvBiasFusion,
+INSTANTIATE_TEST_CASE_P(smoke_Basic, ConvBiasFusion,
                         ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                         ConvBiasFusion::getTestCaseName);
 
