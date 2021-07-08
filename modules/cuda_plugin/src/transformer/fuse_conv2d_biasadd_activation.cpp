@@ -12,6 +12,7 @@
 #include <ngraph/variant.hpp>
 #include <transformations/utils/utils.hpp>
 
+#include "nodes/cuda_plugin_custom_node_types.hpp"
 #include "nodes/convolution2d_biasadd_activation.hpp"
 
 using namespace ngraph;
@@ -94,7 +95,7 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
       m_conv->get_pads_end(),    //
       m_conv->get_dilations(),   //
       m_conv->get_auto_pad(),    //
-      FusedConv::SupportedActivation::NO_ACTIVATION);
+      CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION);
   ngraph::Output<ngraph::Node> new_conv(fused_conv);
 
   ngraph::copy_runtime_info({m_conv, eltwise}, new_conv.get_node_shared_ptr());
@@ -111,7 +112,7 @@ bool sink_relu_to_fused_convolution(ngraph::pattern::Matcher &m) {
   auto fused_conv = std::dynamic_pointer_cast<FusedConv>(
       relu->input(0).get_source_output().get_node_shared_ptr());
 
-  fused_conv->set_activation(FusedConv::SupportedActivation::RELU);
+  fused_conv->set_activation(CUDAPlugin::nodes::ActivationMode::RELU);
   auto rt_info_layer_names =
       fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES];
   const auto original_names =

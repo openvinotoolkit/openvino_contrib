@@ -10,7 +10,7 @@
 
 #include "cuda/dnn_be.hpp"
 #include "cuda_operation_base.hpp"
-
+#include "convolution_components.hpp"
 
 namespace CUDAPlugin {
 
@@ -22,14 +22,7 @@ namespace CUDAPlugin {
  */
 class ConvolutionCuDnnBE : public IOperationExec {
 public:
-    ConvolutionCuDnnBE(ngraph::element::Type_t element_type,
-                       const ngraph::Shape& input_shape,
-                       const ngraph::Shape& filter_shape,
-                       const ngraph::Shape& output_shape,
-                       const ngraph::Strides& strides,
-                       const ngraph::Strides& dilations,
-                       const ngraph::CoordinateDiff& padding_before,
-                       const ngraph::CoordinateDiff& padding_after);
+    ConvolutionCuDnnBE(const Convolution::Details::ConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
