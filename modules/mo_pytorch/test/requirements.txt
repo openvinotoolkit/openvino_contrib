@@ -4,3 +4,4 @@ opencv-python==4.4.0.46
 --find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.7/index.html
 detectron2==0.3
 pyyaml>=5.1
+git+https://github.com/CBICA/BrainMaGe
