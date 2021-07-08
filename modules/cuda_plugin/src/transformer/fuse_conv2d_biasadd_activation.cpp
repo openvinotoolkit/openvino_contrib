@@ -87,11 +87,15 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
       CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION);
   ngraph::Output<ngraph::Node> new_conv(fused_conv);
 
+  fused_conv->set_friendly_name(eltwise->get_friendly_name());
+
   ngraph::copy_runtime_info({m_conv, eltwise}, new_conv.get_node_shared_ptr());
+
   const std::string originalLayers =
       eltwise->get_friendly_name() + "," + m_conv->get_friendly_name();
   fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] =
       std::make_shared<ngraph::VariantWrapper<std::string>>(originalLayers);
+
   ngraph::replace_node(m.get_match_root(), new_conv.get_node_shared_ptr());
   return true;
 }
@@ -102,6 +106,8 @@ bool sink_relu_to_fused_convolution(ngraph::pattern::Matcher &m) {
       relu->input(0).get_source_output().get_node_shared_ptr());
 
   fused_conv->set_activation(CUDAPlugin::nodes::ActivationMode::RELU);
+  fused_conv->set_friendly_name(relu->get_friendly_name());
+
   auto rt_info_layer_names =
       fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES];
   const auto original_names =
