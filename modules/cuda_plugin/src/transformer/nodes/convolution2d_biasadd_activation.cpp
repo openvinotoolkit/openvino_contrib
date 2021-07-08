@@ -13,7 +13,7 @@ Conv2DBiasAddActivation::Conv2DBiasAddActivation(
     const ngraph::Output<Node>& bias, const ngraph::Strides& strides,
     const ngraph::CoordinateDiff& pads_begin,
     const ngraph::CoordinateDiff& pads_end, const ngraph::Strides& dilations,
-    const ngraph::op::PadType& auto_pad, SupportedActivation activation)
+    const ngraph::op::PadType& auto_pad, ActivationMode activation)
     : ngraph::op::Op(ngraph::OutputVector{data_batch, filters, bias}),
       conv_op_(data_batch, filters, strides, pads_begin, pads_end, dilations,
                auto_pad),
@@ -63,13 +63,17 @@ void Conv2DBiasAddActivation::validate_and_infer_types() {
   set_output_type(0, element_type, conv_out_shape);
 }
 
-void Conv2DBiasAddActivation::set_activation(SupportedActivation act) {
+void Conv2DBiasAddActivation::set_activation(ActivationMode act) {
   activation_ = act;
 }
 
-Conv2DBiasAddActivation::SupportedActivation
-Conv2DBiasAddActivation::get_activation() {
+ActivationMode
+Conv2DBiasAddActivation::get_activation() const {
   return activation_;
+}
+
+const ngraph::op::v1::Convolution& Conv2DBiasAddActivation::conv_op() const {
+    return conv_op_;
 }
 
 }  // namespace CUDAPlugin::nodes

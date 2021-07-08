@@ -10,6 +10,8 @@
 #include <details/ie_exception.hpp>
 #include <fmt/format.h>
 
+#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+
 namespace CUDAPlugin {
 
  /**
@@ -59,6 +61,21 @@ inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::
         case Type_t::i32: return CUDNN_DATA_INT32;
         case Type_t::i64: return CUDNN_DATA_INT64;
         default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuDNN library", type.c_type_string());
+    }
+}
+
+/**
+ * @brief Converts cuda plugin activation mode to cuDNN activation mode
+ */
+inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::ActivationMode& mode) {
+    switch (mode) {
+        case nodes::ActivationMode::SIGMOID: return CUDNN_ACTIVATION_SIGMOID;
+        case nodes::ActivationMode::RELU: return CUDNN_ACTIVATION_RELU;
+        case nodes::ActivationMode::TANH: return CUDNN_ACTIVATION_TANH;
+        case nodes::ActivationMode::CLIPPED_RELU: return CUDNN_ACTIVATION_CLIPPED_RELU;
+        case nodes::ActivationMode::ELU: return CUDNN_ACTIVATION_ELU;
+        case nodes::ActivationMode::NO_ACTIVATION: return CUDNN_ACTIVATION_IDENTITY;
+        default: THROW_IE_EXCEPTION << fmt::format("Unsupported activation: {}", mode);
     }
 }
 
