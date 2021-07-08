@@ -60,3 +60,41 @@ class Conv2dFrontExtractor(FrontExtractorOp):
         # update the attributes of the node
         Convolution.update_node_stat(node, attrs)
         return cls.enabled
+
+class Conv3dFrontExtractor(FrontExtractorOp):
+    op = 'Conv3d'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        final_pads = get_pads(node.module)
+
+        # Extract strides attribute
+        strides = node.module.stride
+        final_strides = np.array([1, 1, *strides], dtype=np.int64)
+
+        # Extract dilations attribute
+        dilations = node.module.dilation
+        if isinstance(dilations, int):
+            dilations = [dilations, dilations]
+        final_dilations = np.array([1, 1, *dilations], dtype=np.int64)
+
+        attrs = {
+            'op': 'Conv2D',  # Note: should be 2D but not 2d
+            'pad': final_pads,
+            'stride': final_strides,
+            'dilation': final_dilations,
+            'group': 1,
+            'kernel_spatial': np.array(node.module.kernel_size, dtype=np.int64),
+
+            'input_feature_channel': 1,
+            'output_feature_channel': 0,
+
+            'channel_dims': np.array([1], dtype=np.int64),
+            'batch_dims': np.array([0], dtype=np.int64),
+            'layout': 'NCHW',
+        }
+
+        # update the attributes of the node
+        Convolution.update_node_stat(node, attrs)
+        return cls.enabled

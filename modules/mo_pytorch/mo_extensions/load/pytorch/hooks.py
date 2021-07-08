@@ -10,6 +10,9 @@ def forward_hook(self, inputs, output):
     if isinstance(output, OpenVINOTensor) and output.node_name:
         return output
 
+    print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+    print(self.__class__.__name__)
+
     graph = inputs[0].graph
     if graph is None:
         raise Error('No graph found')
@@ -360,6 +363,28 @@ def function_hook(input, weight, bias, *args, **kwargs):
     return forward_hook(Conv2d(weight, bias, *args, **kwargs), (input,), output)
 
 
+@implements(torch.conv3d)
+def function_hook(input, weight, bias, *args, **kwargs):
+
+    class Conv3d(nn.Conv3d):
+        def __init__(self, weight, bias, stride, padding, dilation, groups):
+            super().__init__(in_channels=input.shape[1],
+                             out_channels=weight.shape[0],
+                             kernel_size=weight.shape[2:],
+                             stride=stride,
+                             padding=padding,
+                             dilation=dilation,
+                             groups=groups,
+                             bias=not bias is None)
+            params = {'weight': weight}
+            if not bias is None:
+                params['bias'] = bias
+            self.load_state_dict(params)
+
+    output = torch.conv3d(input.tensor(), weight, bias, *args, **kwargs)
+    return forward_hook(Conv3d(weight, bias, *args, **kwargs), (input,), output)
+
+
 @implements(torch.flatten)
 def function_hook(input, *args, **kwargs):
 
@@ -370,6 +395,23 @@ def function_hook(input, *args, **kwargs):
 
     output = torch.flatten(input.tensor(), *args, **kwargs)
     return forward_hook(Flatten(*args, **kwargs), (input,), output)
+
+
+@implements(F.instance_norm)
+def function_hook(input, *args, **kwargs):
+    class InstanceNorm(nn.Module):
+        def __init__(self, running_mean, running_var, weight, bias, use_input_stats, momentum, eps):
+            super().__init__()
+            self.running_mean = running_mean
+            self.running_var = running_var
+            self.weight = weight
+            self.bias = bias
+            self.use_input_stats = use_input_stats
+            self.momentum = momentum
+            self.eps = eps
+
+    output = F.instance_norm(input.tensor(), *args, **kwargs)
+    return forward_hook(InstanceNorm(*args, **kwargs), (input,), output)
 
 
 @implements(F.interpolate)
