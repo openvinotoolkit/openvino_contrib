@@ -7,6 +7,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
 #include <fmt/format.h>
+#include <ops/nop_op.hpp>
 
 #include "transformations/serialize.hpp"
 
@@ -130,7 +131,9 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
         if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()))) {
           init_sequence.push_back(operation);
         }
-        exec_sequence_.push_back(operation);
+        if (!dynamic_cast<NopOp*>(operation.get())) {
+          exec_sequence_.push_back(operation);
+        }
     }
 
     memory_manager_pool_ = CreateMemoryManagerPool(opBuffersExtractor);
