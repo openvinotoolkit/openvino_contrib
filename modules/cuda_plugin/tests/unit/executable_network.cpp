@@ -47,8 +47,8 @@ TEST_F(ExecNetworkTest, BuildExecutableSequence_MatMul_Success) {
     auto execNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(
         plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}}));
     const auto& execSequence = GetExecSequence(execNetwork);
-    ASSERT_EQ(execSequence.size(), 4);
-    ASSERT_EQ(std::type_index(typeid(*execSequence[2].get())), std::type_index(typeid(MatMulOp)));
+    ASSERT_EQ(execSequence.size(), 3);
+    ASSERT_EQ(std::type_index(typeid(*execSequence[1].get())), std::type_index(typeid(MatMulOp)));
 }
 
 TEST_F(ExecNetworkTest, BuildExecutableSequence_SuperOperation_Failed) {
