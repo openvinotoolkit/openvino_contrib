@@ -10,22 +10,12 @@
 #include "ngraph/attribute_adapter.hpp"
 #include "ngraph/ngraph_visibility.hpp"
 #include "ngraph/type.hpp"
+#include "cuda_plugin_custom_node_types.hpp"
 
 namespace CUDAPlugin::nodes {
 
 class Conv2DBiasAddActivation : public ngraph::op::Op {
  public:
-
-  /// Mirrors the cuDNN cudnnActivationMode_t enum
-  enum class SupportedActivation {
-    SIGMOID,
-    RELU,
-    TANH,
-    CLIPPED_RELU,
-    ELU,
-    NO_ACTIVATION
-  };
-
   explicit Conv2DBiasAddActivation(const ngraph::Output<Node>& data_batch,
                            const ngraph::Output<Node>& filters,
                            const ngraph::Output<Node>& bias,
@@ -34,9 +24,9 @@ class Conv2DBiasAddActivation : public ngraph::op::Op {
                            const ngraph::CoordinateDiff& pads_end,
                            const ngraph::Strides& dilations,
                            const ngraph::op::PadType& auto_pad,
-                           SupportedActivation activation);
+                           ActivationMode activation);
 
-  inline static constexpr type_info_t type_info{"ConvolutionBiasAddActivation", 0};
+  inline static constexpr type_info_t type_info{"Conv2DBiasAddActivation", 0};
   const type_info_t& get_type_info() const override { return type_info; }
 
   bool visit_attributes(ngraph::AttributeVisitor& visitor) override;
@@ -46,8 +36,10 @@ class Conv2DBiasAddActivation : public ngraph::op::Op {
 
   void validate_and_infer_types() override;
 
-  void set_activation(SupportedActivation act);
-  SupportedActivation get_activation();
+  void set_activation(ActivationMode act);
+  ActivationMode get_activation() const;
+
+  const ngraph::op::v1::Convolution& conv_op() const;
 
  private:
   /// Used for the shape validation
@@ -55,7 +47,7 @@ class Conv2DBiasAddActivation : public ngraph::op::Op {
   ngraph::Shape bias_shape_;
   ngraph::element::Type bias_type_;
 
-  SupportedActivation activation_;
+  ActivationMode activation_;
 };
 
 }  // namespace CUDAPlugin::nodes
