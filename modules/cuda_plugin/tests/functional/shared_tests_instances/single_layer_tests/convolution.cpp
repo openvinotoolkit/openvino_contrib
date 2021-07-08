@@ -163,9 +163,10 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric2, ConvolutionLayerTest,
+    smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32, ConvolutionLayerTest,
     ::testing::Combine(
-        conv2DParams_ExplicitPaddingSymmetric2, ::testing::ValuesIn(netPrecisions),
+        conv2DParams_ExplicitPaddingSymmetric2,
+        ::testing::Values(InferenceEngine::Precision::FP32),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
@@ -173,6 +174,34 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ConvolutionLayerTest::getTestCaseName);
+
+class ConvolutionLayerTestWithRelaxedThreshold : public ConvolutionLayerTest {
+    void SetUp() override {
+        ConvolutionLayerTest::SetUp();
+        // threshold = 0.03;
+    }
+};
+
+TEST_P(ConvolutionLayerTestWithRelaxedThreshold, CompareWithRefs) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
+    auto params = GetParam();
+    inPrc = std::get<1>(params);
+    outPrc = std::get<2>(params);
+    Run();
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DISABLED_smoke_Convolution2D_ExplicitPaddingSymmetric2_FP16, ConvolutionLayerTestWithRelaxedThreshold,
+    ::testing::Combine(
+        conv2DParams_ExplicitPaddingSymmetric2,
+        ::testing::Values(InferenceEngine::Precision::FP16),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(InferenceEngine::Layout::ANY),
+        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+    ConvolutionLayerTestWithRelaxedThreshold::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
     DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
