@@ -65,32 +65,32 @@ class TestModels(unittest.TestCase):
     #         raise Exception(errMsg)
 
 
-    # def check_torchvision_model(self, model_func, size, threshold=1e-5):
-    #     inp_size = [1, 3, size[0], size[1]]
+    def check_torchvision_model(self, model_func, size, threshold=1e-5):
+        inp_size = [1, 3, size[0], size[1]]
 
-    #     inp = cv.resize(self.test_img, (size[1], size[0]))
-    #     inp = np.expand_dims(inp.astype(np.float32).transpose(2, 0, 1), axis=0)
-    #     inp /= 255
-    #     inp = torch.tensor(inp)
+        inp = cv.resize(self.test_img, (size[1], size[0]))
+        inp = np.expand_dims(inp.astype(np.float32).transpose(2, 0, 1), axis=0)
+        inp /= 255
+        inp = torch.tensor(inp)
 
-    #     # Create model
-    #     model = model_func(pretrained=True, progress=False)
-    #     model.eval()
-    #     ref = model(inp)
+        # Create model
+        model = model_func(pretrained=True, progress=False)
+        model.eval()
+        ref = model(inp)
 
-    #     # Convert to OpenVINO IR
-    #     mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
+        # Convert to OpenVINO IR
+        mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
 
-    #     # Run model with OpenVINO and compare outputs
-    #     net = self.ie.read_network('model.xml', 'model.bin')
-    #     exec_net = self.ie.load_network(net, 'CPU')
-    #     out = exec_net.infer({'input': inp.detach().numpy()})
+        # Run model with OpenVINO and compare outputs
+        net = self.ie.read_network('model.xml', 'model.bin')
+        exec_net = self.ie.load_network(net, 'CPU')
+        out = exec_net.infer({'input': inp.detach().numpy()})
 
-    #     if isinstance(ref, torch.Tensor):
-    #         ref = {'': ref}
-    #     for out0, ref0 in zip(out.values(), ref.values()):
-    #         diff = np.max(np.abs(out0 - ref0.detach().numpy()))
-    #         self.assertLessEqual(diff, threshold)
+        if isinstance(ref, torch.Tensor):
+            ref = {'': ref}
+        for out0, ref0 in zip(out.values(), ref.values()):
+            diff = np.max(np.abs(out0 - ref0.detach().numpy()))
+            self.assertLessEqual(diff, threshold)
 
     # def test_inception_v3(self):
     #     self.check_torchvision_model(models.inception_v3, (299, 299), 4e-5)

@@ -10,7 +10,6 @@ def forward_hook(self, inputs, output):
     if isinstance(output, OpenVINOTensor) and output.node_name:
         return output
 
-
     graph = inputs[0].graph
     if graph is None:
         raise Error('No graph found')
@@ -364,31 +363,12 @@ def function_hook(input, *args, **kwargs):
 
 
 @implements(torch.conv2d)
-def function_hook(input, weight, bias, *args, **kwargs):
-
-    class Conv2d(nn.Conv2d):
-        def __init__(self, weight, bias, stride, padding, dilation, groups):
-            super().__init__(in_channels=input.shape[1],
-                             out_channels=weight.shape[0],
-                             kernel_size=weight.shape[2:],
-                             stride=stride,
-                             padding=padding,
-                             dilation=dilation,
-                             groups=groups,
-                             bias=not bias is None)
-            params = {'weight': weight}
-            if not bias is None:
-                params['bias'] = bias
-            self.load_state_dict(params)
-
-    output = torch.conv2d(input.tensor(), weight, bias, *args, **kwargs)
-    return forward_hook(Conv2d(weight, bias, *args, **kwargs), (input,), output)
-
-
 @implements(torch.conv3d)
 def function_hook(input, weight, bias, *args, **kwargs):
 
-    class Conv3d(nn.Conv3d):
+    base = nn.Conv2d if input.dim() == 4 else nn.Conv3d
+
+    class Convolution(base):
         def __init__(self, weight, bias, stride, padding, dilation, groups):
             super().__init__(in_channels=input.shape[1],
                              out_channels=weight.shape[0],
@@ -403,8 +383,11 @@ def function_hook(input, weight, bias, *args, **kwargs):
                 params['bias'] = bias
             self.load_state_dict(params)
 
-    output = torch.conv3d(input.tensor(), weight, bias, *args, **kwargs)
-    return forward_hook(Conv3d(weight, bias, *args, **kwargs), (input,), output)
+    if input.dim() == 4:
+        output = torch.conv2d(input.tensor(), weight, bias, *args, **kwargs)
+    elif input.dim() == 5:
+        output = torch.conv3d(input.tensor(), weight, bias, *args, **kwargs)
+    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,), output)
 
 
 @implements(torch.flatten)
@@ -431,6 +414,7 @@ def function_hook(input, *args, **kwargs):
             self.use_input_stats = use_input_stats
             self.momentum = momentum
             self.eps = eps
+            self.dims = input.dim()
 
     output = F.instance_norm(input.tensor(), *args, **kwargs)
     return forward_hook(InstanceNorm(*args, **kwargs), (input,), output)
