@@ -172,16 +172,16 @@ class TestModels(unittest.TestCase):
         pt_model.eval()
 
         # Get reference output
-        inp = torch.Tensor(np.random.standard_normal([1, 1, 128, 128, 128]).astype(np.float32))
+        inp = torch.randn([1, 1, 128, 128, 128])
         ref = pt_model(inp).detach().numpy()
 
         # Perform multiple runs with other inputs to make sure that InstanceNorm layer does not stuck
         for _ in range(2):
-            dummy_inp = torch.Tensor(np.random.standard_normal([1, 1, 128, 128, 128]).astype(np.float32))
+            dummy_inp = torch.randn(inp.shape)
             pt_model(dummy_inp)
 
         # Generate OpenVINO IR
-        mo_pytorch.convert(pt_model, input_shape=[1, 1, 128, 128, 128], model_name='model')
+        mo_pytorch.convert(pt_model, input_shape=list(inp.shape), model_name='model')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
