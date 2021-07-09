@@ -39,7 +39,8 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
                                    const std::shared_ptr<ExecutableNetwork>& executableNetwork)
     : IInferRequestInternal(networkInputs, networkOutputs),
       _executableNetwork(executableNetwork),
-      cancellation_token_{[this] { memory_manager_proxy_.reset(); }} {
+      cancellation_token_{[this] { memory_manager_proxy_.reset(); }},
+      profiler_{_executableNetwork->cfg_.perfCount, _executableNetwork->exec_sequence_} {
     // TODO: allocate infer request device and host buffers if needed, fill
     // actual list of profiling tasks
 
@@ -90,9 +91,9 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
 }
 
 void CudaInferRequest::inferPreprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
+    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::Preprocess]);
     cancellation_token_.Check();
-    auto start = Time::now();
+    profiler_.StartStage();
     IInferRequestInternal::execDataPreprocessing(_deviceInputs);
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in
@@ -113,31 +114,26 @@ void CudaInferRequest::inferPreprocess() {
         convertPrecision(_deviceInputs.at(inputName), networkInput);
     }
     cancellation_token_.Check();
-    _durations[Preprocess] = Time::now() - start;
+    profiler_.StopStage(Profiler::Preprocess);
 }
 
 void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     try {
-        const bool perfCount = _executableNetwork->cfg_.perfCount;
-        OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[StartPipeline])
+        OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::StartPipeline])
         infer_count_++;
-        auto start = Time::now();
+        profiler_.StartStage();
         memory_manager_proxy_ =
                 _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
         auto& manager = memory_manager_proxy_->Get();
         InferenceRequestContext inferRequestContext{network_input_blobs_, network_output_blobs_, threadContext};
-        unsigned execution_index {};
-        if (perfCount) exec_timing_.setStart(threadContext.stream());
-        for (auto& op : _executableNetwork->exec_sequence_) {
+        auto& stream = threadContext.stream();
+        for (auto& op : profiler_.CreateExecSequence(stream)) {
             cancellation_token_.Check();
             auto inputTensors = manager.inputTensorPointers(*op);
             auto outputTensors = manager.outputTensorPointers(*op);
-            if (perfCount) addStartEvent(threadContext.stream(), *op, ++execution_index);
             op->Execute(inferRequestContext, inputTensors, outputTensors, manager.workBuffers(*op));
-            if (perfCount) addStopEvent(threadContext.stream(), *op);
         }
-        if (perfCount) exec_timing_.setStop(threadContext.stream());
-        _durations[StartPipeline] = Time::now() - start;
+        profiler_.StopStage(Profiler::StartPipeline);
     } catch(...) {
         // TODO:
         // Log error once logger is available
@@ -147,19 +143,19 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
 }
 
 void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[WaitPipeline])
+    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::WaitPipeline])
     cancellation_token_.Check();
-    auto start = Time::now();
+    profiler_.StartStage();
     // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
     threadContext.stream().synchronize();
     memory_manager_proxy_.reset();
-    _durations[WaitPipeline] = Time::now() - start;
+    profiler_.StopStage(Profiler::WaitPipeline);
 }
 
 void CudaInferRequest::inferPostprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Postprocess]);
+    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::Postprocess]);
     cancellation_token_.Check();
-    auto start = Time::now();
+    profiler_.StartStage();
     for (auto&& output : _outputs) {
         cancellation_token_.Check();
         auto outputBlob = output.second;
@@ -170,14 +166,15 @@ void CudaInferRequest::inferPostprocess() {
             convertPrecision(networkOutput, outputBlob);
         }
     }
-    _durations[Postprocess] = Time::now() - start;
-    processPerfEvents();
+    profiler_.StopStage(Profiler::Postprocess);
+    profiler_.ProcessEvents();
 }
 
 void CudaInferRequest::Cancel() {
     cancellation_token_.Cancel();
     _executableNetwork->memory_manager_pool_->Interrupt();
 }
+
 InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
   InferenceEngineProfileInfo result {};
   op.GetCategory().copy(result.exec_type, sizeof(result.exec_type)-1);
@@ -202,81 +199,7 @@ constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long 
   };
 }
 
-void CudaInferRequest::addStartEvent(const CUDA::Stream& stream, const IOperationMeta& op, unsigned index) {
-  const auto& name = op.GetName();
-  const auto& type = op.GetTypeName();
-  auto perf = perf_counters_.find(name);
-  if (perf == perf_counters_.cend())
-    perf_counters_.emplace(name, makeProfileInfo(op, index));
-  perf = perf_counters_.find(type);
-  if (perf == perf_counters_.cend()) {
-    perf_counters_.emplace(type, makeProfileInfo(op.GetTypeName(), op.GetCategory()));
-  } else {
-    // Layers of the same type may have different exec_type, in sych case we clear exec_type
-    if (perf->second.exec_type[0] && op.GetCategory().compare(perf->second.exec_type) != 0)
-      perf->second.exec_type[0] = 0;
-  }
-  const auto timing = perf_timings_.find(name);
-  if (timing == perf_timings_.cend()) {
-    perf_timings_.emplace(name, PerformaceTiming{stream});
-  } else {
-    timing->second.setStart(stream);
-  }
-}
-
-void CudaInferRequest::addStopEvent(const CUDA::Stream& stream, const IOperationMeta& op) {
-  auto timing = perf_timings_.find(op.GetName());
-  if (timing != perf_timings_.cend())
-    timing->second.setStop(stream);
-}
-
-void CudaInferRequest::clearPerfEvents() {
-  for (auto& t : perf_timings_) {
-    t.second.clear();
-  }
-}
-
-CudaInferRequest::PerformaceCounters CudaInferRequest::GetPerformanceCounts() const {
-  return perf_counters_;
-}
-
-void CudaInferRequest::processPerfEvents() {
-  if (infer_count_ == 0) return;
-  constexpr float ms2us = 1000.0;
-  std::map<std::string, float> layer_timing {};
-  for (auto& timing : perf_timings_) {
-    timing.second.measure();
-    const auto perf = perf_counters_.find(timing.first);
-    if (perf != perf_counters_.cend()) {
-       perf->second.realTime_uSec = timing.second.duration() * ms2us / infer_count_;
-       perf->second.status = InferenceEngineProfileInfo::EXECUTED;
-       if (perf->second.layer_type[0]) {
-         layer_timing[perf->second.layer_type] += timing.second.duration();
-       }
-    }
-  }
-  for (auto const& timing : layer_timing) {
-    const auto summary = perf_counters_.find(timing.first);
-    if (summary != perf_counters_.cend()) {
-        summary->second.realTime_uSec = timing.second * ms2us / infer_count_;
-        summary->second.status = InferenceEngineProfileInfo::EXECUTED;
-    }
-  }
-
-  auto param_timing = layer_timing.find("Parameter");
-  auto result_timing = layer_timing.find("Result");
-  // Adding some overall performance counters
-  perf_counters_["1. input preprocessing"] = makeProfileInfo(0, _durations[Preprocess].count());
-  perf_counters_["2. input transfer to a device"] = makeProfileInfo(
-      // Sum of all Parameters divided by count of infer requests
-      param_timing == layer_timing.cend() ? 0 : param_timing->second * ms2us / infer_count_);
-  perf_counters_["3. execution time"] = makeProfileInfo(
-      exec_timing_.measure() * ms2us / infer_count_, _durations[StartPipeline].count());
-  perf_counters_["4. output transfer from a device"] = makeProfileInfo(
-      // Sum of all Results divided by count of infer requests
-      result_timing == layer_timing.cend() ? 0 : result_timing->second * ms2us / infer_count_);
-  perf_counters_["5. output postprocessing"] = makeProfileInfo(0, _durations[Postprocess].count());
-}
+Profiler::PerformaceCounters CudaInferRequest::GetPerformanceCounts() const { return profiler_.GetPerformanceCounts(); }
 
 std::shared_ptr<ExecutableNetwork>
 CudaInferRequest::GetExecNetwork() {
