@@ -23,8 +23,8 @@ from mo.utils.error import Error
 
 from .common import get_pads
 
-class Conv2dFrontExtractor(FrontExtractorOp):
-    op = 'Conv2d'
+class ConvFrontExtractor(FrontExtractorOp):
+    op = 'Convolution'
     enabled = True
 
     @classmethod

@@ -26,6 +26,19 @@ class ReLUExtractor(FrontExtractorOp):
         return cls.enabled
 
 
+class LeakyReLUExtractor(FrontExtractorOp):
+    op = 'LeakyReLU'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        attrs = {
+            'negative_slope': node.module.negative_slope,
+        }
+        LeakyReLU.update_node_stat(node, attrs)
+        return cls.enabled
+
+
 class SigmoidExtractor(FrontExtractorOp):
     op = 'Sigmoid'
     enabled = True

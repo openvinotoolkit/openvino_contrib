@@ -251,6 +251,7 @@ def register_functional_hook(func):
 register_functional_hook(F.adaptive_avg_pool2d)
 register_functional_hook(F.linear)
 register_functional_hook(F.dropout)
+register_functional_hook(F.dropout3d)
 
 
 @implements(F.max_pool2d)
@@ -317,6 +318,29 @@ def function_hook(input, *args, **kwargs):
     return forward_hook(ReLU(*args, **kwargs), (input,), output)
 
 
+@implements(torch.sigmoid)
+def function_hook(input, *args, **kwargs):
+
+    class Sigmoid(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    output = torch.sigmoid(input.tensor(), *args, **kwargs)
+    return forward_hook(Sigmoid(*args, **kwargs), (input,), output)
+
+
+@implements(F.leaky_relu)
+def function_hook(input, *args, **kwargs):
+
+    class LeakyReLU(nn.Module):
+        def __init__(self, negative_slope, inplace):
+            super().__init__()
+            self.negative_slope = negative_slope
+
+    output = F.leaky_relu(input.tensor(), *args, **kwargs)
+    return forward_hook(LeakyReLU(*args, **kwargs), (input,), output)
+
+
 @implements(F.batch_norm)
 def function_hook(input, *args, **kwargs):
 
@@ -339,9 +363,12 @@ def function_hook(input, *args, **kwargs):
 
 
 @implements(torch.conv2d)
+@implements(torch.conv3d)
 def function_hook(input, weight, bias, *args, **kwargs):
 
-    class Conv2d(nn.Conv2d):
+    base = nn.Conv2d if input.dim() == 4 else nn.Conv3d
+
+    class Convolution(base):
         def __init__(self, weight, bias, stride, padding, dilation, groups):
             super().__init__(in_channels=input.shape[1],
                              out_channels=weight.shape[0],
@@ -356,8 +383,11 @@ def function_hook(input, weight, bias, *args, **kwargs):
                 params['bias'] = bias
             self.load_state_dict(params)
 
-    output = torch.conv2d(input.tensor(), weight, bias, *args, **kwargs)
-    return forward_hook(Conv2d(weight, bias, *args, **kwargs), (input,), output)
+    if input.dim() == 4:
+        output = torch.conv2d(input.tensor(), weight, bias, *args, **kwargs)
+    elif input.dim() == 5:
+        output = torch.conv3d(input.tensor(), weight, bias, *args, **kwargs)
+    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,), output)
 
 
 @implements(torch.flatten)
@@ -372,6 +402,24 @@ def function_hook(input, *args, **kwargs):
     return forward_hook(Flatten(*args, **kwargs), (input,), output)
 
 
+@implements(F.instance_norm)
+def function_hook(input, *args, **kwargs):
+    class InstanceNorm(nn.Module):
+        def __init__(self, running_mean, running_var, weight, bias, use_input_stats, momentum, eps):
+            super().__init__()
+            self.running_mean = running_mean
+            self.running_var = running_var
+            self.weight = weight
+            self.bias = bias
+            self.use_input_stats = use_input_stats
+            self.momentum = momentum
+            self.eps = eps
+            self.dims = input.dim()
+
+    output = F.instance_norm(input.tensor(), *args, **kwargs)
+    return forward_hook(InstanceNorm(*args, **kwargs), (input,), output)
+
+
 @implements(F.interpolate)
 def function_hook(input, *args, **kwargs):
 
@@ -383,6 +431,7 @@ def function_hook(input, *args, **kwargs):
             self.mode = mode
             self.align_corners = align_corners
             self.recompute_scale_factor = recompute_scale_factor
+            self.dims = input.dim()
 
     output = F.interpolate(input.tensor(), *args, **kwargs)
     return forward_hook(Upsample(*args, **kwargs), (input,), output)

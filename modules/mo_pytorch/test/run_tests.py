@@ -2,6 +2,7 @@ import os
 import unittest
 import numpy as np
 import torch
+from pathlib import Path
 import torchvision.models as models
 from detectron2 import model_zoo
 
@@ -126,7 +127,7 @@ class TestModels(unittest.TestCase):
             xmin, ymin, xmax, ymax = box
             ref_boxes.append([xmin, ymin, xmax, ymax])
             if score > 0.45:
-                cv.rectangle(img, (xmin, ymin), (xmax, ymax), color=(0, 180, 255), thickness=3)
+                cv.rectangle(img, (int(xmin), int(ymin)), (int(xmax), int(ymax)), color=(0, 180, 255), thickness=3)
 
         # Convert model to OpenVINO IR
         mo_pytorch.convert(model, input_shape=[1, 3, height, width], model_name='retinanet_R_50_FPN_1x')
@@ -141,7 +142,7 @@ class TestModels(unittest.TestCase):
         for det in ie_detections:
             conf = det[2]
             if conf > 0.45:
-                xmin, ymin, xmax, ymax = det[3:]
+                xmin, ymin, xmax, ymax = [int(v) for v in det[3:]]
                 cv.rectangle(img, (xmin, ymin), (xmax, ymax), color=(210, 9, 179))
 
         # Uncomment to visualize detections
@@ -158,6 +159,39 @@ class TestModels(unittest.TestCase):
                 return x[:, :1, 2:, 3]
 
         self.check_torchvision_model(lambda **args: SSlice(), (299, 299), 4e-5)
+
+
+    def test_resunet(self):
+        import BrainMaGe
+        from BrainMaGe.models.networks import fetch_model
+
+        weights = Path(BrainMaGe.__file__).parent / 'weights' / 'resunet_ma.pt'
+        pt_model = fetch_model(modelname="resunet", num_channels=1, num_classes=2, num_filters=16)
+        checkpoint = torch.load(weights, map_location=torch.device('cpu'))
+        pt_model.load_state_dict(checkpoint["model_state_dict"])
+        pt_model.eval()
+
+        # Get reference output
+        inp = torch.randn([1, 1, 128, 128, 128])
+        ref = pt_model(inp).detach().numpy()
+
+        # Perform multiple runs with other inputs to make sure that InstanceNorm layer does not stuck
+        for _ in range(2):
+            dummy_inp = torch.randn(inp.shape)
+            pt_model(dummy_inp)
+
+        # Generate OpenVINO IR
+        mo_pytorch.convert(pt_model, input_shape=list(inp.shape), model_name='model')
+
+        # Run model with OpenVINO and compare outputs
+        net = self.ie.read_network('model.xml', 'model.bin')
+        exec_net = self.ie.load_network(net, 'CPU')
+        out = exec_net.infer({'input': inp.detach().numpy()})
+        out = next(iter(out.values()))
+
+        diff = np.max(np.abs(out - ref))
+        self.assertLessEqual(diff, 5e-4)
+
 
 if __name__ == '__main__':
     unittest.main()
