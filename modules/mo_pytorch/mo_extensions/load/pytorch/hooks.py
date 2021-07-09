@@ -431,6 +431,7 @@ def function_hook(input, *args, **kwargs):
             self.mode = mode
             self.align_corners = align_corners
             self.recompute_scale_factor = recompute_scale_factor
+            self.dims = input.dim()
 
     output = F.interpolate(input.tensor(), *args, **kwargs)
     return forward_hook(Upsample(*args, **kwargs), (input,), output)

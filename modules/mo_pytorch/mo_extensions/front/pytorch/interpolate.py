@@ -28,29 +28,33 @@ class InterpolateReplacer(FrontReplacementOp):
 
     def replace_op(self, graph: Graph, node: Node):
         mode = node.module.mode
-        if mode == 'bilinear':
+        if mode.endswith('linear'):  # like bilinear or trilinear
             mode = 'linear'
         align_corners = node.module.align_corners
 
-        if mode == 'trilinear':
-            # height = node.module.size[0]
-            # width = node.module.size[1]
+        if mode == 'linear':
+            height = node.module.size[0] if node.module.size else -1
+            width = node.module.size[1] if node.module.size else -1
+            dims = node.module.dims
+            axes = np.arange(2, dims)
+            pads = np.zeros(dims, dtype=np.int32)
+            scales = np.repeat(node.module.scale_factor, dims - 2).astype(np.float32)
             attrs = {
                 'name': node.name,
                 'version': 'opset4',
-                'height': 16,
-                'width': 16,
-                'mode': 'linear_onnx',
-                'axes': [2, 3, 4],
-                'pads_begin': [0, 0, 0],
-                'pads_end': [0, 0, 0],
-                'coordinate_transformation_mode': 'align_corners',
-                'shape_calculation_mode': 'scales',
+                'height': height,
+                'width': width,
+                'mode': mode,
+                'axes': axes,
+                'pads_begin': pads,
+                'pads_end': pads,
+                'coordinate_transformation_mode': 'align_corners' if align_corners else 'half_pixel',
+                'shape_calculation_mode': 'sizes' if node.module.size else 'scales',
             }
 
-            sizes = Const(graph, {'value': np.array([16, 16, 16])}).create_node()
-            axes = Const(graph, {'value': np.array([2, 3, 4])}).create_node()
-            scales = Const(graph, {'value': np.array([2, 2, 2], dtype=np.float32)}).create_node()
+            sizes = Const(graph, {'value': np.array([height, width])}).create_node()
+            axes = Const(graph, {'value': axes}).create_node()
+            scales = Const(graph, {'value': scales}).create_node()
             interp = Interpolate(graph, attrs).create_node([node.in_node(0), sizes, scales, axes])
         else:
             if node.module.size:
@@ -65,7 +69,6 @@ class InterpolateReplacer(FrontReplacementOp):
                 }
                 interp = Interpolate(graph, attrs).create_node([node.in_node(0)])
             else:
-                print('~~~~~~~~~~~~~ 1')
                 if not node.module.scale_factor:
                     raise Error('No scale_factor found')
                 attrs = {
