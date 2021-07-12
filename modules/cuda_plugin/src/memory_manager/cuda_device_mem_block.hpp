@@ -4,9 +4,10 @@
 
 #pragma once
 
-#include "details/ie_no_copy.hpp"
-
+#include <cuda/runtime.hpp>
 #include <gsl/pointers>
+
+#include "details/ie_no_copy.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
 
 namespace CUDAPlugin {
@@ -23,8 +24,6 @@ public:
    */
   DeviceMemBlock(MemoryModel::Ptr model);
 
-  ~DeviceMemBlock();
-
   /**
    * Provides tensor memory address if any.
    *
@@ -36,7 +35,8 @@ public:
 
 private:
   MemoryModel::Ptr model_;
-  gsl::owner<void*> device_mem_ptr_;
+  CUDA::DefaultAllocation device_mem_ptr_ =
+      CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
 };
 
 }  // namespace CUDAPlugin
