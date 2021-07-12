@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "behavior/layout.hpp"
+#include "behavior2/infer_request/layout.hpp"
 
 using namespace BehaviorTestsDefinitions;
 namespace {
@@ -24,13 +24,13 @@ namespace {
             { 3 }
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, LayoutTest,
+    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferRequestLayoutTest,
             ::testing::Combine(
                     ::testing::Values(InferenceEngine::Precision::FP32),
                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
                     ::testing::ValuesIn(configs),
                     ::testing::ValuesIn(Layout),
                     ::testing::ValuesIn(inputShapes)),
-            LayoutTest::getTestCaseName);
+            InferRequestLayoutTest::getTestCaseName);
 
 }  // namespace

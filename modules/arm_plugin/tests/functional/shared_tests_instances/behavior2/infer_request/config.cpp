@@ -48,31 +48,17 @@ namespace {
              {InferenceEngine::PluginConfigParams::KEY_CPU_BIND_THREAD, InferenceEngine::PluginConfigParams::YES}},
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferConfigTests,
+    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferRequestConfigTest,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
-                            InferConfigTests::getTestCaseName);
+                            InferRequestConfigTest::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferConfigTests,
+    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferRequestConfigTest,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_MULTI),
                                     ::testing::ValuesIn(multiConfigs)),
-                            InferConfigTests::getTestCaseName);
-
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferConfigInTests,
-                            ::testing::Combine(
-                                    ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                    ::testing::ValuesIn(InConfigs)),
-                            InferConfigTests::getTestCaseName);
-
-    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferConfigInTests,
-                            ::testing::Combine(
-                                    ::testing::ValuesIn(netPrecisions),
-                                    ::testing::Values(CommonTestUtils::DEVICE_MULTI),
-                                    ::testing::ValuesIn(MultiInConfigs)),
-                            InferConfigInTests::getTestCaseName);
+                            InferRequestConfigTest::getTestCaseName);
 }  // namespace

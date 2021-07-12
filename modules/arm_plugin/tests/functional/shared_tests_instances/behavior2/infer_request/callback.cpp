@@ -4,7 +4,7 @@
 
 #include "multi-device/multi_device_config.hpp"
 
-#include "behavior/infer_request_callback.hpp"
+#include "behavior2/infer_request/callback.hpp"
 
 using namespace BehaviorTestsDefinitions;
 
@@ -24,17 +24,17 @@ const std::vector<std::map<std::string, std::string>> multiConfigs = {
         {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_Hetero_BehaviorTests, CallbackTests,
+INSTANTIATE_TEST_CASE_P(smoke_Hetero_BehaviorTests, InferRequestCallbackTests,
         ::testing::Combine(
             ::testing::ValuesIn(netPrecisions),
             ::testing::Values(CommonTestUtils::DEVICE_CPU),
             ::testing::ValuesIn(configs)),
-        CallbackTests::getTestCaseName);
+        InferRequestCallbackTests::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, CallbackTests,
+INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferRequestCallbackTests,
         ::testing::Combine(
                 ::testing::ValuesIn(netPrecisions),
                 ::testing::Values(CommonTestUtils::DEVICE_MULTI),
                 ::testing::ValuesIn(multiConfigs)),
-        CallbackTests::getTestCaseName);
+        InferRequestCallbackTests::getTestCaseName);
 }  // namespace

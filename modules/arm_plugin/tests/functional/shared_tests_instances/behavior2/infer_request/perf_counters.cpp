@@ -3,7 +3,7 @@
 //
 
 #include "multi-device/multi_device_config.hpp"
-#include "behavior/perf_counters.hpp"
+#include "behavior2/infer_request/perf_counters.hpp"
 
 using namespace BehaviorTestsDefinitions;
 namespace {
@@ -15,18 +15,18 @@ namespace {
             {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, PerfCountersTest,
+    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferRequestPerfCountersTest,
                             ::testing::Combine(
                                     ::testing::Values(InferenceEngine::Precision::FP32),
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
-                            PerfCountersTest::getTestCaseName);
+                            InferRequestPerfCountersTest::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, PerfCountersTest,
+    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferRequestPerfCountersTest,
                             ::testing::Combine(
                                     ::testing::Values(InferenceEngine::Precision::FP32),
                                     ::testing::Values(CommonTestUtils::DEVICE_MULTI),
                                     ::testing::ValuesIn(Multiconfigs)),
-                            PerfCountersTest::getTestCaseName);
+                            InferRequestPerfCountersTest::getTestCaseName);
 
 }  // namespace
