@@ -151,12 +151,12 @@ class UniqueBase<Construct, Destruct, N*> {
 };
 
 class Allocation {
-  struct Deleter {
+  class Deleter {
     cudaStream_t stream;  // no raii, fixme?
     // maybe deallocation stream could be different, i.e. maybe we could have
     // setStream method?
    public:
-    Deleter(cudaStream_t stream) : stream{stream} {}
+    Deleter(cudaStream_t stream) noexcept : stream{stream} {}
     void operator()(void* p) const noexcept {
       logIfError(cudaFreeAsync(p, stream));
     }
@@ -164,14 +164,12 @@ class Allocation {
   std::unique_ptr<void, Deleter> p;
 
  public:
-  Allocation(void* p, cudaStream_t stream) : p{p, Deleter{stream}} {}
+  Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
   void* get() const noexcept { return p.get(); }
 };
 
 class DefaultAllocation {
   struct Deleter {
-   public:
-      Deleter() {}
       void operator()(void* p) const noexcept {
         logIfError(cudaFree(p));
       }
@@ -179,11 +177,11 @@ class DefaultAllocation {
   std::unique_ptr<void, Deleter> p;
 
  public:
-  DefaultAllocation(void* p) : p{p, Deleter{}} {}
+  explicit DefaultAllocation(void* p) noexcept : p{p} {}
   void* get() const noexcept { return p.get(); }
 };
 
-inline auto cudaStreamNonBlockingConstructor(cudaStream_t* native) {
+inline auto cudaStreamNonBlockingConstructor(cudaStream_t* native) noexcept {
   return cudaStreamCreateWithFlags(native, cudaStreamNonBlocking);
 };
 
@@ -255,8 +253,8 @@ class DefaultStream {
     return stream;
   }
 
-  DefaultAllocation malloc(std::size_t size) const {
-    return {create<void*, cudaError_t>(cudaMalloc, size)};
+  auto malloc(std::size_t size) const {
+    return DefaultAllocation{create<void*, cudaError_t>(cudaMalloc, size)};
   }
   void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src,
               std::size_t count) const {

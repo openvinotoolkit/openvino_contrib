@@ -12,20 +12,12 @@
 
 namespace CUDAPlugin {
 
-DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model)
-  : model_{ model }, device_mem_ptr_{ nullptr }
-{
-  throwIfError(::cudaMalloc(&device_mem_ptr_, model_->deviceMemoryBlockSize()));
-}
-
-DeviceMemBlock::~DeviceMemBlock() { throwIfError(::cudaFree(device_mem_ptr_)); }
+DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model) : model_{move(model)} {}
 
 void* DeviceMemBlock::deviceTensorPtr(MemoryModel::TensorID id) {
-  ptrdiff_t offset = 0;
-  if (device_mem_ptr_ && model_->offsetForTensor(id, offset))
-    return reinterpret_cast<uint8_t*>(device_mem_ptr_) + offset;
-  else
-    return nullptr;
+  if (ptrdiff_t offset = 0; model_->offsetForTensor(id, offset))
+    return reinterpret_cast<uint8_t*>(device_mem_ptr_.get()) + offset;
+  return nullptr;
 }
 
 }  // namespace CUDAPlugin
