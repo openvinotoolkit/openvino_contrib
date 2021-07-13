@@ -1,5 +1,9 @@
 name: Code Style
-on: [push, pull_request]
+on:
+  push:
+    paths: '**.java'
+  pull_request:
+    paths: '**.java'
 
 jobs:
   Java:
