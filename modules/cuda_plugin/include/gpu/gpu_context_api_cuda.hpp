@@ -10,7 +10,7 @@
  */
 #pragma once
 
-#include <cuda/context.hpp>
+#include <cuda/thread_context.hpp>
 #include <ie_remote_context.hpp>
 #include <memory>
 #include <string>

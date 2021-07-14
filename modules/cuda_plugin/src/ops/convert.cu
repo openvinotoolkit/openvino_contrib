@@ -34,11 +34,11 @@ __global__ void convert_impl(size_t inputSize, TOutput * out, const TInput *in) 
 }
 } //namespace kernel
 
-ConvertOp::ConvertOp(const CUDA::Device& device,
+ConvertOp::ConvertOp(const CUDA::CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
-    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     Type_t input_element_type = node->get_input_element_type(0);
     Type_t output_element_type = node->get_output_element_type(0);
     Expects(input_element_type >= Type_t::boolean && input_element_type <= Type_t::u64);
@@ -57,7 +57,7 @@ void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, O
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
     const auto& stream = context.getThreadContext().stream();
-    const unsigned maxBlockSize = CudaDevice::GetMaxGridBlockSizeParams(context.getThreadContext().device().currentId());
+    const unsigned maxBlockSize = CUDA::CudaDevice::GetMaxGridBlockSizeParams(context.getThreadContext().device().currentId());
     const unsigned numBlocks = (size_ % maxBlockSize == 0) ?
                                (size_ / maxBlockSize) :
                                (size_ / maxBlockSize + 1);

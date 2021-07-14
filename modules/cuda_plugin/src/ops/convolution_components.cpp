@@ -12,7 +12,8 @@ namespace CUDAPlugin::Convolution::Details {
 
 constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
 
-ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node)
+template <typename TConvNode>
+ConvolutionParams::ConvolutionParams(const TConvNode& node)
     : element_type_{ node.get_input_element_type(ConvArgIndices::input) }
     , input_shape_{ node.get_input_shape(ConvArgIndices::input) }
     , filter_shape_{ node.get_input_shape(ConvArgIndices::filter) }
@@ -45,8 +46,11 @@ ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node)
     Ensures(padding_before_.size() == spatial_dims_number);
     Ensures(padding_after_.size() == spatial_dims_number);
 }
+template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node);
+template ConvolutionParams::ConvolutionParams(const nodes::FusedConv2D& node);
 
-void ConvolutionParams::InferPadding(const ngraph::op::v1::Convolution& node) {
+template <typename TConvNode>
+void ConvolutionParams::InferPadding(const TConvNode& node) {
     const ngraph::op::PadType pad_type = node.get_auto_pad();
     switch (pad_type) {
     case ngraph::op::PadType::EXPLICIT:
@@ -88,14 +92,16 @@ void ConvolutionParams::ConvertConv1DToConv2D() {
     padding_after_.insert(padding_after_.begin(), 0);
 }
 
-
-ConvolutionBiasAddActivationParams::ConvolutionBiasAddActivationParams(
-                                    const CUDAPlugin::nodes::Conv2DBiasAddActivation& node)
-    : conv_{ node.conv_op() }
-    , bias_shape_{ node.get_input_shape(ConvolutionBiasAddActivationIndices::bias) }
+FusedConvolutionParams::FusedConvolutionParams(
+                                    const CUDAPlugin::nodes::FusedConv2D& node)
+    : conv_{ node }
+    , bias_shape_{ node.get_input_shape(FusedConvolutionIndices::bias) }
     , activation_{ node.get_activation() } {
     Expects(conv_.NumberOfSpatialDims() == 2);
-    Expects(conv_.element_type_ == node.get_input_element_type(ConvolutionBiasAddActivationIndices::bias));
+    Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionIndices::bias));
+    if (node.inputs().size() == 4) {
+        add_shape_ = node.get_input_shape(FusedConvolutionIndices::add);
+    }
 }
 
 } // namespace CUDAPlugin

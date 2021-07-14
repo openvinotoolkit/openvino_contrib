@@ -11,25 +11,32 @@
 namespace LayerTestsDefinitions {
 
 class MatMulLayerTest : public FiniteComparer<MatMulTest> {
+ protected:
+  void SetUp() override {
+    MatMulTest::SetUp();
+
+    auto params = this->GetParam();
+    auto netPrecision = std::get<1>(params);
+    if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
+      this->infinity_value = std::numeric_limits<std::uint16_t>::max();
+    }
+  }
 };
 
 TEST_P(MatMulLayerTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
 
     auto params = GetParam();
-    inPrc = std::get<1>(params);
-    outPrc = std::get<2>(params);
+    inPrc = std::get<2>(params);
+    outPrc = std::get<3>(params);
 
     Run();
 }
 
 namespace {
 
-const std::vector<InferenceEngine::Precision> inputFP16Precisions = {
+const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
-};
-
-const std::vector<InferenceEngine::Precision> inputFP32Precisions = {
     InferenceEngine::Precision::FP32,
 };
 
@@ -107,72 +114,36 @@ std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
 
 std::map<std::string, std::string> additional_config = {};
 
-INSTANTIATE_TEST_CASE_P(smoke_MatMulFP16, MatMulLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_MatMul, MatMulLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(smokeShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                             ::testing::Values(additional_config)),
                         MatMulLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_MatMulFP32, MatMulLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(smokeShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        MatMulLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP16, MatMulLayerTest,
+INSTANTIATE_TEST_CASE_P(MatMul_Resnet50, MatMulLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(resnet50ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                             ::testing::Values(additional_config)),
                         MatMulLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP32, MatMulLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(resnet50ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        MatMulLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP16, MatMulLayerTest,
+INSTANTIATE_TEST_CASE_P(MatMul_VGG16, MatMulLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(vgg16ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        MatMulLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP32, MatMulLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(vgg16ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),

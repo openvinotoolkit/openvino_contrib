@@ -5,6 +5,9 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <string>
+
+#include "props.hpp"
 
 #include <gpu/device_pointers.hpp>
 #if __has_include(<experimental/source_location>)
@@ -113,6 +116,16 @@ inline int maxConcurrentStreams(CUDA::Device d) {
   return r + residentGrids(p);
 }
 
+inline bool isHalfSupported(CUDA::Device d) {
+  const auto computeCompatabilityVersion = std::to_string(d.props().major) + "." + std::to_string(d.props().minor);
+  return fp16SupportedArchitecture.count(computeCompatabilityVersion) > 0;
+}
+
+inline bool isInt8Supported(CUDA::Device d) {
+  const auto computeCompatabilityVersion = std::to_string(d.props().major) + "." + std::to_string(d.props().minor);
+  return int8SupportedArchitecture.count(computeCompatabilityVersion) > 0;
+}
+
 template <typename R, typename T, typename... Args>
 T firstArgHelper(R (*f)(T, Args...));
 template <auto F>
@@ -181,12 +194,8 @@ class DefaultAllocation {
   void* get() const noexcept { return p.get(); }
 };
 
-inline auto cudaStreamNonBlockingConstructor(cudaStream_t* native) noexcept {
-  return cudaStreamCreateWithFlags(native, cudaStreamNonBlocking);
-};
-
 class Stream
-    : public UniqueBase<cudaStreamNonBlockingConstructor, cudaStreamDestroy, cudaStream_t> {
+    : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream_t> {
   void uploadImpl(void* dst, const void* src, std::size_t count) const {
     throwIfError(
         cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));

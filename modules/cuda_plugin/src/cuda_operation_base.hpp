@@ -11,6 +11,7 @@
 
 #include <gpu/gpu_context_api_cuda.hpp>
 #include <gpu/device_pointers.hpp>
+#include <cuda/creation_context.hpp>
 #include <ie_layouts.h>
 
 #include "memory_manager/cuda_workbuffers.hpp"
@@ -71,7 +72,7 @@ class OperationBase
   using Ptr = std::shared_ptr<OperationBase>;
   using WeakPtr = std::weak_ptr<OperationBase>;
   using IndexCollection = std::vector<unsigned>;
-  OperationBase(const CUDA::Device& device,
+  OperationBase(const CUDA::CreationContext& context,
                 const ngraph::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
@@ -81,11 +82,11 @@ class OperationBase
   }
   void InitSharedImmutableWorkbuffers(const Buffers&) override {}
  protected:
-  OperationBase(const CUDA::Device& device,
+  OperationBase(const CUDA::CreationContext& context,
                 const std::shared_ptr<ngraph::Node>& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds)
-    : OperationBase(device, *node, move(inputIds), move(outputIds)) {}
+    : OperationBase(context, *node, move(inputIds), move(outputIds)) {}
  public:
   const std::string_view& GetCategory() const override {
     return Category::CUDA;

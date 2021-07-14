@@ -1,0 +1,147 @@
+
+# [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - CUDA plugin
+
+OpenVINO™ CUDA plugin is developed in order to enable deep neural networks inference on NVIDIA GPUs, using OpenVINO™ API.
+The plugin uses custom kernels and [cuBLAS, cuDNN, cuTENSOR libraries\*] as a backend.
+
+## Supported Platforms
+OpenVINO™ CUDA plugin is supported and validated on the following platforms: 
+
+OS                     | GPU
+---------------------- | ----------------------
+Ubuntu* 18.04 (64-bit) | Geforce 1080 Ti, NVIDIA T4
+
+## Distribution
+OpenVINO™ CUDA plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
+
+## How to build
+In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+
+Afterwards plugin build procedure is as following:
+
+1. Install one of the following compilers with support of **C++17**:
+- Install **gcc-7** compiler
+```bash
+sudo apt-get update
+sudo apt-get install gcc-7 g++7
+```
+- Install **clang-8** compiler
+```bash
+sudo apt-get update
+sudo apt-get install clang-8 clang++8
+```
+
+2. Install **NVIDIA 460** version of driver from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
+3. Install **CUDA 11.2** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
+   
+   Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`    
+
+4. Install **cuDNN 8.1.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+5. Install **cuTENSOR 1.3.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+6. Clone `openvino_contrib` repository:
+```bash
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
+```
+7. Go to plugin directory:
+```bash
+cd openvino_contrib/modules/cuda_plugin
+git checkout develop
+```
+8. Prepare a build folder:
+```bash
+mkdir build && cd build
+```
+9. Build plugin
+
+    First of all build OpenVINO™ on tag _2021.3_ according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+
+    Then build CUDA Plugin with one of 2 options:
+- Using `build.sh`
+  
+  Setup the following environment variables:
+  ```bash
+  export OPENVINO_HOME=<OpenVINO source directory>
+  export OPENVINO_CONTRIB=<OpenVINOContrib packages source directory>
+  export OPENVINO_BUILD_PATH=<OpenVINO build directory>
+  ```
+  
+  Then run one of the following commands: 
+  ```bash
+  # Run cmake configuration (if necessary) and then build
+  ../build.sh --build
+  
+  # Run cmake configuration
+  ../build.sh --setup
+  
+  # For old build delete old configuration, generate new one and then build
+  ../build.sh --rebuild
+  ```
+- Using _InferenceEngineDeveloperPackage_
+  
+  Run the following command:
+  ```bash
+  cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
+  cmake --build . --target CUDAPlugin -j `nproc`
+  ```
+
+## Supported Configuration Parameters
+The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
+
+Parameter name  | Parameter values  | Default  | Description
+------------- | ------------- | ------------- | -------------
+`CUDA_THROUGHPUT_STREAMS`   | `CUDA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
+`CUDA_OPTIMIZE`   | `CUDA_YES`, `CUDA_NO`  | `CUDA_NO`  | Specifies if optimization should be run for increasing performance of network
+
+## Supported Layers and Limitations
+The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [cuda_opset.md](docs/cuda_opset.md).
+
+## Supported Model Formats
+* FP32 – Supported
+* FP16 – Supported and preferred
+* U8 - Not supported
+* U16 - Not supported
+* I8 - Not supported
+* I16 - Not supported
+
+## Supported Input Precision
+* FP32 - Supported
+* FP16 - Supported
+* U8 - Not supported
+* U16 - Not supported
+* I8 - Not supported
+* I16 - Not supported
+
+## Supported Output Precision 
+* FP32 – Supported
+* FP16 - Not supported
+
+## Supported Input Layout
+* NCDHW – Not supported
+* NCHW - Supported
+* NHWC - Supported
+* NC - Supported
+
+## License
+OpenVINO™ CUDA plugin is licensed under [Apache License Version 2.0](LICENSE).
+By contributing to the project, you agree to the license and copyright terms therein
+and release your contribution under these terms.
+
+## How to Contribute
+We welcome community contributions to `openvino_contrib` repository. 
+If you have an idea how to improve the modules, please share it with us. 
+All guidelines for contributing to the repository can be found [here](../../CONTRIBUTING.md).
+
+---
+\* Other names and brands may be claimed as the property of others.
+
+[extra modules flags]:https://github.com/openvinotoolkit/openvino_contrib#how-to-build-openvino-with-extra-modules
+[OpenVINO™ samples]:https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Samples_Overview.html
+[build it from source]:https://docs.opencv.org/master/d7/d9f/tutorial_linux_install.html
+[Object Detection for SSD sample]:https://docs.openvinotoolkit.org/latest/openvino_inference_engine_samples_object_detection_sample_ssd_README.html
+[Model Optimizer]:https://github.com/openvinotoolkit/openvino/tree/master/model-optimizer
+[model downloader]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-downloader-usage
+[model converter]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-converter-usage
+[this image]:https://github.com/openvinotoolkit/openvino/blob/master/scripts/demo/car_1.bmp
+[Intermediate Representation]:https://docs.openvinotoolkit.org/latest/openvino_docs_MO_DG_IR_and_opsets.html#intermediate_representation_used_in_openvino
+[the guideline]:https://github.com/openvinotoolkit/openvino/wiki/BuildingForRaspbianStretchOS#cross-compilation-using-docker
+[this guideline]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/demos/README.md#build-the-demo-applications

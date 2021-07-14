@@ -12,8 +12,8 @@
 
 namespace CUDAPlugin {
 
-ConvolutionCuDnn::ConvolutionCuDnn(const CUDA::Device& device, const Convolution::Details::ConvolutionParams& params)
-    : descs_{ device, params }  {
+ConvolutionCuDnn::ConvolutionCuDnn(const CUDA::CreationContext& context, const Convolution::Details::ConvolutionParams& params)
+    : descs_{ context, params }  {
 }
 
 void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,

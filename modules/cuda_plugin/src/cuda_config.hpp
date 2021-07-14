@@ -6,14 +6,14 @@
 
 #include <string>
 #include <map>
+#include <memory>
 
+#include <cuda/cuda_config.hpp>
 #include <ie_parameter.hpp>
-
 #include <threading/ie_istreams_executor.hpp>
 
 namespace CUDAPlugin {
 
-// ! [configuration:header]
 using ConfigMap = std::map<std::string, std::string>;
 
 struct Configuration {
@@ -33,9 +33,9 @@ struct Configuration {
 
     int deviceId                = 0;
     bool perfCount              = false;
-    std::string cuda_throughput_streams_{std::to_string(1)};
+    bool optimization           = false;
+    std::string cuda_throughput_streams_ = std::to_string(1);
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
 };
-// ! [configuration:header]
 
 }  //  namespace CUDAPlugin
