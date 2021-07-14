@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cpp_interfaces/impl/ie_plugin_internal.hpp>
+#include <cuda/runtime.hpp>
 
 namespace CUDAPlugin {
 
@@ -24,6 +25,7 @@ class GraphTransformer {
    * @return an ngraph::Function containing only the CUDA-optimized operations.
    */
   std::shared_ptr<ngraph::Function> transform(
+      const CUDA::Device& device,
       const std::shared_ptr<const ngraph::Function>& function,
       const std::map<std::string, std::string>& config) const;
 };

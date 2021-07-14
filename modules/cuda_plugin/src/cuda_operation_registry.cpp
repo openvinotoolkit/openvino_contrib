@@ -32,19 +32,19 @@ bool OperationRegistry::hasOperation(const std::string& name) {
 }
 
 OperationBase::Ptr OperationRegistry::createOperation(
-    const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
+    const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
     std::vector<unsigned>&& inIds, std::vector<unsigned>&& outIds) {
   auto& opBuilder = registered_operations_.at(node->get_type_info().name);
-  return opBuilder(device, node, move(inIds), move(outIds));
+  return opBuilder(context, node, move(inIds), move(outIds));
 }
 
 OperationBase::Ptr OperationRegistry::createOperation(
-    const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
+    const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
     gsl::span<const unsigned> inIds, gsl::span<const unsigned> outIds) {
   auto toVector = [](gsl::span<const unsigned> s) {
     return std::vector<unsigned>(s.begin(), s.end());
   };
-  return createOperation(device, node, toVector(inIds), toVector(outIds));
+  return createOperation(context, node, toVector(inIds), toVector(outIds));
 }
 
 }  // namespace CUDAPlugin

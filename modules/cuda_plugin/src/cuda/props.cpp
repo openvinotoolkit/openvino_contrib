@@ -4,8 +4,10 @@
 
 #include "props.hpp"
 
-namespace CUDAPlugin {
+namespace CUDA {
 
+// NOTE: This map created based on data from the following table:
+//       https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications__technical-specifications-per-compute-capability
 std::unordered_map<std::string, size_t> cudaConcurrentKernels = {
     {"3.0", 32},
     {"3.5", 32},
@@ -23,6 +25,30 @@ std::unordered_map<std::string, size_t> cudaConcurrentKernels = {
     {"7.5", 128},
     {"8.0", 128},
     {"8.6", 128},
+};
+
+// NOTE: This list created based on data from the following table:
+//       https://docs.nvidia.com/deeplearning/tensorrt/support-matrix/index.html#hardware-precision-matrix
+std::unordered_set<std::string> fp16SupportedArchitecture = {
+    "8.6",
+    "8.0",
+    "7.5",
+    "7.2",
+    "7.0",
+    "6.2",
+    "6.0",
+    "5.3",
+};
+
+// NOTE: This list created based on data from the following table:
+//       https://docs.nvidia.com/deeplearning/tensorrt/support-matrix/index.html#hardware-precision-matrix
+std::unordered_set<std::string> int8SupportedArchitecture = {
+    "8.6",
+    "8.0",
+    "7.5",
+    "7.2",
+    "7.0",
+    "6.1",
 };
 
 } // namespace CUDAPlugin

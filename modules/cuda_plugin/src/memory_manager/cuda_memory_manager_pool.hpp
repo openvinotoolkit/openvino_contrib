@@ -87,6 +87,7 @@ class MemoryManagerPool
   Proxy WaitAndGet(CancellationToken& cancellationToken);
 
   size_t Size() const;
+  void Resize(size_t count);
 
  private:
   friend class ::MemoryManagerPoolTest;
@@ -100,7 +101,6 @@ class MemoryManagerPool
   std::mutex mtx_;
   std::condition_variable cond_var_;
   std::vector<std::unique_ptr<MemoryManager>> memory_managers_;
-  size_t number_memory_managers_{};
 };
 
 }  // namespace CUDAPlugin

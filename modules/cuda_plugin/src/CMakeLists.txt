@@ -38,7 +38,7 @@ target_include_directories(${OBJ_NAME}
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
                            "${InferenceEngine_C_API_SOURCE_DIR}/include"
-                           $<TARGET_PROPERTY:inference_engine_transformations,INTERFACE_INCLUDE_DIRECTORIES>
+                           $<TARGET_PROPERTY:IE::inference_engine_transformations,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 target_link_libraries(${OBJ_NAME}

@@ -75,7 +75,7 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
     }
 
     const auto transformed_function_graph =
-        transformer_.transform(network.getFunction(), config);
+        transformer_.transform(CUDA::Device{cfg.deviceId}, network.getFunction(), config);
     InferenceEngine::CNNNetwork transformed_network{transformed_function_graph};
     // Create stream executor for given device
     auto waitExecutor = GetStreamExecutor(cfg);
@@ -136,7 +136,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
 
     // 2. It is needed to apply all transformations as it is done in LoadExeNetworkImpl
     auto transformedFunction =
-        transformer_.transform(network.getFunction(), config);
+        transformer_.transform(CUDA::Device{cfg.deviceId}, network.getFunction(), config);
 
     // 3. The same input node can be transformed into supported and unsupported backend node
     // So we need store as supported either unsupported node sets

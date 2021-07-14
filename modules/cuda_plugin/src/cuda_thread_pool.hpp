@@ -6,7 +6,7 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <cuda/context.hpp>
+#include <cuda/thread_context.hpp>
 #include <deque>
 #include <mutex>
 #include <queue>

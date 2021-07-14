@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cuda/creation_context.hpp>
+
 #include "convolution_components.hpp"
 #include "cuda/dnn.hpp"
 
@@ -42,7 +44,7 @@ private:
  */
 class ConvolutionDescriptorsCuDnn {
 public:
-    ConvolutionDescriptorsCuDnn(const CUDA::Device& device,
+    ConvolutionDescriptorsCuDnn(const CUDA::CreationContext& context,
             const Convolution::Details::ConvolutionParamsCuDnn& params);
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
@@ -51,16 +53,30 @@ public:
     const CUDA::DnnTensorDescriptor& Output() const { return output_; }
     const CUDA::DnnConvolutionDescriptor& Conv() const { return conv_; }
     const cudnnConvolutionFwdAlgoPerf_t& Algo() const { return algo_perf_; }
+    void FindAlgo(const CUDA::DnnHandle& dnnHandle,
+                  InferenceEngine::gpu::DevicePointer<const void*> inPtr,
+                  InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+                  InferenceEngine::gpu::DevicePointer<void*> outPtr,
+                  InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace);
 
 private:
-    void SelectAlgo(const CUDA::Device& device,
-                    const CUDA::DnnHandle& dnnHandle,
-                    const Convolution::Details::ConvolutionParamsCuDnn& params);
-    bool SelectAlgoForConvDataType(const CUDA::Device& device,
-                                   const CUDA::DnnHandle& dnnHandle,
-                                   const Convolution::Details::ConvolutionParamsCuDnn& params,
-                                   cudnnDataType_t convDataType);
+    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                 InferenceEngine::gpu::DevicePointer<const void*> inPtr,
+                                 InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+                                 InferenceEngine::gpu::DevicePointer<void*> outPtr,
+                                 InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
+                                 cudnnDataType_t convDataType);
+    void BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle,
+                              const ConvolutionParamsCuDnn& params);
+    void GetAlgo(const CUDA::DnnHandle& dnnHandle);
+    bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                cudnnDataType_t convDataType);
+    void FindAlgo(const CUDA::DnnHandle& dnnHandle);
+    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                 cudnnDataType_t convDataType);
 private:
+    CUDA::CreationContext context_;
+    ConvolutionParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
     CUDA::DnnTensorDescriptor input_;
     CUDA::DnnFilterDescriptor filter_;
