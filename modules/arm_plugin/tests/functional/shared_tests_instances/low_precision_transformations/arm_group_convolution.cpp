@@ -133,8 +133,6 @@ protected:
             param.fakeQuantizeOnWeights,
             param.fakeQuantizeOnOutput,
             withRelu);
-
-        validate();
     }
 
     void Run() override {
@@ -147,24 +145,6 @@ protected:
             expectedPrecision = "FP16";
         }
         EXPECT_EQ(actualPrecision, expectedPrecision);
-    }
-
-private:
-    void validate() {
-        ngraph::element::Type netPrecision;
-        ngraph::Shape inputShape;
-        std::string targetDevice;
-        ngraph::pass::low_precision::LayerTransformation::Params params;
-        ArmGroupConvolutionTransformationParam param;
-        bool withRelu;
-        std::tie(netPrecision, inputShape, targetDevice, params, param, withRelu) = this->GetParam();
-
-        const auto transformed = transformNGraph(params, getLowPrecisionTransformationsNGraph(params));
-        EXPECT_EQ(1ul, transformed->get_output_size());
-
-        const auto output = transformed->get_output_op(0);
-        const auto parent = output->get_input_node_shared_ptr(0);
-        ASSERT_FALSE(parent == nullptr);
     }
 };
 
@@ -182,12 +162,7 @@ const std::vector<ngraph::element::Type> netPrecisions = {
 
 const std::vector<ngraph::pass::low_precision::LayerTransformation::Params> transformationParamValues = {
     // LayerTestsUtils::LayerTransformationParamsNGraphFactory::createParams().setUpdatePrecisions(true),
-    ngraph::pass::low_precision::LayerTransformation::Params(
-            true,  // updatePrecisions
-            ngraph::pass::low_precision::LayerTransformation::QuantizedTensorAlignment::UpdateLevel,  // quantizedTensorAlignmentOnActivations
-            ngraph::pass::low_precision::LayerTransformation::QuantizedTensorAlignment::None,  // quantizedTensorAlignmentOnWeights
-            true)
-            .setPrecisionsOnActivations({ngraph::element::i8})
+    ngraph::pass::low_precision::LayerTransformation::Params(true)
     // LayerTestsUtils::LayerTransformationParamsNGraphFactory::createParams().setUpdatePrecisions(false),
 };
 
