@@ -44,13 +44,14 @@ struct ParameterTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
     CUDA::Device device{};
+    const bool optimizeOption = false;
     auto& registry { OperationRegistry::getInstance() };
     auto node = std::make_shared<ParameterStubNode>();
     auto inputIDs  = std::vector<unsigned>{};
     auto outputIDs = std::vector<unsigned>{0};
     node->set_friendly_name(ParameterStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(node));
-    operation = registry.createOperation(device, node, inputIDs, outputIDs);
+    operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto parameterOp = dynamic_cast<ParameterOp*>(operation.get());
     ASSERT_TRUE(parameterOp);

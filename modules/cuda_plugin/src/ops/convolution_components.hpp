@@ -4,8 +4,10 @@
 
 #pragma once
 
+#include <optional>
 #include <ngraph/op/convolution.hpp>
-#include "transformer/nodes/convolution2d_biasadd_activation.hpp"
+
+#include "transformer/nodes/fused_convolution2d.hpp"
 
 namespace CUDAPlugin::Convolution::Details {
 
@@ -30,7 +32,8 @@ struct ConvArgIndices {
  *  - Eliminates `ngraph::op::PadType` providing actual padding values.
  */
 struct ConvolutionParams {
-    ConvolutionParams(const ngraph::op::v1::Convolution& node);
+    template <typename TConvNode>
+    ConvolutionParams(const TConvNode& node);
 
     ngraph::element::Type_t element_type_;
     ngraph::Shape input_shape_;
@@ -45,31 +48,34 @@ struct ConvolutionParams {
     size_t NumberOfSpatialDims() const { return input_shape_.size() - NON_SPATIAL_DIMS_NUMBER; }
 
 private:
-    void InferPadding(const ngraph::op::v1::Convolution& node);
+    template <typename TConvNode>
+    void InferPadding(const TConvNode& node);
     void ConvertConv1DToConv2D();
 };
 
 
 /**
  * @brief Defines tensor indices for the following nodes:
- *  - `CUDAPlugin::nodes::Conv2DBiasAddActivation`
+ *  - `CUDAPlugin::nodes::FusedConv2D`
  */
-struct ConvolutionBiasAddActivationIndices {
+struct FusedConvolutionIndices {
     static constexpr size_t input = 0;
     static constexpr size_t filter = 1;
     static constexpr size_t bias = 2;
+    static constexpr size_t add = 3;
     static constexpr size_t output = 0;
 };
 
 /**
  * @brief Unified parameters as they are consumed by the following nodes:
- *  - `CUDAPlugin::nodes::Conv2DBiasAddActivation`
+ *  - `CUDAPlugin::nodes::FusedConv2D`
  */
-struct ConvolutionBiasAddActivationParams {
-    ConvolutionBiasAddActivationParams(const CUDAPlugin::nodes::Conv2DBiasAddActivation& node);
+struct FusedConvolutionParams {
+  FusedConvolutionParams(const CUDAPlugin::nodes::FusedConv2D& node);
 
     ConvolutionParams conv_;
     ngraph::Shape bias_shape_;
+    std::optional<ngraph::Shape> add_shape_;
     CUDAPlugin::nodes::ActivationMode activation_;
 };
 

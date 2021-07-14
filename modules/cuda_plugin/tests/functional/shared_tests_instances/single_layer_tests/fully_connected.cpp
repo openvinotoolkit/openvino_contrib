@@ -93,19 +93,16 @@ TEST_P(FullyConnectedLayerTest, CompareWithRefs) {
   SKIP_IF_CURRENT_TEST_IS_DISABLED()
 
   auto params = GetParam();
-  inPrc = std::get<1>(params);
-  outPrc = std::get<2>(params);
+  inPrc = std::get<2>(params);
+  outPrc = std::get<3>(params);
 
   Run();
 }
 
 namespace {
 
-const std::vector<InferenceEngine::Precision> inputFP16Precisions = {
+const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
-};
-
-const std::vector<InferenceEngine::Precision> inputFP32Precisions = {
     InferenceEngine::Precision::FP32,
 };
 
@@ -156,21 +153,9 @@ std::map<std::string, std::string> additional_config = {};
 INSTANTIATE_TEST_CASE_P(smoke_MatMulFP16, FullyConnectedLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(smokeShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        FullyConnectedLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMulFP32, FullyConnectedLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(smokeShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
@@ -180,21 +165,9 @@ INSTANTIATE_TEST_CASE_P(smoke_MatMulFP32, FullyConnectedLayerTest,
 INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP16, FullyConnectedLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(resnet50ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        FullyConnectedLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP32, FullyConnectedLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(resnet50ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
@@ -204,21 +177,9 @@ INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP32, FullyConnectedLayerTest,
 INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP16, FullyConnectedLayerTest,
                         ::testing::Combine(
                             ::testing::ValuesIn(vgg16ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP16Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Precision::FP16),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                            ::testing::Values(additional_config)),
-                        FullyConnectedLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP32, FullyConnectedLayerTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(vgg16ShapeRelatedParams),
-                            ::testing::ValuesIn(inputFP32Precisions),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
-                            ::testing::Values(InferenceEngine::Precision::FP32),
+                            ::testing::ValuesIn(netPrecisions),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                             ::testing::Values(InferenceEngine::Layout::ANY),
                             ::testing::ValuesIn(secondaryInputTypes),
                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),

@@ -12,10 +12,10 @@
 
 namespace CUDAPlugin {
 
-class Convolution2DBiasAddActivationCuDnn : public IOperationExec {
+class FusedConvolutionCuDnn : public IOperationExec {
 public:
-    Convolution2DBiasAddActivationCuDnn(const CUDA::Device& device,
-        const Convolution::Details::ConvolutionBiasAddActivationParams& params);
+    FusedConvolutionCuDnn(const CUDA::CreationContext& context,
+                          const Convolution::Details::FusedConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -23,7 +23,7 @@ public:
                  const Workbuffers&) override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIndices&  GetWorkbufferIds() const { return workbuffer_ids_; }
+    const WorkbufferIndices& GetWorkbufferIds() const { return workbuffer_ids_; }
     WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
       workbuffer_ids_ = workbufferIds;
       return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
@@ -38,6 +38,7 @@ private:
     WorkbufferIndices workbuffer_ids_;
     Convolution::Details::ConvolutionDescriptorsCuDnn conv_descs_;
     CUDA::DnnTensorDescriptor bias_desc_;
+    std::optional<CUDA::DnnTensorDescriptor> add_desc_;
     CUDA::DnnActivationDescriptor activation_desc_;
 };
 

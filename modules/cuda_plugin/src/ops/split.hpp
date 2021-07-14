@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 
 class SplitOp : public OperationBase {
  public:
-    SplitOp(const CUDA::Device& device,
+    SplitOp(const CUDA::CreationContext& context,
             const ngraph::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
@@ -24,13 +24,12 @@ class SplitOp : public OperationBase {
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
 
  private:
+    size_t mutableWbSize() const { return sizeof(float *) * num_splits_; }
     template <typename T>
-    void callKernel(unsigned numBlocks, unsigned threadsPerBlock,
-                    const CUDA::Stream& stream,
-                    InferenceEngine::gpu::DevicePointer<const void*> in0,
-                    const CUDA::Allocation& outputPtrs);
+    void Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers);
 
     ngraph::element::Type_t element_type_;
     size_t num_splits_ = 0;

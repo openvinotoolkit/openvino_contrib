@@ -5,9 +5,12 @@
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 
-namespace CUDAPlugin {
+namespace CUDA {
 
 extern std::unordered_map<std::string, size_t> cudaConcurrentKernels;
+extern std::unordered_set<std::string> fp16SupportedArchitecture;
+extern std::unordered_set<std::string> int8SupportedArchitecture;
 
 } // namespace CUDAPlugin

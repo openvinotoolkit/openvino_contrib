@@ -17,12 +17,12 @@
 
 namespace CUDAPlugin {
 
-FullyConnectedOp::FullyConnectedOp(const CUDA::Device& device,
+FullyConnectedOp::FullyConnectedOp(const CUDA::CreationContext& context,
                                    const NodeOp& node,
                                    std::vector<unsigned>&& inputIds,
                                    std::vector<unsigned>&& outputIds)
-    : OperationCuBlas(device, node, std::move(inputIds), std::move(outputIds))
-    , matmul_op_{device, node,
+    : OperationCuBlas(context, node, std::move(inputIds), std::move(outputIds))
+    , matmul_op_{context, node,
                  std::vector<unsigned>{input_ids_.begin(), input_ids_.end()-1},
                  std::vector<unsigned>(output_ids_)} {
     bias_size_ = node.get_input_tensor(2).size();

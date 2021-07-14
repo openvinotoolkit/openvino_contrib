@@ -105,11 +105,11 @@ void SoftmaxOp::mapRankAxis(const ngraph::Shape& shape, int axis) {
   }
 }
 
-SoftmaxOp::SoftmaxOp(const CUDA::Device& device,
+SoftmaxOp::SoftmaxOp(const CUDA::CreationContext& context,
                      const NodeOp& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
-  : OperationCuDnn{device, node, move(inputIds), move(outputIds) },
+  : OperationCuDnn{context, node, move(inputIds), move(outputIds) },
     type_ {convertDataType<cudnnDataType_t>(node.input(0).get_element_type())} {
       const int axis = node.get_axis();
       mapRankAxis(node.input(0).get_shape(), axis);

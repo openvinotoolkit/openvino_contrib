@@ -7,6 +7,8 @@
 #include <gsl/gsl_assert>
 #include <details/ie_exception.hpp>
 #include <cudnn.h>
+#include <cuda_config.hpp>
+#include <cuda/cuda_config.hpp>
 
 #include "converters.hpp"
 
@@ -80,71 +82,209 @@ ConvolutionParamsCuDnn::MakeConvolutionDescriptor(cudnnDataType_t convDataType) 
     return conv_desc;
 }
 
-
-ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CUDA::Device& device,
+ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(
+        const CUDA::CreationContext& context,
         const ConvolutionParamsCuDnn& params)
-    : tensor_element_type_{ params.ElementType() }
-    , input_{ params.MakeInputDescriptor() }
-    , filter_{ params.MakeFilterDescriptor() }
-    , output_{ params.MakeOutputDescriptor() }
+    : context_{context}
+    , params_{params}
+    , tensor_element_type_{ params_.ElementType() }
+    , input_{ params_.MakeInputDescriptor() }
+    , filter_{ params_.MakeFilterDescriptor() }
+    , output_{ params_.MakeOutputDescriptor() }
     , conv_{}
     , algo_perf_{} {
     CUDA::DnnHandle dnnHandle {};
-    SelectAlgo(device, dnnHandle, params);
+    if (context_.optimizeOption()) {
+      BenchmarkOptimalAlgo(dnnHandle, params_);
+    } else {
+      GetAlgo(dnnHandle);
+    }
 }
 
-void ConvolutionDescriptorsCuDnn::SelectAlgo(const CUDA::Device& device,
-                                             const CUDA::DnnHandle& dnnHandle,
-                                             const ConvolutionParamsCuDnn& params) {
+void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(
+    const CUDA::DnnHandle& dnnHandle,
+    const ConvolutionParamsCuDnn& params) {
+  constexpr auto kNumSelectAlgo = 3;
+  int convForwardAlgorithmMaxCount;
+  throwIfError(
+      cudnnGetConvolutionForwardAlgorithmMaxCount(
+          dnnHandle.get(),
+          &convForwardAlgorithmMaxCount));
+  std::vector<int> timesCuDNNAlgosSelected(convForwardAlgorithmMaxCount);
+  std::array<cudnnConvolutionFwdAlgoPerf_t, kNumSelectAlgo> cudnnAlgos{};
+  for (auto& algo : cudnnAlgos) {
+    FindAlgo(dnnHandle);
+    algo = algo_perf_;
+    IE_ASSERT(algo_perf_.algo >= 0);
+    IE_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
+    timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
+  }
+  auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(),
+                                      timesCuDNNAlgosSelected.end());
+  auto optimalAlgoId = static_cast<cudnnConvolutionFwdAlgo_t>(
+      std::distance(timesCuDNNAlgosSelected.begin(), maxAlgoIter));
+  auto optimalAlgo = std::find_if(
+      cudnnAlgos.begin(), cudnnAlgos.end(),
+    [optimalAlgoId](const auto& a) {
+      return a.algo == optimalAlgoId;
+    });
+  algo_perf_ = *optimalAlgo;
+}
+
+void ConvolutionDescriptorsCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
+  switch (tensor_element_type_) {
+    case CUDNN_DATA_HALF:
+      if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF))
+        return;
+      if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT))
+        return;
+      break;
+    default:
+      if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_))
+        return;
+  }
+
+  THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+}
+
+bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                                         cudnnDataType_t convDataType) {
+  cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
+  conv_ = params_.MakeConvolutionDescriptor(convDataType);
+  const int requestedAlgoCount = 1;
+  int returnedAlgoCount = 0;
+  status = ::cudnnGetConvolutionForwardAlgorithm_v7(
+      dnnHandle.get(),
+      input_.get(),
+      filter_.get(),
+      conv_.get(),
+      output_.get(),
+      requestedAlgoCount,
+      &returnedAlgoCount,
+      &algo_perf_);
+
+  if ((status != CUDNN_STATUS_SUCCESS) ||
+      (algo_perf_.status != CUDNN_STATUS_SUCCESS) ||
+      (returnedAlgoCount <= 0)) {
+    return false;
+  }
+
+  size_t sizeInBytes = 0;
+  throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
+      dnnHandle.get(),
+      input_.get(),
+      filter_.get(),
+      conv_.get(),
+      output_.get(),
+      algo_perf_.algo,
+      &sizeInBytes));
+  algo_perf_.memory = sizeInBytes;
+
+  return true;
+}
+
+void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
     case CUDNN_DATA_HALF:
-        if (SelectAlgoForConvDataType(device, dnnHandle, params, CUDNN_DATA_HALF))
+        if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF))
             return;
-        if (SelectAlgoForConvDataType(device, dnnHandle, params, CUDNN_DATA_FLOAT))
+        if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT))
             return;
         break;
     default:
-        if (SelectAlgoForConvDataType(device, dnnHandle, params, tensor_element_type_))
+        if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_))
             return;
     }
 
     THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
 }
 
-bool ConvolutionDescriptorsCuDnn::SelectAlgoForConvDataType(const CUDA::Device& device,
-                                                            const CUDA::DnnHandle& dnnHandle,
-                                                            const ConvolutionParamsCuDnn& params,
-                                                            cudnnDataType_t convDataType) {
+bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
+      const CUDA::DnnHandle& dnnHandle,
+      cudnnDataType_t convDataType) {
     cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
-    conv_ = params.MakeConvolutionDescriptor(convDataType);
+    conv_ = params_.MakeConvolutionDescriptor(convDataType);
     const int requestedAlgoCount = 1;
     int returnedAlgoCount = 0;
-    if (device.props().major < 7)
-    {
-        status = ::cudnnFindConvolutionForwardAlgorithm(
-                                    dnnHandle.get(),
-                                    input_.get(),
-                                    filter_.get(),
-                                    conv_.get(),
-                                    output_.get(),
-                                    requestedAlgoCount,
-                                    &returnedAlgoCount,
-                                    &algo_perf_);
-    } else
-    {
-        status = ::cudnnGetConvolutionForwardAlgorithm_v7(
-                                    dnnHandle.get(),
-                                    input_.get(),
-                                    filter_.get(),
-                                    conv_.get(),
-                                    output_.get(),
-                                    requestedAlgoCount,
-                                    &returnedAlgoCount,
-                                    &algo_perf_);
+    status = ::cudnnFindConvolutionForwardAlgorithm(
+                                dnnHandle.get(),
+                                input_.get(),
+                                filter_.get(),
+                                conv_.get(),
+                                output_.get(),
+                                requestedAlgoCount,
+                                &returnedAlgoCount,
+                                &algo_perf_);
+
+    if ((status != CUDNN_STATUS_SUCCESS) ||
+        (algo_perf_.status != CUDNN_STATUS_SUCCESS) ||
+        (returnedAlgoCount <= 0)) {
+        return false;
     }
-    return (status == CUDNN_STATUS_SUCCESS)
-        && (algo_perf_.status == CUDNN_STATUS_SUCCESS)
-        && (returnedAlgoCount > 0);
+
+    size_t sizeInBytes = 0;
+    throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
+                                     dnnHandle.get(),
+                                     input_.get(),
+                                     filter_.get(),
+                                     conv_.get(),
+                                     output_.get(),
+                                     algo_perf_.algo,
+                                     &sizeInBytes));
+    algo_perf_.memory = sizeInBytes;
+
+    return true;
+}
+
+void ConvolutionDescriptorsCuDnn::FindAlgo(
+    const CUDA::DnnHandle& dnnHandle,
+    InferenceEngine::gpu::DevicePointer<const void*> inPtr,
+    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+    InferenceEngine::gpu::DevicePointer<void*> outPtr,
+    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace) {
+  switch (tensor_element_type_) {
+    case CUDNN_DATA_HALF:
+      if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_HALF))
+        return;
+      if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_FLOAT))
+        return;
+      break;
+    default:
+      if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, tensor_element_type_))
+        return;
+  }
+
+  THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+}
+
+bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
+    const CUDA::DnnHandle& dnnHandle,
+    InferenceEngine::gpu::DevicePointer<const void*> inPtr,
+    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+    InferenceEngine::gpu::DevicePointer<void*> outPtr,
+    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
+    cudnnDataType_t convDataType) {
+  cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
+  conv_ = params_.MakeConvolutionDescriptor(convDataType);
+  const int requestedAlgoCount = 1;
+  int returnedAlgoCount = 0;
+  status = ::cudnnFindConvolutionForwardAlgorithmEx(
+      dnnHandle.get(),
+      input_.get(),
+      inPtr.get(),
+      filter_.get(),
+      filterPtr.get(),
+      conv_.get(),
+      output_.get(),
+      outPtr.get(),
+      requestedAlgoCount,
+      &returnedAlgoCount,
+      &algo_perf_,
+      workspace.data(),
+      workspace.size());
+  return (status == CUDNN_STATUS_SUCCESS)
+      && (algo_perf_.status == CUDNN_STATUS_SUCCESS)
+      && (returnedAlgoCount > 0);
 }
 
 } // namespace CUDAPlugin

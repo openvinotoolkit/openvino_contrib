@@ -6,12 +6,45 @@
 
 #include <cuda_test_constants.hpp>
 
+#include "finite_comparer.hpp"
 #include "common_test_utils/test_constants.hpp"
 #include "single_layer_tests/convolution.hpp"
 
 using namespace LayerTestsDefinitions;
 
+namespace LayerTestsDefinitions {
+
+class ConvolutionLayerThresholdTest : public FiniteComparer<ConvolutionLayerTest> {
+ protected:
+  void SetUp() override {
+    ConvolutionLayerTest::SetUp();
+
+    auto params = this->GetParam();
+    auto netPrecision = std::get<1>(params);
+    if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
+      this->threshold = 500;
+      this->infinity_value = std::numeric_limits<std::uint16_t>::max();
+    }
+  }
+};
+
+TEST_P(ConvolutionLayerThresholdTest, CompareWithRefs) {
+  SKIP_IF_CURRENT_TEST_IS_DISABLED()
+
+  auto params = GetParam();
+  inPrc = std::get<2>(params);
+  outPrc = std::get<3>(params);
+
+  Run();
+}
+
+}
+
 namespace {
+
+// NOTE: Default precision where difference between reference and actual
+//       are bigger than defined threshold
+const auto defaultPrecision = InferenceEngine::Precision::FP32;
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
@@ -56,7 +89,7 @@ const auto conv1DParams_AutoPadValid = ::testing::Combine(
     ::testing::Values(ngraph::op::PadType::VALID));
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingSymmetric1, ConvolutionLayerTest,
+    smoke_Convolution1D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -65,9 +98,9 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingSymmetric2, ConvolutionLayerTest,
+    smoke_Convolution1D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingSymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -76,9 +109,9 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -87,9 +120,9 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv1DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -98,10 +131,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
+    smoke_Convolution1D_AutoPadValid, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv1DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -110,7 +143,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 2D Convolution ============= */
 const std::vector<std::vector<size_t>> kernels = {{3, 3}, {3, 5}};
@@ -151,7 +184,7 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(
     ::testing::Values(ngraph::op::PadType::VALID));
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric1, ConvolutionLayerTest,
+    smoke_Convolution2D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -160,51 +193,36 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32, ConvolutionLayerTest,
+    smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingSymmetric2,
-        ::testing::Values(InferenceEngine::Precision::FP32),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
-
-class ConvolutionLayerTestWithRelaxedThreshold : public ConvolutionLayerTest {
-    void SetUp() override {
-        ConvolutionLayerTest::SetUp();
-        // threshold = 0.03;
-    }
-};
-
-TEST_P(ConvolutionLayerTestWithRelaxedThreshold, CompareWithRefs) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
-    auto params = GetParam();
-    inPrc = std::get<1>(params);
-    outPrc = std::get<2>(params);
-    Run();
-}
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2D_ExplicitPaddingSymmetric2_FP16, ConvolutionLayerTestWithRelaxedThreshold,
+    smoke_Convolution2D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingSymmetric2,
-        ::testing::Values(InferenceEngine::Precision::FP16),
+        ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTestWithRelaxedThreshold::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -213,10 +231,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -225,10 +243,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_AutoPadValid, ConvolutionLayerTest,
+    smoke_Convolution2D_AutoPadValid, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv2DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -237,7 +255,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 3D Convolution ============= */
 const std::vector<std::vector<size_t>> kernels3d = {{3, 3, 3}, {3, 5, 3}};
@@ -277,7 +295,7 @@ const auto conv3DParams_AutoPadValid = ::testing::Combine(
     ::testing::Values(ngraph::op::PadType::VALID));
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_ExplicitPaddingSymmetric1, ConvolutionLayerTest,
+    smoke_Convolution3D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv3DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -286,10 +304,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_ExplicitPaddingSymmetric2, ConvolutionLayerTest,
+    smoke_Convolution3D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv3DParams_ExplicitPaddingSymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -298,10 +316,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv3DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -310,10 +328,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric2, ConvolutionLayerTest,
+    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv3DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -322,10 +340,10 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_AutoPadValid, ConvolutionLayerTest,
+    smoke_Convolution3D_AutoPadValid, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         conv3DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -334,16 +352,14 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= resnet50/vgg16 Convolutions ============= */
-
-const auto resnet50_vgg16_precission = InferenceEngine::Precision::FP32;
 
 // attrs: {'auto_pad': 'explicit', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 256, 28, 28), (256, 256, 3, 3); out: (1, 256, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group1_1, ConvolutionLayerTest,
+    resnet50_vgg16_group1_1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -353,19 +369,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 128, 56, 56), (128, 128, 3, 3); out: (1, 128, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group1_2, ConvolutionLayerTest,
+    resnet50_vgg16_group1_2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -375,19 +391,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 512, 14, 14), (512, 512, 3, 3); out: (1, 512, 7, 7)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group1_3, ConvolutionLayerTest,
+    resnet50_vgg16_group1_3, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -397,19 +413,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 14, 14})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '3,3', 'pads_end': '3,3'},
 // in: (1, 3, 224, 224), (64, 3, 7, 7); out: (1, 64, 112, 112)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group2_1, ConvolutionLayerTest,
+    resnet50_vgg16_group2_1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({7, 7})),         // kernel
@@ -419,19 +435,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 3, 224, 224})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'valid', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 256, 56, 56), (512, 256, 1, 1); out: (1, 512, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group3_1, ConvolutionLayerTest,
+    resnet50_vgg16_group3_1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -441,19 +457,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::VALID)),         // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'valid', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 1024, 14, 14), (2048, 1024, 1, 1); out: (1, 2048, 7, 7)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group3_2, ConvolutionLayerTest,
+    resnet50_vgg16_group3_2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -463,19 +479,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(2048),                                // Num out channels
             ::testing::Values(ngraph::op::PadType::VALID)),         // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'valid', 'strides': '2,2', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 512, 28, 28), (1024, 512, 1, 1); out: (1, 1024, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group3_3, ConvolutionLayerTest,
+    resnet50_vgg16_group3_3, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -485,19 +501,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(1024),                                // Num out channels
             ::testing::Values(ngraph::op::PadType::VALID)),         // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 256, 14, 14), (1024, 256, 1, 1); out: (1, 1024, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_1, ConvolutionLayerTest,
+    resnet50_vgg16_group4_1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -507,19 +523,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(1024),                                // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 14, 14})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 64, 56, 56), (64, 64, 1, 1); out: (1, 64, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_2, ConvolutionLayerTest,
+    resnet50_vgg16_group4_2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -529,19 +545,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),    // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 128, 28, 28), (512, 128, 1, 1); out: (1, 512, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_3, ConvolutionLayerTest,
+    resnet50_vgg16_group4_3, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -551,19 +567,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 256, 14, 14), (256, 256, 3, 3); out: (1, 256, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_4, ConvolutionLayerTest,
+    resnet50_vgg16_group4_4, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -573,19 +589,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 14, 14})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 64, 56, 56), (256, 64, 1, 1); out: (1, 256, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_5, ConvolutionLayerTest,
+    resnet50_vgg16_group4_5, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -595,19 +611,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),    // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 64, 56, 56), (64, 64, 3, 3); out: (1, 64, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_6, ConvolutionLayerTest,
+    resnet50_vgg16_group4_6, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -617,19 +633,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),    // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 256, 56, 56), (64, 256, 1, 1); out: (1, 64, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_7, ConvolutionLayerTest,
+    resnet50_vgg16_group4_7, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -639,19 +655,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 512, 28, 28), (128, 512, 1, 1); out: (1, 128, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_8, ConvolutionLayerTest,
+    resnet50_vgg16_group4_8, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -661,19 +677,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 2048, 7, 7), (512, 2048, 1, 1); out: (1, 512, 7, 7)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_9, ConvolutionLayerTest,
+    resnet50_vgg16_group4_9, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -683,19 +699,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 2048, 7, 7})),    // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 1024, 14, 14), (512, 1024, 1, 1); out: (1, 512, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_10, ConvolutionLayerTest,
+    resnet50_vgg16_group4_10, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -705,19 +721,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),  // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 512, 7, 7), (512, 512, 3, 3); out: (1, 512, 7, 7)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_11, ConvolutionLayerTest,
+    resnet50_vgg16_group4_11, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -727,19 +743,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 7, 7})),     // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 256, 56, 56), (128, 256, 1, 1); out: (1, 128, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_12, ConvolutionLayerTest,
+    resnet50_vgg16_group4_12, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -749,19 +765,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 512, 28, 28), (256, 512, 1, 1); out: (1, 256, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_13, ConvolutionLayerTest,
+    resnet50_vgg16_group4_13, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -771,19 +787,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 512, 7, 7), (2048, 512, 1, 1); out: (1, 2048, 7, 7)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_14, ConvolutionLayerTest,
+    resnet50_vgg16_group4_14, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -793,19 +809,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(2048),                                // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 7, 7})),     // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 128, 28, 28), (128, 128, 3, 3); out: (1, 128, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_15, ConvolutionLayerTest,
+    resnet50_vgg16_group4_15, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -815,19 +831,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'same_upper', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '0,0', 'pads_end': '0,0'},
 // in: (1, 1024, 14, 14), (256, 1024, 1, 1); out: (1, 256, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group4_16, ConvolutionLayerTest,
+    resnet50_vgg16_group4_16, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({1, 1})),         // kernel
@@ -837,19 +853,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)),    // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),  // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 64, 224, 224), (64, 64, 3, 3); out: (1, 64, 224, 224)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_1, ConvolutionLayerTest,
+    resnet50_vgg16_group5_1, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -859,19 +875,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 224, 224})),  // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 3, 224, 224), (64, 3, 3, 3); out: (1, 64, 224, 224)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_2, ConvolutionLayerTest,
+    resnet50_vgg16_group5_2, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -881,19 +897,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(64),                                  // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 3, 224, 224})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 128, 56, 56), (256, 128, 3, 3); out: (1, 256, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_3, ConvolutionLayerTest,
+    resnet50_vgg16_group5_3, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -903,19 +919,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 512, 28, 28), (512, 512, 3, 3); out: (1, 512, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_4, ConvolutionLayerTest,
+    resnet50_vgg16_group5_4, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -925,19 +941,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 512, 14, 14), (512, 512, 3, 3); out: (1, 512, 14, 14)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_5, ConvolutionLayerTest,
+    resnet50_vgg16_group5_5, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -947,19 +963,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 512, 14, 14})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 256, 28, 28), (512, 256, 3, 3); out: (1, 512, 28, 28)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_6, ConvolutionLayerTest,
+    resnet50_vgg16_group5_6, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -969,19 +985,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(512),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 28, 28})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 256, 56, 56), (256, 256, 3, 3); out: (1, 256, 56, 56)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_7, ConvolutionLayerTest,
+    resnet50_vgg16_group5_7, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -991,19 +1007,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(256),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::Values(defaultPrecision),                        // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 64, 112, 112), (128, 64, 3, 3); out: (1, 128, 112, 112)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_8, ConvolutionLayerTest,
+    resnet50_vgg16_group5_8, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -1013,19 +1029,19 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 112, 112})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 // attrs: {'auto_pad': 'explicit', 'strides': '1,1', 'dilations': '1,1', 'pads_begin': '1,1', 'pads_end': '1,1'},
 // in: (1, 128, 112, 112), (128, 128, 3, 3); out: (1, 128, 112, 112)
 INSTANTIATE_TEST_CASE_P(
-    resnet50_vgg16_group5_9, ConvolutionLayerTest,
+    resnet50_vgg16_group5_9, ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
             ::testing::Values(std::vector<size_t>({3, 3})),         // kernel
@@ -1035,13 +1051,13 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})),         // dilations
             ::testing::Values(128),                                 // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)),      // Padding type
-        ::testing::Values(resnet50_vgg16_precission),               // Net precision
+        ::testing::ValuesIn(netPrecisions),                         // Net precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY),            // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY),            // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 112, 112})),   // Input shapes
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerTest::getTestCaseName);
+    ConvolutionLayerThresholdTest::getTestCaseName);
 
 }  // namespace

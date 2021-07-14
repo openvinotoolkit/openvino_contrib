@@ -13,10 +13,10 @@
 #include <transformations/utils/utils.hpp>
 
 #include "nodes/cuda_plugin_custom_node_types.hpp"
-#include "nodes/convolution2d_biasadd_activation.hpp"
+#include "nodes/fused_convolution2d.hpp"
 
 using namespace ngraph;
-using FusedConv = CUDAPlugin::nodes::Conv2DBiasAddActivation;
+using FusedConv = CUDAPlugin::nodes::FusedConv2D;
 
 template <class A, class B>
 std::pair<std::shared_ptr<A>, std::shared_ptr<B>> parse_eltwise_inputs(
@@ -100,25 +100,95 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
   return true;
 }
 
+std::pair<std::shared_ptr<FusedConv>, std::shared_ptr<Node>>
+parse_fusedconv_inputs(
+    std::shared_ptr<ngraph::Node> add) {
+  std::shared_ptr<FusedConv> fused_conv = nullptr;
+  std::shared_ptr<Node> node = nullptr;
+  node = add->input(1).get_source_output().get_node_shared_ptr();
+  fused_conv = std::dynamic_pointer_cast<FusedConv>(
+      add->input(0).get_source_output().get_node_shared_ptr());
+  if (!fused_conv) {
+    node = add->input(0).get_source_output().get_node_shared_ptr();
+    fused_conv = std::dynamic_pointer_cast<FusedConv>(
+        add->input(1).get_source_output().get_node_shared_ptr());
+  }
+
+  if (!fused_conv) {
+    return {nullptr, nullptr};
+  }
+
+  return {fused_conv, node};
+}
+
+bool sink_add_to_fused_convolution(ngraph::pattern::Matcher &m) {
+  auto add = std::dynamic_pointer_cast<opset1::Add>(m.get_match_root());
+  auto[fused_conv, node] = parse_fusedconv_inputs(m.get_match_root());
+
+  if (fused_conv->has_add_node() ||
+      fused_conv->get_activation() != CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION) {
+    return false;
+  }
+
+  const ngraph::Output<Node> &data = fused_conv->input(0).get_source_output();
+  const ngraph::Output<Node> &filters = fused_conv->input(1).get_source_output();
+  const ngraph::Output<Node> &bias = fused_conv->input(2).get_source_output();
+
+  auto fused_conv_add = std::make_shared<FusedConv>(
+      data,                          //
+      filters,                       //
+      bias,                          //
+      node,                          //
+      fused_conv->get_strides(),     //
+      fused_conv->get_pads_begin(),  //
+      fused_conv->get_pads_end(),    //
+      fused_conv->get_dilations(),   //
+      fused_conv->get_auto_pad(),    //
+      CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION);
+  ngraph::Output<ngraph::Node> fused_conv_add_output(fused_conv_add);
+
+  fused_conv_add->set_friendly_name(add->get_friendly_name());
+  ngraph::copy_runtime_info({node, fused_conv}, fused_conv_add);
+
+  auto& rt_info = fused_conv->get_rt_info();
+  if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
+    auto& rt_info_layer_names = rt_info[ExecGraphInfoSerialization::ORIGINAL_NAMES];
+    const auto original_names =
+        std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
+            rt_info_layer_names);
+    const std::string original_names_with_activation =
+        add->get_friendly_name() + "," + original_names->get();
+    rt_info_layer_names = std::make_shared<ngraph::VariantWrapper<std::string>>(
+        original_names_with_activation);
+  }
+
+  ngraph::replace_node(fused_conv, fused_conv_add);
+  ngraph::replace_node(m.get_match_root(), fused_conv_add);
+
+  return true;
+}
+
 bool sink_relu_to_fused_convolution(ngraph::pattern::Matcher &m) {
   auto relu = m.get_match_root();
   auto fused_conv = std::dynamic_pointer_cast<FusedConv>(
       relu->input(0).get_source_output().get_node_shared_ptr());
-
   fused_conv->set_activation(CUDAPlugin::nodes::ActivationMode::RELU);
   fused_conv->set_friendly_name(relu->get_friendly_name());
 
-  auto rt_info_layer_names =
-      fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES];
-  const auto original_names =
-      std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
-          rt_info_layer_names);
-  const std::string original_names_with_activation =
-      relu->get_friendly_name() + "," + original_names->get();
-  rt_info_layer_names = std::make_shared<ngraph::VariantWrapper<std::string>>(
-      original_names_with_activation);
+  auto& rt_info = fused_conv->get_rt_info();
+  if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
+    auto& rt_info_layer_names = rt_info[ExecGraphInfoSerialization::ORIGINAL_NAMES];
+    const auto original_names =
+        std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
+            rt_info_layer_names);
+    const std::string original_names_with_activation =
+        relu->get_friendly_name() + "," + original_names->get();
+    rt_info_layer_names = std::make_shared<ngraph::VariantWrapper<std::string>>(
+        original_names_with_activation);
+  }
 
   ngraph::replace_node(m.get_match_root(), fused_conv);
+
   return true;
 }
 
@@ -137,6 +207,26 @@ ngraph::pass::FuseConvolution2DWithBiasAdd::FuseConvolution2DWithBiasAdd() {
 
   auto m = std::make_shared<ngraph::pattern::Matcher>(
       add, "FuseConvolutionWithBiasAdd");
+  register_matcher(m, callback);
+}
+
+NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolution2DWithBiasaddAdd,
+                       "FuseConvolution2DWithBiasaddAdd", 0);
+
+pass::FuseConvolution2DWithBiasaddAdd::FuseConvolution2DWithBiasaddAdd() {
+  auto fused_convolution =
+    ngraph::pattern::wrap_type<FusedConv>(pattern::consumers_count(1));
+  auto relu =
+      ngraph::pattern::wrap_type<ngraph::op::v0::Relu>(pattern::consumers_count(2));
+  auto add =
+      ngraph::pattern::wrap_type<opset1::Add>({pattern::any_input(), fused_convolution});
+
+  matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    return sink_add_to_fused_convolution(m);
+  };
+
+  auto m = std::make_shared<ngraph::pattern::Matcher>(
+      add, "FuseConvolution2DWithBiasaddAdd");
   register_matcher(m, callback);
 }
 
@@ -159,4 +249,10 @@ pass::SinkReluToFusedConvolution::SinkReluToFusedConvolution() {
 }
 
 NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConv2DBiasAddActivation,
-                       "CudaFuseConvBiasAddActivation", 0);
+                       "CudaFuseConv2DBiasAddActivation", 0);
+
+ngraph::pass::CudaFuseConv2DBiasAddActivation::CudaFuseConv2DBiasAddActivation() {
+  add_matcher<FuseConvolution2DWithBiasAdd>();
+  add_matcher<FuseConvolution2DWithBiasaddAdd>();
+  add_matcher<SinkReluToFusedConvolution>();
+}
