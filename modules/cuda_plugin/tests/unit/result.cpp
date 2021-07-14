@@ -58,6 +58,7 @@ struct ResultTest : testing::Test {
   static constexpr size_t size = 16*1024;
   void SetUp() override {
     CUDA::Device device{};
+    const bool optimizeOption = false;
     auto& registry { OperationRegistry::getInstance() };
     auto paramNode = std::make_shared<ParameterStubNode>();
     paramNode->set_friendly_name(ParameterStubNode::type_info.name);
@@ -68,7 +69,7 @@ struct ResultTest : testing::Test {
     auto outputIDs = std::vector<unsigned>{};
     resultNode->set_friendly_name(ResultStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(resultNode));
-    operation = registry.createOperation(device, resultNode, inputIDs, outputIDs);
+    operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, resultNode, inputIDs, outputIDs);
     ASSERT_TRUE(operation);
     auto resultOp = dynamic_cast<ResultOp*>(operation.get());
     ASSERT_TRUE(resultOp);

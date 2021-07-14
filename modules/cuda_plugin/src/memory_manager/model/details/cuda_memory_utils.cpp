@@ -8,7 +8,7 @@
 namespace CUDAPlugin {
 
 size_t applyAllignment(size_t value) {
-    const size_t allignment = CudaDevice::GetMemoryAllignment();
+    const size_t allignment = CUDA::CudaDevice::GetMemoryAllignment();
     return (value % allignment) == 0 ? value : value - (value % allignment) + allignment;
 }
 

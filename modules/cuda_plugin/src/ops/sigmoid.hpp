@@ -11,7 +11,7 @@ namespace CUDAPlugin {
 
 class SigmoidOp : public OperationBase {
  public:
-    SigmoidOp(const CUDA::Device& device,
+    SigmoidOp(const CUDA::CreationContext& context,
               const std::shared_ptr<ngraph::Node>& node,
               IndexCollection&& inputIds,
               IndexCollection&& outputIds);

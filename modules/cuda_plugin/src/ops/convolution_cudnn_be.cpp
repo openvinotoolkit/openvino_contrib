@@ -163,7 +163,7 @@ ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
     desc.setDataType(element_type);
     desc.setShape(shape);
     desc.setStrides(ngraph::row_major_strides(shape));
-    desc.setAlignment(CudaDevice::GetMemoryAllignment());
+    desc.setAlignment(CUDA::CudaDevice::GetMemoryAllignment());
     desc.setIsVirtual(false);
     desc.finalize();
     return desc;

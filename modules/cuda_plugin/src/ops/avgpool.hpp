@@ -12,7 +12,7 @@ namespace CUDAPlugin {
 
 class AvgPoolOp : public OperationCuDnn {
  public:
-  explicit AvgPoolOp(const CUDA::Device& device,
+  explicit AvgPoolOp(const CUDA::CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds);

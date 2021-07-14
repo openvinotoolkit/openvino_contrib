@@ -11,11 +11,11 @@
 
 namespace CUDAPlugin {
 
-ParameterOp::ParameterOp(const CUDA::Device& device,
+ParameterOp::ParameterOp(const CUDA::CreationContext& context,
                          const ngraph::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
-    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     input_tensor_name_ = GetInputTensorName(node);
 }
 

@@ -46,6 +46,8 @@ namespace CUDAConfigParams {
 #define DECLARE_CUDA_CONFIG_KEY(name) DECLARE_CONFIG_KEY(CUDA_##name)
 #define DECLARE_CUDA_CONFIG_VALUE(name) DECLARE_CONFIG_VALUE(CUDA_##name)
 
+DECLARE_CUDA_CONFIG_VALUE(YES);
+DECLARE_CUDA_CONFIG_VALUE(NO);
 
 /**
  * @brief Defines the number of throutput streams used by CUDA plugin.
@@ -53,6 +55,10 @@ namespace CUDAConfigParams {
 DECLARE_CUDA_CONFIG_VALUE(THROUGHPUT_AUTO);
 DECLARE_CUDA_CONFIG_KEY(THROUGHPUT_STREAMS);
 
+/**
+ * @brief Defines if optimization should be run for CUDA libraries ("CUDA_YES", "CUDA_NO" - default).
+ */
+DECLARE_CUDA_CONFIG_KEY(OPTIMIZE);
 
 }  // namespace CUDAConfigParams
 }  // namespace InferenceEngine

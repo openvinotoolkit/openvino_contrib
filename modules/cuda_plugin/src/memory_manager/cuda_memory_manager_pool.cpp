@@ -28,7 +28,6 @@ MemoryManagerPool::MemoryManagerPool(
         throw;
     }
   }
-  number_memory_managers_ = memory_managers_.size();
 }
 
 void MemoryManagerPool::Interrupt() {
@@ -49,7 +48,17 @@ MemoryManagerPool::WaitAndGet(CancellationToken& cancellationToken) {
 }
 
 size_t MemoryManagerPool::Size() const {
-    return number_memory_managers_;
+    return memory_managers_.size();
+}
+
+void MemoryManagerPool::Resize(size_t count) {
+  const auto memoryManagersCount = memory_managers_.size();
+  if (count > memoryManagersCount) {
+    THROW_IE_EXCEPTION << fmt::format(
+        "Cannot resize MemoryManagerPool with {} value > than it was {}",
+        count, memoryManagersCount);
+  }
+  memory_managers_.resize(count);
 }
 
 void MemoryManagerPool::PushBack(std::unique_ptr<MemoryManager> memManager) {

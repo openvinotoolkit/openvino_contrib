@@ -113,11 +113,11 @@ private:
 
     /**
      * InferRequestInternal::execDataPreprocessing() doesn't support conversion from fp32 to fp16.
-     * fp16NetworkInputBlobs_ holds fp16 network blobs while InferRequestInternal::execDataPreprocessing()
+     * network_input_blobs_ holds fp16 network blobs while InferRequestInternal::execDataPreprocessing()
      * performs preprocessing on fp32 blobs.
      */
-    InferenceEngine::BlobMap                                fp16NetworkInputBlobs_;
-    InferenceEngine::BlobMap                                _networkOutputBlobs;
+    InferenceEngine::BlobMap                                network_input_blobs_;
+    InferenceEngine::BlobMap                                network_output_blobs_;
 
     std::optional<MemoryManagerPool::Proxy>                 memory_manager_proxy_;
     CancellationToken                                       cancellation_token_;
