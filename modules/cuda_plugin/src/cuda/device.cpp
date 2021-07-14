@@ -9,7 +9,7 @@
 #include "device.hpp"
 #include "props.hpp"
 
-namespace CUDAPlugin {
+namespace CUDA {
 
 int CudaDevice::GetNumDevices() {
     int count;

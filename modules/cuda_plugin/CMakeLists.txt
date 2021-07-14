@@ -19,6 +19,8 @@ endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
 set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
 
+find_package(InferenceEngineDeveloperPackage REQUIRED)
+
 include(cmake/features.cmake)
 
 set(HAS_REQUIRED REQUIRED)

@@ -46,6 +46,7 @@ public:
     InferenceEngine::InferRequestInternal::Ptr CreateInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
                                                                       InferenceEngine::OutputsDataMap networkOutputs) override;
     InferenceEngine::IInferRequest::Ptr CreateInferRequest() override;
+
     InferenceEngine::Parameter GetMetric(const std::string &name) const override;
     InferenceEngine::Parameter GetConfig(const std::string &name) const override;
     std::string newRequestName() {
@@ -66,11 +67,19 @@ private:
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
     std::size_t GetOptimalNumberOfStreams(std::size_t constBlobSize, std::size_t memoryBlobSize) const;
+    InferenceEngine::InferRequestInternal::Ptr
+    CreateBenchmarkInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
+                                    InferenceEngine::OutputsDataMap networkOutputs);
+    InferenceEngine::IInferRequest::Ptr CreateBenchmarkInferRequest();
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
     int GetCudaDeviceId() const noexcept;
     void InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
     std::vector<InferenceEngine::gpu::DevicePointer<void*>>
     getSharedWorkbuffers(const IOperationExec& operation);
+    void BenchmarkOptimalNumberOfRequests();
+    unsigned int RunBenchmarkFor(int numInfers,
+                                 std::mutex& mtx,
+                                 std::condition_variable& cond_var);
 
     std::atomic<std::size_t>                    request_id_ = {0};
     InferenceEngine::CNNNetwork                 cnn_network_;

@@ -29,7 +29,7 @@ const std::vector<std::vector<size_t>> inShape = {{1, 2, 3, 4}};
 // CUDA device supports only U8, FP16 and FP32 output precision
 const std::vector<Precision> out_precisions = {
         Precision::U8,
-//        Precision::FP16, // FIXME Uncomment when FP16 blobs are supported
+        Precision::FP16,
         Precision::FP32,
 };
 
@@ -37,7 +37,8 @@ const std::vector<Precision> out_precisions = {
 const std::vector<Precision> in_precisions = {
         Precision::U8,
         Precision::I16,
-//        Precision::FP16, // FIXME Uncomment when FP16 blobs are supported
+    // TODO: Uncomment when we find way to omit conversion from FP16 -> FP32 in tests
+//        Precision::FP16,
         Precision::FP32,
 };
 

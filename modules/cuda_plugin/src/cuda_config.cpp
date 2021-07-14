@@ -41,6 +41,14 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
             if (deviceId > 0) {
                 THROW_IE_EXCEPTION << "Device ID " << deviceId << " is not supported";
             }
+        } else if (CUDA_CONFIG_KEY(OPTIMIZE) == key) {
+          if (value == CUDA_CONFIG_VALUE(YES)) {
+            optimization = true;
+          } else if (value == CUDA_CONFIG_VALUE(NO)) {
+            optimization = false;
+          } else {
+            THROW_IE_EXCEPTION << fmt::format("optimize option value {} is not supported", value);
+          }
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             perfCount = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
@@ -53,7 +61,9 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     if (name == CONFIG_KEY(DEVICE_ID)) {
         return {std::to_string(deviceId)};
     } else if (name == CONFIG_KEY(PERF_COUNT)) {
-        return { std::string{perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)}};
+      return {std::string{perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)}};
+    } else if (name == CUDA_CONFIG_KEY(OPTIMIZE)) {
+      return {std::string(optimization ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
     } else if (name == CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
         return {cuda_throughput_streams_};
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {

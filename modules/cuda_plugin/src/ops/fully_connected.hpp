@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 class FullyConnectedOp : public OperationCuBlas {
  public:
   using NodeOp = nodes::FullyConnected;
-  FullyConnectedOp(const CUDA::Device& device,
+  FullyConnectedOp(const CUDA::CreationContext& context,
                    const NodeOp& node,
                    std::vector<unsigned>&& inputIds,
                    std::vector<unsigned>&& outputIds);

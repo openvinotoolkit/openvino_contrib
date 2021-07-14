@@ -13,7 +13,7 @@ class CuDnnTensorOpBase : public OperationCuDnn {
   public:
     static constexpr std::size_t max_supported_shape_size = 5;
 
-    CuDnnTensorOpBase(const CUDA::Device& device, const std::shared_ptr<ngraph::Node>& node,
+    CuDnnTensorOpBase(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
                    IndexCollection&& inputIds, IndexCollection&& outputIds,
                    const cudnnOpTensorOp_t& opType,
                    const cudnnNanPropagation_t& nanPropogationType =

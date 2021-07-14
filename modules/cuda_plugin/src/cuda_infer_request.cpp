@@ -52,23 +52,25 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
     };
 
     for (auto&& [inputName, userInputInfo] : _networkInputs) {
-        const auto& descr = userInputInfo->getTensorDesc();
-        auto userInputBlob = allocateBlob(descr.getDims(), descr.getPrecision(), descr.getLayout());
+        const auto& inputDescr = userInputInfo->getTensorDesc();
+        auto userInputBlob = allocateBlob(inputDescr.getDims(), inputDescr.getPrecision(),
+                         inputDescr.getLayout());
         _inputs[inputName] = userInputBlob;
         const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
-        if (descr.getPrecision() != networkPrecision) {
-            if (descr.getPrecision() == Precision::FP32 && networkPrecision == Precision::FP16) {
-                // Let InferRequestInternal::execDataPreprocessing do preprocessing without type conversion.
-                // Type conversion will be performed in CudaInferRequest::inferPreprocess().
-                _deviceInputs[inputName] = userInputBlob;
-                fp16NetworkInputBlobs_[inputName] = allocateBlob(descr.getDims(),
-                        networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
-            } else {
-            _deviceInputs[inputName] = allocateBlob(descr.getDims(),
-                    networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
-            }
+        if (inputDescr.getPrecision() != networkPrecision) {
+            _deviceInputs[inputName] = allocateBlob(
+                inputDescr.getDims(),
+                Precision::FP32,
+                TensorDesc::getLayoutByDims(inputDescr.getDims()));
         } else {
             _deviceInputs[inputName] = userInputBlob;
+        }
+        const auto& deviceInputDescr = _deviceInputs[inputName]->getTensorDesc();
+        if (deviceInputDescr.getPrecision() != networkPrecision) {
+            network_input_blobs_[inputName] = allocateBlob(
+                inputDescr.getDims(),
+                networkPrecision,
+                TensorDesc::getLayoutByDims(inputDescr.getDims()));
         }
     }
     for (auto&& [outputName, userOutputInfo] : _networkOutputs) {
@@ -76,11 +78,14 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&        
         auto userOutputBlob = allocateBlob(descr.getDims(), descr.getPrecision(), descr.getLayout());
         _outputs[outputName] = userOutputBlob;
         const auto networkPrecision = convertType(_executableNetwork->result(outputName).get_element_type());
-        if (descr.getPrecision() != networkPrecision)
-            _networkOutputBlobs[outputName] = allocateBlob(descr.getDims(),
-                    networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
-        else
-            _networkOutputBlobs[outputName] = userOutputBlob;
+        if (descr.getPrecision() != networkPrecision) {
+            network_output_blobs_[outputName] = allocateBlob(
+                descr.getDims(),
+                networkPrecision,
+                TensorDesc::getLayoutByDims(descr.getDims()));
+        } else {
+            network_output_blobs_[outputName] = userOutputBlob;
+        }
     }
 }
 
@@ -88,16 +93,23 @@ void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
     cancellation_token_.Check();
     auto start = Time::now();
+    InferRequestInternal::execDataPreprocessing(_deviceInputs);
     // NOTE: After InferRequestInternal::execDataPreprocessing call
     //       input can points to other memory region than it was allocated in constructor.
-    InferRequestInternal::execDataPreprocessing(_deviceInputs);
+    //       That is why we assign network_input_blobs_[inputName] after InferRequestInternal::execDataPreprocessing(...)
+    for (auto&& netInput : _networkInputs) {
+        const auto& inputName = netInput.first;
+        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
+        if (_deviceInputs[inputName]->getTensorDesc().getPrecision() == networkPrecision) {
+            network_input_blobs_[inputName] = _deviceInputs[inputName];
+        }
+    }
     // InferRequestInternal::execDataPreprocessing() doesn't support conversion from fp32 to fp16.
     // It converts floats to int8_t values instead.
     // To avoid such behavior, CudaInferRequest creates network blob in fp32 format.
     // Subsequent conversion is performed here.
-    for (auto&& [inputName, fp16NetworkInput] : fp16NetworkInputBlobs_) {
-        convertPrecision(_deviceInputs.at(inputName), fp16NetworkInput);
-        _deviceInputs[inputName] = fp16NetworkInput;
+    for (auto&& [inputName, networkInput] : network_input_blobs_) {
+        convertPrecision(_deviceInputs.at(inputName), networkInput);
     }
     cancellation_token_.Check();
     _durations[Preprocess] = Time::now() - start;
@@ -112,7 +124,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
         memory_manager_proxy_ =
                 _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
         auto& manager = memory_manager_proxy_->Get();
-        InferenceRequestContext inferRequestContext{_deviceInputs, _networkOutputBlobs, threadContext};
+        InferenceRequestContext inferRequestContext{network_input_blobs_, network_output_blobs_, threadContext};
         unsigned execution_index {};
         if (perfCount) exec_timing_.setStart(threadContext.stream());
         for (auto& op : _executableNetwork->exec_sequence_) {
@@ -150,7 +162,7 @@ void CudaInferRequest::inferPostprocess() {
     for (auto&& output : _outputs) {
         cancellation_token_.Check();
         auto outputBlob = output.second;
-        auto networkOutput = _networkOutputBlobs[output.first];
+        auto networkOutput = network_output_blobs_[output.first];
         // perform precision conversion of network output's precision and computational
         // graph output's precision are different
         if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision()) {
@@ -326,28 +338,54 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
 template<>
 void CudaInferRequest::convertPrecision<__half, float>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
-    std::transform(begin,
-            begin + src->size(),
-            InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<float*>(),
-            __half2float);
+    std::transform(
+        begin,
+        begin + src->size(),
+        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<float*>(),
+        __half2float);
 }
 
 template<>
 void CudaInferRequest::convertPrecision<float, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const float*>();
-    std::transform(begin,
-            begin + src->size(),
-            InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
-            __float2half);
+    std::transform(
+        begin,
+        begin + src->size(),
+        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+        __float2half);
+}
+
+template<>
+void CudaInferRequest::convertPrecision<std::uint8_t, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const std::uint8_t*>();
+    std::transform(
+        begin,
+        begin + src->size(),
+        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+        [](auto x) { return __float2half(static_cast<float>(x)); });
+}
+
+template<>
+void CudaInferRequest::convertPrecision<__half, std::uint8_t>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
+    std::transform(
+        begin,
+        begin + src->size(),
+        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<std::uint8_t*>(),
+        [](auto x) { return static_cast<std::uint8_t>(static_cast<float>(x)); });
 }
 
 void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
-    if (src->getTensorDesc().getPrecision() == dst->getTensorDesc().getPrecision())
+    if (src->getTensorDesc().getPrecision() == dst->getTensorDesc().getPrecision()) {
         return;
+    }
     switch (src->getTensorDesc().getPrecision()) {
         case Precision::U8 : {
             switch (dst->getTensorDesc().getPrecision()) {
-                case Precision::FP32 :
+                case Precision::FP16:
+                  convertPrecision<std::uint8_t, __half>(src, dst);
+                  break;
+                case Precision::FP32:
                     convertPrecision<std::uint8_t, float>(src, dst);
                     break;
                 default : {
@@ -358,17 +396,20 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
         } break;
         case Precision::FP16:
             switch (dst->getTensorDesc().getPrecision()) {
-            case Precision::FP32:
-                convertPrecision<__half, float>(src, dst);
+                case Precision::U8:
+                    convertPrecision<__half, std::uint8_t>(src, dst);
+                    break;
+                case Precision::FP32:
+                    convertPrecision<__half, float>(src, dst);
+                    break;
+                default:
+                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
+                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                }
                 break;
-            default:
-                THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                    << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
-            }
-            break;
-        case Precision::FP32 : {
+        case Precision::FP32: {
             switch (dst->getTensorDesc().getPrecision()) {
-                case Precision::U8 :
+                case Precision::U8:
                     convertPrecision<float, std::uint8_t>(src, dst);
                     break;
                 case Precision::FP16:
