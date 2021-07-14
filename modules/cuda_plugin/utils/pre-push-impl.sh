@@ -7,24 +7,25 @@ declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_*:-*Hetero*')
 # $EXIT_CODE variable
 EXIT_CODE=0
 
-# if $OV_BUILD_PATH environment variable not set try to set it to
+# if $OPENVINO_BUILD_PATH environment variable not set try to set it to
 # openvino/build assuming openvino directroy is in the same directrory
 # as openvino_cuda_plugin
-if [ -z "$OV_BUILD_PATH" ]; then
-  export OV_BUILD_PATH=$(realpath ../../../../openvino/build)
-fi
-echo OV_BUILD_PATH=$OV_BUILD_PATH
+if [ -z "$OPENVINO_BUILD_PATH" ]; then
 
-if [ ! -d $OV_BUILD_PATH ]; then
-  echo "Couldn't find OV_BUILD_PATH=$OV_BUILD_PATH"
-  echo "Please specify OV_BUILD_PATH enviroment variable"
-  echo "e.g. export OV_BUILD_PATH=~/openvino/build"
+  export OPENVINO_BUILD_PATH=$(realpath ../../../../openvino/build)
+fi
+echo OPENVINO_BUILD_PATH=$OPENVINO_BUILD_PATH
+
+if [ ! -d $OPENVINO_BUILD_PATH ]; then
+  echo "Couldn't find OPENVINO_BUILD_PATH=$OPENVINO_BUILD_PATH"
+  echo "Please specify OPENVINO_BUILD_PATH enviroment variable"
+  echo "e.g. export OPENVINO_BUILD_PATH=~/openvino/build"
   exit 2
 fi
 
 # building targets and bitwise adding the resulting exit code to
 # $EXIT_CODE variable
-cd $OV_BUILD_PATH
+cd $OPENVINO_BUILD_PATH
 cmake --build . -j$(nproc) --target ${SUITES[*]}
 ((EXIT_CODE=EXIT_CODE | $?))
 
@@ -34,7 +35,7 @@ cmake --build . -j$(nproc) --target ${SUITES[*]}
 # IMPORTED_LOCATION_DEBUG "/home/user/ov/openvino/bin/intel64/Debug/lib/libinference_engine.so"
 # or
 # IMPORTED_LOCATION_RELEASE "/home/user/ov/openvino/bin/intel64/Release/lib/libinference_engine.so"
-CMAKE_FILE_PATH=$OV_BUILD_PATH/inference_engine_targets.cmake
+CMAKE_FILE_PATH=$OPENVINO_BUILD_PATH/inference_engine_targets.cmake
 if [ ! -f $CMAKE_FILE_PATH ]; then
   echo "Couldn't find $CMAKE_FILE_PATH"
   echo "Try running cmake in openvino build"

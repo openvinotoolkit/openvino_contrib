@@ -9,14 +9,16 @@
 
 namespace ngraph::pass {
 
-class FuseConvolution2DWithBiasAdd;
-class SinkReluToFusedConvolution;
-class CudaFuseConv2DBiasAddActivation;
-
 class FuseConvolution2DWithBiasAdd : public ngraph::pass::MatcherPass {
  public:
   NGRAPH_RTTI_DECLARATION;
   FuseConvolution2DWithBiasAdd();
+};
+
+class FuseConvolution2DWithBiasaddAdd : public ngraph::pass::MatcherPass {
+ public:
+  NGRAPH_RTTI_DECLARATION;
+  FuseConvolution2DWithBiasaddAdd();
 };
 
 class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
@@ -28,10 +30,7 @@ class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
 class CudaFuseConv2DBiasAddActivation: public ngraph::pass::GraphRewrite {
  public:
   NGRAPH_RTTI_DECLARATION;
-  CudaFuseConv2DBiasAddActivation() {
-    add_matcher<FuseConvolution2DWithBiasAdd>();
-    add_matcher<SinkReluToFusedConvolution>();
-  }
+  CudaFuseConv2DBiasAddActivation();
 };
 
 }  // namespace ngraph::pass

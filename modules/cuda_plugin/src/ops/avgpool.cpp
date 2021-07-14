@@ -10,11 +10,11 @@
 
 namespace CUDAPlugin {
 
-AvgPoolOp::AvgPoolOp(const CUDA::Device& device,
+AvgPoolOp::AvgPoolOp(const CUDA::CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      std::vector<unsigned>&& inputIds,
                      std::vector<unsigned>&& outputIds)
-    : OperationCuDnn(device, node, std::move(inputIds), std::move(outputIds)),
+    : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       impl_{dynamic_cast<const ngraph::op::AvgPool&>(*node)} {}
 
 void AvgPoolOp::Execute(const InferenceRequestContext& context, Inputs inputs,

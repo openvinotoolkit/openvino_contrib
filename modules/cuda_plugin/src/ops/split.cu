@@ -32,11 +32,11 @@ static __global__ void split(const size_t numSplitChunks,
     }
 }
 
-SplitOp::SplitOp(const CUDA::Device& device,
+SplitOp::SplitOp(const CUDA::CreationContext& context,
                  const ngraph::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
-    : OperationBase(device, node, std::move(inputIds), std::move(outputIds)) {
+    : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     auto splitOp = dynamic_cast<const ngraph::op::v1::Split*>(&node);
     Expects(splitOp);
     auto input_element_type = splitOp->get_input_element_type(0);
@@ -49,25 +49,11 @@ SplitOp::SplitOp(const CUDA::Device& device,
     Expects(splitOp->get_output_size() == num_splits_);
     Expects(input_element_type == output_element_type);
     switch (input_element_type) {
-        case ngraph::element::Type_t::boolean:
-        case ngraph::element::Type_t::bf16:
-        case ngraph::element::Type_t::f16:
-        case ngraph::element::Type_t::f32:
-        case ngraph::element::Type_t::f64:
-        case ngraph::element::Type_t::i8:
-        case ngraph::element::Type_t::i16:
-        case ngraph::element::Type_t::i32:
-        case ngraph::element::Type_t::i64:
-        case ngraph::element::Type_t::u8:
-        case ngraph::element::Type_t::u16:
-        case ngraph::element::Type_t::u32:
-        case ngraph::element::Type_t::u64:
-            break;
         case ngraph::element::Type_t::undefined:
         case ngraph::element::Type_t::dynamic:
         case ngraph::element::Type_t::u1:
-        default: THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
-                                                   static_cast<ngraph::element::Type_t>(input_element_type));
+            THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
+                                              static_cast<ngraph::element::Type_t>(input_element_type));
     }
     element_type_ = input_element_type;
 
@@ -81,9 +67,35 @@ SplitOp::SplitOp(const CUDA::Device& device,
     Ensures(num_split_chunks_ != 0);
 }
 
-void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
+WorkbufferRequest SplitOp::GetWorkBufferRequest() const {
+  return { {}, { mutableWbSize() } };
+}
+
+void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers) {
+    switch (element_type_) {
+        case ngraph::element::Type_t::boolean: return Execute<bool>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::bf16: return Execute<__nv_bfloat16>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f16: return Execute<__half>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f32: return Execute<float>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f64: return Execute<double>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i8: return Execute<int8_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i16: return Execute<int16_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i32: return Execute<int32_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i64: return Execute<int64_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u8: return Execute<uint8_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u16: return Execute<uint16_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u32: return Execute<uint32_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u64: return Execute<uint64_t>(context, inputs, outputs, buffers);
+        default: THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
+                                                   static_cast<ngraph::element::Type_t>(element_type_));
+    }
+}
+
+template <typename T>
+void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers) {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == num_splits_);
+    Expects(buffers.mutable_buffers.size() == 1);
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
     const unsigned maxBlockSize = threadContext.device().props().maxThreadsPerBlock;
@@ -91,41 +103,14 @@ void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Out
                                (num_split_chunks_ / maxBlockSize) :
                                (num_split_chunks_ / maxBlockSize + 1);
     const unsigned threadsPerBlock = (numBlocks == 1) ? num_split_chunks_ : maxBlockSize;
-    const CUDA::Allocation outputPtrs = stream.malloc(sizeof(float *) * num_splits_);
-    stream.upload(outputPtrs.get(), reinterpret_cast<float **>(outputs.data()), sizeof(float *) * num_splits_);
-    auto in0 = inputs[0];
-    switch (element_type_) {
-        case ngraph::element::Type_t::boolean: return callKernel<bool>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::bf16: return callKernel<__nv_bfloat16>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::f16: return callKernel<__half>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::f32: return callKernel<float>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::f64: return callKernel<double>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::i8: return callKernel<int8_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::i16: return callKernel<int16_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::i32: return callKernel<int32_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::i64: return callKernel<int64_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::u8: return callKernel<uint8_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::u16: return callKernel<uint16_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::u32: return callKernel<uint32_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::u64: return callKernel<uint64_t>(numBlocks, threadsPerBlock, stream, in0, outputPtrs);
-        case ngraph::element::Type_t::undefined:
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::u1:
-        default: THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
-                                                   static_cast<ngraph::element::Type_t>(element_type_));
-    }
-}
-
-template <typename T>
-void SplitOp::callKernel(const unsigned numBlocks, const unsigned threadsPerBlock,
-                         const CUDA::Stream& stream,
-                         InferenceEngine::gpu::DevicePointer<const void*> in0,
-                         const CUDA::Allocation& outputPtrs) {
+    auto outputPtrs = buffers.mutable_buffers[0];
+    stream.upload(outputPtrs.get(), reinterpret_cast<T **>(outputs.data()), sizeof(T *) * num_splits_);
+    auto in = inputs[0];
     split<T><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
         num_split_chunks_,
         split_step_size_,
         num_splits_,
-        static_cast<const T *>(in0.get()),
+        static_cast<const T *>(in.get()),
         reinterpret_cast<T **>(outputPtrs.get()));
 }
 

@@ -13,7 +13,7 @@ namespace CUDAPlugin {
 class ResultOp : public OperationBase {
  public:
     using NodeOp = ngraph::op::v0::Result;
-    ResultOp(const CUDA::Device& device,
+    ResultOp(const CUDA::CreationContext& context,
              const NodeOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
