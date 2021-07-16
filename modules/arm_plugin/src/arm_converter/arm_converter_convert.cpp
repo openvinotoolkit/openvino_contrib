@@ -115,6 +115,8 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
             }
         case ngraph::element::Type_t::f32 :
             switch (dst) {
+                case ngraph::element::Type_t::i8 :
+                    return make(ngraph::runtime::reference::convert<float, std::int8_t>);
                 case ngraph::element::Type_t::u8 :
                     return make(ngraph::runtime::reference::convert<float, std::uint8_t>);
                 case ngraph::element::Type_t::i16 :

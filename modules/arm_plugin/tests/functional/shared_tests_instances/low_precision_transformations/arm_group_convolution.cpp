@@ -201,6 +201,29 @@ const std::vector<LayerTestsDefinitions::ArmGroupConvolutionTransformationParam>
         "ArmGroupConvolution",
         "I8"
     },
+    {
+        { 256ul, ngraph::Shape { 1, 3, 1, 1 }, { 0.f, 0.f, 0.f }, { 255.f, 255.f, 255.f }, { 0.f, 0.f, 0.f }, { 25.5f, 25.5f, 25.5f } },
+        true,
+        { 255ul, ngraph::Shape { 3, 1, 1, 1 }, { 0.f, 0.f, 0.f}, { 254.f, 254.f, 254.f },
+                                               { -12.7f, -12.7f*2, -12.7f*4 },
+                                               { 12.7f, 12.7f*2, 12.7f*4 } },
+        true,
+        { 256ul, ngraph::Shape { 1 }, { -128.f }, { 127.f }, { -12.8f }, { 12.7f }},
+        "ArmGroupConvolution",
+        "I8"
+    },
+    {
+        { 256ul, ngraph::Shape { 1, 3, 1, 1 }, { 0.f, 0.f, 0.f }, { 255.f, 255.f/2, 255.f/4 }, { -1.27f }, { 1.28 } },
+        true,
+        { 255ul, ngraph::Shape { 3, 1, 1, 1 }, { 0.f, 0.f, 0.f },
+                                               { 254.f, 254.f, 254.f },
+                                               { -12.7f, -12.7f*2, -12.7f*4 },
+                                               { 12.7f, 12.7f*2, 12.7f*4 } },
+        true,
+        { 256ul, ngraph::Shape { 1 }, { -128.f }, { 127.f }, { -12.8f }, { 12.7f }},
+        "ArmGroupConvolution",
+        "I8"
+    },
 };
 
 const std::vector<ngraph::Shape> shapes = {
