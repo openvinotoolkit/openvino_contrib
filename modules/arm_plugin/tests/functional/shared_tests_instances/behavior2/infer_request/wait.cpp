@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "base/behavior_test_utils.hpp"
-#include "multi-device/multi_device_config.hpp"
+#include <vector>
 
-#include "behavior/set_preprocess.hpp"
+#include "behavior2/infer_request/wait.hpp"
+#include "ie_plugin_config.hpp"
 
 using namespace BehaviorTestsDefinitions;
-
 namespace {
+
     const std::vector<InferenceEngine::Precision> netPrecisions = {
             InferenceEngine::Precision::FP32,
             InferenceEngine::Precision::FP16
@@ -21,21 +21,21 @@ namespace {
             {{InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS, "0"}, {InferenceEngine::PluginConfigParams::KEY_CPU_THREADS_NUM, "1"}}
     };
 
-    const std::vector<std::map<std::string, std::string>> multiConfigs = {
-            {{ InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU}}
+    const std::vector<std::map<std::string, std::string>> Multiconfigs = {
+            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, PreprocessTest,
+    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, InferRequestWaitTests,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
-                            PreprocessTest::getTestCaseName);
+                            InferRequestWaitTests::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, PreprocessTest,
+    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferRequestWaitTests,
                             ::testing::Combine(
                                     ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_MULTI),
-                                    ::testing::ValuesIn(multiConfigs)),
-                            PreprocessTest::getTestCaseName);
+                                    ::testing::ValuesIn(Multiconfigs)),
+                            InferRequestWaitTests::getTestCaseName);
 }  // namespace
