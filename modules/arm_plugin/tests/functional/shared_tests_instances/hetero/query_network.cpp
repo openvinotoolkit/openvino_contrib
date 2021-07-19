@@ -16,6 +16,6 @@ auto ConvBias = ngraph::builder::subgraph::makeConvBias();
 INSTANTIATE_TEST_CASE_P(smoke_FullySupportedTopologies, QueryNetworkTest,
                         ::testing::Combine(
                                 ::testing::Values("CPU", "HETERO:CPU", "MULTI:CPU"),
-                                ::testing::Values(ConvBias)),
+                                ::testing::Values(QueryNetworkTest::generateParams(ConvBias))),
                         QueryNetworkTest::getTestCaseName);
 }  // namespace
