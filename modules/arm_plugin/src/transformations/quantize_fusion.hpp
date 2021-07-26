@@ -22,6 +22,10 @@ struct DequantizeNodeFusion : public ngraph::pass::FunctionPass{
     bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
 };
 
+struct MovePerChenelQuantizationInfoToWeights : public ngraph::pass::MatcherPass {
+    MovePerChenelQuantizationInfoToWeights();
+};
+
 struct PropogateQuantizationInfo: public ngraph::pass::FunctionPass {
     bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
 };

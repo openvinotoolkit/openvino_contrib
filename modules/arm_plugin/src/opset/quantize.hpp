@@ -12,30 +12,20 @@
 namespace ArmPlugin {
 namespace opset {
 
-struct ArmQuantize : public FakeQuantize {
+struct ArmQuantize : public ngraph::op::Op {
     NGRAPH_RTTI_DECLARATION;
-    ArmQuantize(const ngraph::Output<ngraph::Node>& data,
-                const ngraph::Output<ngraph::Node>& input_low,
-                const ngraph::Output<ngraph::Node>& input_high,
-                const ngraph::Output<ngraph::Node>& output_low,
-                const ngraph::Output<ngraph::Node>& output_high,
-                std::size_t levels,
-                const ngraph::op::AutoBroadcastSpec& auto_broadcast = {ngraph::op::AutoBroadcastType::NUMPY});
+    ArmQuantize(const ngraph::Output<ngraph::Node>& data);
     ~ArmQuantize() override;
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
+    void validate_and_infer_types() override;
 };
 
-struct ArmDequantize : public FakeQuantize {
+struct ArmDequantize : public ngraph::op::Op {
     NGRAPH_RTTI_DECLARATION;
-    ArmDequantize(const ngraph::Output<ngraph::Node>& data,
-                  const ngraph::Output<ngraph::Node>& input_low,
-                  const ngraph::Output<ngraph::Node>& input_high,
-                  const ngraph::Output<ngraph::Node>& output_low,
-                  const ngraph::Output<ngraph::Node>& output_high,
-                  std::size_t levels,
-                  const ngraph::op::AutoBroadcastSpec& auto_broadcast = {ngraph::op::AutoBroadcastType::NUMPY});
+    ArmDequantize(const ngraph::Output<ngraph::Node>& data);
     ~ArmDequantize() override;
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
+    void validate_and_infer_types() override;
 };
 
 }  // namespace opset
