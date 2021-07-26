@@ -226,44 +226,40 @@ void ArmInferRequest::InferImpl() {
             }
         }
     }
-    {
-        for (auto&& layer : _layers) {
-            if (layer._layer._function != nullptr) {
-                OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, layer._profilingTask);
-                auto start = Time::now();
-                layer._layer._function->run();
-                layer._duration += Time::now() - start;
-                layer._counter++;
-            }
+    for (auto&& layer : _layers) {
+        if (layer._layer._function != nullptr) {
+            OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, layer._profilingTask);
+            auto start = Time::now();
+            layer._layer._function->run();
+            layer._duration += Time::now() - start;
+            layer._counter++;
         }
     }
-    {
-        for (auto&& output : _outputInfo) {
-            if (output._blob != nullptr) {
-                auto start = Time::now();
-                OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, output._profilingTask);
-                const auto& outputBlob = output._itBlob->second;
-                if (ngraph::op::is_constant(output._output.get_node())) {
-                    if (outputBlob != output._blob) {
+    for (auto&& output : _outputInfo) {
+        if (output._blob != nullptr) {
+            auto start = Time::now();
+            OV_ITT_SCOPED_TASK(Itt::Domains::ArmPlugin, output._profilingTask);
+            const auto& outputBlob = output._itBlob->second;
+            if (ngraph::op::is_constant(output._output.get_node())) {
+                if (outputBlob != output._blob) {
+                    blobCopy(output._blob, outputBlob);
+                }
+            } else {
+                if (output._tensor->info()->has_padding()) {
+                    arm_compute::Tensor outputTensor;
+                    outputTensor.allocator()->init({output._tensor->info()->tensor_shape(), 1, output._tensor->info()->data_type()});
+                    outputTensor.allocator()->import_memory(
+                        InferenceEngine::as<InferenceEngine::MemoryBlob>(output._blob)->wmap().as<void*>());
+                    outputTensor.copy_from(*(output._tensor));
+                }
+                if (outputBlob != output._blob) {
+                    if (output._blob->getTensorDesc() != outputBlob->getTensorDesc()) {
                         blobCopy(output._blob, outputBlob);
                     }
-                } else {
-                    if (output._tensor->info()->has_padding()) {
-                        arm_compute::Tensor outputTensor;
-                        outputTensor.allocator()->init({output._tensor->info()->tensor_shape(), 1, output._tensor->info()->data_type()});
-                        outputTensor.allocator()->import_memory(
-                            InferenceEngine::as<InferenceEngine::MemoryBlob>(output._blob)->wmap().as<void*>());
-                        outputTensor.copy_from(*(output._tensor));
-                    }
-                    if (outputBlob != output._blob) {
-                        if (output._blob->getTensorDesc() != outputBlob->getTensorDesc()) {
-                            blobCopy(output._blob, outputBlob);
-                        }
-                    }
                 }
-                output._duration += Time::now() - start;
-                output._counter++;
             }
+            output._duration += Time::now() - start;
+            output._counter++;
         }
     }
 }
@@ -278,8 +274,7 @@ std::map<std::string, InferenceEngineProfileInfo> ArmInferRequest::GetPerformanc
         info.status = InferenceEngineProfileInfo::EXECUTED;
         info.cpu_uSec = 0;
         info.realTime_uSec = layer._duration.count() / layer._counter;
-        auto type = std::string {node->get_type_name()}
-            + '.' + std::to_string(node->get_type_info().version);
+        auto type = "v" + std::to_string(node->get_type_info().version) + "::" + std::string {node->get_type_name()};
         {
             auto pos = std::copy_n(type.c_str(), std::min(sizeof(info.layer_type) - 1, type.size()), info.layer_type);
             *pos = '\0';

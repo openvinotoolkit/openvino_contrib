@@ -11,48 +11,30 @@ using namespace ngraph;
 
 NGRAPH_RTTI_DEFINITION(opset::ArmQuantize, "ArmQuantize", 0);
 
-opset::ArmQuantize::ArmQuantize(const ngraph::Output<ngraph::Node>& data,
-                                const ngraph::Output<ngraph::Node>& input_low,
-                                const ngraph::Output<ngraph::Node>& input_high,
-                                const ngraph::Output<ngraph::Node>& output_low,
-                                const ngraph::Output<ngraph::Node>& output_high,
-                                std::size_t levels,
-                                const ngraph::op::AutoBroadcastSpec& auto_broadcast) :
-    FakeQuantize{data, input_low, input_high, output_low, output_high, levels, auto_broadcast} {}
+opset::ArmQuantize::ArmQuantize(const ngraph::Output<ngraph::Node>& data) : Op{{data}} {}
 
 opset::ArmQuantize::~ArmQuantize() {}
 
 std::shared_ptr<Node> opset::ArmQuantize::clone_with_new_inputs(const OutputVector& new_args) const {
     check_new_args_count(this, new_args);
-    return std::make_shared<ArmQuantize>(new_args.at(0), // X
-                                         new_args.at(1), // input_low
-                                         new_args.at(2), // input_high
-                                         new_args.at(3), // output_low
-                                         new_args.at(4), // output_high
-                                         get_levels(),
-                                         get_auto_broadcast());
+    return std::make_shared<ArmQuantize>(new_args.at(0));
+}
+
+void opset::ArmQuantize::validate_and_infer_types() {
+    set_output_type(0, get_input_element_type(0), get_input_partial_shape(0));
 }
 
 NGRAPH_RTTI_DEFINITION(opset::ArmDequantize, "ArmDequantize", 0);
 
-opset::ArmDequantize::ArmDequantize(const ngraph::Output<ngraph::Node>& data,
-                                    const ngraph::Output<ngraph::Node>& input_low,
-                                    const ngraph::Output<ngraph::Node>& input_high,
-                                    const ngraph::Output<ngraph::Node>& output_low,
-                                    const ngraph::Output<ngraph::Node>& output_high,
-                                    std::size_t levels,
-                                    const ngraph::op::AutoBroadcastSpec& auto_broadcast) :
-    FakeQuantize{data, input_low, input_high, output_low, output_high, levels, auto_broadcast} {}
+opset::ArmDequantize::ArmDequantize(const ngraph::Output<ngraph::Node>& data) : Op{{data}} {}
 
 opset::ArmDequantize::~ArmDequantize() {}
 
 std::shared_ptr<Node> opset::ArmDequantize::clone_with_new_inputs(const OutputVector& new_args) const {
     check_new_args_count(this, new_args);
-    return std::make_shared<ArmDequantize>(new_args.at(0), // X
-                                           new_args.at(1), // input_low
-                                           new_args.at(2), // input_high
-                                           new_args.at(3), // output_low
-                                           new_args.at(4), // output_high
-                                           get_levels(),
-                                           get_auto_broadcast());
+    return std::make_shared<ArmDequantize>(new_args.at(0));
+}
+
+void opset::ArmDequantize::validate_and_infer_types() {
+    set_output_type(0, get_input_element_type(0), get_input_partial_shape(0));
 }
