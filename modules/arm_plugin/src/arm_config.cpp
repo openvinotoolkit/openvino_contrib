@@ -55,9 +55,9 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
     } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
-        return {_lpt};
+        return {_lpt ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
-        return {_dump};
+        return {_dump ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     }  else {
         IE_THROW(NotFound) << ": " << name;
     }
