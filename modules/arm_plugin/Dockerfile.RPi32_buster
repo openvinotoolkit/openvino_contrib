@@ -6,6 +6,8 @@ FROM debian:10
 ENV DEBIAN_FRONTEND noninteractive
 ENV PAKAGE_UPDATES_OF 20210505
 
+RUN echo 'deb http://deb.debian.org/debian unstable main' > /etc/apt/sources.list.d/unstable.list
+
 #Prerequisite installation
 RUN apt-get update && \
     apt-get -y upgrade && \
@@ -48,7 +50,7 @@ RUN apt-get update && \
 
 RUN dpkg --add-architecture armhf && \
     apt-get update && \
-    apt-get install -y --no-install-recommends -f -o Dpkg::Options::="--force-confnew" \
+    apt-get install -y --no-install-recommends -f -o APT::Immediate-Configure=0 -o Dpkg::Options::="--force-confnew" \
         build-essential \
         libusb-1.0-0-dev:armhf \
         software-properties-common \
