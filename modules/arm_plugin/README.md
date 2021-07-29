@@ -180,7 +180,7 @@ cd <package_dir>/deployment_tools/inference_engine/demos/build/<platform_type>/R
 ``` 
 3. Add OpenCV and OpenVINO library directories to `LD_LIBRARY_PATH`:
 ```
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/deployment_tools/inference_engine/lib/<platform_type>/
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/deployment_tools/inference_engine/lib/<platform_type>/:<package_dir>/deployment_tools/ngraph/lib/
 ```
 4. Run object detection C++ demo:
 ```
