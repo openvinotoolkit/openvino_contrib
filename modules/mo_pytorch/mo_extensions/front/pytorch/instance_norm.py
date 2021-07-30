@@ -16,8 +16,11 @@
 from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
 from extensions.ops.elementwise import Mul, Add
+from extensions.ops.mvn import MVN
 from mo.ops.const import Const
 import numpy as np
+from mo.front.common.partial_infer.utils import int64_array
+
 
 class InstanceNorm(FrontReplacementOp):
     op = 'InstanceNorm'
@@ -38,5 +41,26 @@ class InstanceNorm(FrontReplacementOp):
         w = Const(graph, {'value': w.reshape(shape)}).create_node()
         b = Const(graph, {'value': b.reshape(shape)}).create_node()
         mul = Mul(graph, dict(name=node.name + '/mul')).create_node([node.in_node(0), w])
+        add = Add(graph, dict(name=node.name + '/add')).create_node([mul, b])
+        return [add.id]
+
+
+class LayerNormReplace(FrontReplacementOp):
+    op = 'LayerNorm'
+    enabled = True
+
+    def replace_op(self, graph: Graph, node: Node):
+        axis = Const(graph, {'value': int64_array([-1])}).create_node()
+        mvn = MVN(graph, dict(name=node.name + '/mvn',
+                              eps=node.module.eps,
+                              normalize_variance=True,
+                              eps_mode='inside_sqrt')).create_node([node.in_node(0), axis])
+
+        weight = node.module.weight.detach().numpy()
+        bias = node.module.bias.detach().numpy()
+
+        w = Const(graph, {'value': weight}).create_node()
+        b = Const(graph, {'value': bias}).create_node()
+        mul = Mul(graph, dict(name=node.name + '/mul')).create_node([mvn, w])
         add = Add(graph, dict(name=node.name + '/add')).create_node([mul, b])
         return [add.id]

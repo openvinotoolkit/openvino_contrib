@@ -62,9 +62,13 @@ class PyTorchLoader(Loader):
         update_extractors_with_extensions(pytorch_op_extractors)
 
         # Create a dummy input
-        inp = OpenVINOTensor(torch.randn(list(argv.placeholder_shapes)))
+        inp = OpenVINOTensor(torch.randint(0, 255, list([1, 6])))
         inp.graph = graph
         inp.node_name = 'input'
+
+        position_ids = OpenVINOTensor(torch.tensor([[0, 1, 2, 3, 4, 5]]))
+        position_ids.graph = graph
+        position_ids.node_name = 'position_ids'
 
         model = argv.input_model
 
@@ -76,9 +80,12 @@ class PyTorchLoader(Loader):
         register_model_hook(model)
 
         graph.add_node('input', kind='op', op='Parameter', name='input', shape=list(inp.shape))
+        graph.add_node('position_ids', kind='op', op='Parameter', name='position_ids', shape=[1, 6])
 
         with torch.no_grad():
-            outs = model(inp)
+            outs = model(inp, position_ids=position_ids)
+
+        outs = outs[0]
 
         # Add output nodes
         if not hasattr(outs, '__contains__'):  # if a single tensor

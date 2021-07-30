@@ -47,3 +47,13 @@ class SigmoidExtractor(FrontExtractorOp):
     def extract(cls, node):
         Sigmoid.update_node_stat(node)
         return cls.enabled
+
+
+class TanhExtractor(FrontExtractorOp):
+    op = 'Tanh'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        Tanh.update_node_stat(node)
+        return cls.enabled

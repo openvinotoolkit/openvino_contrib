@@ -50,3 +50,26 @@ class MulFrontExtractor(FrontExtractorOp):
     def extract(cls, node: Node):
         Mul.update_node_stat(node)
         return cls.enabled
+
+
+class DivFrontExtractor(FrontExtractorOp):
+    op = 'Div'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        Div.update_node_stat(node)
+        return cls.enabled
+
+
+class PowvFrontExtractor(FrontExtractorOp):
+    op = 'Pow'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        attrs = {
+            'power': node.module.exponent,
+        }
+        AttributedPower.update_node_stat(node, attrs)
+        return cls.enabled

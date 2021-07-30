@@ -26,8 +26,12 @@ def forward_hook(self, inputs, output):
         if src_id is None:
             raise Error('Input not found')
 
+        port_id = 0
+        if src_id.find('.') != -1:
+            port_id = int(src_id[src_id.find('.') + 1:])
+            src_id = src_id[:src_id.find('.')]
         edge_attrs = {
-            'out': 0,
+            'out': port_id,
             'in': idx,
             'name': src_id,
             'fw_tensor_debug_info': [(src_id, src_id)],
@@ -53,6 +57,16 @@ def forward_hook(self, inputs, output):
         }
         graph.add_edge(param_name, name, **edge_attrs)
 
+    if isinstance(output, tuple):
+        outputs = []
+        for i, out in enumerate(output):
+            if not isinstance(out, OpenVINOTensor):
+                out = OpenVINOTensor(out)
+                out.graph = graph
+
+            out.node_name = name + '.' + str(i)
+            outputs.append(out)
+        return tuple(outputs)
 
     if not isinstance(output, OpenVINOTensor):
         output = OpenVINOTensor(output)
@@ -71,6 +85,8 @@ class OpenVINOTensor(object):
         self.node_name = None
         self.shape = value.shape
         self.requires_grad = self._value.requires_grad
+        self.device = 'cpu'
+        self.dtype = value.dtype
         if self.requires_grad:
             raise Error('Model in training mode is used')
 
@@ -85,6 +101,21 @@ class OpenVINOTensor(object):
 
     def dim(self):
         return self._value.dim()
+
+    def size(self, dim=None):
+        return self._value.size(dim) if dim else self._value.size()
+
+    def split(self, split_size, dim):
+        num_splits = self._value.shape[dim] // split_size
+
+        class Split(nn.Module):
+            def __init__(self, num_splits, dim):
+                super().__init__()
+                self.num_splits = num_splits
+                self.dim = dim
+
+        res = self._value.split(split_size, dim)
+        return forward_hook(Split(num_splits, dim), (self,), res)
 
     def data_ptr(self):
         return self._value.data_ptr()
@@ -115,6 +146,15 @@ class OpenVINOTensor(object):
 
             res = self._value + a
             return forward_hook(Add(a), (self,), res)
+
+    def __radd__(self, a):
+        class Add(nn.Module):
+            def __init__(self, value):
+                super().__init__()
+                self.register_buffer('add', torch.tensor(value))
+
+        res = self._value + a
+        return forward_hook(Add(a), (self,), res)
 
     def __getitem__(self, key):
         begin_id = []
@@ -159,23 +199,55 @@ class OpenVINOTensor(object):
         return forward_hook(sslice, (self,), res)
 
     def __rmul__(self, a):
-        class Mul(nn.Module):
-            def __init__(self, value):
-                super().__init__()
-                self.register_buffer('mul', value)
+        if isinstance(a, OpenVINOTensor):
+            class Mul(nn.Module):
+                pass
+            res = self._value * a._value
+            return forward_hook(Mul(), (self, a), res)
 
-        res = self._value * a
-        return forward_hook(Mul(a), (self,), res)
+        elif isinstance(a, float):
+            class Mul(nn.Module):
+                def __init__(self, value):
+                    super().__init__()
+                    self.register_buffer('mul', torch.tensor(value))
 
-    # a - value
+            res = self._value * a
+            return forward_hook(Mul(a), (self,), res)
+
+    # a * value
     def __mul__(self, a):
-        class Mul(nn.Module):
+        if isinstance(a, OpenVINOTensor):
+            class Mul(nn.Module):
+                pass
+            res = self._value * a._value
+            return forward_hook(Mul(), (self, a), res)
+
+        elif isinstance(a, float):
+            class Mul(nn.Module):
+                def __init__(self, value):
+                    super().__init__()
+                    self.register_buffer('mul', torch.tensor(value))
+
+            res = self._value * a
+            return forward_hook(Mul(a), (self,), res)
+
+    def __truediv__(self, a):
+        class Div(nn.Module):
             def __init__(self, value):
                 super().__init__()
-                self.register_buffer('mul', torch.tensor(value))
+                self.register_buffer('div', torch.tensor(value))
 
-        res = self._value * a
-        return forward_hook(Mul(a), (self,), res)
+        res = self._value / a
+        return forward_hook(Div(a), (self,), res)
+
+    # def matmul(self, m):
+    #     class Matmul(nn.Module):
+    #         def __init__(self, mat):
+    #             super().__init__()
+    #             self.register_buffer('weight', mat)
+
+    #     res = self._value.matmul(m)
+    #     return forward_hook(Matmul(m), (self,), res)
 
     def view(self, *shape):
         res = self._value.view(shape)
@@ -211,6 +283,21 @@ class OpenVINOTensor(object):
         forward_hook(Transpose(order), (self,), res)
         return res
 
+    def transpose(self, dim0, dim1):
+        res = OpenVINOTensor(self._value.transpose(dim0, dim1))
+        res.graph = self.graph
+
+        class Transpose(nn.Module):
+            def __init__(self, order):
+                super().__init__()
+                self.order = order
+
+        order = [i for i in range(len(self._value.shape))]
+        order[dim0], order[dim1] = order[dim1], order[dim0]
+
+        forward_hook(Transpose(order), (self,), res)
+        return res
+
     def sigmoid(self):
         res = self._value.sigmoid()
 
@@ -219,6 +306,22 @@ class OpenVINOTensor(object):
                 super().__init__()
 
         return forward_hook(Sigmoid(), (self,), res)
+
+    # def softmax(self, dim):
+    #     res = self._value.softmax(dim)
+
+    #     class Softmax(nn.Module):
+    #         def __init__(self, dim):
+    #             super().__init__()
+    #             self.dim = dim
+
+    #     return forward_hook(Softmax(dim), (self,), res)
+
+    def contiguous(self):
+        res = OpenVINOTensor(self._value.contiguous())
+        res.node_name = self.node_name
+        res.graph = self.graph
+        return res
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
@@ -295,6 +398,29 @@ def function_hook(input, *args, **kwargs):
     return forward_hook(ReLU(*args, **kwargs), (input,), output)
 
 
+@implements(torch.tanh)
+def function_hook(input, *args, **kwargs):
+
+    class Tanh(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    output = torch.tanh(input.tensor(), *args, **kwargs)
+    return forward_hook(Tanh(*args, **kwargs), (input,), output)
+
+
+@implements(torch.pow)
+def function_hook(input, *args, **kwargs):
+
+    class Pow(nn.Module):
+        def __init__(self, exponent):
+            super().__init__()
+            self.exponent = exponent
+
+    output = torch.pow(input.tensor(), *args, **kwargs)
+    return forward_hook(Pow(*args, **kwargs), (input,), output)
+
+
 @implements(torch.unsqueeze)
 def unsqueeze(input, dim):
     class Unsqueeze(nn.Module):
@@ -327,6 +453,18 @@ def function_hook(input, *args, **kwargs):
 
     output = torch.sigmoid(input.tensor(), *args, **kwargs)
     return forward_hook(Sigmoid(*args, **kwargs), (input,), output)
+
+
+@implements(F.softmax)
+def function_hook(input, dim, _stacklevel, dtype):
+
+    class Softmax(nn.Module):
+        def __init__(self, dim):
+            super().__init__()
+            self.dim = dim
+
+    output = F.softmax(input.tensor(), dim, _stacklevel, dtype)
+    return forward_hook(Softmax(dim), (input,), output)
 
 
 @implements(F.leaky_relu)
@@ -468,3 +606,78 @@ def concat(inputs, dim=0):
     return output
 
 torch.cat = concat
+
+
+@implements(torch.embedding)
+def function_hook(weight, input, *args, **kwargs):
+
+    class Embedding(nn.Module):
+        def __init__(self, weight):
+            super().__init__()
+            self.register_buffer('weight', weight)
+
+    output = torch.embedding(weight, input.tensor(), *args, **kwargs)
+    return forward_hook(Embedding(weight), (input,), output)
+
+
+@implements(F.layer_norm)
+def function_hook(input, normalized_shape, weight, bias, eps):
+
+    class LayerNorm(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.register_buffer('weight', weight)
+            self.register_buffer('bias', bias)
+            self.eps = eps
+
+    output = F.layer_norm(input.tensor(), normalized_shape, weight, bias, eps)
+    return forward_hook(LayerNorm(), (input,), output)
+
+
+@implements(torch.addmm)
+def function_hook(bias, mat1, mat2):
+
+    class ADDMM(nn.Module):
+        def __init__(self, weight, bias):
+            super().__init__()
+            self.register_buffer('weight', weight)
+            self.register_buffer('bias', bias)
+
+    output = torch.addmm(bias, mat1.tensor(), mat2)
+    return forward_hook(ADDMM(mat2, bias), (mat1,), output)
+
+
+@implements(torch.stack)
+def function_hook(inputs):
+
+    class Stack(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    tensors = [inp.tensor() for inp in inputs]
+    output = torch.stack(tensors)
+    return forward_hook(Stack(), inputs, output)
+
+
+@implements(torch.matmul)
+def function_hook(mat0, mat1):
+
+    class Matmul(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    output = torch.matmul(mat0.tensor(), mat1.tensor())
+    return forward_hook(Matmul(), (mat0, mat1), output)
+
+
+@implements(torch.where)
+def function_hook(condition, x, y):
+
+    class Where(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.register_buffer('condition', condition)
+            self.register_buffer('y', y)
+
+    output = torch.where(condition, x.tensor(), y)
+    return forward_hook(Where(), (x,), output)

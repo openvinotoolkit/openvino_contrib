@@ -191,7 +191,29 @@ class TestModels(unittest.TestCase):
 
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 5e-4)
+    
+    def test_rugpt3():
+        from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
+        model_name_or_path = "sberbank-ai/rugpt3medium_based_on_gpt2"
+        tokenizer = GPT2Tokenizer.from_pretrained(model_name_or_path)
+        model = GPT2LMHeadModel.from_pretrained(model_name_or_path)
+
+        text = "Александр Сергеевич Пушкин родился в "
+        input_ids = tokenizer.encode(text, return_tensors="pt")
+        result = model(input_ids)
+
+        # Generate OpenVINO IR
+        mo_pytorch.convert(model, input_shape='[1, 6],[6]', input='input,position_ids', model_name='model')
+
+        # Run model with OpenVINO and compare outputs
+        net = self.ie.read_network('model.xml', 'model.bin')
+        exec_net = self.ie.load_network(net, 'CPU')
+        out = exec_net.infer({'input': input_ids, 'position_ids': np.array([0, 1, 2, 3, 4, 5])})
+        out = next(iter(out.values()))
+
+        diff = np.max(np.abs(out - result[0]))
+        self.assertLessEqual(diff, 3e-5)
 
 if __name__ == '__main__':
     unittest.main()
