@@ -43,7 +43,7 @@ def get_front_classes():
     return front_classes
 
 # A copy of mo.main.prepare_ir but adopted for PyTorch conversion
-def _prepare_ir(argv):
+def _prepare_ir(argv, old_api=False):
     log.debug(str(argv))
     log.debug("Model Optimizer started")
 
@@ -104,7 +104,10 @@ def _prepare_ir(argv):
     import_extensions.load_dirs(argv.framework, extensions, get_front_classes)
 
     graph = unified_pipeline(argv)
-    return graph, None
+    if old_api:
+        return graph
+    else:
+        return graph, None
 
 
 def convert(model, **args):
@@ -116,6 +119,12 @@ def convert(model, **args):
     for arg, value in args.items():
         parser.set_defaults(**{arg: str(value)})
 
-    err = main(parser, None, 'pytorch')
+    err = None
+    try:
+        err = main(parser, None, 'pytorch')
+    except:
+        if err is None:
+            mo.main.prepare_ir = lambda argv : _prepare_ir(argv, old_api=True)
+            err = main(parser, 'pytorch')
     if err:
         raise Exception('model conversion failed')
