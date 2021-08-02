@@ -209,11 +209,12 @@ class TestModels(unittest.TestCase):
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
         exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input': input_ids, 'position_ids': np.arange(6)})
+        out = exec_net.infer({'input_ids': input_ids, 'position_ids': np.arange(6)})
         out = next(iter(out.values()))
 
-        diff = np.max(np.abs(out - result[0]))
-        self.assertLessEqual(diff, 3e-5)
+        ref = result[0].detach().numpy()
+        diff = np.max(np.abs(out - ref))
+        self.assertLessEqual(diff, 1e-4)
 
 if __name__ == '__main__':
     unittest.main()

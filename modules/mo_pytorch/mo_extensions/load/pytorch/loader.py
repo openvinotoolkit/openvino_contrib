@@ -64,9 +64,16 @@ class PyTorchLoader(Loader):
         update_extractors_with_extensions(pytorch_op_extractors)
 
         # Create a dummy input
+        if argv.input:
+            placeholder_shapes = argv.placeholder_shapes
+            placeholder_data_types = argv.placeholder_data_types
+        else:
+            placeholder_shapes = {'input': argv.placeholder_shapes}
+            placeholder_data_types = {'input': np.float32}
+
         inputs = {}
-        for name, shape in argv.placeholder_shapes.items():
-            dtype = argv.placeholder_data_types[name]
+        for name, shape in placeholder_shapes.items():
+            dtype = placeholder_data_types[name]
             inp = np.random.randint(0, 255, shape).astype(dtype)
             inp = OpenVINOTensor(torch.tensor(inp))
 
@@ -85,28 +92,9 @@ class PyTorchLoader(Loader):
         register_model_hook(model)
 
         with torch.no_grad():
-            model(**inputs)
-
-        # outs = outs[0]
-
-        # # Add output nodes
-        # if not hasattr(outs, '__contains__'):  # if a single tensor
-        #     outs = [outs]
-        # if isinstance(outs, dict):
-        #     outs = outs.values()
-
-        # for out in outs:
-        #     name = out.node_name
-        #     graph.add_node('output', kind='op', op='Result')
-        #     edge_attrs = {
-        #         'out': 0,
-        #         'in': 0,
-        #         'name': name,
-        #         'fw_tensor_debug_info': [(name, name)],
-        #         'in_attrs': ['in', 'name'],
-        #         'out_attrs': ['out', 'name'],
-        #         'data_attrs': ['fw_tensor_debug_info']
-        #     }
-        #     graph.add_edge(name, 'output', **edge_attrs)
+            if argv.input:
+                model(**inputs)
+            else:
+                model(inputs['input'])
 
         extract_node_attrs(graph, lambda node: pytorch_op_extractor(node, check_for_duplicates(pytorch_op_extractors)))
