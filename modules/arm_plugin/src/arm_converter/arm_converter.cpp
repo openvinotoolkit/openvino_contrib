@@ -7,9 +7,6 @@
 #include "arm_converter/arm_converter.hpp"
 #include "opset/opset.hpp"
 
-#include <low_precision/transformer.hpp>
-
-
 using namespace InferenceEngine::details;
 
 namespace ArmPlugin {

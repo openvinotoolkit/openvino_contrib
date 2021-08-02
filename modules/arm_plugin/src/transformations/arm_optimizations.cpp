@@ -76,21 +76,20 @@
 #include <ngraph/pass/constant_folding.hpp>
 
 #include <transformations/low_precision/disable_convert_constant_folding_on_const_path.hpp>
-#include <low_precision/transformer.hpp>
-#include <low_precision/mat_mul.hpp>
-#include <low_precision/strided_slice.hpp>
-#include <low_precision/network_helper.hpp>
+#include <low_precision/common/operation_per_tensor_quantization_restriction.hpp>
+#include <low_precision/common/operation_precision_restriction.hpp>
 #include <low_precision/convolution.hpp>
-#include <low_precision/group_convolution.hpp>
-#include <low_precision/multiply_to_group_convolution.hpp>
-#include <low_precision/fake_quantize_decomposition.hpp>
-#include <low_precision/add.hpp>
-#include <low_precision/multiply.hpp>
 #include <low_precision/fake_quantize.hpp>
 #include <low_precision/fold_convert.hpp>
 #include <low_precision/fuse_convert.hpp>
 #include <low_precision/fuse_multiply_to_fake_quantize.hpp>
 #include <low_precision/fuse_subtract_to_fake_quantize.hpp>
+#include <low_precision/group_convolution.hpp>
+#include <low_precision/low_precision.hpp>
+#include <low_precision/multiply_to_group_convolution.hpp>
+#include <low_precision/multiply.hpp>
+#include <low_precision/network_helper.hpp>
+
 #include "transformations/serialize.hpp"
 
 
@@ -98,7 +97,9 @@
 
 void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix) {
     if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix + ".dot", [&] (const ngraph::Node& node, std::vector<std::string>& attributes) {
+        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix +
+        (_lpt ? std::string{"_lpt"} : std::string{""}) + ".dot",
+        [&] (const ngraph::Node& node, std::vector<std::string>& attributes) {
             auto& rt_info = node.get_rt_info();
             auto itInfo = rt_info.find("QuantizationInfo");
             if (itInfo != rt_info.end()) {
@@ -137,7 +138,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
     Dump(f, "initial");
 
-    auto quantized = _lpt && ngraph::pass::low_precision::LowPrecisionTransformer::isFunctionQuantized(f);
+    auto quantized = _lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(f);
 
     if (quantized) {
         manager.register_pass<ngraph::pass::DisableConvertConstantFoldingOnConstPath>(
@@ -199,31 +200,45 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
     manager.run_passes(f);
 
-    Dump(f, "before_lpt");
 
+    using namespace ngraph::pass::low_precision;
     if (quantized) {
-        using namespace ngraph::pass::low_precision;
-        auto params = LayerTransformation::Params(
-            true,  // updatePrecisions
-            LayerTransformation::QuantizedTensorAlignment::UpdateLevel,  // quantizedTensorAlignmentOnActivations
-            LayerTransformation::QuantizedTensorAlignment::None,  // quantizedTensorAlignmentOnWeights
-            true)
-            .setPrecisionsOnActivations({ngraph::element::i8});
+        Dump(f, "before_common");
+        auto supportedPrecisions = std::vector<OperationPrecisionRestriction>({
+            OperationPrecisionRestriction::create<ngraph::opset1::Convolution>({
+                {0, {ngraph::element::i8}},
+                {1, {ngraph::element::i8}},
+            }),
+            OperationPrecisionRestriction::create<ngraph::opset1::ConvolutionBackpropData>({
+                {0, {ngraph::element::i8}},
+                {1, {ngraph::element::i8}}
+            }),
+            OperationPrecisionRestriction::create<ngraph::opset1::GroupConvolution>({
+                {0, {ngraph::element::i8}},
+                {1, {ngraph::element::i8}}
+            })
+        });
 
-        LowPrecisionTransformer transformer(
-            LowPrecisionTransformer::getAllTransformations(params)
-            .removeStandaloneCleanup<MultiplyToGroupConvolutionTransformation, opset::Multiply>()
-            .removeCleanup<FoldConvertTransformation, opset::Subtract>()
-            .removeCleanup<FuseConvertTransformation, opset::Multiply>()
-            .removeStandaloneCleanup<FuseSubtractToFakeQuantizeTransformation, opset::Subtract>()
-            .removeStandaloneCleanup<FuseMultiplyToFakeQuantizeTransformation, opset::Multiply>());
+        auto perTensorQuantization = std::vector<OperationPerTensorQuantizationRestriction>({
+            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::Convolution>({0}),
+            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::ConvolutionBackpropData>({0}),
+            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::GroupConvolution>({0})
+        });
 
-        transformer.transform(f);
+        ngraph::pass::Manager lptManager;
+        lptManager.register_pass<ngraph::pass::low_precision::LowPrecision>(supportedPrecisions, perTensorQuantization);
+        auto pass_config = lptManager.get_pass_config();
+        pass_config->disable<ngraph::pass::low_precision::MultiplyToGroupConvolutionTransformation>();
+        pass_config->disable<ngraph::pass::low_precision::FoldConvertTransformation>();
+        pass_config->disable<ngraph::pass::low_precision::FuseConvertTransformation>();
+        pass_config->disable<ngraph::pass::low_precision::FuseSubtractToFakeQuantizeTransformation>();
+        pass_config->disable<ngraph::pass::low_precision::FuseMultiplyToFakeQuantizeTransformation>();
+        lptManager.run_passes(f);
     }
 
-    Dump(f, "before_arm_transformations");
 
     {
+        Dump(f, "before_arm_specific_transformations");
         ngraph::pass::Manager manager;
         manager.register_pass<ngraph::pass::LogSoftmaxDecomposition>();
         manager.register_pass<pass::ConvertGRN>();
@@ -290,9 +305,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.run_passes(f);
     }
 
-    Dump(f, "before_arm_lpt");
 
     if (quantized) {
+        Dump(f, "before_arm");
         ngraph::pass::Manager manager;
         manager.register_pass<pass::NodeQuantizeFusion>();
         manager.register_pass<pass::DequantizeNodeFusion>();
@@ -300,6 +315,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertQuantize>();
         manager.register_pass<pass::ConvertBiasToI32>();
+        manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.register_pass<pass::MovePerChenelQuantizationInfoToWeights>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<PropogateQuantizationInfo>();
         manager.run_passes(f);
