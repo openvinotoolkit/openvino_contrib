@@ -20,6 +20,8 @@ from __future__ import unicode_literals
 
 import logging as log
 
+import numpy as np
+
 import torch
 from torch.autograd import Variable
 
@@ -62,13 +64,16 @@ class PyTorchLoader(Loader):
         update_extractors_with_extensions(pytorch_op_extractors)
 
         # Create a dummy input
-        inp = OpenVINOTensor(torch.randint(0, 255, list([1, 6])))
-        inp.graph = graph
-        inp.node_name = 'input'
+        inputs = {}
+        for name, shape in argv.placeholder_shapes.items():
+            dtype = argv.placeholder_data_types[name]
+            inp = np.random.randint(0, 255, shape).astype(dtype)
+            inp = OpenVINOTensor(torch.tensor(inp))
 
-        position_ids = OpenVINOTensor(torch.tensor([[0, 1, 2, 3, 4, 5]]))
-        position_ids.graph = graph
-        position_ids.node_name = 'position_ids'
+            inputs[name] = inp
+            inp.graph = graph
+            inp.node_name = name
+            graph.add_node(name, kind='op', op='Parameter', name=name, shape=shape)
 
         model = argv.input_model
 
@@ -79,32 +84,29 @@ class PyTorchLoader(Loader):
 
         register_model_hook(model)
 
-        graph.add_node('input', kind='op', op='Parameter', name='input', shape=list(inp.shape))
-        graph.add_node('position_ids', kind='op', op='Parameter', name='position_ids', shape=[1, 6])
-
         with torch.no_grad():
-            outs = model(inp, position_ids=position_ids)
+            model(**inputs)
 
-        outs = outs[0]
+        # outs = outs[0]
 
-        # Add output nodes
-        if not hasattr(outs, '__contains__'):  # if a single tensor
-            outs = [outs]
-        if isinstance(outs, dict):
-            outs = outs.values()
+        # # Add output nodes
+        # if not hasattr(outs, '__contains__'):  # if a single tensor
+        #     outs = [outs]
+        # if isinstance(outs, dict):
+        #     outs = outs.values()
 
-        for out in outs:
-            name = out.node_name
-            graph.add_node('output', kind='op', op='Result')
-            edge_attrs = {
-                'out': 0,
-                'in': 0,
-                'name': name,
-                'fw_tensor_debug_info': [(name, name)],
-                'in_attrs': ['in', 'name'],
-                'out_attrs': ['out', 'name'],
-                'data_attrs': ['fw_tensor_debug_info']
-            }
-            graph.add_edge(name, 'output', **edge_attrs)
+        # for out in outs:
+        #     name = out.node_name
+        #     graph.add_node('output', kind='op', op='Result')
+        #     edge_attrs = {
+        #         'out': 0,
+        #         'in': 0,
+        #         'name': name,
+        #         'fw_tensor_debug_info': [(name, name)],
+        #         'in_attrs': ['in', 'name'],
+        #         'out_attrs': ['out', 'name'],
+        #         'data_attrs': ['fw_tensor_debug_info']
+        #     }
+        #     graph.add_edge(name, 'output', **edge_attrs)
 
         extract_node_attrs(graph, lambda node: pytorch_op_extractor(node, check_for_duplicates(pytorch_op_extractors)))

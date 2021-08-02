@@ -26,12 +26,8 @@ def forward_hook(self, inputs, output):
         if src_id is None:
             raise Error('Input not found')
 
-        port_id = 0
-        if src_id.find('.') != -1:
-            port_id = int(src_id[src_id.find('.') + 1:])
-            src_id = src_id[:src_id.find('.')]
         edge_attrs = {
-            'out': port_id,
+            'out': inp.port_id,
             'in': idx,
             'name': src_id,
             'fw_tensor_debug_info': [(src_id, src_id)],
@@ -64,7 +60,8 @@ def forward_hook(self, inputs, output):
                 out = OpenVINOTensor(out)
                 out.graph = graph
 
-            out.node_name = name + '.' + str(i)
+            out.node_name = name
+            out.port_id = i
             outputs.append(out)
         return tuple(outputs)
 
@@ -83,6 +80,7 @@ class OpenVINOTensor(object):
         self._value = value
         self.graph = None
         self.node_name = None
+        self.port_id = 0
         self.shape = value.shape
         self.requires_grad = self._value.requires_grad
         self.device = 'cpu'
@@ -148,13 +146,20 @@ class OpenVINOTensor(object):
             return forward_hook(Add(a), (self,), res)
 
     def __radd__(self, a):
-        class Add(nn.Module):
-            def __init__(self, value):
-                super().__init__()
-                self.register_buffer('add', torch.tensor(value))
+        if isinstance(a, OpenVINOTensor):
+            class Add(nn.Module):
+                pass
+            res = self._value + a._value
+            return forward_hook(Add(), (self, a), res)
 
-        res = self._value + a
-        return forward_hook(Add(a), (self,), res)
+        elif isinstance(a, float):
+            class Add(nn.Module):
+                def __init__(self, value):
+                    super().__init__()
+                    self.register_buffer('add', torch.tensor(value))
+
+            res = self._value + a
+            return forward_hook(Add(a), (self,), res)
 
     def __getitem__(self, key):
         begin_id = []
@@ -198,7 +203,8 @@ class OpenVINOTensor(object):
 
         return forward_hook(sslice, (self,), res)
 
-    def __rmul__(self, a):
+    # a * value
+    def __mul__(self, a):
         if isinstance(a, OpenVINOTensor):
             class Mul(nn.Module):
                 pass
@@ -214,8 +220,7 @@ class OpenVINOTensor(object):
             res = self._value * a
             return forward_hook(Mul(a), (self,), res)
 
-    # a * value
-    def __mul__(self, a):
+    def __rmul__(self, a):
         if isinstance(a, OpenVINOTensor):
             class Mul(nn.Module):
                 pass
@@ -239,15 +244,6 @@ class OpenVINOTensor(object):
 
         res = self._value / a
         return forward_hook(Div(a), (self,), res)
-
-    # def matmul(self, m):
-    #     class Matmul(nn.Module):
-    #         def __init__(self, mat):
-    #             super().__init__()
-    #             self.register_buffer('weight', mat)
-
-    #     res = self._value.matmul(m)
-    #     return forward_hook(Matmul(m), (self,), res)
 
     def view(self, *shape):
         res = self._value.view(shape)
@@ -306,16 +302,6 @@ class OpenVINOTensor(object):
                 super().__init__()
 
         return forward_hook(Sigmoid(), (self,), res)
-
-    # def softmax(self, dim):
-    #     res = self._value.softmax(dim)
-
-    #     class Softmax(nn.Module):
-    #         def __init__(self, dim):
-    #             super().__init__()
-    #             self.dim = dim
-
-    #     return forward_hook(Softmax(dim), (self,), res)
 
     def contiguous(self):
         res = OpenVINOTensor(self._value.contiguous())

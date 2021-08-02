@@ -62,7 +62,7 @@ class DivFrontExtractor(FrontExtractorOp):
         return cls.enabled
 
 
-class PowvFrontExtractor(FrontExtractorOp):
+class PowFrontExtractor(FrontExtractorOp):
     op = 'Pow'
     enabled = True
 
