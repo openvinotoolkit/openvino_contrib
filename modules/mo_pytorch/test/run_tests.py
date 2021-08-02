@@ -78,6 +78,10 @@ class TestModels(unittest.TestCase):
         model.eval()
         ref = model(inp)
 
+        # Forward random input through the model to check that nothing got stuck from reference dat
+        rand_inp = torch.rand(inp.size(), dtype=inp.dtype)
+        model(rand_inp)
+
         # Convert to OpenVINO IR
         mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
 
@@ -202,6 +206,10 @@ class TestModels(unittest.TestCase):
         text = "Александр Сергеевич Пушкин родился в "
         input_ids = tokenizer.encode(text, return_tensors="pt")
         result = model(input_ids)
+
+        # Forward random input through the model to check that nothing got stuck from reference dat
+        dummy_inp = torch.randint(0, 255, input_ids.shape)
+        model(dummy_inp)
 
         # Generate OpenVINO IR
         mo_pytorch.convert(model, input_shape='[1, 6],[6]', input='input_ids{i64},position_ids{i64}', model_name='model')

@@ -135,12 +135,12 @@ class OpenVINOTensor(object):
                 pass
             res = self._value + a._value
             return forward_hook(Add(), (self, a), res)
-
-        elif isinstance(a, float):
+        else:
             class Add(nn.Module):
                 def __init__(self, value):
                     super().__init__()
-                    self.register_buffer('add', torch.tensor(value))
+                    value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+                    self.register_buffer('add', value)
 
             res = self._value + a
             return forward_hook(Add(a), (self,), res)
@@ -151,12 +151,12 @@ class OpenVINOTensor(object):
                 pass
             res = self._value + a._value
             return forward_hook(Add(), (self, a), res)
-
-        elif isinstance(a, float):
+        else:
             class Add(nn.Module):
                 def __init__(self, value):
                     super().__init__()
-                    self.register_buffer('add', torch.tensor(value))
+                    value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+                    self.register_buffer('add', value)
 
             res = self._value + a
             return forward_hook(Add(a), (self,), res)
@@ -210,12 +210,12 @@ class OpenVINOTensor(object):
                 pass
             res = self._value * a._value
             return forward_hook(Mul(), (self, a), res)
-
-        elif isinstance(a, float):
+        else:
             class Mul(nn.Module):
                 def __init__(self, value):
                     super().__init__()
-                    self.register_buffer('mul', torch.tensor(value))
+                    value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+                    self.register_buffer('mul', value)
 
             res = self._value * a
             return forward_hook(Mul(a), (self,), res)
@@ -226,24 +226,31 @@ class OpenVINOTensor(object):
                 pass
             res = self._value * a._value
             return forward_hook(Mul(), (self, a), res)
-
-        elif isinstance(a, float):
+        else:
             class Mul(nn.Module):
                 def __init__(self, value):
                     super().__init__()
-                    self.register_buffer('mul', torch.tensor(value))
+                    value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+                    self.register_buffer('mul', value)
 
             res = self._value * a
             return forward_hook(Mul(a), (self,), res)
 
     def __truediv__(self, a):
-        class Div(nn.Module):
-            def __init__(self, value):
-                super().__init__()
-                self.register_buffer('div', torch.tensor(value))
+        if isinstance(a, OpenVINOTensor):
+            class Div(nn.Module):
+                pass
+            res = self._value / a._value
+            return forward_hook(Div(), (self, a), res)
+        else:
+            class Div(nn.Module):
+                def __init__(self, value):
+                    super().__init__()
+                    value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+                    self.register_buffer('div', value)
 
-        res = self._value / a
-        return forward_hook(Div(a), (self,), res)
+            res = self._value / a
+            return forward_hook(Div(a), (self,), res)
 
     def view(self, *shape):
         res = self._value.view(shape)
