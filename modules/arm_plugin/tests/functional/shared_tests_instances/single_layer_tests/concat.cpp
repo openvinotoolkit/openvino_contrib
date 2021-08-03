@@ -11,7 +11,7 @@ using namespace LayerTestsDefinitions;
 
 namespace {
 
-std::vector<size_t> axes4D = {0, 1, 2, 3};
+std::vector<int> axes4D = {0, 1, 2, 3};
 std::vector<std::vector<std::vector<size_t>>> inShapes4D = {
         {{2, 2, 2, 2}, {2, 2, 2, 2}},
         {{3, 3, 3, 3}, {3, 3, 3, 3}, {3, 3, 3, 3}},
@@ -41,7 +41,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Concat4DTest, ConcatLayerTest,
                         ConcatLayerTest::getTestCaseName);
 
 
-std::vector<size_t> axes2D = {0, 1};
+std::vector<int> axes2D = {0, 1};
 std::vector<std::vector<std::vector<size_t>>> inShapes2D = {
         {{1, 1}, {1, 1}},
         {{2, 2}, {2, 2}},
@@ -59,7 +59,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Concat2DTest, ConcatLayerTest,
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConcatLayerTest::getTestCaseName);
 
-std::vector<size_t> axes5D = {0, 1, 2, 3, 4};
+std::vector<int> axes5D = {0, 1, 2, 3, 4};
 std::vector<std::vector<std::vector<size_t>>> inShapes5D = {
         {{2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}, {2, 2, 2, 2, 2}},
 };
