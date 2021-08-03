@@ -42,7 +42,6 @@ const std::vector<double> epsilon = {
     1e-9,
 };
 
-test;
 const auto MvnCases2D = ::testing::Combine(
     ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 3}, {3, 1}, {32, 17}}),
     ::testing::ValuesIn(netPrecisions),
