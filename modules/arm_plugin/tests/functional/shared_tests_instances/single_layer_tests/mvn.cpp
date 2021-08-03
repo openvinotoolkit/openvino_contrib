@@ -52,7 +52,7 @@ const auto MvnCases2D = ::testing::Combine(
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_TestsMVN2D, MvnLayerTest, MvnCases2D, Mvn1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_TestsMVN2D, Mvn1LayerTest, MvnCases2D, Mvn1LayerTest::getTestCaseName);
 
 const auto MvnCases = ::testing::Combine(
     ::testing::ValuesIn(inputShapes),
@@ -64,4 +64,4 @@ const auto MvnCases = ::testing::Combine(
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_TestsMVN, MvnLayerTest, MvnCases, Mvn1LayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_TestsMVN, Mvn1LayerTest, MvnCases, Mvn1LayerTest::getTestCaseName);
