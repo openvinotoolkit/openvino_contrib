@@ -21,8 +21,8 @@ namespace CUDAPlugin {
 template <typename TOperation>
 MatMulOp::MatMulOp(const CUDA::CreationContext& context,
                    const TOperation& op,
-                   std::vector<unsigned>&& inputIds,
-                   std::vector<unsigned>&& outputIds)
+                   IndexCollection&& inputIds,
+                   IndexCollection&& outputIds)
     : OperationCuBlas(context, op, std::move(inputIds), std::move(outputIds)) {
     Expects(op.get_input_size() >= 2);
     Expects(op.get_output_size() == 1);
@@ -69,8 +69,8 @@ MatMulOp::MatMulOp(const CUDA::CreationContext& context,
     Ensures(ld_c_ != 0);
     Ensures(batch_count_ != 0);
 }
-template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const ngraph::op::MatMul&, std::vector<unsigned>&&, std::vector<unsigned>&&);
-template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const nodes::FullyConnected&, std::vector<unsigned>&&, std::vector<unsigned>&&);
+template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const ngraph::op::MatMul&, IndexCollection&&, IndexCollection&&);
+template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const nodes::FullyConnected&, IndexCollection&&, IndexCollection&&);
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
     constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr {

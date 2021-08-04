@@ -30,12 +30,12 @@ struct Workbuffers {
 };
 
 /**
- * @brief WorkbufferIndices - structure holding the memory buffers' indices
+ * @brief WorkbufferIds - structure holding the memory buffers' indices
  */
-struct WorkbufferIndices {
-  using vector_of_indices = std::vector<unsigned>;
-  vector_of_indices immutableIndices;
-  vector_of_indices mutableIndices;
+struct WorkbufferIds {
+  using vector_of_ids = std::vector<BufferID>;
+  vector_of_ids immutableIds;
+  vector_of_ids mutableIds;
 };
 
 }
