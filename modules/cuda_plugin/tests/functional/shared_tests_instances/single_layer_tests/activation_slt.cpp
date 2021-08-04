@@ -34,10 +34,39 @@ const auto basicReluCases = ::testing::Combine(
     ::testing::ValuesIn(listToVectors(reluShapes)),
     ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_CASE_P(Activation_Basic_Relu,
+INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Relu,
 		ActivationLayerTest,
 		basicReluCases,
 		ActivationLayerTest::getTestCaseName);
+
+
+std::initializer_list<std::initializer_list<std::size_t>> sigmoidShapes{
+    {64, 1, 28, 28},
+    {1, 800},
+    {1, 1, 128, 128},
+    {1, 3, 80, 80, 85},
+    {1, 1, 144, 144, 144},
+    {1, 3, 40, 40, 85},
+    {1, 3, 20, 20, 85},
+};
+
+
+const auto basicSigmoidCases = ::testing::Combine(
+    ::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{
+        ngraph::helpers::Sigmoid, 0}),
+    ::testing::Values(InferenceEngine::Precision::FP32,
+                      InferenceEngine::Precision::FP16),
+    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+    ::testing::Values(InferenceEngine::Layout::ANY),
+    ::testing::Values(InferenceEngine::Layout::ANY),
+    ::testing::ValuesIn(listToVectors(sigmoidShapes)),
+    ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Sigmoid,
+        ActivationLayerTest,
+        basicSigmoidCases,
+        ActivationLayerTest::getTestCaseName);
 
 }  // namespace
 }  // namespace LayerTestsDefinitions
