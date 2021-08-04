@@ -6,18 +6,17 @@ resources:
     name: openvinotoolkit/openvino
 
 jobs:
-- job: Lin
+- job: Lin_arm64
   # About 150% of total time
   timeoutInMinutes: 120
 
   pool:
-    name: LIN_VMSS_VENV_F16S_WU2
+    name: LIN_VMSS_VENV_F16S_U20_WU2
 
   variables:
     system.debug: true
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
-    WORKERS_NUMBER: 16
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
@@ -34,7 +33,9 @@ jobs:
       uname -a
       echo Python3 info ; which python3 ; python3 --version
       echo Python info ; which python ; python --version
+      echo Java info ; which java ; java -version
       echo gcc info ; which gcc ; gcc --version
+      echo cmake info ; which cmake ; cmake --version
       lsb_release
       env
       cat /proc/cpuinfo
@@ -64,14 +65,17 @@ jobs:
     path: openvino
 
   - script: |
+      set -e
+      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      # Move into contrib install_build_dependencies.sh
       sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
+      # OpenCV should provide install_build_dependencies.sh as well
+      # Move into resources
+      git clone https://github.com/opencv/opencv.git --depth 1 $(OPENCV_REPO_DIR)
       # Speed up build
-      wget https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-linux.zip
+      wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/
-      python3 -m pip install --upgrade pip
-      python3 -m pip install cython
-      git clone https://github.com/opencv/opencv.git --depth 1 $(OPENCV_REPO_DIR)
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
@@ -86,11 +90,13 @@ jobs:
         $(OPENCV_REPO_DIR)
       workingDirectory: $(BUILD_DIR_OPENCV)
 
-  - script: |
-      ninja
-      ninja install
+  - script: ninja
     workingDirectory: $(BUILD_DIR_OPENCV)
     displayName: 'Build OpenCV Lin ARM64'
+
+  - script: ninja install
+    workingDirectory: $(BUILD_DIR_OPENCV)
+    displayName: 'Install OpenCV Lin ARM64'
 
   - task: CMake@1
     inputs:
@@ -127,4 +133,4 @@ jobs:
     displayName: 'Build ARM plugin for ARM64'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List files'
+    displayName: 'List bin files'
