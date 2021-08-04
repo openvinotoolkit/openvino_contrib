@@ -14,9 +14,9 @@ namespace CUDAPlugin {
 
 DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model) : model_{move(model)} {}
 
-void* DeviceMemBlock::deviceTensorPtr(MemoryModel::TensorID id) {
-  if (ptrdiff_t offset = 0; model_->offsetForTensor(id, offset))
-    return reinterpret_cast<uint8_t*>(device_mem_ptr_.get()) + offset;
+void* DeviceMemBlock::deviceTensorPtr(const TensorID& id) {
+  if (ptrdiff_t offset = 0; model_->offsetForTensor(id.buffer_id, offset))
+    return reinterpret_cast<uint8_t*>(device_mem_ptr_.get()) + offset + id.offset;
   return nullptr;
 }
 

@@ -4,15 +4,16 @@
 
 #pragma once
 
+#include <ie_layouts.h>
+
+#include <cuda/creation_context.hpp>
+#include <gpu/device_pointers.hpp>
+#include <gpu/gpu_context_api_cuda.hpp>
+#include <memory>
+#include <memory_manager/model/cuda_memory_model.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <memory>
-
-#include <gpu/gpu_context_api_cuda.hpp>
-#include <gpu/device_pointers.hpp>
-#include <cuda/creation_context.hpp>
-#include <ie_layouts.h>
 
 #include "memory_manager/cuda_workbuffers.hpp"
 
@@ -43,8 +44,8 @@ class IOperationExec {
                        const Workbuffers& workbuffers) = 0;
   virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
   virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
-  virtual const WorkbufferIndices& GetWorkbufferIds() const = 0;
-  virtual WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) = 0;
+  virtual const WorkbufferIds& GetWorkbufferIds() const = 0;
+  virtual WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) = 0;
 };
 
 class IOperationMeta {
@@ -60,8 +61,8 @@ class IOperationMeta {
   virtual const std::string_view& GetCategory() const = 0;
   virtual const std::string& GetName() const = 0;
   virtual const std::string& GetTypeName() const = 0;
-  virtual gsl::span<const unsigned> GetInputIds() const = 0;
-  virtual gsl::span<const unsigned> GetOutputIds() const = 0;
+  virtual gsl::span<const TensorID> GetInputIds() const = 0;
+  virtual gsl::span<const TensorID> GetOutputIds() const = 0;
 };
 
 class OperationBase
@@ -71,7 +72,7 @@ class OperationBase
  public:
   using Ptr = std::shared_ptr<OperationBase>;
   using WeakPtr = std::weak_ptr<OperationBase>;
-  using IndexCollection = std::vector<unsigned>;
+  using IndexCollection = std::vector<TensorID>;
   OperationBase(const CUDA::CreationContext& context,
                 const ngraph::Node& node,
                 IndexCollection&& inputIds,
@@ -97,18 +98,18 @@ class OperationBase
   const std::string& GetTypeName() const override {
     return type_name_;
   }
-  gsl::span<const unsigned> GetInputIds() const override {
+  gsl::span<const TensorID> GetInputIds() const override {
     return input_ids_;
   }
-  gsl::span<const unsigned> GetOutputIds() const override {
+  gsl::span<const TensorID> GetOutputIds() const override {
     return output_ids_;
   }
-  const WorkbufferIndices& GetWorkbufferIds() const override {
+  const WorkbufferIds& GetWorkbufferIds() const override {
     return workbuffer_ids_;
   }
-  WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
+  WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
     workbuffer_ids_ = workbufferIds;
-    return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+    return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
   }
 
  protected:
@@ -116,7 +117,7 @@ class OperationBase
   std::string type_name_;
   const IndexCollection input_ids_;
   const IndexCollection output_ids_;
-  WorkbufferIndices workbuffer_ids_;
+  WorkbufferIds workbuffer_ids_;
 };
 
 template <decltype(&IOperationMeta::Category::CUDA) CategoryString>

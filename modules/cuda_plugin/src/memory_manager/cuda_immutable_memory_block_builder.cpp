@@ -14,7 +14,7 @@
 namespace CUDAPlugin {
 
 void
-ImmutableMemoryBlockBuilder::addAllocation(TensorID id, const void* data, size_t bsize) {
+ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
   IE_ASSERT(data != nullptr);
   model_builder_.addAllocation(id, bsize);
   allocations_.emplace_back(AllocRecord {id, data, bsize});

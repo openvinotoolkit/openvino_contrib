@@ -136,8 +136,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
                 "Node: name = {}, description = {}; Is not found in OperationRegistry",
                 node->get_name(), node->description());
         }
-        auto inIds = opBuffersExtractor.inputBufferIndices(*node);
-        auto outIds = opBuffersExtractor.outputBufferIndices(*node);
+        auto inIds = opBuffersExtractor.inputTensorIds(*node);
+        auto outIds = opBuffersExtractor.outputTensorIds(*node);
         auto operation = OperationRegistry::getInstance().createOperation(creationContext, node, move(inIds), move(outIds));
         if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()))) {
           init_sequence.push_back(operation);
@@ -252,9 +252,9 @@ std::vector<InferenceEngine::gpu::DevicePointer<void*>>
 ExecutableNetwork::getSharedWorkbuffers(const IOperationExec& operation) {
     std::vector<InferenceEngine::gpu::DevicePointer<void*>> result {};
     const auto& ids = operation.GetWorkbufferIds();
-    for(const auto immutable_index : ids.immutableIndices) {
-        void* ptr = immutable_workbuffers_->deviceTensorPtr(immutable_index);
-        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_index;
+    for(const auto immutable_id : ids.immutableIds) {
+        void* ptr = immutable_workbuffers_->deviceTensorPtr(immutable_id);
+        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
         result.emplace_back(ptr);
     }
     return result;
@@ -313,15 +313,15 @@ ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBu
     ImmutableMemoryModelBuilder immutable_workbuffer_model_builder;
 
     // Process nGraph and add allocations
-    for (auto index : opBuffersExtractor.immutableBuffersIndices()) {
-        auto span = opBuffersExtractor.immutableBuffer(index);
-        constants_block_builder.addAllocation(index, span.data(), span.size());
+    for (auto id : opBuffersExtractor.immutableBuffersIds()) {
+        auto span = opBuffersExtractor.immutableBuffer(id);
+        constants_block_builder.addAllocation(id, span.data(), span.size());
     }
-    for (auto index : opBuffersExtractor.mutableBuffersIndices())
-        mutable_model_builder.addAllocation(index,
-                opBuffersExtractor.mutableBufferLifespanStart(index),
-                opBuffersExtractor.mutableBufferLifespanEnd(index),
-                opBuffersExtractor.mutableBufferSize(index));
+    for (auto id : opBuffersExtractor.mutableBuffersIds())
+        mutable_model_builder.addAllocation(id,
+                                            opBuffersExtractor.mutableBufferLifespanStart(id),
+                                            opBuffersExtractor.mutableBufferLifespanEnd(id),
+                                            opBuffersExtractor.mutableBufferSize(id));
     const auto& immutable_workbufer_sizes = opBuffersExtractor.immutableWorkbufferSizes();
     for (const auto& index : immutable_workbufer_sizes) {
         immutable_workbuffer_model_builder.addAllocation(index.first, index.second);

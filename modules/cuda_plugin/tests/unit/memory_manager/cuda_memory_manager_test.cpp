@@ -23,7 +23,7 @@ public:
       const std::vector<uint8_t> data(256, 0xA5);
       CUDAPlugin::ImmutableMemoryBlockBuilder builder;
       for (auto id : sharedConstantIds_) {
-        builder.addAllocation(id, &data[0], data.size());
+        builder.addAllocation(id.buffer_id, &data[0], data.size());
       }
       immutableTensors_ = builder.build();
     }
@@ -33,16 +33,16 @@ public:
       CUDAPlugin::MemoryModelBuilder builder;
       const size_t size = 1;
       for (int i = 0; i< mutableTensorIds_.size(); ++i) {
-        builder.addAllocation(mutableTensorIds_[i], i, i + 2, size);
+        builder.addAllocation(mutableTensorIds_[i].buffer_id, i, i + 2, size);
       }
       mutableMemoryModel_ = builder.build();
     }
   }
 
-  const std::vector<unsigned> sharedConstantIds_ = {
+  const std::vector<CUDAPlugin::TensorID> sharedConstantIds_ = {
     0, 1, 2, 5, 7, 9
   };
-  const std::vector<unsigned> mutableTensorIds_ = {
+  const std::vector<CUDAPlugin::TensorID> mutableTensorIds_ = {
     101, 104, 103, 105, 120, 121
   };
 
@@ -50,8 +50,8 @@ public:
   CUDAPlugin::MemoryModel::Ptr mutableMemoryModel_;
 
 public: // CUDAPlugin::IOperationMeta
-  std::vector<unsigned> inputIds_;
-  std::vector<unsigned> outputIds_;
+  std::vector<CUDAPlugin::TensorID> inputIds_;
+  std::vector<CUDAPlugin::TensorID> outputIds_;
   const std::string& GetName() const override {
     static std::string empty;
     return empty;
@@ -64,8 +64,8 @@ public: // CUDAPlugin::IOperationMeta
     return empty;
   }
 
-  gsl::span<const unsigned> GetInputIds() const override { return inputIds_; }
-  gsl::span<const unsigned> GetOutputIds() const override { return outputIds_; }
+  gsl::span<const CUDAPlugin::TensorID> GetInputIds() const override { return inputIds_; }
+  gsl::span<const CUDAPlugin::TensorID> GetOutputIds() const override { return outputIds_; }
 };
 
 TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
@@ -84,22 +84,22 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
   EXPECT_TRUE(inputIds_.size() == inputTensorPointers.size());
   const uint8_t* mutableBlockAllocationBase = nullptr;
   for (int i = 0; i < inputIds_.size(); ++i) {
-    const MemoryModel::TensorID tensor_id = inputIds_[i];
+    const BufferID buffer_id = inputIds_[i].buffer_id;
     const void* actual = inputTensorPointers[i].get();
     if (i < sharedConstantIds_.size()) {
-      // tensor_id represents tensor from shared constants memory block
-      const void* expected = immutableTensors_->deviceTensorPtr(tensor_id);
+      // buffer_id represents tensor from shared constants memory block
+      const void* expected = immutableTensors_->deviceTensorPtr(buffer_id);
       EXPECT_EQ(actual, expected);
     } else {
-      // tensor_id represents tensor from mutable memory block allocated by MemoryManager
+      // buffer_id represents tensor from mutable memory block allocated by MemoryManager
       if (mutableBlockAllocationBase == nullptr) {
         ptrdiff_t offset = -1;
-        ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(tensor_id, offset));
+        ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
         mutableBlockAllocationBase = reinterpret_cast<const uint8_t*>(actual) - offset;
       }
 
       ptrdiff_t offset = -1;
-      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(tensor_id, offset));
+      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
       const void* expected = mutableBlockAllocationBase + offset;
       EXPECT_EQ(actual, expected);
     }
@@ -121,17 +121,17 @@ TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
   EXPECT_TRUE(outputIds_.size() == outputTensorPointers.size());
   const uint8_t* mutableBlockAllocationBase = nullptr;
   for (int i = 0; i < outputIds_.size(); ++i) {
-    const MemoryModel::TensorID tensor_id = outputIds_[i];
+    const BufferID buffer_id = outputIds_[i].buffer_id;
     const void* actual = outputTensorPointers[i].get();
 
     if (mutableBlockAllocationBase == nullptr) {
       ptrdiff_t offset = -1;
-      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(tensor_id, offset));
+      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
       mutableBlockAllocationBase = reinterpret_cast<const uint8_t*>(actual) - offset;
     }
 
     ptrdiff_t offset = -1;
-    ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(tensor_id, offset));
+    ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
     const void* expected = mutableBlockAllocationBase + offset;
     EXPECT_EQ(actual, expected);
   }
@@ -158,13 +158,13 @@ TEST_F(MemoryManagerTest, OperationHasNoOutputs) {
 TEST_F(MemoryManagerTest, InvalidInputTensorID) {
   using namespace CUDAPlugin;
 
-  const MemoryModel::TensorID invalid_tensor_id = 9999;
-  ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_tensor_id));
-  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_tensor_id));
+  const TensorID invalid_buffer_id = 9999;
+  ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
+  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_buffer_id));
 
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
   inputIds_ = sharedConstantIds_;
-  inputIds_.emplace_back(invalid_tensor_id);
+  inputIds_.emplace_back(invalid_buffer_id);
 
   #ifdef NDEBUG
     ASSERT_THROW(memory_manager->inputTensorPointers(*this), InferenceEngine::details::InferenceEngineException);
@@ -177,13 +177,13 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
 TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
   using namespace CUDAPlugin;
 
-  const MemoryModel::TensorID invalid_tensor_id = 9999;
-  ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_tensor_id));
-  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_tensor_id));
+  const TensorID invalid_buffer_id = 9999;
+  ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
+  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_buffer_id));
 
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
   outputIds_ = mutableTensorIds_;
-  outputIds_.emplace_back(invalid_tensor_id);
+  outputIds_.emplace_back(invalid_buffer_id);
 
   #ifdef NDEBUG
     ASSERT_THROW(memory_manager->outputTensorPointers(*this), InferenceEngine::details::InferenceEngineException);

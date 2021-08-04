@@ -65,8 +65,8 @@ struct ResultTest : testing::Test {
     auto resultNode = std::make_shared<ResultStubNode>();
     auto outputParameterNode = std::make_shared<ngraph::Output<ParameterStubNode>>(paramNode);
     resultNode->set_argument(0, *outputParameterNode);
-    auto inputIDs  = std::vector<unsigned>{0};
-    auto outputIDs = std::vector<unsigned>{};
+    auto inputIDs  = std::vector<CUDAPlugin::TensorID>{0};
+    auto outputIDs = std::vector<CUDAPlugin::TensorID>{};
     resultNode->set_friendly_name(ResultStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(resultNode));
     operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, resultNode, inputIDs, outputIDs);

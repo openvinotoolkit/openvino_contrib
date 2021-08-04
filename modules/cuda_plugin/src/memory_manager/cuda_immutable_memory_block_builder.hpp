@@ -19,11 +19,9 @@ class DeviceMemBlock;
  */
 class ImmutableMemoryBlockBuilder {
 public:
-  using TensorID = MemoryModel::TensorID;
-
   /**
    * Adds a tensor allocation.
-   * @param [in] id Tensor identifier. Will be used to obtain corresponding
+   * @param [in] id Buffer identifier. Will be used to obtain corresponding
    * device side tensor pointer.
    * @param [in] data Constant tensor data. Caller should guarantee that this
    * pointer is still valid when `ImmutableMemoryBlockBuilder::build()` method
@@ -34,7 +32,7 @@ public:
    *  - tensor with specified id is already added
    *  - data pointer is nullptr
    */
-  void addAllocation(TensorID id, const void* data, size_t bsize);
+  void addAllocation(BufferID id, const void* data, size_t bsize);
 
   /**
    * @brief Creates and initializes DeviceMemBlock object.
@@ -49,7 +47,7 @@ public:
 private:
   ImmutableMemoryModelBuilder model_builder_;
   struct AllocRecord {
-    TensorID id;
+    BufferID id;
     const void* data;
     size_t bsize;
   };

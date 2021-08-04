@@ -21,8 +21,8 @@ class OperationRegistryTest : public testing::Test {
   }
 
  public:
-    std::vector<unsigned> dummyInputTensorIds = std::vector<unsigned>{1, 2, 3};
-    std::vector<unsigned> dummyOutputTensorIds = std::vector<unsigned>{4, 5, 6};
+    std::vector<TensorID> dummyInputTensorIds = {1, 2, 3};
+    std::vector<TensorID> dummyOutputTensorIds = {4, 5, 6};
     CUDA::Device device_{};
     bool optimizeOption = false;
 };
@@ -104,6 +104,6 @@ TEST_F(OperationRegistryTest, BuildOperationAndCheckTenorIds_Success) {
     ASSERT_TRUE(saxpyDummyOperation);
     auto inputIds = saxpyDummyOperation->GetInputIds();
     auto outputIds = saxpyDummyOperation->GetOutputIds();
-    ASSERT_EQ(std::vector<unsigned>(inputIds.begin(), inputIds.end()), dummyInputTensorIds);
-    ASSERT_EQ(std::vector<unsigned>(outputIds.begin(), outputIds.end()), dummyOutputTensorIds);
+    ASSERT_EQ(std::vector<TensorID>(inputIds.begin(), inputIds.end()), dummyInputTensorIds);
+    ASSERT_EQ(std::vector<TensorID>(outputIds.begin(), outputIds.end()), dummyOutputTensorIds);
 }
