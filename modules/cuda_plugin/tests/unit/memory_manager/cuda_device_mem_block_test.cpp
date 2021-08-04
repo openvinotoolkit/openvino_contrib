@@ -15,7 +15,7 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
   // memory block size is zero.
   {
     const size_t bsize = 0;
-    std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
+    std::unordered_map<BufferID, ptrdiff_t> offsets;
     auto model = std::make_shared<MemoryModel>(bsize, offsets);
     ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
@@ -29,27 +29,27 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
   // However this case verifies that device side address is not allocated
   // if requested memory block size is zero.
   {
-    const MemoryModel::TensorID tensor_id = 1;
+    const BufferID buffer_id = 1;
     const ptrdiff_t offset = 0;
-    const std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets = {
-      { tensor_id, offset }
+    const std::unordered_map<BufferID, ptrdiff_t> offsets = {
+      { buffer_id, offset }
     };
     const size_t bsize = 0;
     auto model = std::make_shared<MemoryModel>(bsize, offsets);
     ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
     auto mem_block = std::make_unique<DeviceMemBlock>(model);
-    ASSERT_TRUE(mem_block->deviceTensorPtr(tensor_id) == nullptr);
+    ASSERT_TRUE(mem_block->deviceTensorPtr(buffer_id) == nullptr);
   }
 }
 
 TEST(DeviceMemBlock, VerifyDevicePointers) {
   using namespace CUDAPlugin;
 
-  const MemoryModel::TensorID alloc_count = 5;
+  const BufferID alloc_count = 5;
   const size_t allocation_size = 0x100;
-  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
-  for (MemoryModel::TensorID id = 0; id < alloc_count; ++id) {
+  std::unordered_map<BufferID, ptrdiff_t> offsets;
+  for (BufferID id = 0; id < alloc_count; ++id) {
     offsets[id] = id * allocation_size;
   }
   const size_t block_size = alloc_count * allocation_size;
@@ -57,13 +57,13 @@ TEST(DeviceMemBlock, VerifyDevicePointers) {
   auto model = std::make_shared<MemoryModel>(block_size, offsets);
   auto mem_block = std::make_unique<DeviceMemBlock>(model);
 
-  const MemoryModel::TensorID first_allocation_id = 0;
+  const BufferID first_allocation_id = 0;
   const uint8_t* const block_base_addr =
     reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(first_allocation_id));
   ASSERT_TRUE(block_base_addr != nullptr);
 
   // Verify tensor pointers
-  for (MemoryModel::TensorID id = 0; id < alloc_count; ++id) {
+  for (BufferID id = 0; id < alloc_count; ++id) {
     const uint8_t* const actual_addr = reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(id));
     const uint8_t* const expected_addr = block_base_addr + offsets.at(id);
     ASSERT_EQ(actual_addr, expected_addr);
@@ -74,7 +74,7 @@ TEST(DeviceMemBlock, NullPtrIfTensorNotFound) {
   using namespace CUDAPlugin;
 
   const size_t block_size = 0x700;
-  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets = {
+  std::unordered_map<BufferID, ptrdiff_t> offsets = {
     { 1, 0x0 },
     { 2, 0x300 },
     { 3, 0x500 },

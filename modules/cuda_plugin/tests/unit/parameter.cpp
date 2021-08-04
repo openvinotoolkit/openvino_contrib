@@ -47,8 +47,8 @@ struct ParameterTest : testing::Test {
     const bool optimizeOption = false;
     auto& registry { OperationRegistry::getInstance() };
     auto node = std::make_shared<ParameterStubNode>();
-    auto inputIDs  = std::vector<unsigned>{};
-    auto outputIDs = std::vector<unsigned>{0};
+    auto inputIDs  = std::vector<CUDAPlugin::TensorID>{};
+    auto outputIDs = std::vector<CUDAPlugin::TensorID>{0};
     node->set_friendly_name(ParameterStubNode::type_info.name);
     ASSERT_TRUE(registry.hasOperation(node));
     operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);

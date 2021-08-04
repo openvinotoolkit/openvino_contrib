@@ -41,11 +41,12 @@ WorkbufferRequest FusedConvolutionOp::GetWorkBufferRequest() const {
     return impl_->GetWorkBufferRequest();
 }
 
-const WorkbufferIndices& FusedConvolutionOp::GetWorkbufferIds() const {
+const WorkbufferIds& FusedConvolutionOp::GetWorkbufferIds() const {
     return impl_->GetWorkbufferIds();
 }
 
-IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(WorkbufferIndices&& workbufferIds) {
+IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(
+    WorkbufferIds&& workbufferIds) {
   return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 

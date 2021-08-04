@@ -25,8 +25,8 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
-    const WorkbufferIndices& GetWorkbufferIds() const override;
-    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override;
+    const WorkbufferIds& GetWorkbufferIds() const override;
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override;
 
     using ArgIndices = Convolution::Details::ConvArgIndices;
 

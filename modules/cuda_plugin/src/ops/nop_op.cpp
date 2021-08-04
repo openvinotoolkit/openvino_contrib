@@ -11,5 +11,6 @@ OPERATION_REGISTER(NopOp, Constant);
 OPERATION_REGISTER(NopOp, Reshape);
 OPERATION_REGISTER(NopOp, Squeeze);
 OPERATION_REGISTER(NopOp, Unsqueeze);
+OPERATION_REGISTER(NopOp, ConcatOptimized);
 
 } // namespace CUDAPlugin

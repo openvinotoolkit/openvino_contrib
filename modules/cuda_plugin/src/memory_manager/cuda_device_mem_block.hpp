@@ -31,7 +31,7 @@ public:
    * @returns device memory pointer if tensor is located within the blob
    * or nullptr otherwise.
    */
-  void* deviceTensorPtr(MemoryModel::TensorID id);
+  void* deviceTensorPtr(const TensorID& id);
 
 private:
   MemoryModel::Ptr model_;

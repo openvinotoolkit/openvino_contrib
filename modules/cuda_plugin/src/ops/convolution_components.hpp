@@ -8,6 +8,7 @@
 #include <ngraph/op/convolution.hpp>
 
 #include "transformer/nodes/fused_convolution2d.hpp"
+#include "transformer/nodes/fused_convolution_backprop_data2d.hpp"
 
 namespace CUDAPlugin::Convolution::Details {
 
@@ -54,6 +55,36 @@ private:
 };
 
 
+struct ConvBackArgIndices {
+  static constexpr size_t doutput = 0;
+  static constexpr size_t filter = 1;
+  static constexpr size_t output_shape = 2;
+  static constexpr size_t dinput = 0;
+};
+
+struct ConvolutionBackwardDataParams {
+  template <typename TConvNode>
+  ConvolutionBackwardDataParams(const TConvNode& node);
+
+  ngraph::element::Type_t element_type_;
+  ngraph::Shape doutput_shape_;
+  ngraph::Shape filter_shape_;
+  ngraph::Shape dinput_shape_;
+  ngraph::Strides strides_;
+  ngraph::Strides dilations_;
+  ngraph::CoordinateDiff pads_begin_;
+  ngraph::CoordinateDiff pads_end_;
+  ngraph::op::PadType auto_pad_;
+  ngraph::CoordinateDiff output_padding_;
+
+  size_t NumberOfDims() const { return doutput_shape_.size(); }
+  size_t NumberOfSpatialDims() const { return doutput_shape_.size() - NON_SPATIAL_DIMS_NUMBER; }
+
+ private:
+  void ConvertConv1DToConv2D();
+};
+
+
 /**
  * @brief Defines tensor indices for the following nodes:
  *  - `CUDAPlugin::nodes::FusedConv2D`
@@ -77,6 +108,41 @@ struct FusedConvolutionParams {
     ngraph::Shape bias_shape_;
     std::optional<ngraph::Shape> add_shape_;
     CUDAPlugin::nodes::ActivationMode activation_;
+};
+
+/**
+ * @brief Defines tensor indices for the following nodes:
+ *  - `CUDAPlugin::nodes::FusedConv2D`
+ */
+template <std::size_t InputSize>
+struct FusedConvolutionBackwardDataIndices;
+
+template <>
+struct FusedConvolutionBackwardDataIndices<3> {
+  static constexpr size_t doutput = 0;
+  static constexpr size_t filter = 1;
+  static constexpr size_t add = 2;
+  static constexpr size_t dinput = 0;
+};
+
+template <>
+struct FusedConvolutionBackwardDataIndices<4> {
+    static constexpr size_t doutput = 0;
+    static constexpr size_t filter = 1;
+    static constexpr size_t output_shape = 2;
+    static constexpr size_t add = 3;
+    static constexpr size_t dinput = 0;
+};
+
+/**
+ * @brief Unified parameters as they are consumed by the following nodes:
+ *  - `CUDAPlugin::nodes::FusedConv2D`
+ */
+struct FusedConvolutionBackwardDataParams {
+  FusedConvolutionBackwardDataParams(const CUDAPlugin::nodes::FusedConvBackpropData2D& node);
+
+  ConvolutionBackwardDataParams conv_;
+  ngraph::Shape add_shape_;
 };
 
 } // namespace CUDAPlugin::Convolution::Details
