@@ -23,10 +23,10 @@ public:
                  const Workbuffers&) override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIndices& GetWorkbufferIds() const { return workbuffer_ids_; }
-    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
+    const WorkbufferIds& GetWorkbufferIds() const { return workbuffer_ids_; }
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
       workbuffer_ids_ = workbufferIds;
-      return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+      return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
     }
 
 private:
@@ -35,7 +35,7 @@ private:
     static CUDA::DnnActivationDescriptor MakeActivationDescriptor(nodes::ActivationMode mode);
 
 private:
-    WorkbufferIndices workbuffer_ids_;
+    WorkbufferIds workbuffer_ids_;
     Convolution::Details::ConvolutionDescriptorsCuDnn conv_descs_;
     CUDA::DnnTensorDescriptor bias_desc_;
     std::optional<CUDA::DnnTensorDescriptor> add_desc_;

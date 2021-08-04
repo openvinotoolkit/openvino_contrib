@@ -30,10 +30,10 @@ public:
                  const Workbuffers& workbuffers) override;
     void InitSharedImmutableWorkbuffers(const Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIndices&  GetWorkbufferIds() const { return workbuffer_ids_; }
-    WorkbufferStatus SetWorkbufferIds(WorkbufferIndices&& workbufferIds) override {
+    const WorkbufferIds&  GetWorkbufferIds() const { return workbuffer_ids_; }
+    WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
       workbuffer_ids_ = workbufferIds;
-      return workbuffer_ids_.immutableIndices.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+      return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
     }
 
 private:
@@ -47,7 +47,7 @@ private:
                              const ngraph::Shape& shape);
 
 private:
-    WorkbufferIndices workbuffer_ids_;
+    WorkbufferIds workbuffer_ids_;
     std::atomic<int64_t> exec_plan_index_hint_;
     std::vector<CUDA::DnnBEExecutionPlanDescriptor> exec_plans_;
 };

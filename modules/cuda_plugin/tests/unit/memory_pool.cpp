@@ -31,7 +31,7 @@ class MemoryManagerPoolTest : public testing::Test {
 
 TEST_F(MemoryManagerPoolTest, MemoryManagerProxy_Success) {
     CancellationToken cancellationToken{};
-    std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
+    std::unordered_map<BufferID, ptrdiff_t> offsets;
     auto memoryModel = std::make_shared<MemoryModel>(1000, offsets);
     auto memoryPool = std::make_shared<MemoryManagerPool>(2, nullptr, memoryModel);
     ASSERT_EQ(GetNumAvailableMemoryManagers(*memoryPool), 2);

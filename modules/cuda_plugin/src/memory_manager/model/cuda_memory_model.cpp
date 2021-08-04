@@ -6,7 +6,7 @@
 
 namespace CUDAPlugin {
 
-MemoryModel::MemoryModel(size_t bsize, const std::unordered_map<TensorID, ptrdiff_t>& offsets)
+MemoryModel::MemoryModel(size_t bsize, const std::unordered_map<BufferID, ptrdiff_t>& offsets)
   : bsize_{ bsize }, offsets_{ offsets }
 {
 }
@@ -15,7 +15,7 @@ size_t MemoryModel::deviceMemoryBlockSize() const {
   return bsize_;
 }
 
-bool MemoryModel::offsetForTensor(TensorID id, ptrdiff_t& offset) const {
+bool MemoryModel::offsetForTensor(BufferID id, ptrdiff_t& offset) const {
   auto it = offsets_.find(id);
   if (it == offsets_.end())
     return false;

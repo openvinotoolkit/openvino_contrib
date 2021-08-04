@@ -111,8 +111,8 @@ class OperationRegistry final {
 
   OperationBase::Ptr createOperation(const CUDA::CreationContext& context,
                                      const std::shared_ptr<ngraph::Node>& node,
-                                     gsl::span<const unsigned> inIds,
-                                     gsl::span<const unsigned> outIds);
+                                     gsl::span<const TensorID> inIds,
+                                     gsl::span<const TensorID> outIds);
 
  private:
   void registerOp(const std::string& opName, OperationBuilder&& builder);

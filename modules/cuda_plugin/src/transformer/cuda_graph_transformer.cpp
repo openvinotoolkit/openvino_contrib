@@ -11,6 +11,7 @@
 #include <transformations/init_node_info.hpp>
 #include <transformer/fuse_conv2d_biasadd_activation.hpp>
 
+#include "concat_transformation.hpp"
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 
@@ -38,7 +39,9 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
         ngraph::element::i8, isHalfSupported(device) ? ngraph::element::f16 : ngraph::element::f32);
   }
   manager.register_pass<ngraph::pass::CudaFuseConv2DBiasAddActivation>();
+  manager.register_pass<ngraph::pass::CudaFuseConvBackpropData2DAdd>();
   manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
+  manager.register_pass<ngraph::pass::ConcatTransformation>();
 
   manager.run_passes(transformed_function);
 

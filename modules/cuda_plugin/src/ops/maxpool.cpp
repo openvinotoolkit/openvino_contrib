@@ -12,8 +12,8 @@ namespace CUDAPlugin {
 
 MaxPoolOp::MaxPoolOp(const CUDA::CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
-                     std::vector<unsigned>&& inputIds,
-                     std::vector<unsigned>&& outputIds)
+                     IndexCollection&& inputIds,
+                     IndexCollection&& outputIds)
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       impl_{dynamic_cast<const ngraph::op::v1::MaxPool&>(*node)} {}
 
