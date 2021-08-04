@@ -12,7 +12,7 @@ TEST(MemoryModel, Empty) {
 
   constexpr size_t bsize = 0;
 
-  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets;
+  std::unordered_map<BufferID, ptrdiff_t> offsets;
   MemoryModel::Ptr model = std::make_shared<MemoryModel>(bsize, offsets);
 
   ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
@@ -27,9 +27,9 @@ TEST(MemoryModel, NotEmpty) {
 
   constexpr size_t bsize = 0x354700;
 
-  MemoryModel::TensorID invalid_id = 0, id1 = 1, id2 = 2;
+  BufferID invalid_id = 0, id1 = 1, id2 = 2;
   ptrdiff_t offset1 = 0, offset2 = 0x254000;
-  std::unordered_map<MemoryModel::TensorID, ptrdiff_t> offsets = {
+  std::unordered_map<BufferID, ptrdiff_t> offsets = {
     { id1, offset1 }, { id2, offset2 },
   };
 

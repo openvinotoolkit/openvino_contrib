@@ -18,8 +18,8 @@ class FullyConnectedOp : public OperationCuBlas {
   using NodeOp = nodes::FullyConnected;
   FullyConnectedOp(const CUDA::CreationContext& context,
                    const NodeOp& node,
-                   std::vector<unsigned>&& inputIds,
-                   std::vector<unsigned>&& outputIds);
+                   IndexCollection&& inputIds,
+                   IndexCollection&& outputIds);
   void Execute(const InferenceRequestContext& context,
                Inputs inputTensors,
                Outputs outputTensors,

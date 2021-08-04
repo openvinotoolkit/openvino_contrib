@@ -18,7 +18,7 @@ namespace CUDAPlugin {
 
 TransposeOp::TransposeOp(const CUDA::CreationContext& context,
     const std::shared_ptr<ngraph::Node>& node,
-    std::vector<unsigned>&& inputIds, std::vector<unsigned>&& outputIds) :
+    IndexCollection&& inputIds, IndexCollection&& outputIds) :
     OperationCuTensor(context, node, std::move(inputIds), std::move(outputIds)),
         inputExtents_ { extractInputExtents(*node) },
         dimsNumber_ { inputExtents_.size() },

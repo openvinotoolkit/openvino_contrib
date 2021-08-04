@@ -19,8 +19,8 @@ class TransposeOp : public OperationCuTensor {
 public:
     TransposeOp(const CUDA::CreationContext& context,
              const std::shared_ptr<ngraph::Node>& node,
-             std::vector<unsigned>&& inputIds,
-             std::vector<unsigned>&& outputIds);
+             IndexCollection&& inputIds,
+             IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,

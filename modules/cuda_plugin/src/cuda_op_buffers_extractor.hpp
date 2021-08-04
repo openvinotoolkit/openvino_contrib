@@ -4,24 +4,25 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
+#include <gsl/span>
 #include <memory>
+#include <memory_manager/model/cuda_memory_model.hpp>
+#include <ngraph/node.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gsl/span>
 
 #include "memory_manager/cuda_workbuffers.hpp"
 
 namespace CUDAPlugin {
 
 /**
- * Extracts intermediate buffer indices from intermediate representation.
+ * Extracts intermediate buffer ids from intermediate representation.
  * Holds information about buffers size and lifespan.
  * Provides this information for a buffer by it's id.
  */
 class OperationBuffersExtractor {
-public:
+   public:
     using NodePtr = std::shared_ptr<ngraph::Node>;
     using Byte = char;
     static constexpr char kOutputNumberSeparator = '_';
@@ -35,83 +36,83 @@ public:
     OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes);
 
     /**
-     * Provides input buffers indices of the given ngraph node
-     * @param node ngraph node for which input buffers indices should be provided
-     * @returns Input buffers indices
+     * Provides input tensors ids of the given ngraph node
+     * @param node ngraph node for which input tensors ids should be provided
+     * @returns Input tensors ids
      */
-    std::vector<unsigned> inputBufferIndices(const ngraph::Node& node) const;
+    std::vector<TensorID> inputTensorIds(const ngraph::Node& node) const;
 
     /**
-     * Provides output buffers indices of the given ngraph node
-     * @param node ngraph node for which output buffers indices should be provided
-     * @returns Output buffers indices
+     * Provides output tensors ids of the given ngraph node
+     * @param node ngraph node for which output tensors ids should be provided
+     * @returns Output tensors ids
      */
-    std::vector<unsigned> outputBufferIndices(const ngraph::Node& node) const;
+    std::vector<TensorID> outputTensorIds(const ngraph::Node& node) const;
 
     /**
      * Provides lifespan start of the given mutable buffer
-     * @param buffer_index Index of a buffer.
-     * Can be obtained via InputBufferIndices or OutputBufferIndices
+     * @param buffer_id Identifier of a buffer.
+     * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Lifespan start of the given buffer
      * @throws InferenceEngine::details::InferenceEngineException
      * if buffer with the provided index doesn't exist
      */
-    int mutableBufferLifespanStart(unsigned buffer_index) const;
+    int mutableBufferLifespanStart(BufferID buffer_id) const;
 
     /**
      * Provides lifespan end of the given mutable buffer
-     * @param buffer_index Index of a buffer.
-     * Can be obtained via InputBufferIndices or OutputBufferIndices
+     * @param buffer_id Identifier of a buffer.
+     * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Lifespan end of the given buffer
      * @throws InferenceEngine::details::InferenceEngineException
      * if buffer with the provided index doesn't exist
      */
-    int mutableBufferLifespanEnd(unsigned buffer_index) const;
+    int mutableBufferLifespanEnd(BufferID buffer_id) const;
 
     /**
      * Provides size of the given mutable buffer
-     * @param buffer_index Index of a buffer.
-     * Can be obtained via InputBufferIndices or OutputBufferIndices
+     * @param buffer_id Identifier of a buffer.
+     * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Size of the given buffer
      * @throws InferenceEngine::details::InferenceEngineException
      * if buffer with the provided index doesn't exist
      */
-    std::size_t mutableBufferSize(unsigned buffer_index) const;
+    std::size_t mutableBufferSize(BufferID buffer_id) const;
 
     /**
      * Provides mutable buffer content
-     * @param buffer_index Index of a buffer.
+     * @param buffer_id Identifier of a buffer.
      * @returns mutable buffer content
      * @throws InferenceEngine::details::InferenceEngineException
      * if buffer with the provided index doesn't exist
      */
-    gsl::span<const Byte> immutableBuffer(unsigned buffer_index) const;
+    gsl::span<const Byte> immutableBuffer(BufferID buffer_id) const;
 
     /**
-     * @returns mutable buffers indices
+     * @returns mutable buffers ids
      */
-    std::vector<unsigned> mutableBuffersIndices() const;
+    std::vector<BufferID> mutableBuffersIds() const;
 
     /**
-     * @returns immutable buffers indices
+     * @returns immutable buffers ids
      */
-    std::vector<unsigned> immutableBuffersIndices() const;
+    std::vector<BufferID> immutableBuffersIds() const;
 
     /**
      * Handles work buffers request for the named operation
      * @param node_idx node index
      * @param request workbuffer request
-     * @returns workbuffer indices
+     * @returns workbuffer ids
      */
-    WorkbufferIndices processWorkbufferRequest(int node_idx, const WorkbufferRequest& request);
+    WorkbufferIds processWorkbufferRequest(int node_idx, const WorkbufferRequest& request);
 
     /**
      * @returns sizes of immutable workbuffers
      */
-    const std::unordered_map<unsigned, size_t>& immutableWorkbufferSizes() const {
-      return immutable_workbuffers_;
+    const std::unordered_map<BufferID, size_t>& immutableWorkbufferSizes() const {
+        return immutable_workbuffers_;
     }
-private:
+   private:
     /**
      * Internal buffer representation
      */
@@ -128,54 +129,56 @@ private:
     };
 
     /**
-     * Encapsulates mutable buffers extraction for the given node
-     * @param node ngraph node from which buffers to be extracted
-     * @param [in] [out] buffer_idx Current buffer index.
-     * Should be incremented if new buffer was added.
+     * Encapsulates mutable tensors extraction for the given node
+     * @param node ngraph node from which tensors to be extracted
      * @param node_idx Current node index
      */
-    void extractMutableBuffers(const NodePtr& node, int node_idx);
+    void extractMutableTensors(const NodePtr& node, int node_idx);
 
     /**
-     * Encapsulates immutable buffers extraction for the given node
-     * @param node ngraph node from which buffers to be extracted
-     * @param [in] [out] buffer_idx Current buffer index.
-     * Should be incremented if new buffer was added.
+     * Merge mutable tensors in one buffer for ConcatOptimized node
+     * @param node ConcatOptimized node (custom node)
      * @param node_idx Current node index
      */
-    void extractImmutableBuffers(const NodePtr& node);
+    void mergeConcatMutableTensors(const NodePtr& node, int node_idx);
 
     /**
-     * Provides buffer size for the given output
+     * Encapsulates immutable tensors extraction for the given node
+     * @param node ngraph node from which tensors to be extracted
+     */
+    void extractImmutableTensors(const NodePtr& node);
+
+    /**
+     * Provides tensor size for the given output
      * @param output Output to process
-     * @returns Buffer size for the given output
+     * @returns Tensor size in bytes for the given output
      */
-    static std::size_t GetBufferSize(const ngraph::Output<ngraph::Node>& output);
+    static std::size_t GetTensorByteSize(const ngraph::Output<ngraph::Node>& input);
 
     /**
-     * Provides buffer size for the given input
+     * Provides tensor size for the given input
      * @param input Input to process
-     * @returns Buffer size for the given input
+     * @returns Tensor size in bytes for the given input
      */
-    static std::size_t GetBufferSize(const ngraph::Input<ngraph::Node>& output);
+    static std::size_t GetTensorByteSize(const ngraph::Input<ngraph::Node>& input);
 
     /**
-     * Provides internal buffer name
+     * Provides internal tensor name
      * @param [in] output Output to process
-     * @returns internal buffer name
+     * @returns internal tensor name
      */
     template<class Node>
-    static inline std::string GetBufferNameInternal(const ngraph::Output<Node>& output) {
+    static inline std::string GetTensorNameInternal(const ngraph::Output<Node>& output) {
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
     }
 
     /**
-     * Provides internal buffer name
+     * Provides internal tensor name
      * @param [in] input Input to process
-     * @returns internal buffer name
+     * @returns internal tensor name
      */
     template<class Node>
-    static inline std::string GetBufferNameInternal(const ngraph::Input<Node>& input) {
+    static inline std::string GetTensorNameInternal(const ngraph::Input<Node>& input) {
         const auto output = input.get_source_output();
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
     }
@@ -189,6 +192,11 @@ private:
      * Checks whether the given node is a constant node
      */
     static bool IsConstantNode(const ngraph::Node& node);
+
+    /**
+     * Checks whether the given node is a ConcatOptimized node (concat optimized)
+     */
+    static bool IsConcatOptimizedNode(const ngraph::Node& node);
 
     /**
      * Checks whether the given node changes tensor shape only and
@@ -206,12 +214,12 @@ private:
      * Exception helper
      */
     static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
-private:
-    std::unordered_map<unsigned, BufferDesc> mutable_buffers_;
-    std::unordered_map<unsigned, gsl::span<const Byte>> immutable_buffers_;
-    std::unordered_map<unsigned, size_t> immutable_workbuffers_;
-    std::unordered_map<std::string, unsigned> buffer_names_;
-    unsigned buffer_idx_ {};
+   private:
+    std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
+    std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
+    std::unordered_map<BufferID, size_t> immutable_workbuffers_;
+    std::unordered_map<std::string, TensorID> tensor_names_;
+    unsigned next_buffer_id_{};
 };
 
 } // namespace CUDAPlugin

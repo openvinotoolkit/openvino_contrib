@@ -21,13 +21,13 @@ TEST(ImmutableMemoryModelBuilder, BuildEmpty) {
 TEST(ImmutableMemoryModelBuilder, Build) {
   using namespace CUDAPlugin;
 
-  MemoryModel::TensorID id1 = 0;
+  BufferID id1 = 0;
   size_t size1 = 1;
-  MemoryModel::TensorID id2 = 3;
+  BufferID id2 = 3;
   size_t size2 = 256;
-  MemoryModel::TensorID id3 = 7;
+  BufferID id3 = 7;
   size_t size3 = 784;
-  MemoryModel::TensorID id4 = 9;
+  BufferID id4 = 9;
   size_t size4 = 1396;
 
   ImmutableMemoryModelBuilder builder;
@@ -61,19 +61,19 @@ TEST(ImmutableMemoryModelBuilder, HandleDuplicateAllocation) {
 
   ImmutableMemoryModelBuilder builder;
 
-  MemoryModel::TensorID duplicate_tensor_id = 1;
+  BufferID duplicate_buffer_id = 1;
   size_t size1 = 128;
   size_t size2 = 256;
 
-  builder.addAllocation(duplicate_tensor_id, size1);
+  builder.addAllocation(duplicate_buffer_id, size1);
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, size1), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, size2), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, size1), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, size2), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, size1), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, size2), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, size1), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, size2), "Assertion");
   #endif
 }
 
@@ -82,12 +82,12 @@ TEST(ImmutableMemoryModelBuilder, HandleZeroAllocationSize) {
 
   ImmutableMemoryModelBuilder builder;
 
-  MemoryModel::TensorID tensor_id = 1;
+  BufferID buffer_id = 1;
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(tensor_id, 0), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, 0), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(tensor_id, 0), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(buffer_id, 0), "Assertion");
   #endif
 }
