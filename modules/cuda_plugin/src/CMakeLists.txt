@@ -8,6 +8,7 @@ set(OBJ_NAME ${TARGET_NAME}_OBJ)
 file(GLOB_RECURSE SOURCES RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS *.cpp *.cu)
 file(GLOB_RECURSE HEADERS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" *.hpp *.cuh)
 list(REMOVE_ITEM SOURCES cuda_create_plugin.cpp)
+list(FILTER SOURCES EXCLUDE REGEX "^ops/examples/.*$")
 
 set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
 

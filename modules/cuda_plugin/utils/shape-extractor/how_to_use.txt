@@ -7,3 +7,4 @@ Then run it in one of this ways:
 ./main.py --models <path>/*.xml --ops MatMul MaxPool
 ./main.py --models <path>/*.xml --ops all
 ./main.py --models <path>/vgg16.xml
+./main.py --models <path>/vgg16.xml --exclude-models <path>/resnet-50-tf.xml
