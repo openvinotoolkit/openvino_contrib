@@ -16,6 +16,11 @@ def get_arguments():
                         type=str,
                         nargs='*',
                         help='Path to model')
+    parser.add_argument('--exclude-models',
+                        required=False,
+                        type=str,
+                        nargs='*',
+                        help='Path to models shapes from which should be excluded')
     parser.add_argument('--ops',
                         metavar='OPS',
                         type=str,
@@ -127,27 +132,50 @@ class OperationEncoder(JSONEncoder):
                 return f"{shape}"
 
 
+def extractShapes(openvino_ir_xml_filname):
+    operations = {}
+    with open(openvino_ir_xml_filname, "r") as file:
+        content = file.readlines()
+        content = "".join(content)
+        bs_content = bs(content, "lxml")
+        layers = bs_content.find_all("layer")
+        layers = sorted(layers, key=lambda l: l.attrs['type'])
+        for layer in layers:
+            layer_type = layer.attrs['type']
+            layer_version = layer.attrs['version']
+            if layer_type not in operations:
+                operations[layer_type] = Operation(layer_type)
+            data_tag = layer.find("data")
+            attrs = data_tag.attrs if data_tag else {}
+            input_shapes = parse_input_shapes(layer)
+            output_shapes = parse_output_shapes(layer)
+            operations[layer_type].shapes.add(OperationShape(layer_version, attrs, input_shapes, output_shapes))
+    return operations
+
+
 if __name__ == '__main__':
     args = get_arguments()
+    excluded_operations = {}
     operations = {}
+    for model in args.exclude_models:
+        for filename in glob.glob(model):
+            extracted_ops = extractShapes(filename)
+            for key, val in extracted_ops.items():
+                if key in operations:
+                    excluded_operations[key].shapes.update(val.shapes)
+                else:
+                    excluded_operations[key] = val    
     for model in args.models:
         for filename in glob.glob(model):
-            with open(filename, "r") as file:
-                content = file.readlines()
-                content = "".join(content)
-                bs_content = bs(content, "lxml")
-                layers = bs_content.find_all("layer")
-                layers = sorted(layers, key=lambda l: l.attrs['type'])
-                for layer in layers:
-                    layer_type = layer.attrs['type']
-                    layer_version = layer.attrs['version']
-                    if layer_type not in operations:
-                        operations[layer_type] = Operation(layer_type)
-                    data_tag = layer.find("data")
-                    attrs = data_tag.attrs if data_tag else {}
-                    input_shapes = parse_input_shapes(layer)
-                    output_shapes = parse_output_shapes(layer)
-                    operations[layer_type].shapes.add(OperationShape(layer_version, attrs, input_shapes, output_shapes))
+            extracted_ops = extractShapes(filename)
+            for key, val in extracted_ops.items():
+                if key in operations:
+                    operations[key].shapes.update(val.shapes)
+                else:
+                    operations[key] = val
+    for key, val in excluded_operations.items():
+        if key in operations:
+            operations[key].shapes.difference_update(val.shapes)
 
     if args.generator == 'jinja2':
         with open('operation_table.jinja2') as f:

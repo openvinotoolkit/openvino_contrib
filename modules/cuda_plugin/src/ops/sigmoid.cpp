@@ -8,15 +8,15 @@
 namespace CUDAPlugin {
 namespace  {
 
-class Relu : public OperationCuDnn {
-  CUDA::ReluDescriptor reluDesc;
+class Sigmoid : public OperationCuDnn {
+  CUDA::SigmoidDescriptor sigmoidDesc;
   CUDA::DnnTensorDescriptor xDesc;
   CUDA::DnnTensorDescriptor yDesc;
   static inline float one = 1;
   static inline float zero = 0;
 
  public:
-  Relu(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
+  Sigmoid(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
        std::vector<unsigned> inputIds, std::vector<unsigned> outputIds)
       : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
         xDesc{CUDA::makeInputDnnTensorDescr(*node, 0)},
@@ -24,7 +24,7 @@ class Relu : public OperationCuDnn {
   void Execute(const InferenceRequestContext& context, Inputs inputTensors,
                Outputs outputTensors, const Workbuffers&) override {
     context.getThreadContext().dnnHandle().activationForward(
-        reluDesc, &one, xDesc, inputTensors[0].get(), &zero, yDesc,
+        sigmoidDesc, &one, xDesc, inputTensors[0].get(), &zero, yDesc,
         outputTensors[0].get());
   }
 };
@@ -32,5 +32,5 @@ class Relu : public OperationCuDnn {
 
 }  // namespace
 
-OPERATION_REGISTER(Relu, Relu);
+OPERATION_REGISTER(Sigmoid, Sigmoid);
 }  // namespace CUDAPlugin

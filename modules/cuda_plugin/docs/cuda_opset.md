@@ -133,7 +133,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Selu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Selu_1.md)                                                  | Not Supported |
 | [ShapeOf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/ShapeOf_3.md)                                                 | Not Supported |
 | [ShuffleChannels](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ShuffleChannels_1.md)                              | Not Supported |
-| [Sigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Sigmoid_1.md)                                            | Supported*    |
+| [Sigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Sigmoid_1.md)                                            | Supported     |
 | [Sign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sign_1.md)                                                  | Not Supported |
 | [Sin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sin_1.md)                                                    | Not Supported |
 | [Sinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sinh_1.md)                                                  | Not Supported |
@@ -163,5 +163,4 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 
 * `'Concat'` layer is not optimized
 * `'Convert'` layer is not optimized
-* `'Sigmoid'` layer is not optimized
 * `'Split'` layer is not optimized
