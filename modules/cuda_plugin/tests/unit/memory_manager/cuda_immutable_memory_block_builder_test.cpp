@@ -20,11 +20,11 @@ TEST(ImmutableMemoryBlockBuilder, BuildEmpty) {
 TEST(ImmutableMemoryBlockBuilder, Build) {
   using namespace CUDAPlugin;
 
-  const MemoryModel::TensorID t0_id = 1;
+  const BufferID t0_id = 1;
   const std::vector<uint8_t> t0_data(16, 0xA5);
-  const MemoryModel::TensorID t1_id = 3;
+  const BufferID t1_id = 3;
   const std::vector<uint8_t> t1_data(4792, 0x5A);
-  const MemoryModel::TensorID t2_id = 5;
+  const BufferID t2_id = 5;
   const std::vector<uint8_t> t2_data(798, 0xC3);
 
   std::shared_ptr<DeviceMemBlock> memory_block;
@@ -54,19 +54,19 @@ TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
 
   ImmutableMemoryBlockBuilder builder;
 
-  MemoryModel::TensorID duplicate_tensor_id = 1;
+  BufferID duplicate_buffer_id = 1;
   const std::vector<uint8_t> t0_data(16, 0xA5);
   const std::vector<uint8_t> t1_data(32, 0xA5);
 
-  builder.addAllocation(duplicate_tensor_id, &t0_data[0], t0_data.size());
+  builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size());
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, &t0_data[0], t0_data.size()), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, &t1_data[0], t1_data.size()), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, &t0_data[0], t0_data.size()), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, &t1_data[0], t1_data.size()), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), "Assertion");
   #endif
 }
 
@@ -75,16 +75,16 @@ TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
 
   ImmutableMemoryBlockBuilder builder;
 
-  MemoryModel::TensorID tensor_id = 1;
+  BufferID buffer_id = 1;
   const std::vector<uint8_t> data(16, 0xA5);
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(tensor_id, &data[0], 0), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(tensor_id, nullptr, 0), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, &data[0], 0), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 0), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(tensor_id, &data[0], 0), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(tensor_id, nullptr, 0), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(buffer_id, &data[0], 0), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(buffer_id, nullptr, 0), "Assertion");
   #endif
 }
 
@@ -93,12 +93,12 @@ TEST(ImmutableMemoryBlockBuilder, HandleNullDataPointer) {
 
   ImmutableMemoryBlockBuilder builder;
 
-  MemoryModel::TensorID tensor_id = 1;
+  BufferID buffer_id = 1;
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(tensor_id, nullptr, 128), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 128), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(tensor_id, nullptr, 128), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(buffer_id, nullptr, 128), "Assertion");
   #endif
 }

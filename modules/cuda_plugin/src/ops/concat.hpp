@@ -38,10 +38,16 @@ class ConcatOp : public OperationBase {
  private:
     size_t immutableWbSize() const { return sizeof(Chunk) * chunks_.size(); }
     size_t mutableWbSize() const { return sizeof(float *) * num_inputs_; }
+    template <typename T>
+    void Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers);
+
     ngraph::element::Type_t element_type_;
     size_t num_inputs_ {};
-    size_t chunk_size_ {};
     std::vector<Chunk> chunks_;
+    size_t chunk_size_;
+    size_t all_chunk_size_ = 0;
+    size_t num_blocks_;
+    size_t threads_per_block_;
 };
 
 } // namespace CUDAPlugin

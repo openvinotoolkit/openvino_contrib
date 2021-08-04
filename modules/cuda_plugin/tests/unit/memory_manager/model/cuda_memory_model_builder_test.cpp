@@ -61,19 +61,18 @@ TEST(MemoryModelBuilder, Build) {
   using namespace CUDAPlugin;
 
   MemoryModelBuilder builder;
-  using TensorID = MemoryModel::TensorID;
   const size_t size = 1;
   const size_t allocation_size = applyAllignment(size);
-  builder.addAllocation(TensorID{0}, 0, 1, size);
-  builder.addAllocation(TensorID{1}, 1, 2, size);
-  builder.addAllocation(TensorID{2}, 2, 3, size);
-  builder.addAllocation(TensorID{3}, 3, 4, size);
+  builder.addAllocation(BufferID{0}, 0, 1, size);
+  builder.addAllocation(BufferID{1}, 1, 2, size);
+  builder.addAllocation(BufferID{2}, 2, 3, size);
+  builder.addAllocation(BufferID{3}, 3, 4, size);
 
   MemoryModel::Ptr model = builder.build();
-  auto existingOffset = [&model](TensorID id, ptrdiff_t& offset) {
+  auto existingOffset = [&model](BufferID id, ptrdiff_t& offset) {
     ASSERT_TRUE(model->offsetForTensor(id, offset));
   };
-  auto offsetForId = [&existingOffset](TensorID id) {
+  auto offsetForId = [&existingOffset](BufferID id) {
     ptrdiff_t offset = -1;
     existingOffset(id, offset);
     return offset;
@@ -97,21 +96,21 @@ TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
 
   MemoryModelBuilder builder;
 
-  MemoryModel::TensorID duplicate_tensor_id = 1;
+  BufferID duplicate_buffer_id = 1;
   size_t size1 = 128;
   size_t size2 = 256;
 
-  builder.addAllocation(duplicate_tensor_id, 0, 1, size1);
+  builder.addAllocation(duplicate_buffer_id, 0, 1, size1);
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, 0, 1, size1), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, 0, 1, size2), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_tensor_id, 1, 2, size1), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, 0, 1, size1), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, 0, 1, size2), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(duplicate_tensor_id, 1, 2, size1), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size2), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 1, 2, size1), "Assertion");
   #endif
 }
 
@@ -120,14 +119,14 @@ TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
 
   MemoryModelBuilder builder;
 
-  MemoryModel::TensorID tensor_id = 1;
+  BufferID buffer_id = 1;
   const size_t size = 0;
 
   #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(tensor_id, 0, 1, size), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, 0, 1, size), InferenceEngine::details::InferenceEngineException);
   #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(tensor_id, 0, 1, size), "Assertion");
+    ASSERT_DEATH(builder.addAllocation(buffer_id, 0, 1, size), "Assertion");
   #endif
 }
 

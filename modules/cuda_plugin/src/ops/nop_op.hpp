@@ -29,12 +29,12 @@ class NopOp : public OperationBase {
 public:
   using OperationBase::OperationBase;
 
-  gsl::span<const unsigned> GetInputIds() const override {
-    return gsl::span<const unsigned> {};
+  gsl::span<const TensorID> GetInputIds() const override {
+    return gsl::span<const TensorID> {};
   };
 
-  gsl::span<const unsigned> GetOutputIds() const override {
-    return gsl::span<const unsigned> {};
+  gsl::span<const TensorID> GetOutputIds() const override {
+    return gsl::span<const TensorID> {};
   };
 
   void Execute(const InferenceRequestContext& context,

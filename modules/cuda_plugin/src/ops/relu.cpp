@@ -17,7 +17,7 @@ class Relu : public OperationCuDnn {
 
  public:
   Relu(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
-       std::vector<unsigned> inputIds, std::vector<unsigned> outputIds)
+       IndexCollection&& inputIds, IndexCollection&& outputIds)
       : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
         xDesc{CUDA::makeInputDnnTensorDescr(*node, 0)},
         yDesc{CUDA::makeOutputDnnTensorDescr(*node, 0)} {}

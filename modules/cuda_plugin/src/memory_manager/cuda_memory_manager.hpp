@@ -31,8 +31,6 @@ class IOperationExec;
  */
 class MemoryManager {
 public:
-  using TensorID = MemoryModel::TensorID;
-
   using InputTensors = std::vector<InferenceEngine::gpu::DevicePointer<const void*>>;
   using OutputTensors = std::vector<InferenceEngine::gpu::DevicePointer<void*>>;
 

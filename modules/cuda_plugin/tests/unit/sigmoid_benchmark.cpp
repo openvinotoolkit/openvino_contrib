@@ -41,7 +41,7 @@ struct SigmoidTest: testing::Test {
                 auto& registry = CUDAPlugin::OperationRegistry::getInstance();
                 auto op = registry.createOperation(
                         CUDA::CreationContext {threadContext.device(), optimizeOption},
-                        node, std::array {0u}, std::array {0u});
+                        node, std::vector<CUDAPlugin::TensorID> {0u}, std::vector<CUDAPlugin::TensorID> {0u});
                 return op;
             }();
 };

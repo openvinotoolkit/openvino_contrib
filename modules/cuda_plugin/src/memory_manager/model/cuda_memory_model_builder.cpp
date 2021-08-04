@@ -10,7 +10,7 @@
 
 namespace CUDAPlugin {
 
-void MemoryModelBuilder::addAllocation(TensorID id, int producerIndex, int lastConsumerIndex, size_t bsize) {
+void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastConsumerIndex, size_t bsize) {
   IE_ASSERT(bsize > 0); // Verify that allocation size isn't zero.
   auto res = offsets_.emplace(id, 0);
   IE_ASSERT(res.second); // Verify that "id" is unique.
