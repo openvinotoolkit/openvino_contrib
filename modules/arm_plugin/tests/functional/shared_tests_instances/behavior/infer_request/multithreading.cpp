@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "behavior/infer_request/perf_counters.hpp"
+#include "behavior/infer_request/multithreading.hpp"
 #include "ie_plugin_config.hpp"
 
 using namespace BehaviorTestsDefinitions;
