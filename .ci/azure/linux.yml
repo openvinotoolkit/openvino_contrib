@@ -18,13 +18,12 @@ jobs:
   timeoutInMinutes: 60
 
   pool:
-    name: LIN_VMSS_VENV_F16S_WU2
+    name: LIN_VMSS_VENV_F16S_U20_WU2
 
   variables:
     system.debug: true
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
-    WORKERS_NUMBER: 16
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
@@ -43,7 +42,7 @@ jobs:
       echo Python info ; which python ; python --version
       echo Java info ; which java ; java -version
       echo gcc info ; which gcc ; gcc --version
-      echo cmake info; which cmake ; cmake --version
+      echo cmake info ; which cmake ; cmake --version
       lsb_release
       env
       cat /proc/cpuinfo
@@ -78,9 +77,13 @@ jobs:
     path: testdata
 
   - script: |
+      set -e
       sudo apt --assume-yes install libusb-1.0-0-dev
+      curl -fsSL https://get.docker.com -o get-docker.sh
+      sudo sh get-docker.sh
       # Speed up build
-      wget https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-linux.zip
+      sudo apt --assume-yes install unzip
+      wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/
       python3 -m pip install --upgrade pip
@@ -108,8 +111,8 @@ jobs:
     displayName: 'Build Lin'
 
   - script: >
-      docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
-      docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
+      sudo docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
+      sudo docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
       openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1
       bash -c "cd /root/w/build && cmake -GNinja
       -DVERBOSE_BUILD=ON
