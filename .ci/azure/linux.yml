@@ -96,6 +96,21 @@ jobs:
     lfs: true
     path: testdata
 
+  - script: |
+      set -e
+      sudo apt --assume-yes install libusb-1.0-0-dev
+      curl -fsSL https://get.docker.com -o get-docker.sh
+      sudo sh get-docker.sh
+      # Speed up build
+      sudo apt --assume-yes install unzip
+      wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
+      unzip ninja-linux.zip
+      sudo cp -v ninja /usr/local/bin/
+      python3 -m pip install --upgrade pip
+      python3 -m pip install cython
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install dependencies'
+
   - task: CMake@1
     inputs:
       cmakeArgs: >
@@ -120,8 +135,8 @@ jobs:
     displayName: 'Build Lin'
 
   - script: >
-      docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
-      docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
+      sudo docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
+      sudo docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
       openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1
       bash -c "cd /root/w/build && cmake -GNinja
       -DVERBOSE_BUILD=ON
