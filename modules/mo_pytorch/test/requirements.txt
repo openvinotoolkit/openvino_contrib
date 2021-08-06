@@ -5,3 +5,4 @@ opencv-python==4.4.0.46
 detectron2==0.3
 pyyaml>=5.1
 git+https://github.com/CBICA/BrainMaGe@9a2a7c4
+transformers==3.5.0

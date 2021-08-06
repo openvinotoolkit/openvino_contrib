@@ -19,6 +19,7 @@ from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
 from extensions.ops.MatMul import MatMul
 from extensions.ops.elementwise import Add
+from mo.ops.const import Const
 
 
 class Linear(FrontReplacementOp):
@@ -32,4 +33,19 @@ class Linear(FrontReplacementOp):
         if len(node.in_nodes()) > 2:
             matmul = Add(graph, dict(name=node.name + '/bias')).create_node([matmul, node.in_node(2)])
 
+        return [matmul.id]
+
+
+class ADDMM(FrontReplacementOp):
+    op = 'ADDMM'
+    enabled = True
+
+    def replace_op(self, graph: Graph, node: Node):
+        weight = node.module.weight.detach().numpy()
+        bias = node.module.bias.detach().numpy()
+
+        weight = Const(graph, {'value': weight}).create_node()
+        bias = Const(graph, {'value': bias}).create_node()
+        matmul = MatMul(graph, dict(name=node.name)).create_node([node.in_node(0), weight])
+        matmul = Add(graph, dict(name=node.name + '/bias')).create_node([matmul, bias])
         return [matmul.id]

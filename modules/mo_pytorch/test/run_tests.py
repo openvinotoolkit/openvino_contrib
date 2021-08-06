@@ -78,6 +78,10 @@ class TestModels(unittest.TestCase):
         model.eval()
         ref = model(inp)
 
+        # Forward random input through the model to check that nothing got stuck from reference dat
+        rand_inp = torch.rand(inp.size(), dtype=inp.dtype)
+        model(rand_inp)
+
         # Convert to OpenVINO IR
         mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
 
@@ -191,7 +195,34 @@ class TestModels(unittest.TestCase):
 
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 5e-4)
+    
+    def test_rugpt3(self):
+        from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
+        model_name_or_path = "sberbank-ai/rugpt3medium_based_on_gpt2"
+        tokenizer = GPT2Tokenizer.from_pretrained(model_name_or_path)
+        model = GPT2LMHeadModel.from_pretrained(model_name_or_path)
+
+        text = "Александр Сергеевич Пушкин родился в "
+        input_ids = tokenizer.encode(text, return_tensors="pt")
+        result = model(input_ids)
+
+        # Forward random input through the model to check that nothing got stuck from reference dat
+        dummy_inp = torch.randint(0, 255, input_ids.shape)
+        model(dummy_inp)
+
+        # Generate OpenVINO IR
+        mo_pytorch.convert(model, input_shape='[1, 6],[6]', input='input_ids{i64},position_ids{i64}', model_name='model')
+
+        # Run model with OpenVINO and compare outputs
+        net = self.ie.read_network('model.xml', 'model.bin')
+        exec_net = self.ie.load_network(net, 'CPU')
+        out = exec_net.infer({'input_ids': input_ids, 'position_ids': np.arange(6)})
+        out = next(iter(out.values()))
+
+        ref = result[0].detach().numpy()
+        diff = np.max(np.abs(out - ref))
+        self.assertLessEqual(diff, 1e-4)
 
 if __name__ == '__main__':
     unittest.main()
