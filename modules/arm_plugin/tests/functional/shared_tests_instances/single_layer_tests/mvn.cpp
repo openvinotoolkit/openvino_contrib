@@ -9,6 +9,8 @@
 
 using namespace LayerTestsDefinitions;
 
+const std::vector<ngraph::AxisSet> emptyReductionAxes = {{}};
+
 const std::vector<InferenceEngine::Precision> netPrecisions = {
         InferenceEngine::Precision::FP32,
         InferenceEngine::Precision::FP16
@@ -43,21 +45,23 @@ const std::vector<double> epsilon = {
 const auto MvnCases2D = ::testing::Combine(
     ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 3}, {3, 1}, {32, 17}}),
     ::testing::ValuesIn(netPrecisions),
+    ::testing::ValuesIn(emptyReductionAxes),
     ::testing::Values(true),
     ::testing::ValuesIn(normalizeVariance),
     ::testing::ValuesIn(epsilon),
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_TestsMVN2D, MvnLayerTest, MvnCases2D, MvnLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_TestsMVN2D, Mvn1LayerTest, MvnCases2D, Mvn1LayerTest::getTestCaseName);
 
 const auto MvnCases = ::testing::Combine(
     ::testing::ValuesIn(inputShapes),
     ::testing::ValuesIn(netPrecisions),
+    ::testing::ValuesIn(emptyReductionAxes),
     ::testing::ValuesIn(acrossChannels),
     ::testing::ValuesIn(normalizeVariance),
     ::testing::ValuesIn(epsilon),
     ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_TestsMVN, MvnLayerTest, MvnCases, MvnLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_TestsMVN, Mvn1LayerTest, MvnCases, Mvn1LayerTest::getTestCaseName);
