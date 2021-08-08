@@ -1,7 +1,21 @@
+buildscript {
+    repositories {
+        jcenter()
+
+    }
+    dependencies {
+        //Check for the latest version here: http://plugins.gradle.org/plugin/com.jfrog.artifactory
+        classpath "org.jfrog.buildinfo:build-info-extractor-gradle:4+"
+    }
+}
+
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id "com.jfrog.bintray" version "1.8.5"
+}
+
+allprojects {
+    apply plugin: "com.jfrog.artifactory"
 }
 
 sourceSets {
@@ -21,9 +35,6 @@ sourceSets {
     }
 }
 
-repositories {
-    jcenter()
-}
 dependencies {
     testImplementation "junit:junit:4.13.1"
     testImplementation "org.hamcrest:hamcrest-core:1.3"
@@ -37,26 +48,36 @@ test.onlyIf { project.hasProperty('run_tests') }
 
 //
 // Bintray publication:
-// $ export BINTRAY_USER=<USERNAME>
-// $ export BINTRAY_KEY=<TOKEN>
+// $ export ARTIFACTORY_USER=<USERNAME>
+// $ export ARTIFACTORY_PASS=<TOKEN>
 // $ export VERSION=<VERSION>
-// $ gradle bintrayUpload
+// $ gradle artifactoryPublish
 //
 
 version = System.getenv('VERSION')
 
-bintray {
-    user = System.getenv('BINTRAY_USER')
-    key = System.getenv('BINTRAY_KEY')
-    publications = ['OpenVINOPublication']
-    pkg {
-        repo = 'openvino'
-        name = 'openvino_contrib'
-        userOrg = System.getenv('BINTRAY_USER')
-        licenses = ['Apache-2.0']
-        vcsUrl = 'https://github.com/openvinotoolkit/openvino_contrib.git'
-        version {
-            name = project.version
+artifactory {
+    contextUrl = "https://openvino.jfrog.io/artifactory"
+    publish {
+        repository {
+            repoKey = 'openvino-gradle-dev-local'
+            username = System.getenv('ARTIFACTORY_USER')
+            password = System.getenv('ARTIFACTORY_PASS')
+            maven = true
+        }
+        defaults {
+            publications('OpenVINOPublication')
+        }
+        publishBuildInfo = true
+        publishArtifacts = true
+        publishPom = true
+    }
+    resolve {
+        repository {
+            repoKey = 'openvino-gradle-dev'
+            username = System.getenv('ARTIFACTORY_USER')
+            password = System.getenv('ARTIFACTORY_PASS')
+            maven = true
         }
     }
 }

@@ -49,7 +49,6 @@ public class IECore extends IEWrapper {
             "inference_engine",
             "inference_engine_legacy",
             "inference_engine_lp_transformations",
-            "onnx_importer",
             "inference_engine_java_api"
         };
 
