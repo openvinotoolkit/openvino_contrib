@@ -1,7 +1,6 @@
 buildscript {
     repositories {
         jcenter()
-
     }
     dependencies {
         //Check for the latest version here: http://plugins.gradle.org/plugin/com.jfrog.artifactory
@@ -35,6 +34,9 @@ sourceSets {
     }
 }
 
+repositories {
+    jcenter()
+}
 dependencies {
     testImplementation "junit:junit:4.13.1"
     testImplementation "org.hamcrest:hamcrest-core:1.3"
