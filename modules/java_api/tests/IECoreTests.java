@@ -44,6 +44,17 @@ public class IECoreTests extends IETest {
     }
 
     @Test
+    public void testReadNetworkONNX() {
+        String exceptionMessage = "";
+        try {
+            CNNNetwork net = core.ReadNetwork(modelXml.replace(".xml", ".onnx"));
+        } catch (Exception e) {
+            exceptionMessage = e.getMessage();
+        }
+        assertTrue(exceptionMessage.contains("ONNX model cannot be opened!"));
+    }
+
+    @Test
     public void testLoadNetwork() {
         CNNNetwork net = core.ReadNetwork(modelXml, modelBin);
         ExecutableNetwork executableNetwork = core.LoadNetwork(net, device);
