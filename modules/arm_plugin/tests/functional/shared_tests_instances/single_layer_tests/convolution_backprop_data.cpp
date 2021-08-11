@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "single_layer_tests/convolution_backprop.hpp"
+#include "single_layer_tests/convolution_backprop_data.hpp"
 #include "common_test_utils/test_constants.hpp"
 
 using namespace LayerTestsDefinitions;
@@ -49,7 +49,7 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(
         ::testing::ValuesIn(emptyOutputPadding)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, ConvolutionBackpropLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, ConvolutionBackpropDataLayerTest,
                         ::testing::Combine(
                                 conv2DParams_ExplicitPadding,
                                 ::testing::ValuesIn(netPrecisions),
@@ -60,9 +60,9 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_ExplicitPadding, Convolu
                                 ::testing::ValuesIn(inputShapes2D),
                                 ::testing::ValuesIn(emptyOutputShape),
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU)),
-                        ConvolutionBackpropLayerTest::getTestCaseName);
+                        ConvolutionBackpropDataLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackpropLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, ConvolutionBackpropDataLayerTest,
                         ::testing::Combine(
                                 conv2DParams_AutoPadValid,
                                 ::testing::ValuesIn(netPrecisions),
@@ -73,5 +73,5 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvolutionBackpropData2D_AutoPadValid, Convolutio
                                 ::testing::ValuesIn(inputShapes2D),
                                 ::testing::ValuesIn(emptyOutputShape),
                                 ::testing::Values(CommonTestUtils::DEVICE_CPU)),
-                        ConvolutionBackpropLayerTest::getTestCaseName);
+                        ConvolutionBackpropDataLayerTest::getTestCaseName);
 }  // namespace
