@@ -57,8 +57,10 @@ mkdir build && cd build
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
-  
-  Setup the following environment variables:
+
+  First of all switch OpenVINO™ on tag _2021.3_
+
+  Then setup the following environment variables:
   ```bash
   export OPENVINO_HOME=<OpenVINO source directory>
   export OPENVINO_CONTRIB=<OpenVINOContrib packages source directory>
@@ -83,6 +85,46 @@ mkdir build && cd build
   cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
   cmake --build . --target CUDAPlugin -j `nproc`
   ```
+
+## Docker support
+### Build docker container
+First build docker container:
+
+1. Install `docker`:
+```bash
+./docker.sh install
+su $USER # Relogin for current user
+```
+2. Download all `*.deb` packages for CUDA and put them in one folder
+3. Build docker container:
+```bash
+CUDA_PACKAGES_PATH=<path to CUDA pakcages> ./docker.sh build
+```
+
+### Run built application in docker container
+In order to run application with the plugin, follow the steps:
+
+1. Build OpenVINO according the steps described in [## How to build](#how-to-build)
+2. Specify environment variable `export OPENVINO_HOME=<path to OpenVINO source directory>`
+3. Specify environment variable `export OPENVINO_MODELS_PATH=<path to OpenVINO models>`
+4. Run application in docker container (DON'T FORGET TO REPLACE `<path to model>` with real path to model):
+```bash
+BUILD_TYPE=Debug ./docker.sh run "${OPENVINO_MODELS_PATH}" "./benchmark_app -m <path to model> -d CUDA -input_type FP32 -nstreams 8 -niter 10000 -optimize"
+```
+
+### Build CUDAPlugin in docker container
+In order to build CUDAPlugin in docker, follow the steps:
+
+1. Enter the docker container:
+```bash
+docker run --gpus all -it openvino/cudaplugin bin/bash
+```
+2. Build the OpenVINO and CUDAPlugin according the steps described in [## How to build](#how-to-build),
+   except 3), 4), 5) steps (this packages already installed in image)
+3. Commit all your changes in container:
+```bash
+docker commit openvino/cudaplugin <name of new image>
+```
 
 ## Supported Configuration Parameters
 The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
