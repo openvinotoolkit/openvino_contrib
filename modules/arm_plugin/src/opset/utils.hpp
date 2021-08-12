@@ -26,7 +26,11 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node);
 }  // namespace opset
 }  // namespace ArmPlugin
 
+#ifndef OV_NEW_API
 namespace ngraph {
+#else
+namespace ov {
+#endif
 template <>
 struct NGRAPH_API VariantWrapper<arm_compute::QuantizationInfo> : public VariantImpl<arm_compute::QuantizationInfo> {
     NGRAPH_RTTI_DECLARATION;
@@ -40,4 +44,5 @@ struct NGRAPH_API VariantWrapper<arm_compute::ActivationLayerInfo> : public Vari
     VariantWrapper(const arm_compute::ActivationLayerInfo& value) : VariantImpl<arm_compute::ActivationLayerInfo>{value} {}
     ~VariantWrapper() override;
 };
-}  // namespace ngraph
+
+}  // NOLINT
