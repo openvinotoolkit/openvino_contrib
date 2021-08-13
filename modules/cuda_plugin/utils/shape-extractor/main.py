@@ -132,7 +132,7 @@ class OperationEncoder(JSONEncoder):
                 return f"{shape}"
 
 
-def extractShapes(openvino_ir_xml_filname):
+def extract_shapes(openvino_ir_xml_filname):
     operations = {}
     with open(openvino_ir_xml_filname, "r") as file:
         content = file.readlines()
@@ -157,17 +157,18 @@ if __name__ == '__main__':
     args = get_arguments()
     excluded_operations = {}
     operations = {}
-    for model in args.exclude_models:
-        for filename in glob.glob(model):
-            extracted_ops = extractShapes(filename)
-            for key, val in extracted_ops.items():
-                if key in operations:
-                    excluded_operations[key].shapes.update(val.shapes)
-                else:
-                    excluded_operations[key] = val    
+    if args.exclude_models:
+        for model in args.exclude_models:
+            for filename in glob.glob(model):
+                extracted_ops = extract_shapes(filename)
+                for key, val in extracted_ops.items():
+                    if key in operations:
+                        excluded_operations[key].shapes.update(val.shapes)
+                    else:
+                        excluded_operations[key] = val
     for model in args.models:
         for filename in glob.glob(model):
-            extracted_ops = extractShapes(filename)
+            extracted_ops = extract_shapes(filename)
             for key, val in extracted_ops.items():
                 if key in operations:
                     operations[key].shapes.update(val.shapes)
