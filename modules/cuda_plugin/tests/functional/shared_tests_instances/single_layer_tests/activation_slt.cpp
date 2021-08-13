@@ -68,5 +68,29 @@ INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Sigmoid,
         basicSigmoidCases,
         ActivationLayerTest::getTestCaseName);
 
+std::initializer_list<std::initializer_list<std::size_t>> tanhShapes{
+    {1, 100, 128},
+    {1, 512, 1000},
+    {1, 800},
+    {64, 128, 64},
+    {64, 64, 128},
+    {64, 64, 256, 2},
+};
+
+const auto basicTanhCases = ::testing::Combine(
+    ::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{ngraph::helpers::Sigmoid, 0}),
+    ::testing::Values(InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16),
+    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+    ::testing::Values(InferenceEngine::Layout::ANY),
+    ::testing::Values(InferenceEngine::Layout::ANY),
+    ::testing::ValuesIn(listToVectors(tanhShapes)),
+    ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Tanh,
+                        ActivationLayerTest,
+                        basicTanhCases,
+                        ActivationLayerTest::getTestCaseName);
+
 }  // namespace
 }  // namespace LayerTestsDefinitions
