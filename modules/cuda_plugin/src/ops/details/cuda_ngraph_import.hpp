@@ -17,6 +17,7 @@
 #include <ngraph/node.hpp>
 #include <ngraph/op/split.hpp>
 #include <ngraph/op/constant.hpp>
+#include <ngraph/op/gather.hpp>
 
 #pragma pop_macro("deprecated")
 
