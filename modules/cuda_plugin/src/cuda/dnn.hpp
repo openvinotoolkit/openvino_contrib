@@ -122,21 +122,18 @@ class DnnPoolingDescriptor
 };
 
 class ReluDescriptor : public DnnActivationDescriptor {
-  using DnnActivationDescriptor::set;
-
- public:
-  ReluDescriptor()
-      : DnnActivationDescriptor{CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0} {
-  }
+public:
+    ReluDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0} {}
 };
 
 class SigmoidDescriptor : public DnnActivationDescriptor {
-  using DnnActivationDescriptor::set;
+public:
+    SigmoidDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN, 0} {}
+};
 
- public:
-  SigmoidDescriptor()
-      : DnnActivationDescriptor{CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN,
-                                0} {}
+class TanhDescriptor : public DnnActivationDescriptor {
+public:
+    TanhDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0} {}
 };
 
 class DnnFilterDescriptor
