@@ -10,6 +10,12 @@
 #include "arm_compute/core/QuantizationInfo.h"
 #include "arm_compute/core/Types.h"
 
+#ifndef OV_NEW_API
+#define OV_NGRAPH_NAMESPACE ngraph
+#else
+#define OV_NGRAPH_NAMESPACE ov
+#endif
+
 namespace ArmPlugin {
 namespace opset {
 float round(const float v);
@@ -26,7 +32,8 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node);
 }  // namespace opset
 }  // namespace ArmPlugin
 
-namespace ngraph {
+namespace OV_NGRAPH_NAMESPACE {
+
 template <>
 struct NGRAPH_API VariantWrapper<arm_compute::QuantizationInfo> : public VariantImpl<arm_compute::QuantizationInfo> {
     NGRAPH_RTTI_DECLARATION;
@@ -40,4 +47,5 @@ struct NGRAPH_API VariantWrapper<arm_compute::ActivationLayerInfo> : public Vari
     VariantWrapper(const arm_compute::ActivationLayerInfo& value) : VariantImpl<arm_compute::ActivationLayerInfo>{value} {}
     ~VariantWrapper() override;
 };
-}  // namespace ngraph
+
+}  // namespace OV_NGRAPH_NAMESPACE
