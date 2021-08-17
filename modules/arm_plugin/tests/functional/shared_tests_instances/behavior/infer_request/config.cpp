@@ -11,14 +11,6 @@
 using namespace BehaviorTestsDefinitions;
 
 namespace {
-    const std::vector<std::map<std::string, std::string>> configs = {
-            {}
-    };
-
-    const std::vector<std::map<std::string, std::string>> multiConfigs = {
-            {{ MULTI_CONFIG_KEY(DEVICE_PRIORITIES) , CommonTestUtils::DEVICE_CPU}}
-    };
-
     const std::vector<std::map<std::string, std::string>> InConfigs = {
             {},
             {{InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS, InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}},
@@ -47,13 +39,13 @@ namespace {
                             ::testing::Combine(
                                     ::testing::Values(1u),
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                    ::testing::ValuesIn(configs)),
+                                    ::testing::ValuesIn(InConfigs)),
                             InferRequestConfigTest::getTestCaseName);
 
     INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, InferRequestConfigTest,
                             ::testing::Combine(
                                     ::testing::Values(1u),
                                     ::testing::Values(CommonTestUtils::DEVICE_MULTI),
-                                    ::testing::ValuesIn(multiConfigs)),
+                                    ::testing::ValuesIn(MultiInConfigs)),
                             InferRequestConfigTest::getTestCaseName);
 }  // namespace

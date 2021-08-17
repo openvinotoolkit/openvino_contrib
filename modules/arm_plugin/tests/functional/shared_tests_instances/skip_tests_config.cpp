@@ -22,6 +22,8 @@ std::vector<std::string> disabledTestPatterns() {
         ".*ActivationLayerTest.*CompareWithRefs/Tan_.*netPRC=FP16.*" // Failed (a small input change leads to a large output change)
 #endif
         // need to implement Export / Import
-        ".*IEClassImportExportTestP.*"
+        ".*IEClassImportExportTestP.*",
+        // CVS-58963: Not implemented yet
+        R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
     };
 }
