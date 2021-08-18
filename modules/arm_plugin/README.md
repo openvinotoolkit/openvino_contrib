@@ -45,7 +45,7 @@ docker container run --rm -ti -v $PWD/build:/armcpu_plugin arm-plugin
 or export only the archive with artifacts:
 ```
 docker container run --rm -ti --tmpfs /armcpu_plugin:rw -v $PWD:/remote \
-                     arm-plugin sh -c "sh /armplg_build.sh && cp ./OV_ARM_package.tar.gz /remote"
+                     arm-plugin sh -c "sh /armplg_build.sh && cp ./armcpu_package/OV_ARM_package.tar.gz /remote"
 ```
 > **NOTE**: There are a few environment variables that control `/armplg_build.sh` script execution.
 >
@@ -173,7 +173,7 @@ wget https://raw.githubusercontent.com/openvinotoolkit/open_model_zoo/develop/da
 git clone https://github.com/intel-iot-devkit/sample-videos.git
 ```
 #### Model inference on ARM
-1. Copy OpenVINO™ and ARM plugin artifacts to ARM platform. If you build the plugin using approach #1, all artifacts are packed into `OV_ARM_package.tar.gz`.
+1. Copy OpenVINO™ and ARM plugin artifacts to ARM platform. If you build the plugin using approach #1, all artifacts are packed into `armcpu_package/OV_ARM_package.tar.gz`.
 2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
 ```
 cd <package_dir>/deployment_tools/inference_engine/demos/build/<platform_type>/Release
@@ -198,7 +198,7 @@ Let's try to run [Object Detection for SSD sample].
 #### Model preparation
 1. Prepare model `vehicle-license-plate-detection-barrier-0123` using Model Preparation precedure described in Open Model Zoo demos section. 
 #### Model inference on ARM
-1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `OV_ARM_package.tar.gz`.
+1. Copy OpenVINO™ and ARM plugin artefacts to ARM platform. If you build the plugin using approach #1, all artefacts are packed into `armcpu_package/OV_ARM_package.tar.gz`.
 2. Go to Inference Engine bin directory:
 ```
 cd deployment_tools/inference_engine/bin/<platform_type>
