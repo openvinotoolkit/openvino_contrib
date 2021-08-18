@@ -178,9 +178,9 @@ git clone https://github.com/intel-iot-devkit/sample-videos.git
 ```
 cd <package_dir>/deployment_tools/inference_engine/demos/build/<platform_type>/Release
 ``` 
-3. Add OpenCV and OpenVINO library directories to `LD_LIBRARY_PATH`:
+3. Set environment variables:
 ```
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<package_dir>/opencv/lib/:<package_dir>/deployment_tools/inference_engine/lib/<platform_type>/:<package_dir>/deployment_tools/ngraph/lib/
+source <package_dir>/bin/setupvars.sh
 ```
 4. Run object detection C++ demo:
 ```
