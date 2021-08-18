@@ -90,7 +90,7 @@ mkdir -p $OPENCV_HOME/build && \
 cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi,python3 \
-      -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=ON \
+      -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=OFF \
       -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
       -DPYTHON3_INCLUDE_PATH=/usr/include/${PYTHONVER} \
       -DPYTHON3_LIBRARIES=/usr/lib/$ARCH_NAME/lib${PYTHONVER}.so \
@@ -98,8 +98,6 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       -D CMAKE_USE_RELATIVE_PATHS=ON \
       -D CMAKE_SKIP_INSTALL_RPATH=ON \
       -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
-      -D OPENCV_SKIP_PYTHON_LOADER=ON \
-      -D OPENCV_SKIP_CMAKE_ROOT_CONFIG=ON \
       -D OPENCV_BIN_INSTALL_PATH=bin \
       -D OPENCV_INCLUDE_INSTALL_PATH=include \
       -D OPENCV_LIB_INSTALL_PATH=lib \
@@ -109,7 +107,6 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       -D OPENCV_DOC_INSTALL_PATH=doc \
       -D OPENCV_OTHER_INSTALL_PATH=etc \
       -D OPENCV_LICENSES_INSTALL_PATH=etc/licenses \
-      -D ENABLE_CXX11=ON \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DWITH_GTK_2_X=OFF \
       -DOPENCV_ENABLE_PKG_CONFIG=ON \
@@ -145,7 +142,7 @@ cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}m" \
+      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/usr/bin/${PYTHONVER}" \
       -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
@@ -175,21 +172,8 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
 fi
 
 #Package creation
-mkdir -p $DEV_HOME/pack && \
-cd $OPENVINO_HOME/build/ && cpack -B $DEV_HOME/pack/ -G ZIP && \
-cd $OPENVINO_HOME/pbuild/ && cpack -B $DEV_HOME/pack/ -G ZIP && \
-rm -rf $DEV_HOME/pack/_CPack_Packages && \
-7z -tzip -mmt16 a "$DEV_HOME/pack/install_pkg.zip" "$STAGING_DIR/*" && \
-cd $DEV_HOME || fail 22 "Package creation failed. Stopping"
-
-#Repackaging
-mkdir -p $DEV_HOME/unpack && \
-cd $DEV_HOME/unpack && \
-7z x "$DEV_HOME/pack/install_pkg.zip" && \
-rm -rf $DEV_HOME/pack && \
-tar -czvf ../OV_ARM_package.tar.gz ./* && \
-cd $DEV_HOME && \
-rm -rf $DEV_HOME/unpack || \
+cd $STAGING_DIR && \
+tar -czvf ../OV_ARM_package.tar.gz ./* || \
 fail 23 "Package creation failed. Nothing more to do"
 
 exit 0
