@@ -25,5 +25,7 @@ std::vector<std::string> disabledTestPatterns() {
         ".*IEClassImportExportTestP.*",
         // CVS-58963: Not implemented yet
         R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
+        // Unexpected behavior
+        R"(.*Hetero.*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*)",
     };
 }
