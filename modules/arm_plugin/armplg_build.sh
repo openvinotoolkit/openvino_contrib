@@ -127,7 +127,6 @@ cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DENABLE_MYRIAD=ON -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
       -DTHREADING=SEQ -DENABLE_LTO=ON \
-      -DTHREADS_PTHREAD_ARG="-pthread" \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DARM_COMPUTE_SCONS_JOBS=$BUILD_JOBS \
       -DIE_EXTRA_MODULES=$ARM_PLUGIN_HOME \
@@ -146,7 +145,6 @@ cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
       -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
-      -DTHREADS_PTHREAD_ARG="-pthread" \
       $OPENVINO_HOME/inference-engine/ie_bridges/python && \
 make -j$BUILD_JOBS && \
 cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR -P cmake_install.cmake && \
