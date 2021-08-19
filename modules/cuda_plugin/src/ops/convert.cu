@@ -47,19 +47,20 @@ ConvertOp::ConvertOp(const CUDA::CreationContext& context,
     auto output_size_ = std::accumulate(output_shape.begin(), output_shape.end(), 1, std::multiplies<size_t>());
     Expects(size_ == output_size_);
     convert_kernel_ = getConvertKernel(output_element_type, input_element_type);
+    const auto max_block_size =
+        static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
+    num_blocks_ = (size_ % max_block_size == 0) ?
+                               (size_ / max_block_size) :
+                               (size_ / max_block_size + 1);
+    threads_per_block_ = (num_blocks_ == 1) ? size_ : max_block_size;
 }
 
 void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
-    const auto& stream = context.getThreadContext().stream();
-    const unsigned maxBlockSize =
-        context.getThreadContext().device().props().maxThreadsPerBlock;
-    const unsigned numBlocks = (size_ % maxBlockSize == 0) ?
-                               (size_ / maxBlockSize) :
-                               (size_ / maxBlockSize + 1);
-    const unsigned threadsPerBlock = (numBlocks == 1) ? size_ : maxBlockSize;
-    convert_kernel_(stream, size_, outputs[0], inputs[0], numBlocks, threadsPerBlock);
+    auto& threadContext = context.getThreadContext();
+    auto& stream = threadContext.stream();
+    convert_kernel_(stream, size_, outputs[0], inputs[0], num_blocks_, threads_per_block_);
 }
 
 OPERATION_REGISTER(ConvertOp, Convert);

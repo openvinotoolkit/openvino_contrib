@@ -26,7 +26,9 @@ class ConvertOp : public OperationBase {
  private:
     static convert_t getConvertKernel(Type_t output_type, Type_t input_type);
     convert_t convert_kernel_;
-    size_t size_;
+    unsigned size_;
+    unsigned num_blocks_;
+    unsigned threads_per_block_;
 };
 
 } // namespace CUDAPlugin
