@@ -35,6 +35,8 @@ class SplitOp : public OperationBase {
     size_t num_splits_ = 0;
     size_t num_split_chunks_ = 0;
     size_t split_step_size_ = 0;
+    unsigned num_blocks_;
+    unsigned threads_per_block_;
 };
 
 } // namespace CUDAPlugin

@@ -57,14 +57,19 @@ SplitOp::SplitOp(const CUDA::CreationContext& context,
     }
     element_type_ = input_element_type;
 
-    auto& dataShape = splitOp->get_input_shape(0);
+    auto& data_shape = splitOp->get_input_shape(0);
     const int64_t axis = *axisNode->get_data_ptr<int64_t>();
-    Expects(axis >= 0 && axis < dataShape.size());
-    Expects(dataShape[axis] % num_splits_ == 0);
-    split_step_size_ = (dataShape[axis] / num_splits_) * std::accumulate(dataShape.begin()+axis+1, dataShape.end(), 1, std::multiplies<size_t>());
+    Expects(axis >= 0 && axis < data_shape.size());
+    Expects(data_shape[axis] % num_splits_ == 0);
+    split_step_size_ = (data_shape[axis] / num_splits_) * std::accumulate(data_shape.begin()+axis+1, data_shape.end(), 1, std::multiplies<size_t>());
     Ensures(split_step_size_ != 0);
-    num_split_chunks_ = std::accumulate(dataShape.begin(), dataShape.end(), 1, std::multiplies<size_t>()) / split_step_size_;
+    num_split_chunks_ = std::accumulate(data_shape.begin(), data_shape.end(), 1, std::multiplies<size_t>()) / split_step_size_;
     Ensures(num_split_chunks_ != 0);
+    const unsigned max_block_size = context.device().props().maxThreadsPerBlock;
+    num_blocks_ = (num_split_chunks_ % max_block_size == 0) ?
+                (num_split_chunks_ / max_block_size) :
+                (num_split_chunks_ / max_block_size + 1);
+    threads_per_block_ = (num_blocks_ == 1) ? num_split_chunks_ : max_block_size;
 }
 
 WorkbufferRequest SplitOp::GetWorkBufferRequest() const {
@@ -101,16 +106,11 @@ void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Out
     Expects(buffers.mutable_buffers.size() == 1);
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
-    const unsigned maxBlockSize = threadContext.device().props().maxThreadsPerBlock;
-    const unsigned numBlocks = (num_split_chunks_ % maxBlockSize == 0) ?
-                               (num_split_chunks_ / maxBlockSize) :
-                               (num_split_chunks_ / maxBlockSize + 1);
-    const unsigned threadsPerBlock = (numBlocks == 1) ? num_split_chunks_ : maxBlockSize;
     auto outputPtrs = buffers.mutable_buffers[0];
     stream.upload(outputPtrs, reinterpret_cast<T**>(outputs.data()),
                   sizeof(T*) * num_splits_);
     auto in = inputs[0];
-    split<T><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
+    split<T><<<num_blocks_, threads_per_block_, 0, stream.get()>>>(
         num_split_chunks_,
         split_step_size_,
         num_splits_,
