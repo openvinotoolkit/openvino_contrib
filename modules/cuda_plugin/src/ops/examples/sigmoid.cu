@@ -31,21 +31,17 @@ SigmoidOp::SigmoidOp(const CUDA::CreationContext& context,
     auto output_shape = node->get_output_shape(0);
     input_size_ = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
     output_size_ = std::accumulate(output_shape.begin(), output_shape.end(), 1, std::multiplies<size_t>());
+    const unsigned maxBlockSize = context.device().props().maxThreadsPerBlock;
+    num_blocks_ = (input_size_ % maxBlockSize == 0) ? (input_size_ / maxBlockSize) : (input_size_ / maxBlockSize + 1);
+    threads_per_block_ = (num_blocks_ == 1) ? input_size_ : maxBlockSize;
 }
 
 void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, 
                         const Workbuffers& workbuffers) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
-    auto& tc = context.getThreadContext();
-    auto& stream = tc.stream();
-    const unsigned maxBlockSize = tc.device().props().maxThreadsPerBlock;
-    const unsigned numBlocks = (input_size_ % maxBlockSize == 0) ?
-                               (input_size_ / maxBlockSize) :
-                               (input_size_ / maxBlockSize + 1);
-    const unsigned threadsPerBlock = (numBlocks == 1) ? input_size_ : maxBlockSize;
     stream.run(
-            numBlocks, threadsPerBlock,
+            num_blocks_, threads_per_block_,
             sigmoid,
             input_size_,
             static_cast<const float *>(inputs[0].get()),
