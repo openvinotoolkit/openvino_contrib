@@ -10,18 +10,24 @@
 
 namespace CUDAPlugin {
 
+SaxpyOp::SaxpyOp(const CUDA::CreationContext& context,
+                     const std::shared_ptr<ngraph::Node>& node,
+                     IndexCollection&& inputIds,
+                     IndexCollection&& outputIds)
+    : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
+    const unsigned max_block_size = context.device().props().maxThreadsPerBlock;
+    const unsigned grid_size = kSize / max_block_size;
+    const unsigned block_size = grid_size > 1 ? max_block_size : kSize % max_block_size;
+    grid_dim_ = dim3{grid_size ? grid_size : 1};
+    block_dim_ = dim3{block_size ? block_size : max_block_size};
+}
+
 void SaxpyOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
                       const Workbuffers&) {
-    size_t size = 10000;
-    const unsigned maxBlockSize = context.getThreadContext().device().props().maxThreadsPerBlock;
-    const unsigned gridSize = size / maxBlockSize;
-    const unsigned blockSize = gridSize > 1 ? maxBlockSize : size % maxBlockSize;
-    const dim3 gridDim = dim3{gridSize ? gridSize : 1};
-    const dim3 blockDim = dim3{blockSize ? blockSize : maxBlockSize};
-    saxpy<<<gridDim, blockDim>>>(
-        size,
+    saxpy<<<grid_dim_, block_dim_>>>(
+        kSize,
         inputTensors[0].cast<const float*>().get(),
         inputTensors[1].cast<const float*>().get(),
         outputTensors[0].cast<float*>().get());

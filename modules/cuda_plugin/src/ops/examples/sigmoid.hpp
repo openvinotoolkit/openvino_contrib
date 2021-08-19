@@ -23,6 +23,8 @@ class SigmoidOp : public OperationBase {
  private:
     size_t input_size_;
     size_t output_size_;
+    unsigned num_blocks_;
+    unsigned threads_per_block_;
 };
 
 } // namespace CUDAPlugin
