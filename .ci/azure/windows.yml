@@ -13,7 +13,7 @@ resources:
 jobs:
 - job: Win
   # About 150% of total time
-  timeoutInMinutes: 120
+  timeoutInMinutes: 60
 
   pool:
     name: WIN_VMSS_VENV_F8S_WU2
@@ -31,11 +31,14 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
+    INSTALL_DIR: $(WORK_DIR)\install_pkg
+    SETUPVARS: $(INSTALL_DIR)\bin\setupvars.bat
 
   steps:
   - script: |
       powershell -command "Invoke-RestMethod -Headers @{\"Metadata\"=\"true\"} -Method GET -Uri http://169.254.169.254/metadata/instance/compute?api-version=2019-06-01 | format-custom"
       where python3
+      python3 --version
       where python
       python --version
       where java
@@ -70,16 +73,11 @@ jobs:
     path: testdata
 
   - script: |
-      certutil -urlcache -split -f https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-win.zip ninja-win.zip
+      rem Speed up build
+      certutil -urlcache -split -f https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip ninja-win.zip
       powershell -command "Expand-Archive -Force ninja-win.zip"
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
-
-  - script: |
-      certutil -urlcache -split -f https://openvinoweb.z5.web.core.windows.net/incredibuild/install_ib_console.bat install_ib_console.bat
-      call install_ib_console.bat
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install IncrediBuild'
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
@@ -87,21 +85,25 @@ jobs:
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake'
 
-  - script: |
-      set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      call "$(MSVS_VARS_PATH)" && "C:\Program Files (x86)\IncrediBuild\BuildConsole.exe" /COMMAND="ninja" /MaxCPUS=40
+  - script: dir $(OPENVINO_REPO_DIR)\inference-engine\temp\ /s
+    displayName: 'List temp SDKs'
+
+  - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Win'
 
-  - script: echo Stop IncrediBuild_Agent && net stop IncrediBuild_Agent
-    displayName: Stop IncrediBuild
-    continueOnError: true
-    enabled: false
-
   - script: dir $(OPENVINO_REPO_DIR)\bin\ /s
-    displayName: 'List files'
+    displayName: 'List bin files'
+
+  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Install'
+
+  - script: dir $(INSTALL_DIR) /s
+    displayName: 'List install files'
 
   - script: |
+      rem Must be installed
       mkdir native
       copy $(BIN_DIR)\*.dll native
       copy $(BIN_DIR)\cache.json native

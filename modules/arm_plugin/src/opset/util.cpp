@@ -96,9 +96,9 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node) {
 }  // namespace opset
 }  // namespace ArmPlugin
 
-namespace ngraph {
+namespace OV_NGRAPH_NAMESPACE {
 NGRAPH_RTTI_DEFINITION(VariantWrapper<arm_compute::QuantizationInfo>, "Variant::arm_compute::QuantizationInfo", 0);
 VariantWrapper<arm_compute::QuantizationInfo>::~VariantWrapper() {}
 NGRAPH_RTTI_DEFINITION(VariantWrapper<arm_compute::ActivationLayerInfo>, "Variant::arm_compute::ActivationLayerInfo", 0);
 VariantWrapper<arm_compute::ActivationLayerInfo>::~VariantWrapper() {}
-}  // namespace ngraph
+}  // namespace OV_NGRAPH_NAMESPACE
