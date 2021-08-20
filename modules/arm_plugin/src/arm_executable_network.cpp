@@ -84,7 +84,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
     }
 }
 
-InferenceEngine::CNNNetwork ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
+std::shared_ptr<ngraph::Function> ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
     for (auto&& node : _function->get_ops()) {
         auto& rtInfo = node->get_rt_info();
         rtInfo.emplace("layerType",
@@ -93,5 +93,5 @@ InferenceEngine::CNNNetwork ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
                        std::make_shared<ngraph::VariantWrapper<std::string>>(
                             InferenceEngine::details::convertPrecision(node->output(0).get_element_type()).name()));
     }
-    return InferenceEngine::CNNNetwork{std::const_pointer_cast<ngraph::Function>(_function)};
+    return std::const_pointer_cast<ngraph::Function>(_function);
 }
