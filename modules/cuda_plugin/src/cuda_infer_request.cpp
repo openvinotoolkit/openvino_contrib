@@ -2,29 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <utility>
-#include <algorithm>
-#include <memory>
-#include <string>
-#include <map>
+#include "cuda_infer_request.hpp"
 
-#include <ie_blob.h>
-#include <description_buffer.hpp>
+#include <cuda_fp16.h>
 #include <debug.h>
+#include <fmt/format.h>
+#include <ie_blob.h>
 #include <ie_layouts.h>
-#include <threading/ie_executor_manager.hpp>
-#include <blob_transform.hpp>
-#include <ie_parallel.hpp>
 #include <ie_memcpy.h>
 #include <precision_utils.h>
 
-#include "cuda/cuda_config.hpp"
-#include "cuda_infer_request.hpp"
-#include "cuda_executable_network.hpp"
-#include "cuda_plugin.hpp"
-#include "cuda_itt.hpp"
+#include <algorithm>
+#include <blob_transform.hpp>
+#include <description_buffer.hpp>
+#include <ie_parallel.hpp>
+#include <map>
+#include <memory>
+#include <string>
+#include <threading/ie_executor_manager.hpp>
+#include <utility>
 
-#include <cuda_fp16.h>
+#include "cuda/cuda_config.hpp"
+#include "cuda_executable_network.hpp"
+#include "cuda_itt.hpp"
+#include "cuda_plugin.hpp"
 
 using namespace InferenceEngine;
 
@@ -304,7 +305,8 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
                 Precision::U8, shape, layout });
         break;
     default:
-        THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output Precision " << precision;
+        throwIEException(fmt::format(
+            "Cuda Plugin: Unsupported Input/Output Precision {}", precision));
     }
     blob->allocate();
     return blob;
@@ -324,7 +326,8 @@ InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(
     case Type_t::i16:
         return Precision::I16;
     default:
-        THROW_IE_EXCEPTION << "Cuda Plugin: Unsupported Input/Output type " << type;
+        throwIEException(
+            fmt::format("Cuda Plugin: Unsupported Input/Output type {}", type));
     }
 }
 
@@ -389,8 +392,10 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     convertPrecision<std::uint8_t, float>(src, dst);
                     break;
                 default : {
-                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                    throwIEException(fmt::format(
+                        "Unsupported precision conversion from {} to {}",
+                        src->getTensorDesc().getPrecision(),
+                        dst->getTensorDesc().getPrecision()));
                 }
             }
         } break;
@@ -403,8 +408,10 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     convertPrecision<__half, float>(src, dst);
                     break;
                 default:
-                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                    throwIEException(fmt::format(
+                        "Unsupported precision conversion from {} to {}",
+                        src->getTensorDesc().getPrecision(),
+                        dst->getTensorDesc().getPrecision()));
                 }
                 break;
         case Precision::FP32: {
@@ -416,13 +423,17 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     convertPrecision<float, __half>(src, dst);
                     break;
                 default : {
-                    THROW_IE_EXCEPTION << "Unsupported precision conversion from "
-                        << src->getTensorDesc().getPrecision() <<" to " << dst->getTensorDesc().getPrecision();
+                    throwIEException(fmt::format(
+                        "Unsupported precision conversion from {} to {}",
+                        src->getTensorDesc().getPrecision(),
+                        dst->getTensorDesc().getPrecision()));
                 }
             }
         } break;
         default : {
-            THROW_IE_EXCEPTION << "Unsupported precision conversion from " << src->getTensorDesc().getPrecision();
+            throwIEException(
+                fmt::format("Unsupported precision conversion from {}",
+                            src->getTensorDesc().getPrecision()));
         }
     }
 }

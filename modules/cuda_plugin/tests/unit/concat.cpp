@@ -80,8 +80,9 @@ struct ConcatTest : testing::Test {
     ASSERT_EQ(wb_request.mutable_sizes.size(), 1);
     auto& immutable_wb = mem.emplace_back(stream.malloc(wb_request.immutable_sizes[0]));
     auto& mutable_wb = mem.emplace_back(stream.malloc(wb_request.mutable_sizes[0]));
-    operation->InitSharedImmutableWorkbuffers({immutable_wb.get()});
-    operation->Execute(context, inputs, outputs, {{immutable_wb.get()}, {mutable_wb.get()}});
+    operation->InitSharedImmutableWorkbuffers({immutable_wb});
+    operation->Execute(context, inputs, outputs,
+                       {{immutable_wb}, {mutable_wb}});
     auto data = std::make_unique<float[]>(output_size / sizeof(float));
     stream.synchronize();
     stream.download(data.get(), outputs[0], output_size);

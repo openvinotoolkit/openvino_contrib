@@ -77,24 +77,16 @@ struct ResultTest : testing::Test {
     fillBlobRandom<uint8_t>(blob);
     blobs.insert({paramNode->get_friendly_name(), blob});
   }
-  void TearDown() override {
-    if (outputs.size() > 0)
-      cudaFree(outputs[0].get());
-    operation.reset();
-  }
   void allocate() {
-    const void* buffer {};
-    auto success = cudaMalloc(&buffer, size);
-    ASSERT_TRUE((success == cudaSuccess && buffer != nullptr));
-    inputs.push_back({buffer});
     TensorDesc desc {Precision::U8, {size}, Layout::C };
     blob = InferenceEngine::make_shared_blob<uint8_t>(desc);
     blob->allocate();
   }
   CUDA::ThreadContext threadContext{{}};
+  CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
   OperationBase::Ptr operation;
-  std::vector<cdevptr_t> inputs {};
-  IOperationExec::Outputs outputs {};
+  std::vector<cdevptr_t> inputs{inAlloc};
+  IOperationExec::Outputs outputs;
   Blob::Ptr blob;
   InferenceEngine::BlobMap blobs;
   InferenceEngine::BlobMap empty;

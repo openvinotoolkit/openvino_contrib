@@ -54,9 +54,9 @@ size_t MemoryManagerPool::Size() const {
 void MemoryManagerPool::Resize(size_t count) {
   const auto memoryManagersCount = memory_managers_.size();
   if (count > memoryManagersCount) {
-    THROW_IE_EXCEPTION << fmt::format(
-        "Cannot resize MemoryManagerPool with {} value > than it was {}",
-        count, memoryManagersCount);
+      throwIEException(fmt::format(
+          "Cannot resize MemoryManagerPool with {} value > than it was {}",
+          count, memoryManagersCount));
   }
   memory_managers_.resize(count);
 }

@@ -5,44 +5,24 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <string>
+
+#include <error.hpp>
+#include <gpu/device_pointers.hpp>
 
 #include "props.hpp"
-
-#include <gpu/device_pointers.hpp>
-#if __has_include(<experimental/source_location>)
-#include <experimental/source_location>
-#else
-namespace std::experimental {
-struct source_location {
-  constexpr std::uint_least32_t line() const noexcept { return 0; }
-  constexpr std::uint_least32_t column() const noexcept { return 0; }
-  constexpr const char* file_name() const noexcept { return "unknown"; }
-  constexpr const char* function_name() const noexcept { return "unknown"; }
-  static constexpr source_location current() noexcept { return {}; }
-};
-}  // namespace std::experimental
-#endif
-namespace CUDA {
-[[gnu::cold, noreturn]] void throwIEException(
-    const std::string& msg, const std::experimental::source_location& location =
-                                std::experimental::source_location::current());
-[[gnu::cold]] void logError(const std::string& msg,
-                            const std::experimental::source_location& location =
-                                std::experimental::source_location::current());
-}  // namespace CUDA
 
 inline void throwIfError(cudaError_t err,
                          const std::experimental::source_location& location =
                              std::experimental::source_location::current()) {
-  if (err != cudaSuccess)
-    CUDA::throwIEException(cudaGetErrorString(err), location);
+    if (err != cudaSuccess)
+        CUDAPlugin::throwIEException(cudaGetErrorString(err), location);
 }
 
 inline void logIfError(cudaError_t err,
                        const std::experimental::source_location& location =
                            std::experimental::source_location::current()) {
-  if (err != cudaSuccess) CUDA::logError(cudaGetErrorString(err), location);
+    if (err != cudaSuccess)
+        CUDAPlugin::logError(cudaGetErrorString(err), location);
 }
 
 namespace CUDA {
@@ -69,6 +49,7 @@ class Device {
   }
 };
 
+constexpr auto memoryAlignment = 256;
 constexpr auto defaultResidentGrids = 16;
 
 inline int residentGrids6x(int minor) {
@@ -179,6 +160,10 @@ class Allocation {
  public:
   Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
   void* get() const noexcept { return p.get(); }
+  template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
+  operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
+    return InferenceEngine::gpu::DevicePointer<T*>{get()};
+  }
 };
 
 class DefaultAllocation {
@@ -192,6 +177,10 @@ class DefaultAllocation {
  public:
   explicit DefaultAllocation(void* p) noexcept : p{p} {}
   void* get() const noexcept { return p.get(); }
+  template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
+  operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
+      return InferenceEngine::gpu::DevicePointer<T*>{get()};
+  }
 };
 
 class Stream

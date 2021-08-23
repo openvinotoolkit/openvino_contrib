@@ -4,9 +4,7 @@
 
 #pragma once
 
-#include <cuda_runtime_api.h>
 #include "runtime.hpp"
-#include "stream.hpp"
 
 namespace CUDA {
 
