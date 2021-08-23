@@ -5,11 +5,9 @@
 #pragma once
 
 #include <functional>
-#include <gsl/span>
 #include <unordered_map>
 
 #include "cuda_operation_base.hpp"
-#include <cuda/runtime.hpp>
 
 namespace CUDAPlugin {
 

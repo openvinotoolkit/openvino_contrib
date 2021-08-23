@@ -19,11 +19,11 @@ using cdevptr_t = InferenceEngine::gpu::DevicePointer<const void*>;
 template <typename F>
 auto assertToThrow(F&& f, const std::experimental::source_location& loc =
                               std::experimental::source_location::current()) {
-  bool success = false;
-  std::forward<F>(f)(success);
-  if (!success)
-    CUDA::throwIEException("pathetic google test failed in non-void function",
-                           loc);
+    bool success = false;
+    std::forward<F>(f)(success);
+    if (!success)
+        CUDAPlugin::throwIEException(
+            "pathetic google test failed in non-void function", loc);
 }
 
 #define TASSERT_TRUE(condition)              \
@@ -39,8 +39,8 @@ struct ReluTest : testing::Test {
   CUDA::ThreadContext threadContext{{}};
   CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
   CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
-  std::vector<cdevptr_t> inputs{inAlloc.get()};
-  std::vector<devptr_t> outputs{outAlloc.get()};
+  std::vector<cdevptr_t> inputs{inAlloc};
+  std::vector<devptr_t> outputs{outAlloc};
   InferenceEngine::BlobMap empty;
   CUDAPlugin::OperationBase::Ptr operation = [this] {
     CUDA::Device device{};

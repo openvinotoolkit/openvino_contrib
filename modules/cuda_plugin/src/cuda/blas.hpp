@@ -4,11 +4,8 @@
 
 #pragma once
 
-#include <fmt/format.h>
-#include <details/ie_no_copy.hpp>
 #include <cublas_v2.h>
 #include <cublas_api.h>
-#include <fmt/format.h>
 #include <ie_extension.h>
 #include "runtime.hpp"
 
@@ -42,15 +39,15 @@ inline std::string cublasGetErrorString(cublasStatus_t status) {
 inline void throwIfError(cublasStatus_t err,
                          const std::experimental::source_location& location =
                              std::experimental::source_location::current()) {
-  if (err != CUBLAS_STATUS_SUCCESS)
-    CUDA::throwIEException(cublasGetErrorString(err), location);
+    if (err != CUBLAS_STATUS_SUCCESS)
+        CUDAPlugin::throwIEException(cublasGetErrorString(err), location);
 }
 
 inline void logIfError(cublasStatus_t err,
                        const std::experimental::source_location& location =
                            std::experimental::source_location::current()) {
   if (err != CUBLAS_STATUS_SUCCESS)
-    CUDA::logError(cublasGetErrorString(err), location);
+      CUDAPlugin::logError(cublasGetErrorString(err), location);
 }
 
 namespace CUDA {

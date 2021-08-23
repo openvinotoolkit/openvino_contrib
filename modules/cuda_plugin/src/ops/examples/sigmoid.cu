@@ -3,14 +3,9 @@
 //
 
 #include <vector>
-#include <cuda_runtime.h>
 #include <gsl/gsl_assert>
-#include <cuda/device.hpp>
 #include <cuda_operation_registry.hpp>
 #include <utility>
-
-#include <cuda/device.hpp>
-
 #include "details/cuda_ngraph_import.hpp"
 #include "sigmoid.hpp"
 

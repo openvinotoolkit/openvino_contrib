@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <cpp_interfaces/impl/ie_plugin_internal.hpp>
 #include <cuda/runtime.hpp>
+#include <ngraph/function.hpp>
 
 namespace CUDAPlugin {
 

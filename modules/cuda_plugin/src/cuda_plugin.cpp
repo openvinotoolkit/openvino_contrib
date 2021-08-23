@@ -3,25 +3,25 @@
 //
 
 #include <ie_metric_helpers.hpp>
-#include <ie_plugin_config.hpp>
-#include <ie_ngraph_utils.hpp>
+// ^^ must come before ie_plugin_config.hpp, which is included by
+// hetero_plugin_config.hpp
+#include "cuda_plugin.hpp"
 
+#include <fmt/format.h>
+
+#include <cuda/props.hpp>
 #include <hetero/hetero_plugin_config.hpp>
-#include <threading/ie_executor_manager.hpp>
-
+#include <ie_ngraph_utils.hpp>
+#include <ie_plugin_config.hpp>
 #include <ngraph/op/util/op_types.hpp>
 #include <ngraph/opsets/opset.hpp>
-
+#include <threading/ie_executor_manager.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
-#include <cuda/device.hpp>
-#include <cuda/props.hpp>
 
 #include "cuda/cuda_config.hpp"
-#include "cuda_itt.hpp"
-#include "cuda_plugin.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
-
+#include "cuda_itt.hpp"
 using namespace CUDAPlugin;
 
 Plugin::Plugin() {
@@ -56,8 +56,9 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
         if (output_precision != InferenceEngine::Precision::FP32 &&
             output_precision != InferenceEngine::Precision::FP16 &&
             output_precision != InferenceEngine::Precision::U8) {
-            //IE_THROW() << "CUDA device supports only U8, FP16 and FP32 output precision.";
-            THROW_IE_EXCEPTION << "CUDA device supports only U8, FP16 and FP32 output precision.";
+            throwIEException(
+                "CUDA device supports only U8, FP16 and FP32 output "
+                "precision.");
         }
     }
 
@@ -68,9 +69,10 @@ InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const
             input_precision != InferenceEngine::Precision::FP16 &&
             input_precision != InferenceEngine::Precision::I16 &&
             input_precision != InferenceEngine::Precision::U8) {
-            //IE_THROW() << "Input image format " << input_precision << " is not supported yet.\n"
-            THROW_IE_EXCEPTION << "Input image format " << input_precision << " is not supported yet.\n"
-                       << "Supported formats are: FP32, FP16, I16 and U8.";
+            throwIEException(fmt::format(
+                "Input image format {} is not supported yet. Supported "
+                "formats are: FP32, FP16, I16 and U8.",
+                input_precision));
         }
     }
 
@@ -122,8 +124,8 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
 
     auto function = network.getFunction();
     if (function == nullptr) {
-         THROW_IE_EXCEPTION << "Template Plugin supports only ngraph cnn network representation";
-         //IE_THROW() << "Cuda Plugin supports only ngraph cnn network representation";
+        throwIEException(
+            "CUDA Plugin supports only ngraph cnn network representation");
     }
 
     // 1. First of all we should store initial input operation set
@@ -262,8 +264,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         using uint = unsigned int;
         IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(uint{1}, uint{1}, uint{1}));
     } else  {
-        //IE_THROW() << "Unsupported device metric: " << name;
-        THROW_IE_EXCEPTION << "Unsupported device metric: " << name;
+        throwIEException("Unsupported device metric: " + name);
     }
 }
 

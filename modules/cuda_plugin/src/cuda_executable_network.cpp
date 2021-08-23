@@ -3,6 +3,8 @@
 //
 
 #include <ie_metric_helpers.hpp>
+// ^^ must come before ie_plugin_config.hpp, which is indirectly included by
+// cuda_executable_network.hpp
 #include <ie_plugin_config.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
@@ -49,9 +51,10 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
     } catch (const std::exception& e) {
-        THROW_IE_EXCEPTION << fmt::format("Standard exception from compilation library: {}", e.what());
+        throwIEException(fmt::format(
+            "Standard exception from compilation library: {}", e.what()));
     } catch (...) {
-        THROW_IE_EXCEPTION << "Generic exception is thrown";
+        throwIEException("Generic exception is thrown");
     }
 }
 
@@ -101,9 +104,10 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     } catch (const InferenceEngine::details::InferenceEngineException&) {
         throw;
     } catch (const std::exception& e) {
-        THROW_IE_EXCEPTION << fmt::format("Standard exception from compilation library: {}", e.what());
+        throwIEException(fmt::format(
+            "Standard exception from compilation library: {}", e.what()));
     } catch (...) {
-        THROW_IE_EXCEPTION << "Generic exception is thrown";
+        throwIEException("Generic exception is thrown");
     }
 }
 
@@ -132,9 +136,9 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
         auto& node = orderedNodes[node_idx];
         if (!OperationRegistry::getInstance().hasOperation(node)) {
-            THROW_IE_EXCEPTION << fmt::format(
+        	throwIEException(fmt::format(
                 "Node: name = {}, description = {}; Is not found in OperationRegistry",
-                node->get_name(), node->description());
+                node->get_name(), node->description()));
         }
         auto inIds = opBuffersExtractor.inputTensorIds(*node);
         auto outIds = opBuffersExtractor.outputTensorIds(*node);
@@ -284,7 +288,8 @@ void ExecutableNetwork::InitExecutor() {
 std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize, const std::size_t memoryBlobSize) const {
     static constexpr std::size_t reasonable_limit_of_streams = 10;
     if (memoryBlobSize == 0) {
-        THROW_IE_EXCEPTION << "Model is not loaded properly. Size of tensors for model is 0 !!";
+        throwIEException(
+            "Model is not loaded properly. Size of tensors for model is 0 !!");
     }
     CUDA::Device device{cfg_.deviceId};
     device.setCurrent();
@@ -294,7 +299,7 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
     const std::size_t maxStreamsSupported = maxConcurrentStreams(device);
     const auto availableInferRequests = (free - constBlobSize) / memoryBlobSize;
     if (0 == availableInferRequests) {
-        THROW_IE_EXCEPTION << "Not enough memory even for single InferRequest !!";
+        throwIEException("Not enough memory even for single InferRequest !!");
     }
 
     const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
@@ -431,7 +436,8 @@ ExecutableNetwork::GetMetric(const std::string& name) const {
         const unsigned value = memory_manager_pool_->Size();
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
-        THROW_IE_EXCEPTION << fmt::format("Unsupported ExecutableNetwork metric: {}", name);
+        throwIEException(
+            fmt::format("Unsupported ExecutableNetwork metric: {}", name));
     }
 }
 
