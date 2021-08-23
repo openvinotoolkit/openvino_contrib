@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <ngraph/type/element_type.hpp>
-#include <cuda_runtime.h>
 #include <cudnn.h>
-#include <details/ie_exception.hpp>
 #include <fmt/format.h>
+
+#include <error.hpp>
+#include <ngraph/type/element_type.hpp>
 
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
 
@@ -42,7 +42,11 @@ inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::el
         case Type_t::u32: return CUDA_R_32U;
         case Type_t::i64: return CUDA_R_64I;
         case Type_t::u64: return CUDA_R_64U;
-        default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuda library", type.c_type_string());
+        default:
+            throwIEException(
+                fmt::format("The ngraph element type {} is not supported by "
+                            "the cuda library",
+                            type.c_type_string()));
     }
 }
 
@@ -60,7 +64,11 @@ inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::
         case Type_t::i8: return CUDNN_DATA_INT8;
         case Type_t::i32: return CUDNN_DATA_INT32;
         case Type_t::i64: return CUDNN_DATA_INT64;
-        default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuDNN library", type.c_type_string());
+        default:
+            throwIEException(
+                fmt::format("The ngraph element type {} is not supported by "
+                            "the cuDNN library",
+                            type.c_type_string()));
     }
 }
 
@@ -75,7 +83,8 @@ inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::Activa
         case nodes::ActivationMode::CLIPPED_RELU: return CUDNN_ACTIVATION_CLIPPED_RELU;
         case nodes::ActivationMode::ELU: return CUDNN_ACTIVATION_ELU;
         case nodes::ActivationMode::NO_ACTIVATION: return CUDNN_ACTIVATION_IDENTITY;
-        default: THROW_IE_EXCEPTION << fmt::format("Unsupported activation: {}", mode);
+        default:
+            throwIEException(fmt::format("Unsupported activation: {}", mode));
     }
 }
 

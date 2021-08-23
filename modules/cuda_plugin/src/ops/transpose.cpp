@@ -166,7 +166,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
         case Type_t::u32: return downloadPermutationVector<std::uint32_t>(context, inputTensors[1], dimsNumber_);
         case Type_t::u64: return downloadPermutationVector<std::uint64_t>(context, inputTensors[1], dimsNumber_);
         default:
-            CUDA::throwIEException("Permutation vector is not of integer type.");
+            throwIEException("Permutation vector is not of integer type.");
         }
     }
 }

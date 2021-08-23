@@ -3,14 +3,11 @@
 //
 
 #include <vector>
-#include <cuda_runtime.h>
 #include <gsl/gsl_assert>
-#include <cuda/device.hpp>
 #include <cuda_operation_registry.hpp>
 #include <utility>
 #include <fmt/format.h>
 
-#include "cuda/runtime.hpp"
 #include "details/cuda_ngraph_import.hpp"
 #include "concat.hpp"
 
@@ -96,8 +93,10 @@ void ConcatOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
     case ngraph::element::Type_t::u16: return Execute<uint16_t>(context, inputs, outputs, buffers);
     case ngraph::element::Type_t::u32: return Execute<uint32_t>(context, inputs, outputs, buffers);
     case ngraph::element::Type_t::u64: return Execute<uint64_t>(context, inputs, outputs, buffers);
-    default: THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
-                                               static_cast<ngraph::element::Type_t>(element_type_));
+    default:
+        throwIEException(fmt::format(
+            "Input element type = {} is not supported by Split operation !!",
+            static_cast<ngraph::element::Type_t>(element_type_)));
   }
 }
 

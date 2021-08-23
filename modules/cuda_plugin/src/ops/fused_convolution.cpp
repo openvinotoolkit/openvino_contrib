@@ -52,18 +52,14 @@ IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(
 
 void FusedConvolutionOp::CreateImpl(const CUDA::CreationContext& context, const NodeOp& node) {
     const Convolution::Details::FusedConvolutionParams params { node };
-
-    std::stringstream exception_msg;
-
     try {
         impl_ = std::make_unique<FusedConvolutionCuDnn>(context, params);
-        return;
     } catch(const std::exception& e) {
-        exception_msg << "Failed to create FusedConvolutionCuDnn impl: " << e.what() << std::endl;
+        throwIEException(
+            fmt::format("unsupported `{}` node: Failed to create "
+                        "FusedConvolutionCuDnn impl: {}",
+                        node.get_type_info().name, e.what()));
     }
-
-    THROW_IE_EXCEPTION << fmt::format("unsupported `{}` node:\n {}",
-                                      node.get_type_info().name, exception_msg.str());
 }
 
 OPERATION_REGISTER(FusedConvolutionOp, FusedConv2D);

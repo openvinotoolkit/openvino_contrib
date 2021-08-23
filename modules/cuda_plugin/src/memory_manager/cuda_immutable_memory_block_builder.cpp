@@ -8,9 +8,6 @@
 
 #include "memory_manager/cuda_device_mem_block.hpp"
 
-#include <iostream>
-#include <cuda_runtime_api.h>
-
 namespace CUDAPlugin {
 
 void
@@ -30,12 +27,8 @@ ImmutableMemoryBlockBuilder::build() {
   for (const auto& allocation : allocations_) {
     void* device_ptr = memory_block->deviceTensorPtr(allocation.id);
     IE_ASSERT(device_ptr != nullptr);
-    auto err = ::cudaMemcpy(device_ptr, allocation.data, allocation.bsize, cudaMemcpyHostToDevice);
-    if (err != cudaSuccess)
-      THROW_IE_EXCEPTION
-        << "::cudaMemcpy() failed: "
-        << "code " << err
-        << ", description: " << cudaGetErrorString(err);
+    throwIfError(::cudaMemcpy(device_ptr, allocation.data, allocation.bsize,
+                              cudaMemcpyHostToDevice));
   }
   return memory_block;
 }

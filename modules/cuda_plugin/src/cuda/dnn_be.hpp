@@ -188,7 +188,8 @@ public:
     DnnBEEngineDescriptor getEngine() const {
         auto engines = getBEDescAttributeValues<CUDNN_ATTR_ENGINECFG_ENGINE, DnnBEEngineDescriptor>();
         if (engines.size() != 1)
-              THROW_IE_EXCEPTION << "Unexpected number of cuDNN Backend engines";
+            CUDAPlugin::throwIEException(
+                "Unexpected number of cuDNN Backend engines");
         return std::move(engines[0]);
     }
 };
