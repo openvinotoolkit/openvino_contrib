@@ -23,7 +23,7 @@ std::vector<std::string> disabledTestPatterns() {
 #endif
         // need to implement Export / Import
         ".*IEClassImportExportTestP.*",
-        ".*Multi_BehaviorTests/InferRequestTests.canRun3SyncRequestsConsistentlyFromThreads.*" // Sporadic hangs,
+        ".*Multi_BehaviorTests/InferRequestTests.canRun3SyncRequestsConsistentlyFromThreads.*", // Sporadic hangs,
         // CVS-58963: Not implemented yet
         R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
         // Unexpected behavior
