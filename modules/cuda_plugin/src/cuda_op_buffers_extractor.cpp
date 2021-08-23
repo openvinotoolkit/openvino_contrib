@@ -4,7 +4,9 @@
 
 #include "cuda_op_buffers_extractor.hpp"
 
-#include <details/ie_exception.hpp>
+#include <fmt/format.h>
+
+#include <error.hpp>
 #include <gsl/span_ext>
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
@@ -73,8 +75,8 @@ int OperationBuffersExtractor::mutableBufferLifespanStart(BufferID buffer_id) co
     try {
         return mutable_buffers_.at(buffer_id).lifespan_start;
     } catch (std::out_of_range& e) {
-        THROW_IE_EXCEPTION << "Buffer id " << buffer_id
-                           << " is out of range.";
+        throwIEException(
+            fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -82,8 +84,8 @@ int OperationBuffersExtractor::mutableBufferLifespanEnd(BufferID buffer_id) cons
     try {
         return mutable_buffers_.at(buffer_id).lifespan_end;
     } catch (std::out_of_range& e) {
-        THROW_IE_EXCEPTION << "Buffer id " << buffer_id
-                           << " is out of range.";
+        throwIEException(
+            fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -92,8 +94,8 @@ OperationBuffersExtractor::mutableBufferSize(BufferID buffer_id) const {
     try {
         return mutable_buffers_.at(buffer_id).size;
     } catch (std::out_of_range& e) {
-        THROW_IE_EXCEPTION << "Buffer id " << buffer_id
-                           << " is out of range.";
+        throwIEException(
+            fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -102,8 +104,8 @@ OperationBuffersExtractor::immutableBuffer(BufferID buffer_id) const {
     try {
         return immutable_buffers_.at(buffer_id);
     } catch (std::out_of_range& e) {
-        THROW_IE_EXCEPTION << "Buffer id " << buffer_id
-                           << " is out of range.";
+        throwIEException(
+            fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -188,8 +190,9 @@ void OperationBuffersExtractor::extractMutableTensors(const NodePtr& node, int n
             const auto output = node->outputs().at(0);
             tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
         } catch (std::out_of_range&) {
-            THROW_IE_EXCEPTION << "Failed to extract output buffer for reshape only node '"
-                               << node->get_name() << "'";
+            throwIEException(fmt::format(
+                "Failed to extract output buffer for reshape only node '{}'",
+                node->get_name()));
         }
     } else {
         for (const auto& output : node->outputs()) {
@@ -246,20 +249,19 @@ bool OperationBuffersExtractor::isReshapeOnlyNode(const ngraph::Node& node) {
 }
 
 void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input) {
-    THROW_IE_EXCEPTION << "Buffer size of Input #"
-                       << std::to_string(input.get_index()) << " of "
-                       << input.get_node()->get_name()
-                       << " node and corresponding output #"
-                       << std::to_string(input.get_source_output().get_index()) << " of "
-                       << input.get_source_output().get_node()->get_name()
-                       << " node are not equal.";
+    throwIEException(
+        fmt::format("Buffer size of Input #{} of {} node and corresponding "
+                    "output #{} of {} node are not equal.",
+                    input.get_index(), input.get_node()->get_name(),
+                    input.get_source_output().get_index(),
+                    input.get_source_output().get_node()->get_name()));
 }
 
 void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input) {
-    THROW_IE_EXCEPTION << "Provided graph is bad formed. Input #"
-                       << std::to_string(input.get_index()) << " of \""
-                       << input.get_node()->get_name()
-                       << "\" node isn't connected to any output";
+    throwIEException(
+        fmt::format("Provided graph is bad formed. Input #{} of \"{}\" node "
+                    "isn't connected to any output",
+                    input.get_index(), input.get_node()->get_name()));
 }
 
 } // namespace CUDAPlugin

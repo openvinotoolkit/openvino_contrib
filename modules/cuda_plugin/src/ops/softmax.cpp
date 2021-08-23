@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <gsl/gsl_assert>
-#include <ngraph/node.hpp>
+#include "softmax.hpp"
+
+#include <fmt/format.h>
+
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
-#include "softmax.hpp"
-#include "converters.hpp"
+#include <gsl/gsl_assert>
+#include <ngraph/node.hpp>
+
 #include "constant_factory.hpp"
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 
@@ -101,7 +105,9 @@ void SoftmaxOp::mapRankAxis(const ngraph::Shape& shape, int axis) {
   case 0x53: shape_ = { d0*d1*d2,    d3,   d4,     1   }; Ensures(prod(d0, d1)*d2 < maxint); break;
   case 0x54: shape_ = { d0*d1*d2*d3, d4,    1,     1   }; Ensures(prod(d0, d1)*d2*d3 < maxint); break;
   default:
-    THROW_IE_EXCEPTION << "Unsupported combination of tensor rank (" << rank << ") and axis attribute (" << axis << ")";
+      throwIEException(fmt::format(
+          "Unsupported combination of tensor rank ({}) and axis attribute ({})",
+          rank, axis));
   }
 }
 

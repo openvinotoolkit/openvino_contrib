@@ -85,15 +85,16 @@ public:
                   InferenceEngine::gpu::DevicePointer<const void*> inPtr,
                   InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
                   InferenceEngine::gpu::DevicePointer<void*> outPtr,
-                  InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace);
+                  InferenceEngine::gpu::DeviceBuffer<std::byte> workspace);
 
-private:
-    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                 InferenceEngine::gpu::DevicePointer<const void*> inPtr,
-                                 InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-                                 InferenceEngine::gpu::DevicePointer<void*> outPtr,
-                                 InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
-                                 cudnnDataType_t convDataType);
+   private:
+    bool FindAlgoForConvDataType(
+        const CUDA::DnnHandle& dnnHandle,
+        InferenceEngine::gpu::DevicePointer<const void*> inPtr,
+        InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+        InferenceEngine::gpu::DevicePointer<void*> outPtr,
+        InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
+        cudnnDataType_t convDataType);
     void BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle,
                               const ConvolutionParamsCuDnn& params);
     void GetAlgo(const CUDA::DnnHandle& dnnHandle);
@@ -102,7 +103,8 @@ private:
     void FindAlgo(const CUDA::DnnHandle& dnnHandle);
     bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
                                  cudnnDataType_t convDataType);
-private:
+
+   private:
     CUDA::CreationContext context_;
     ConvolutionParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
@@ -132,15 +134,16 @@ class ConvolutionBackpropDataDescriptorCuDnn {
                   InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
                   InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
                   InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-                  InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace);
+                  InferenceEngine::gpu::DeviceBuffer<std::byte> workspace);
 
- private:
-    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                 InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-                                 InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
-                                 InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-                                 InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
-                                 cudnnDataType_t convDataType);
+   private:
+    bool FindAlgoForConvDataType(
+        const CUDA::DnnHandle& dnnHandle,
+        InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
+        InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
+        InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
+        InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
+        cudnnDataType_t convDataType);
     void BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle);
     void GetAlgo(const CUDA::DnnHandle& dnnHandle);
     bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -148,7 +151,7 @@ class ConvolutionBackpropDataDescriptorCuDnn {
     void FindAlgo(const CUDA::DnnHandle& dnnHandle);
     bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
                                  cudnnDataType_t convDataType);
- private:
+   private:
     CUDA::CreationContext context_;
     ConvolutionBackpropDataParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;

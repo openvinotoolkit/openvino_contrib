@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <gpu/device_pointers.hpp>
 #include <cuda/runtime.hpp>
 #include <ngraph/type/element_type.hpp>
 

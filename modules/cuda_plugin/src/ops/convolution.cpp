@@ -54,7 +54,7 @@ void ConvolutionOp::CreateImpl(const CUDA::CreationContext& context, const NodeO
         impl_ = std::make_unique<ConvolutionCuDnn>(context, params);
         return;
     } catch(const std::exception& e) {
-        exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what() << std::endl;
+        exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what();
     }
 
 #undef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
@@ -63,11 +63,13 @@ void ConvolutionOp::CreateImpl(const CUDA::CreationContext& context, const NodeO
         impl_ = std::make_unique<ConvolutionCuDnnBE>(params);
         return;
     } catch(const std::exception& e) {
-        exception_msg << "Failed to create ConvolutionCuDnnBE impl: " << e.what() << std::endl;
+        exception_msg << "\nFailed to create ConvolutionCuDnnBE impl: "
+                      << e.what();
     }
 #endif // ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
 
-    THROW_IE_EXCEPTION << fmt::format("Convolution node is not supported:\n {}", exception_msg.str());
+    throwIEException(fmt::format("Convolution node is not supported:\n{}",
+                                 exception_msg.str()));
 }
 
 

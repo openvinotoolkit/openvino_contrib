@@ -9,7 +9,6 @@
 #include <ie_extension.h>
 #include <cpp_interfaces/exception2status.hpp>
 #include <utility>
-#include <ie_common.h>
 
 namespace CUDAPlugin {
 

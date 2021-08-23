@@ -4,11 +4,13 @@
 
 #include "convolution_cudnn_components.hpp"
 
-#include <gsl/gsl_assert>
-#include <details/ie_exception.hpp>
 #include <cudnn.h>
-#include <cuda_config.hpp>
+#include <fmt/ostream.h>
+
 #include <cuda/cuda_config.hpp>
+#include <cuda_config.hpp>
+#include <gsl/gsl_assert>
+#include <ngraph/util.hpp>
 
 #include "converters.hpp"
 
@@ -20,9 +22,10 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(
     , data_type_{ convertDataType<cudnnDataType_t>(params.element_type_) }
 {
     if (params.padding_before_ != params.padding_after_) {
-        THROW_IE_EXCEPTION << "Asymmetric padding is not supported: "
-                           << "padding_before: " << params.padding_before_
-                           << ", padding_after: " << params.padding_after_;
+        throwIEException(
+            fmt::format("Asymmetric padding is not supported: padding_before: "
+                        "{}, padding_after: {}",
+                        params.padding_before_, params.padding_after_));
     }
 
     Expects(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
@@ -145,7 +148,7 @@ void ConvolutionDescriptorsCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -197,7 +200,7 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
@@ -242,7 +245,7 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(
     InferenceEngine::gpu::DevicePointer<const void*> inPtr,
     InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
     InferenceEngine::gpu::DevicePointer<void*> outPtr,
-    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace) {
+    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
             if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_HALF))
@@ -255,7 +258,7 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
@@ -263,7 +266,7 @@ bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
     InferenceEngine::gpu::DevicePointer<const void*> inPtr,
     InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
     InferenceEngine::gpu::DevicePointer<void*> outPtr,
-    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
+    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
     cudnnDataType_t convDataType) {
     cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
     conv_ = params_.MakeConvolutionDescriptor(convDataType);
@@ -294,9 +297,10 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
     , data_type_{ convertDataType<cudnnDataType_t>(params.element_type_) }
 {
     if (params.pads_begin_ != params.pads_end_) {
-        THROW_IE_EXCEPTION << "Asymmetric padding is not supported: "
-                           << "padding_before: " << params.pads_begin_
-                           << ", padding_after: " << params.pads_end_;
+        throwIEException(
+            fmt::format("Asymmetric padding is not supported: padding_before: "
+                        "{}, padding_after: {}",
+                        params.pads_begin_, params.pads_end_));
     }
 
     Expects(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
@@ -418,7 +422,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::GetAlgo(const CUDA::DnnHandle& dnnH
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -470,7 +474,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnn
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(
@@ -515,7 +519,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(
     InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
     InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
     InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace) {
+    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
             if (FindAlgoForConvDataType(dnnHandle, filterPtr, dInPtr, dOutPtr, workspace, CUDNN_DATA_HALF))
@@ -528,7 +532,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(
                 return;
     }
 
-    THROW_IE_EXCEPTION << "cuDNN: Unsupported convolution";
+    throwIEException("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(
@@ -536,7 +540,7 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(
     InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
     InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
     InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-    InferenceEngine::gpu::DeviceBuffer<uint8_t> workspace,
+    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
     cudnnDataType_t convDataType) {
     cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
     conv_ = params_.MakeConvolutionDescriptor(convDataType);
