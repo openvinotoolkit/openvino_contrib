@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <gsl/gsl_assert>
-#include <details/ie_exception.hpp>
+#include "convolution_cudnn_be.hpp"
+
+#include <fmt/format.h>
 
 #include <algorithm>
+#include <details/ie_exception.hpp>
+#include <gsl/gsl_assert>
 
-#include "cuda/device.hpp"
-#include "convolution_cudnn_be.hpp"
-#include "convolution.hpp"
-#include "converters.hpp"
 #include "constant_factory.hpp"
-#include <cudnn.h>
+#include "converters.hpp"
+#include "convolution.hpp"
 
 namespace CUDAPlugin {
 
@@ -94,7 +94,7 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const Convolution::Details::ConvolutionPa
     }
 
     if (exec_plans_.empty())
-        THROW_IE_EXCEPTION << "cuDNN BE API: Unsupported convolution";
+        throwIEException("cuDNN BE API: Unsupported convolution");
 }
 
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
@@ -120,7 +120,7 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs 
         }
     }
 
-    THROW_IE_EXCEPTION << "cuDNN BE API: Unsupported convolution";
+    throwIEException("cuDNN BE API: Unsupported convolution");
 }
 
 bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
@@ -155,15 +155,16 @@ ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
                                          const ngraph::Shape& shape) {
     const int nbDims = shape.size();
     if (nbDims < 4 || nbDims > 5)
-        THROW_IE_EXCEPTION << "Unexpected number of dimensions for Convolution input/output: "
-                           << nbDims;
+        throwIEException(fmt::format(
+            "Unexpected number of dimensions for Convolution input/output: {}",
+            nbDims));
 
     CUDA::DnnBETensorDescriptor desc;
     desc.setUniqueId(id);
     desc.setDataType(element_type);
     desc.setShape(shape);
     desc.setStrides(ngraph::row_major_strides(shape));
-    desc.setAlignment(CUDA::CudaDevice::GetMemoryAllignment());
+    desc.setAlignment(CUDA::memoryAlignment);
     desc.setIsVirtual(false);
     desc.finalize();
     return desc;

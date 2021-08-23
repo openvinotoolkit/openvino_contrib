@@ -3,14 +3,10 @@
 //
 
 #include <array>
-#include <cuda_runtime.h>
 #include <gsl/gsl_assert>
 #include <utility>
 #include "details/cuda_ngraph_import.hpp"
 #include <cuda_operation_registry.hpp>
-#include <cuda/device.hpp>
-#include <gpu/device_pointers.hpp>
-
 #include <cuda/cuda_type_traits.hpp>
 #include "convert.hpp"
 
@@ -44,7 +40,7 @@ ConvertOp::ConvertOp(const CUDA::CreationContext& context,
     Expects(input_element_type >= Type_t::boolean && input_element_type <= Type_t::u64);
     Expects(output_element_type >= Type_t::boolean && output_element_type <= Type_t::u64);
     if (input_element_type == Type_t::u1 || output_element_type == Type_t::u1)
-      THROW_IE_EXCEPTION << "Unsupported data type : " << Type_t::u1;
+        throwIEException("Unsupported data type : Type_t::u1");
     auto input_shape = node->get_input_shape(0);
     auto output_shape = node->get_output_shape(0);
     size_ = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
@@ -57,7 +53,8 @@ void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, O
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
     const auto& stream = context.getThreadContext().stream();
-    const unsigned maxBlockSize = CUDA::CudaDevice::GetMaxGridBlockSizeParams(context.getThreadContext().device().currentId());
+    const unsigned maxBlockSize =
+        context.getThreadContext().device().props().maxThreadsPerBlock;
     const unsigned numBlocks = (size_ % maxBlockSize == 0) ?
                                (size_ / maxBlockSize) :
                                (size_ / maxBlockSize + 1);

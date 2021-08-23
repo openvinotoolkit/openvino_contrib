@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ie_plugin_config.hpp>
-#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
-#include <cpp_interfaces/exception2status.hpp>
+#include "cuda_config.hpp"
+
 #include <fmt/format.h>
 
-#include "cuda_config.hpp"
-#include "cuda/cuda_config.hpp"
+#include <cpp_interfaces/exception2status.hpp>
+#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
+#include <error.hpp>
 
 using namespace CUDAPlugin;
 
@@ -27,7 +27,10 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
                 try {
                     std::stoi(value);
                 } catch (...) {
-                    THROW_IE_EXCEPTION << fmt::format("CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} is not a number !!", value);
+                    throwIEException(
+                        fmt::format("CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
+                                    "is not a number !!",
+                                    value));
                 }
             }
             cuda_throughput_streams_ = value;
@@ -39,7 +42,8 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
         } else if (CONFIG_KEY(DEVICE_ID) == key) {
             deviceId = std::stoi(value);
             if (deviceId > 0) {
-                THROW_IE_EXCEPTION << "Device ID " << deviceId << " is not supported";
+                throwIEException(
+                    fmt::format("Device ID {} is not supported", deviceId));
             }
         } else if (CUDA_CONFIG_KEY(OPTIMIZE) == key) {
           if (value == CUDA_CONFIG_VALUE(YES)) {
@@ -47,12 +51,13 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
           } else if (value == CUDA_CONFIG_VALUE(NO)) {
             optimization = false;
           } else {
-            THROW_IE_EXCEPTION << fmt::format("optimize option value {} is not supported", value);
+              throwIEException(fmt::format(
+                  "optimize option value {} is not supported", value));
           }
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             perfCount = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
-            THROW_IE_EXCEPTION << NOT_FOUND_str << ": " << key;
+            throwIEException(NOT_FOUND_str + ": " + key);
         }
     }
 }
@@ -75,6 +80,6 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     } else if (name == CONFIG_KEY_INTERNAL(CPU_THREADS_PER_STREAM)) {
         return {std::to_string(streams_executor_config_._threadsPerStream)};
     } else {
-        THROW_IE_EXCEPTION << NOT_FOUND_str << ": " << name;
+        throwIEException(NOT_FOUND_str + ": " + name);
     }
 }

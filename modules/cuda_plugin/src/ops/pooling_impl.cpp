@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "converters.hpp"
 #include "pooling_impl.hpp"
-#include "constant_factory.hpp"
+
+#include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/type/element_type.hpp>
+
+#include "constant_factory.hpp"
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 
@@ -119,10 +122,11 @@ std::vector<int> PoolingImpl::paddings_from_ngraph(
     if (begin == end) {
       return;
     }
-    THROW_IE_EXCEPTION
-        << "Error: cuDNN pooling ops support only symmetric padding "
-           "(begin==end), while given: begin "
-        << begin << ", end " << end << " for spatial axis " << axis;
+    throwIEException(
+        fmt::format("Error: cuDNN pooling ops support only symmetric padding "
+                    "(begin==end), while given: begin {}"
+                    ", end {} for spatial axis {}",
+                    begin, end, axis));
   };
 
   if (pooling_mode == CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING) {

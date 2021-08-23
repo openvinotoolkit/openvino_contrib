@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
-#include <cuda_test_constants.hpp>
 #include "behavior/infer_request.hpp"
 
-#include <inference_engine.hpp>
+#include <fmt/format.h>
 
+#include <cuda_test_constants.hpp>
+#include <error.hpp>
+#include <inference_engine.hpp>
+#include <vector>
 using namespace InferenceEngine;
 
 /**
@@ -60,7 +61,8 @@ inline std::pair<size_t, size_t> getTensorHeightWidth(const InferenceEngine::Ten
     // Regardless of layout, dimensions are stored in fixed order
     return std::make_pair(dims.back(), dims.at(size - 2));
   } else {
-    THROW_IE_EXCEPTION << "Tensor does not have height and width dimensions";
+      CUDAPlugin::throwIEException(
+          "Tensor does not have height and width dimensions");
   }
 }
 
@@ -196,7 +198,8 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
       } else if (item.second->getPrecision() == InferenceEngine::Precision::I32) {
         fillBlobImInfo<int32_t>(inputBlob, batchSize, image_size);
       } else {
-        THROW_IE_EXCEPTION << "Input precision is not supported for image info!";
+          CUDAPlugin::throwIEException(
+              "Input precision is not supported for image info!");
       }
       continue;
     }
@@ -216,7 +219,8 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
     } else if (item.second->getPrecision() == InferenceEngine::Precision::I16) {
       fillBlobRandom<int16_t>(inputBlob, Randomize<int16_t>{});
     } else {
-      THROW_IE_EXCEPTION << "Input precision is not supported for " << item.first;
+        CUDAPlugin::throwIEException(
+            fmt::format("Input precision is not supported for {}", item.first));
     }
   }
 }

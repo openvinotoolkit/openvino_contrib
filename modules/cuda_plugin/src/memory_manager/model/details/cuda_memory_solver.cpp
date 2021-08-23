@@ -4,11 +4,11 @@
 
 #include "cuda_memory_solver.hpp"
 
-#include <details/ie_exception.hpp>
-
 #include <algorithm>
-#include <vector>
+#include <details/ie_exception.hpp>
+#include <error.hpp>
 #include <map>
+#include <vector>
 
 namespace CUDAPlugin {
 
@@ -108,7 +108,8 @@ int64_t MemorySolver::maxTopDepth() {
 
 int64_t MemorySolver::getOffset(int id) const {
     auto res = _offsets.find(id);
-    if (res == _offsets.end()) THROW_IE_EXCEPTION << "There are no box for provided ID";
+    if (res == _offsets.end())
+        throwIEException("There are no box for provided ID");
     return res->second;
 }
 

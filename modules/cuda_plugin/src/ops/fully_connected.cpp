@@ -43,7 +43,7 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context, Inputs in
     auto bias = inputs[2];
     auto matrixC = outputs[0];
     for (int i = 0; i < batch_bias_count_; ++i) {
-      stream.transfer(&(reinterpret_cast<uint8_t*>(matrixC.get())[i*bias_size_]), bias.get(), bias_size_);
+      stream.transfer(matrixC + i * bias_size_, bias, bias_size_);
     }
     matmul_op_.Execute(context, inputs.first(inputs.size()-1), outputs, workbuffers);
 }

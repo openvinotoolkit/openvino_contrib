@@ -29,8 +29,8 @@ struct SigmoidTest: testing::Test {
     CUDA::ThreadContext threadContext { { } };
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
-    std::vector<cdevptr_t> inputs { inAlloc.get() };
-    std::vector<devptr_t> outputs { outAlloc.get() };
+    std::vector<cdevptr_t> inputs{inAlloc};
+    std::vector<devptr_t> outputs{outAlloc};
     InferenceEngine::BlobMap empty;
     CUDAPlugin::OperationBase::Ptr operation =
             [this] {
