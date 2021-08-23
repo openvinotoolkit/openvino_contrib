@@ -9,7 +9,7 @@
 #include <cudnn_ops_infer.h>
 #include <fmt/format.h>
 
-#include <details/ie_exception.hpp>
+#include <error.hpp>
 
 namespace CUDAPlugin {
 
@@ -153,7 +153,11 @@ inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
         case CUDA_R_64U: {
             return C<std::uint64_t>::value;
         }
-        default: THROW_IE_EXCEPTION << fmt::format("The ngraph element type {} is not supported by the cuda library", computeType);
+        default:
+            throwIEException(
+                fmt::format("The ngraph element type {} is not supported by "
+                            "the cuda library",
+                            computeType));
     }
 }
 

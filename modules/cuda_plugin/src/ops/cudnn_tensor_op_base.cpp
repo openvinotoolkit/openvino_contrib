@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "cudnn_tensor_op_base.hpp"
-#include "constant_factory.hpp"
-#include "converters.hpp"
+
+#include <fmt/ostream.h>
 
 #include <cuda_operation_registry.hpp>
 #include <ngraph/op/util/attr_types.hpp>
+
+#include "constant_factory.hpp"
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 namespace {
@@ -50,13 +53,17 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const
   const auto& out_partial_shape = node->get_output_partial_shape(0);
   if (in0.shape_.size() > max_supported_shape_size
       || in1.shape_.size() > max_supported_shape_size) {
-    THROW_IE_EXCEPTION << "Currently max supported shape size for CuDnnTensorOpBase operation is: " <<
-      max_supported_shape_size << ' ' << in_partial_shape0 << ' ' << in_partial_shape1;
+      throwIEException(fmt::format(
+          "Currently max supported shape size for CuDnnTensorOpBase operation "
+          "is: {} {} {}",
+          max_supported_shape_size, in_partial_shape0, in_partial_shape1));
   }
   if (out.shape_ != in0.shape_ && out.shape_ != in1.shape_) {
-    THROW_IE_EXCEPTION << "Currently at least one of the input shapes: " <<
-        in_partial_shape0 << ' ' << in_partial_shape1 << " of CuDnnTensorOpBase operation should be"
-        "equal to the output shape: " << out_partial_shape;
+      throwIEException(
+          fmt::format("Currently at least one of the input shapes: {} of "
+                      "CuDnnTensorOpBase operation should be"
+                      "equal to the output shape: {}",
+                      in_partial_shape0, in_partial_shape1, out_partial_shape));
   }
   const auto size = in0.array_.size();
   Expects(in1.array_.size() == size);
@@ -70,8 +77,9 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const
       } else if (in1.array_[i] == 1) {
         has_1_broadcasts = true;
       } else {
-        THROW_IE_EXCEPTION << "Unsupported shapes for CuDnnTensorOpBase operation: " <<
-            in_partial_shape0 << ' ' << in_partial_shape1;
+          throwIEException(fmt::format(
+              "Unsupported shapes for CuDnnTensorOpBase operation: {} {}",
+              in_partial_shape0, in_partial_shape1));
       }
     }
   }
@@ -80,12 +88,16 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const
   if (has_0_broadcasts || has_1_broadcasts) {
     auto broadcast_spec = node->get_autob();
     if (!(broadcast_spec == ngraph::op::AutoBroadcastSpec::NUMPY)) {
-      THROW_IE_EXCEPTION << "Unsupported broadcast type for CuDnnTensorOpBase operation: " <<
-          broadcast_spec.m_type;
+        throwIEException(fmt::format(
+            "Unsupported broadcast type for CuDnnTensorOpBase operation: {}",
+            broadcast_spec.m_type));
     }
     if (has_0_broadcasts && has_1_broadcasts) {
-      THROW_IE_EXCEPTION << "Currently CuDnnTensorOpBase operation supports broadcasting only in one "
-      "of two input shapes: " << in_partial_shape0 << ' ' << in_partial_shape1;
+        throwIEException(
+            fmt::format("Currently CuDnnTensorOpBase operation supports "
+                        "broadcasting only in one "
+                        "of two input shapes: {} {}",
+                        in_partial_shape0, in_partial_shape1));
     }
     bias_index_ = has_0_broadcasts ? 0 : 1;
     dest_index_ = has_0_broadcasts ? 1 : 0;

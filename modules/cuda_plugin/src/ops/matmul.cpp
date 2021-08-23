@@ -100,8 +100,11 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
         case SwitchCase(CUDA_C_64F, CUDA_C_64F): {
             return CUDA_R_64F;
         }
-        default: THROW_IE_EXCEPTION << fmt::format("Not supported combination of A and B types [{}] with C type [{}]",
-                                                   abDataType, cDataType);
+        default:
+            throwIEException(
+                fmt::format("Not supported combination of A and B types [{}] "
+                            "with C type [{}]",
+                            abDataType, cDataType));
     }
 }
 

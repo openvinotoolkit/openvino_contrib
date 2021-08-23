@@ -85,35 +85,13 @@ class PoolingRegistryTest : public testing::Test {
 
 template <class NGraphPoolingNode>
 struct PoolingTest : testing::Test {
-  void SetUp() override {
-    // threadContext.stream()
-  }
-  void TearDown() override { destroyCudaBuffers(); }
-  void destroyCudaBuffers() {
-    for (const auto& element : inputs) {
-      cudaFree(const_cast<void*>(element.get()));
-    }
-    inputs.clear();
-    for (const auto& element : outputs) {
-      cudaFree(element.get());
-    }
-    outputs.clear();
-  }
   void initializeCudaBuffers(gsl::span<const float> in,
                              gsl::span<const float> out) {
-    void* input_buffer{};
-    void* output_buffer{};
-
-    auto success = cudaMalloc(&input_buffer, in.size_bytes());
-    ASSERT_TRUE((success == cudaSuccess && input_buffer != nullptr));
-    success = cudaMalloc(&output_buffer, out.size_bytes());
-    ASSERT_TRUE((success == cudaSuccess && output_buffer != nullptr));
-
-    cudaMemcpy(input_buffer, in.data(), in.size_bytes(),
-               cudaMemcpyHostToDevice);
-
-    inputs.push_back({input_buffer});
-    outputs.push_back({output_buffer});
+    allocs.push_back(threadContext.stream().malloc(in.size_bytes()));
+    threadContext.stream().upload(allocs.back(), in.data(), in.size_bytes());
+    inputs.push_back(allocs.back());
+    allocs.push_back(threadContext.stream().malloc(out.size_bytes()));
+    outputs.push_back(allocs.back());
   }
   void test(gsl::span<const float> input, std::vector<size_t> in_shape,
             gsl::span<const float> output) {
@@ -143,7 +121,6 @@ struct PoolingTest : testing::Test {
     cudaMemcpy(result, outputs[0].get(), output.size_bytes(),
                cudaMemcpyDeviceToHost);
     ASSERT_EQ(0, memcmp(result, output.data(), output.size_bytes()));
-    destroyCudaBuffers();
   }
   const std::vector<TensorID> inputIDs{0};
   const std::vector<TensorID> outputIDs{0};
@@ -151,8 +128,9 @@ struct PoolingTest : testing::Test {
   const size_t kernel_side{2};
   const size_t spatial_stride{2};
   CUDA::ThreadContext threadContext{{}};
-  std::vector<DevicePointer<const void*>> inputs{};
-  std::vector<DevicePointer<void*>> outputs{};
+  std::vector<CUDA::Allocation> allocs;
+  std::vector<DevicePointer<const void*>> inputs;
+  std::vector<DevicePointer<void*>> outputs;
   Blob::Ptr blob;
   InferenceEngine::BlobMap blobs;
   InferenceEngine::BlobMap empty;

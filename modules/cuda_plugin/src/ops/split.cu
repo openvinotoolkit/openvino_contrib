@@ -3,9 +3,7 @@
 //
 
 #include <vector>
-#include <cuda_runtime.h>
 #include <gsl/gsl_assert>
-#include <cuda/device.hpp>
 #include <cuda_operation_registry.hpp>
 #include <utility>
 #include <fmt/format.h>
@@ -52,8 +50,10 @@ SplitOp::SplitOp(const CUDA::CreationContext& context,
         case ngraph::element::Type_t::undefined:
         case ngraph::element::Type_t::dynamic:
         case ngraph::element::Type_t::u1:
-            THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
-                                              static_cast<ngraph::element::Type_t>(input_element_type));
+            throwIEException(fmt::format(
+                "Input element type = {} is not supported by Split operation "
+                "!!",
+                static_cast<ngraph::element::Type_t>(input_element_type)));
     }
     element_type_ = input_element_type;
 
@@ -86,8 +86,11 @@ void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Out
         case ngraph::element::Type_t::u16: return Execute<uint16_t>(context, inputs, outputs, buffers);
         case ngraph::element::Type_t::u32: return Execute<uint32_t>(context, inputs, outputs, buffers);
         case ngraph::element::Type_t::u64: return Execute<uint64_t>(context, inputs, outputs, buffers);
-        default: THROW_IE_EXCEPTION << fmt::format("Input element type = {} is not supported by Split operation !!",
-                                                   static_cast<ngraph::element::Type_t>(element_type_));
+        default:
+            throwIEException(fmt::format(
+                "Input element type = {} is not supported by Split operation "
+                "!!",
+                static_cast<ngraph::element::Type_t>(element_type_)));
     }
 }
 
@@ -104,7 +107,8 @@ void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Out
                                (num_split_chunks_ / maxBlockSize + 1);
     const unsigned threadsPerBlock = (numBlocks == 1) ? num_split_chunks_ : maxBlockSize;
     auto outputPtrs = buffers.mutable_buffers[0];
-    stream.upload(outputPtrs.get(), reinterpret_cast<T **>(outputs.data()), sizeof(T *) * num_splits_);
+    stream.upload(outputPtrs, reinterpret_cast<T**>(outputs.data()),
+                  sizeof(T*) * num_splits_);
     auto in = inputs[0];
     split<T><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
         num_split_chunks_,

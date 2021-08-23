@@ -55,16 +55,17 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
 
   Expects(outputs.size() == 1);
 
-  const void * imworkbuffer = workbuffers.immutable_buffers.empty() ? nullptr : workbuffers.immutable_buffers[0].get();
   void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
 
   const auto& threadContext = context.getThreadContext();
   const auto& dnnHandle = threadContext.dnnHandle();
   const auto& stream = threadContext.stream();
-  if (inputs.size() == 4) {
-    stream.transfer(reinterpret_cast<uint8_t*>(outputs[ArgIndices4Ins::dinput].get()), imworkbuffer, conv_in_bytes_);
+  if (inputs.size() == 4 && conv_in_bytes_) {
+      stream.transfer(outputs[ArgIndices4Ins::dinput],
+                      workbuffers.immutable_buffers.at(0), conv_in_bytes_);
   } else {
-    stream.transfer(reinterpret_cast<uint8_t*>(outputs[ArgIndices3Ins::dinput].get()), imworkbuffer, conv_in_bytes_);
+      stream.transfer(outputs[ArgIndices3Ins::dinput],
+                      workbuffers.immutable_buffers.at(0), conv_in_bytes_);
   }
   throwIfError(::cudnnConvolutionBackwardData(
       dnnHandle.get(),
@@ -86,7 +87,8 @@ void FusedConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOpera
   Expects(buffers.size() == 1);
   const size_t repeat = conv_in_bytes_ / add_in_bytes_;
   for (size_t i = 0; i < repeat; ++i) {
-    CUDA::DefaultStream::stream().upload(reinterpret_cast<uint8_t*>(buffers[0].get())+i*add_in_bytes_, add_constant_.data(), add_in_bytes_);
+      CUDA::DefaultStream::stream().upload(buffers[0] + i * add_in_bytes_,
+                                           add_constant_.data(), add_in_bytes_);
   }
   add_node_.reset();
 }

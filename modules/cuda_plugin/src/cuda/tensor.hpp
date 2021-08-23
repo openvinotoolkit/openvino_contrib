@@ -10,15 +10,15 @@
 inline void throwIfError(cutensorStatus_t err,
                          const std::experimental::source_location& location =
                              std::experimental::source_location::current()) {
-  if (err != CUTENSOR_STATUS_SUCCESS)
-    CUDA::throwIEException(cutensorGetErrorString(err), location);
+    if (err != CUTENSOR_STATUS_SUCCESS)
+        CUDAPlugin::throwIEException(cutensorGetErrorString(err), location);
 }
 
 inline void logIfError(cutensorStatus_t err,
                        const std::experimental::source_location& location =
                            std::experimental::source_location::current()) {
-  if (err != CUTENSOR_STATUS_SUCCESS)
-    CUDA::logError(cutensorGetErrorString(err), location);
+    if (err != CUTENSOR_STATUS_SUCCESS)
+        CUDAPlugin::logError(cutensorGetErrorString(err), location);
 }
 
 namespace CUDA {
