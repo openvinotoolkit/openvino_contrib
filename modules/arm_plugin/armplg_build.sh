@@ -36,7 +36,7 @@ cloneSrcTree()
     SRCURL=$1
     shift
     while [ $# -gt 0 ]; do
-        git lfs clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
+        git clone --recurse-submodules --shallow-submodules --depth 1 --branch=$1 $SRCURL $DESTDIR && return 0
         shift
     done
     return 1
@@ -164,8 +164,8 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
         $OMZ_HOME/demos && \
   cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
   cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
-  mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos) && \
-  cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos) || \
+  mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos && \
+  cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos || \
   fail 21 "Open Model Zoo package structure preparation failed. Stopping"
 fi
 
