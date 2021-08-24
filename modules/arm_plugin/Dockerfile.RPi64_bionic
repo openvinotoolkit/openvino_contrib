@@ -1,7 +1,10 @@
 #This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
 #https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
 
-FROM ubuntu:18.04
+#Some pieces of Dokerfile are taken from OpenVINO CI image:
+#https://github.com/intel-innersource/frameworks.ai.openvino.qa.dockerfiles/blob/master/dldt_build/debian_9_arm/Dockerfile
+
+FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV PAKAGE_UPDATES_OF 20210215
@@ -9,20 +12,20 @@ ENV PAKAGE_UPDATES_OF 20210215
 #Prerequisite installation
 RUN apt-get update && \
     apt-get -y upgrade && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic main restricted > /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates main restricted >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-backports main restricted universe multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security main restricted >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic main >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic universe >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic-updates main >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic-security main >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted > /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates main restricted >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-backports main restricted universe multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security main restricted >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal main >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal universe >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-updates main >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-security main >> /etc/apt/sources.list && \
     dpkg --add-architecture arm64 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -33,9 +36,9 @@ RUN apt-get update && \
         gnupg \
         p7zip-full \
         chrpath \
+        curl \
         wget \
         git \
-        git-lfs \
         scons \
         cmake \
         build-essential \
@@ -46,6 +49,8 @@ RUN apt-get update && \
         libpython3-dev:arm64 \
         libprotoc-dev \
         protobuf-compiler \
+        libffi-dev \
+        libssl-dev \
         libusb-1.0-0-dev:arm64 \
         libgtk-3-dev:arm64 \
         libavcodec-dev:arm64 \
@@ -56,14 +61,37 @@ RUN apt-get update && \
     pip3 install cython && \
     rm -rf /var/lib/apt/lists/*
 
-#cmake 3.13 or higher is required to build OpenVINO
-RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null && \
-    apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main' && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        cmake \
-    && \
-    rm -rf /var/lib/apt/lists/*
+# To cross-compile Python3.7 we need to first compile it for the host
+RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
+    tar -xf Python-3.7.9.tar.xz && \
+    cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
+    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy cython
+
+# Cross-compile Python3.7 for ARM
+RUN cd Python-3.7.9 && make distclean && \
+    ./configure \
+        --host=aarch64-linux-gnu \
+        --build=x86_64-linux-gnu \
+        --disable-ipv6 \
+        --enable-shared \
+        --prefix=/opt/python3.7_arm \
+        ac_cv_file__dev_ptmx=no \
+        ac_cv_file__dev_ptc=no && \
+    make -j4 && make altinstall
+
+RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.4.tar.gz && \
+    tar xf cmake-3.13.4.tar.gz && \
+    (cd cmake-3.13.4 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
+    rm -rf cmake-3.13.4 cmake-3.13.4.tar.gz
+
+# Replace exceptional Python version. It's used in case of failed test check which we
+# have in our case because CMake tries to run cross-compiled python to detect version.
+RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
+
+RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
 
 RUN git config --global user.name "Your Name" && \
     git config --global user.email "you@example.com"
