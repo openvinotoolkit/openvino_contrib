@@ -105,6 +105,7 @@ RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/
     sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
 
 RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
+RUN rm /usr/bin/lsb_release
 
 RUN git config --global user.name "Your Name" && \
     git config --global user.email "you@example.com"
