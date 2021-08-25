@@ -92,7 +92,7 @@ PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi,python3 \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=OFF \
       -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
-      -DPYTHON3_INCLUDE_PATH=/opt/python3.7_arm/include \
+      -DPYTHON3_INCLUDE_PATH=/opt/python3.7_arm/include/python3.7m \
       -DPYTHON3_LIBRARIES=/opt/python3.7_arm/lib \
       -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/python3.7/site-packages/numpy/core/include \
       -D CMAKE_USE_RELATIVE_PATHS=ON \
