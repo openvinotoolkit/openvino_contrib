@@ -22,7 +22,18 @@ bool change_concat_to_concat_optimized(ngraph::pattern::Matcher &m) {
 
     auto concat = std::dynamic_pointer_cast<ngraph::op::v0::Concat>(m.get_match_root());
     for (auto& in : concat->inputs()) {
-        if (dynamic_cast<ngraph::op::Constant*>(in.get_node())) {
+        auto source_output = in.get_source_output();
+        if (dynamic_cast<ngraph::op::Constant*>(source_output.get_node())) {
+            return false;
+        }
+        unsigned num_concats = 0;
+        for (auto& out : source_output.get_target_inputs()) {
+            if (dynamic_cast<ngraph::op::v0::Concat*>(out.get_node())) {
+                num_concats += 1;
+            }
+        }
+        // NOTE: Apply ConcatOptimized node only for nodes with single output for Concat
+        if (num_concats > 1) {
             return false;
         }
     }
