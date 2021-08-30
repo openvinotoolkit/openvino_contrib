@@ -36,9 +36,9 @@ MatMulOp::MatMulOp(const CreationContext& context,
     Expects(inputBShape.size() > 0);
     bool transposeA = op.get_transpose_a();
     bool transposeB = op.get_transpose_b();
+    const int batchACount = GetMatrixNumBatches(inputAShape);
+    const int batchBCount = GetMatrixNumBatches(inputBShape);
     BroadcastShapes(inputAShape, transposeA, inputBShape, transposeB, outputCShape);
-    int batchACount = GetMatrixNumBatches(inputAShape);
-    int batchBCount = GetMatrixNumBatches(inputBShape);
     batch_count_ = std::max(batchACount, batchBCount);
     const size_t rowsA = *(inputAShape.end()-!transposeA-1);
     const size_t colsA = *(inputAShape.end()-transposeA-1);
@@ -117,8 +117,9 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
 }
 
 int MatMulOp::GetMatrixNumBatches(const ngraph::Shape& matrixShape) {
-    Expects(matrixShape.size() >= 2);
-    return std::accumulate(matrixShape.begin(), matrixShape.end()-2, 1, std::multiplies<size_t>());
+    return matrixShape.size() >= 2
+               ? std::accumulate(matrixShape.begin(), matrixShape.end() - 2, 1, std::multiplies<size_t>())
+               : 1;
 }
 
 void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
@@ -146,6 +147,22 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
         transposeB = false;
     } else if (matrixAShape.size() > 1 && matrixBShape.size() > 1) {
         // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
+        auto broadcastNdToMd = [](const auto& shapeToBroadcast, auto& broadcastShape) {
+            Expects(shapeToBroadcast.size() > broadcastShape.size());
+            const size_t abShapeDiff = shapeToBroadcast.size() - broadcastShape.size();
+            std::vector<size_t> newAxies;
+            newAxies.reserve(shapeToBroadcast.size());
+            newAxies.insert(newAxies.end(), shapeToBroadcast.begin(), shapeToBroadcast.begin() + abShapeDiff);
+            newAxies.insert(newAxies.end(), broadcastShape.begin(), broadcastShape.end());
+            broadcastShape = ngraph::Shape{newAxies};
+        };
+        const size_t batchA = GetMatrixNumBatches(matrixAShape);
+        const size_t batchB = GetMatrixNumBatches(matrixBShape);
+        if (batchA > batchB) {
+            broadcastNdToMd(matrixAShape, matrixBShape);
+        } else if (batchA < batchB) {
+            broadcastNdToMd(matrixBShape, matrixAShape);
+        }
         Expects(GetMatrixNumBatches(matrixAShape) == GetMatrixNumBatches(matrixBShape));
     }
     Expects(*(matrixAShape.end()-transposeA-1) == *(matrixBShape.end()-!transposeB-1));
