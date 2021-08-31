@@ -9,16 +9,16 @@
 
 namespace ngraph::pass {
 
-class FuseConvolution2DWithBiasAdd : public ngraph::pass::MatcherPass {
+class FuseConvolutionWithBiasAdd : public ngraph::pass::MatcherPass {
  public:
   NGRAPH_RTTI_DECLARATION;
-  FuseConvolution2DWithBiasAdd();
+  FuseConvolutionWithBiasAdd();
 };
 
-class FuseConvolution2DWithBiasaddAdd : public ngraph::pass::MatcherPass {
+class FuseConvolutionWithBiasaddAdd : public ngraph::pass::MatcherPass {
  public:
   NGRAPH_RTTI_DECLARATION;
-  FuseConvolution2DWithBiasaddAdd();
+  FuseConvolutionWithBiasaddAdd();
 };
 
 class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
@@ -37,18 +37,18 @@ class SinkSigmoidToFusedConvolution : public ngraph::pass::MatcherPass {
   SinkSigmoidToFusedConvolution();
 };
 
-class CudaFuseConv2DBiasAddActivation: public ngraph::pass::GraphRewrite {
+class CudaFuseConvBiasAddActivation: public ngraph::pass::GraphRewrite {
  public:
   NGRAPH_RTTI_DECLARATION;
-  CudaFuseConv2DBiasAddActivation();
+  CudaFuseConvBiasAddActivation();
 };
 
-class CudaFuseConvBackpropData2DAdd : public ngraph::pass::MatcherPass {
+class CudaFuseConvBackpropDataAdd : public ngraph::pass::MatcherPass {
  public:
   static constexpr auto Name = "FuseConvBackpropData2DAdd";
 
   NGRAPH_RTTI_DECLARATION;
-  CudaFuseConvBackpropData2DAdd();
+  CudaFuseConvBackpropDataAdd();
 };
 
 }  // namespace ngraph::pass
