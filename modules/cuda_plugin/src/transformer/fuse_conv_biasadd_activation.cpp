@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "fuse_conv2d_biasadd_activation.hpp"
+#include "fuse_conv_biasadd_activation.hpp"
 
 #include <exec_graph_info.hpp>
 #include <ngraph/node.hpp>
@@ -274,10 +274,10 @@ bool fuse_convolution_backprop_data_with_add(ngraph::pattern::Matcher &m) {
   return true;
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolution2DWithBiasAdd,
+NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolutionWithBiasAdd,
                        "FuseConvolutionWithBiasAdd", 0);
 
-ngraph::pass::FuseConvolution2DWithBiasAdd::FuseConvolution2DWithBiasAdd() {
+ngraph::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
   auto conv = ngraph::pattern::wrap_type<opset1::Convolution>(
       pattern::consumers_count(1));
   auto add =
@@ -292,10 +292,10 @@ ngraph::pass::FuseConvolution2DWithBiasAdd::FuseConvolution2DWithBiasAdd() {
   register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolution2DWithBiasaddAdd,
-                       "FuseConvolution2DWithBiasaddAdd", 0);
+NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolutionWithBiasaddAdd,
+                       "FuseConvolutionWithBiasAddAdd", 0);
 
-pass::FuseConvolution2DWithBiasaddAdd::FuseConvolution2DWithBiasaddAdd() {
+pass::FuseConvolutionWithBiasaddAdd::FuseConvolutionWithBiasaddAdd() {
   auto fused_convolution =
     ngraph::pattern::wrap_type<FusedConv>(pattern::consumers_count(1));
   auto relu =
@@ -308,7 +308,7 @@ pass::FuseConvolution2DWithBiasaddAdd::FuseConvolution2DWithBiasaddAdd() {
   };
 
   auto m = std::make_shared<ngraph::pattern::Matcher>(
-      add, "FuseConvolution2DWithBiasaddAdd");
+      add, "FuseConvolutionWithBiasaddAdd");
   register_matcher(m, callback);
 }
 
@@ -348,21 +348,21 @@ pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
   register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConv2DBiasAddActivation,
+NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBiasAddActivation,
                        "CudaFuseConv2DBiasAddActivation", 0);
 
-ngraph::pass::CudaFuseConv2DBiasAddActivation::CudaFuseConv2DBiasAddActivation() {
-  add_matcher<FuseConvolution2DWithBiasAdd>();
-  add_matcher<FuseConvolution2DWithBiasaddAdd>();
+ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
+  add_matcher<FuseConvolutionWithBiasAdd>();
+  add_matcher<FuseConvolutionWithBiasaddAdd>();
   add_matcher<SinkReluToFusedConvolution>();
   // NOTE: Commented due to bad performance
   //add_matcher<SinkSigmoidToFusedConvolution>();
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBackpropData2DAdd,
-                       ngraph::pass::CudaFuseConvBackpropData2DAdd::Name, 0);
+NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBackpropDataAdd,
+                       ngraph::pass::CudaFuseConvBackpropDataAdd::Name, 0);
 
-ngraph::pass::CudaFuseConvBackpropData2DAdd::CudaFuseConvBackpropData2DAdd() {
+ngraph::pass::CudaFuseConvBackpropDataAdd::CudaFuseConvBackpropDataAdd() {
   auto conv_backprop_data =
       ngraph::pattern::wrap_type<ngraph::op::v1::ConvolutionBackpropData>(pattern::consumers_count(1));
   auto add =
@@ -373,6 +373,6 @@ ngraph::pass::CudaFuseConvBackpropData2DAdd::CudaFuseConvBackpropData2DAdd() {
   };
 
   auto m = std::make_shared<ngraph::pattern::Matcher>(
-      add, ngraph::pass::CudaFuseConvBackpropData2DAdd::Name);
+      add, ngraph::pass::CudaFuseConvBackpropDataAdd::Name);
   register_matcher(m, callback);
 }

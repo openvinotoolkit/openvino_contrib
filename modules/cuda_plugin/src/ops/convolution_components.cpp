@@ -161,7 +161,7 @@ FusedConvolutionParams::FusedConvolutionParams(
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
     const CUDAPlugin::nodes::FusedConvBackpropData2D& node)
     : conv_{ node } {
-    Expects(conv_.NumberOfSpatialDims() == 2);
+    Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionBackwardDataIndices<4>::add);
         Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionBackwardDataIndices<4>::add));
