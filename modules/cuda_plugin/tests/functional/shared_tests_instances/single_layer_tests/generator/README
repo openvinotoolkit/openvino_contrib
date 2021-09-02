@@ -1,0 +1,56 @@
+================
+How does it work
+================
+
+    Every time you run this script, ALL automatically generated tests are re-created.
+    Tests for new operator instances will be added. If you remove some IR xml model
+    the corresponding tests are also removed. This takes into account equal operators,
+    which produce one unique test.
+
+    If you need some operator tests to remain untouched you have to disable corresponding
+    test generator. The easiest way to do that is to comment out its registration in main.py.
+    This is already done for cuda-fused operators which require exported IR models with
+    applied cuda graph transformations.
+
+=========================
+How to run test generator
+=========================
+
+1. Install dependencies:
+    $ python3 -m pip install -r ./requirements.txt
+
+2. Run:
+    ./main.py --models <Path to root folder containing IR xml models>
+
+    Root folder parameter is a full path to specially organized folder which
+contains all OpenVINO IR xml models to process. Paths within this folder have to
+follow the following convention:
+    <...>/<model-name>/<precission>/<xml-file-name>.xml
+where:
+    ...             Relative (to root folder) path of any length
+    model-name      Any readable name which is used as a 'model name' or a part of 'model name'.
+    precission      Has to be 'FP32', 'FP16', etc.
+    xml-file-name   Is ignored if there is a single xml model within the same folder. But if
+                    there are several IR xml models within the same folder (like in Tacotron2)
+                    xml-file-name is used as a model name suffix, so the resulting model name will
+                    be "<model-name>-<xml-file-name>"
+
+
+============================
+How to disable specific test
+============================
+Each generated test is prefixed with a title comment. That comment contains a line similar to
+the following:
+```
+// Operators: 'efficientdet-d1-tf:opid276' [FP16, FP32], 'efficientdet-d1-tf:opid304' [FP16, FP32], 'efficientdet-d1-tf:opid332' [FP16, FP32]
+```
+Copy any of the 'efficientdet-d1-tf:opid276', 'efficientdet-d1-tf:opid304' or 'efficientdet-d1-tf:opid332' to
+the 'cfg_disabled_tests.py' and specify the reason why you disabled this test. Next time the script is launched
+the test name will be prefixed with 'DISABLED_'.
+
+
+===================================
+How to disable some test for 'FP16'
+===================================
+Similar to how we disable tests, copy test alias string like 'efficientdet-d1-tf:opid276' to
+'cfg_overridden_precisions.py' and specify only those precisions you want to test.

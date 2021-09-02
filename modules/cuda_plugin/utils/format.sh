@@ -22,7 +22,7 @@ cd "$(git rev-parse --show-toplevel)"
 git diff --diff-filter=ACMR -U0 origin/develop | perl -ne '
   if (m|^\+\+\+ b/(.*)|) {
     $newname = $1;
-    if ($name =~ /^.+(\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh)$/) {
+    if ($name =~ /^.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
       print "clang-format'$ver'$lines -style=file -i $name\n"
     }
     $name = $newname;
@@ -33,7 +33,7 @@ git diff --diff-filter=ACMR -U0 origin/develop | perl -ne '
     $lines = "$lines -lines=$1:$to"
   }
   END {
-    if ($name =~ /^.+(\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh)$/) {
+    if ($name =~ /^.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
       print "clang-format'$ver'$lines -style=file -i $name\n"
     }
   }' | sh
