@@ -3,16 +3,11 @@
 //
 
 #include "multi-device/multi_device_config.hpp"
-#include "behavior/exec_graph_info.hpp"
+#include "behavior/executable_network/exec_graph_info.hpp"
 
 using namespace BehaviorTestsDefinitions;
 
 namespace {
-    const std::vector<InferenceEngine::Precision> netPrecisions = {
-            InferenceEngine::Precision::FP32,
-            InferenceEngine::Precision::FP16
-    };
-
     const std::vector<std::map<std::string, std::string>> configs = {
             {},
     };
@@ -20,17 +15,15 @@ namespace {
             {{ InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES , CommonTestUtils::DEVICE_CPU}}
     };
 
-    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, ExecGraphTests,
+    INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests, ExecutableNetworkBaseTest,
                             ::testing::Combine(
-                                    ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
                                     ::testing::ValuesIn(configs)),
-                            ExecGraphTests::getTestCaseName);
+                            ExecutableNetworkBaseTest::getTestCaseName);
 
-    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, ExecGraphTests,
+    INSTANTIATE_TEST_CASE_P(smoke_Multi_BehaviorTests, ExecutableNetworkBaseTest,
                             ::testing::Combine(
-                                    ::testing::ValuesIn(netPrecisions),
                                     ::testing::Values(CommonTestUtils::DEVICE_MULTI),
                                     ::testing::ValuesIn(multiConfigs)),
-                            ExecGraphTests::getTestCaseName);
+                            ExecutableNetworkBaseTest::getTestCaseName);
 }  // namespace
