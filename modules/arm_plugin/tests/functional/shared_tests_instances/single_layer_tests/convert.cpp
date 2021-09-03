@@ -20,6 +20,7 @@ const std::vector<InferenceEngine::Precision> targetPrecisionsU8 = {
 
 INSTANTIATE_TEST_CASE_P(smoke_ConvertU8, ConversionLayerTest,
                         ::testing::Combine(
+                                ::testing::Values(ngraph::helpers::ConversionTypes::CONVERT),
                                 ::testing::Values(inShape),
                                 ::testing::Values(InferenceEngine::Precision::U8),
                                 ::testing::ValuesIn(targetPrecisionsU8),
