@@ -18,7 +18,7 @@ const std::vector<InferenceEngine::Precision> targetPrecisionsU8 = {
         InferenceEngine::Precision::I32,
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertU8, ConvertLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvertU8, ConversionLayerTest,
                         ::testing::Combine(
                                 ::testing::Values(inShape),
                                 ::testing::Values(InferenceEngine::Precision::U8),
@@ -34,7 +34,7 @@ const std::vector<InferenceEngine::Precision> targetPrecisionsU16 = {
         // InferenceEngine::Precision::U32,
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertU16, ConvertLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvertU16, ConversionLayerTest,
                         ::testing::Combine(
                                 ::testing::Values(ngraph::helpers::ConversionTypes::CONVERT),
                                 ::testing::Values(inShape),
@@ -50,7 +50,7 @@ const std::vector<InferenceEngine::Precision> targetPrecisionsI16 = {
         InferenceEngine::Precision::I32,
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertI16, ConvertLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvertI16, ConversionLayerTest,
                         ::testing::Combine(
                                 ::testing::Values(ngraph::helpers::ConversionTypes::CONVERT),
                                 ::testing::Values(inShape),
@@ -68,7 +68,7 @@ const std::vector<InferenceEngine::Precision> precisions = {
         InferenceEngine::Precision::FP32,
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertAll, ConvertLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_ConvertAll, ConversionLayerTest,
                         ::testing::Combine(
                                 ::testing::Values(ngraph::helpers::ConversionTypes::CONVERT),
                                 ::testing::Values(inShape),
