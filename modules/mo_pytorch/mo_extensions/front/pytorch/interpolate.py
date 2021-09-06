@@ -32,9 +32,9 @@ class InterpolateReplacer(FrontReplacementOp):
             mode = 'linear'
         align_corners = node.module.align_corners
 
+        shape_as_input = len(node.in_nodes()) == 2
+
         if mode == 'linear':
-            height = node.module.size[0] if node.module.size else -1
-            width = node.module.size[1] if node.module.size else -1
             dims = node.module.dims
             axes = np.arange(2, dims)
             pads = np.zeros(dims, dtype=np.int32)
@@ -42,8 +42,6 @@ class InterpolateReplacer(FrontReplacementOp):
             attrs = {
                 'name': node.name,
                 'version': 'opset4',
-                'height': height,
-                'width': width,
                 'mode': mode,
                 'axes': axes,
                 'pads_begin': pads,
@@ -52,7 +50,13 @@ class InterpolateReplacer(FrontReplacementOp):
                 'shape_calculation_mode': 'sizes' if node.module.size else 'scales',
             }
 
-            sizes = Const(graph, {'value': np.array([height, width])}).create_node()
+            if shape_as_input:
+                sizes = node.in_node(1)
+            else:
+                height = node.module.size[0] if node.module.size else -1
+                width = node.module.size[1] if node.module.size else -1
+                sizes = Const(graph, {'value': np.array([height, width])}).create_node()
+
             axes = Const(graph, {'value': axes}).create_node()
             scales = Const(graph, {'value': scales}).create_node()
             interp = Interpolate(graph, attrs).create_node([node.in_node(0), sizes, scales, axes])

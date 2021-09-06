@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from mo.utils.error import Error
 
 # Callback which is executed after nn.Module forward
-def forward_hook(self, inputs, output):
+def forward_hook(self, inputs, output=None):
     # Skip if we already processed as functional hook
     if isinstance(output, OpenVINOTensor) and output.node_name:
         return output
@@ -76,15 +76,16 @@ def forward_hook(self, inputs, output):
 # So we need to introduce own tensor type to track them.
 HANDLED_FUNCTIONS = {}
 class OpenVINOTensor(object):
-    def __init__(self, value):
+    def __init__(self, value=None):
         self._value = value
         self.graph = None
         self.node_name = None
         self.port_id = 0
-        self.shape = value.shape
-        self.requires_grad = self._value.requires_grad
+        # self.shape = value.shape if value else []
+        # self.requires_grad = self._value.requires_grad
+        self.requires_grad = False
         self.device = 'cpu'
-        self.dtype = value.dtype
+        # self.dtype = value.dtype if value else None
         if self.requires_grad:
             raise Error('Model in training mode is used')
 
@@ -98,7 +99,16 @@ class OpenVINOTensor(object):
         return self._value.numel()
 
     def dim(self):
-        return self._value.dim()
+        return 5
+        # return self._value.dim()
+    
+    @property
+    def shape(self):
+        class Shape(nn.Module):
+            def __init__(self):
+                super().__init__()
+
+        return forward_hook(Shape(), (self,))
 
     def size(self, dim=None):
         return self._value.size(dim) if dim else self._value.size()
@@ -120,21 +130,20 @@ class OpenVINOTensor(object):
 
     # Overrides += over tensors
     def __iadd__(self, a):
-        self._value += a._value
+        # self._value += a._value
         class Add(nn.Module):
             pass
 
         # NOTE: need to recreate OpenVINOTensor to run forward_hook
-        output = OpenVINOTensor(self._value)
+        output = OpenVINOTensor()
         output.graph = self.graph
-        return forward_hook(Add(), (self, a), output)
+        return forward_hook(Add(), (self, a))
 
     def __add__(self, a):
         if isinstance(a, OpenVINOTensor):
             class Add(nn.Module):
                 pass
-            res = self._value + a._value
-            return forward_hook(Add(), (self, a), res)
+            return forward_hook(Add(), (self, a))
         else:
             class Add(nn.Module):
                 def __init__(self, value):
@@ -142,8 +151,7 @@ class OpenVINOTensor(object):
                     value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
                     self.register_buffer('add', value)
 
-            res = self._value + a
-            return forward_hook(Add(a), (self,), res)
+            return forward_hook(Add(a), (self,))
 
     def __radd__(self, a):
         if isinstance(a, OpenVINOTensor):
@@ -167,6 +175,9 @@ class OpenVINOTensor(object):
         begin_mask = []
         end_mask = []
         shrink_axis_mask = []
+        
+        if not isinstance(key, tuple):
+            key = (key,)
 
         for item in key:
             if isinstance(item, int):
@@ -198,10 +209,10 @@ class OpenVINOTensor(object):
                 self.register_buffer('begin_id', torch.tensor(begin))
                 self.register_buffer('end_id', torch.tensor(end))
 
-        res = self._value[key] 
+        # res = self._value[key] 
         sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
 
-        return forward_hook(sslice, (self,), res)
+        return forward_hook(sslice, (self,))
 
     # a * value
     def __mul__(self, a):
@@ -302,13 +313,11 @@ class OpenVINOTensor(object):
         return res
 
     def sigmoid(self):
-        res = self._value.sigmoid()
-
         class Sigmoid(nn.Module):
             def __init__(self):
                 super().__init__()
 
-        return forward_hook(Sigmoid(), (self,), res)
+        return forward_hook(Sigmoid(), (self,))
 
     def contiguous(self):
         res = OpenVINOTensor(self._value.contiguous())
@@ -340,7 +349,7 @@ def implements(torch_function):
 def register_functional_hook(func):
     @implements(func)
     def function_hook(input, *args, **kwargs):
-        output = OpenVINOTensor(func(input.tensor(), *args, **kwargs))
+        output = OpenVINOTensor()
         output.graph = input.graph
         return output
 
@@ -363,8 +372,8 @@ def function_hook(input, *args, **kwargs):
             self.return_indices = return_indices
             self.ceil_mode = ceil_mode
 
-    output = F.max_pool2d(input.tensor(), *args, **kwargs)
-    return forward_hook(MaxPool2d(*args, **kwargs), (input,), output)
+    # output = F.max_pool2d(input.tensor(), *args, **kwargs)
+    return forward_hook(MaxPool2d(*args, **kwargs), (input,))
 
 
 @implements(F.avg_pool2d)
@@ -376,8 +385,8 @@ def function_hook(input, *args, **kwargs):
             self.stride = stride
             self.padding = padding
 
-    output = F.avg_pool2d(input.tensor(), *args, **kwargs)
-    return forward_hook(AvgPool2d(*args, **kwargs), (input,), output)
+    # output = F.avg_pool2d(input.tensor(), *args, **kwargs)
+    return forward_hook(AvgPool2d(*args, **kwargs), (input,))
 
 
 @implements(torch.relu_)
@@ -387,8 +396,7 @@ def function_hook(input, *args, **kwargs):
         def __init__(self):
             super().__init__()
 
-    output = torch.relu_(input.tensor(), *args, **kwargs)
-    return forward_hook(ReLU(*args, **kwargs), (input,), output)
+    return forward_hook(ReLU(*args, **kwargs), (input,))
 
 
 @implements(torch.tanh)
@@ -433,8 +441,7 @@ def function_hook(input, *args, **kwargs):
         def __init__(self, inplace):
             super().__init__()
 
-    output = F.relu(input.tensor(), *args, **kwargs)
-    return forward_hook(ReLU(*args, **kwargs), (input,), output)
+    return forward_hook(ReLU(*args, **kwargs), (input,))
 
 
 @implements(torch.sigmoid)
@@ -444,8 +451,7 @@ def function_hook(input, *args, **kwargs):
         def __init__(self):
             super().__init__()
 
-    output = torch.sigmoid(input.tensor(), *args, **kwargs)
-    return forward_hook(Sigmoid(*args, **kwargs), (input,), output)
+    return forward_hook(Sigmoid(*args, **kwargs), (input,))
 
 
 @implements(F.softmax)
@@ -468,8 +474,7 @@ def function_hook(input, *args, **kwargs):
             super().__init__()
             self.negative_slope = negative_slope
 
-    output = F.leaky_relu(input.tensor(), *args, **kwargs)
-    return forward_hook(LeakyReLU(*args, **kwargs), (input,), output)
+    return forward_hook(LeakyReLU(*args, **kwargs), (input,))
 
 
 @implements(F.batch_norm)
@@ -489,19 +494,15 @@ def function_hook(input, *args, **kwargs):
                 'bias': bias,
             })
 
-    output = F.batch_norm(input.tensor(), *args, **kwargs)
-    return forward_hook(BatchNorm2d(*args, **kwargs), (input,), output)
+    return forward_hook(BatchNorm2d(*args, **kwargs), (input,))
 
 
 @implements(torch.conv2d)
-@implements(torch.conv3d)
 def function_hook(input, weight, bias, *args, **kwargs):
 
-    base = nn.Conv2d if input.dim() == 4 else nn.Conv3d
-
-    class Convolution(base):
+    class Convolution(nn.Conv2d):
         def __init__(self, weight, bias, stride, padding, dilation, groups):
-            super().__init__(in_channels=input.shape[1],
+            super().__init__(in_channels=weight.shape[1] * groups,
                              out_channels=weight.shape[0],
                              kernel_size=weight.shape[2:],
                              stride=stride,
@@ -514,11 +515,28 @@ def function_hook(input, weight, bias, *args, **kwargs):
                 params['bias'] = bias
             self.load_state_dict(params)
 
-    if input.dim() == 4:
-        output = torch.conv2d(input.tensor(), weight, bias, *args, **kwargs)
-    elif input.dim() == 5:
-        output = torch.conv3d(input.tensor(), weight, bias, *args, **kwargs)
-    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,), output)
+    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,))
+
+
+@implements(torch.conv3d)
+def function_hook(input, weight, bias, *args, **kwargs):
+
+    class Convolution(nn.Conv3d):
+        def __init__(self, weight, bias, stride, padding, dilation, groups):
+            super().__init__(in_channels=weight.shape[1] * groups,
+                             out_channels=weight.shape[0],
+                             kernel_size=weight.shape[2:],
+                             stride=stride,
+                             padding=padding,
+                             dilation=dilation,
+                             groups=groups,
+                             bias=not bias is None)
+            params = {'weight': weight}
+            if not bias is None:
+                params['bias'] = bias
+            self.load_state_dict(params)
+
+    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,))
 
 
 @implements(torch.flatten)
@@ -529,8 +547,7 @@ def function_hook(input, *args, **kwargs):
             super().__init__()
             self.axis = axis
 
-    output = torch.flatten(input.tensor(), *args, **kwargs)
-    return forward_hook(Flatten(*args, **kwargs), (input,), output)
+    return forward_hook(Flatten(*args, **kwargs), (input,))
 
 
 @implements(F.instance_norm)
@@ -547,15 +564,15 @@ def function_hook(input, *args, **kwargs):
             self.eps = eps
             self.dims = input.dim()
 
-    output = F.instance_norm(input.tensor(), *args, **kwargs)
-    return forward_hook(InstanceNorm(*args, **kwargs), (input,), output)
+    # output = F.instance_norm(input.tensor(), *args, **kwargs)
+    return forward_hook(InstanceNorm(*args, **kwargs), (input,))
 
 
 @implements(F.interpolate)
-def function_hook(input, *args, **kwargs):
+def function_hook(input, size, scale_factor, mode, align_corners, recompute_scale_factor):
 
     class Upsample(nn.Module):
-        def __init__(self, size, scale_factor, mode, align_corners, recompute_scale_factor):
+        def __init__(self):
             super().__init__()
             self.size = size
             self.scale_factor = scale_factor
@@ -564,8 +581,10 @@ def function_hook(input, *args, **kwargs):
             self.recompute_scale_factor = recompute_scale_factor
             self.dims = input.dim()
 
-    output = F.interpolate(input.tensor(), *args, **kwargs)
-    return forward_hook(Upsample(*args, **kwargs), (input,), output)
+    if isinstance(size, OpenVINOTensor):
+        return forward_hook(Upsample(), (input, size))
+    else:
+        return forward_hook(Upsample(), (input,))
 
 
 # x - value
@@ -592,7 +611,7 @@ def concat(inputs, dim=0):
         return original_cat(inputs, dim)
 
     tensors = [inp.tensor() for inp in inputs]
-    output = OpenVINOTensor(original_cat(tensors, dim))
+    output = OpenVINOTensor()
     output.graph = inputs[0].graph
 
     forward_hook(Concat(dim), inputs, output)
