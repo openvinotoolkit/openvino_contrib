@@ -68,6 +68,7 @@ def forward_hook(self, inputs, output=None):
     if not isinstance(output, OpenVINOTensor):
         output = OpenVINOTensor(output)
         output.graph = graph
+        output.dims = inputs[0].dims
 
     output.node_name = name
     return output
@@ -86,6 +87,7 @@ class OpenVINOTensor(object):
         self.requires_grad = False
         self.device = 'cpu'
         # self.dtype = value.dtype if value else None
+        self.dims = 0
         if self.requires_grad:
             raise Error('Model in training mode is used')
 
@@ -96,11 +98,10 @@ class OpenVINOTensor(object):
         return self._value
 
     def numel(self):
-        return self._value.numel()
+        return self
 
     def dim(self):
-        return 5
-        # return self._value.dim()
+        return self.dims
     
     @property
     def shape(self):
@@ -351,6 +352,7 @@ def register_functional_hook(func):
     def function_hook(input, *args, **kwargs):
         output = OpenVINOTensor()
         output.graph = input.graph
+        output.dims = input.dims
         return output
 
 register_functional_hook(F.adaptive_avg_pool2d)
@@ -564,7 +566,6 @@ def function_hook(input, *args, **kwargs):
             self.eps = eps
             self.dims = input.dim()
 
-    # output = F.instance_norm(input.tensor(), *args, **kwargs)
     return forward_hook(InstanceNorm(*args, **kwargs), (input,))
 
 
@@ -610,12 +611,7 @@ def concat(inputs, dim=0):
     if not isinstance(inputs[0], OpenVINOTensor):
         return original_cat(inputs, dim)
 
-    tensors = [inp.tensor() for inp in inputs]
-    output = OpenVINOTensor()
-    output.graph = inputs[0].graph
-
-    forward_hook(Concat(dim), inputs, output)
-    return output
+    return forward_hook(Concat(dim), inputs)
 
 torch.cat = concat
 
