@@ -6,7 +6,6 @@
 #include <gsl/gsl_assert>
 #include <cuda_operation_registry.hpp>
 #include <utility>
-#include "details/cuda_ngraph_import.hpp"
 #include "sigmoid.hpp"
 
 namespace CUDAPlugin {
