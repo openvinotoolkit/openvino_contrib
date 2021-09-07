@@ -25,7 +25,7 @@ static const ngraph::Shape min_supported_pooling_shape{1, 1, 4, 4};
 static const ngraph::Shape dummy_kernel{2, 2};
 static const ngraph::Shape dummy_padding{1, 1};
 static const ngraph::Strides dummy_strides{1, 1};
-static const std::vector<TensorID> dummy_index{0};
+static const std::vector<TensorID> dummy_index{TensorID{0}};
 static const auto default_data_type{ngraph::element::f32};
 static const bool exclude_padding_from_pooling{true};
 
@@ -122,8 +122,8 @@ struct PoolingTest : testing::Test {
                cudaMemcpyDeviceToHost);
     ASSERT_EQ(0, memcmp(result, output.data(), output.size_bytes()));
   }
-  const std::vector<TensorID> inputIDs{0};
-  const std::vector<TensorID> outputIDs{0};
+  const std::vector<TensorID> inputIDs{TensorID{0}};
+  const std::vector<TensorID> outputIDs{TensorID{0}};
   const size_t padding{0};
   const size_t kernel_side{2};
   const size_t spatial_stride{2};

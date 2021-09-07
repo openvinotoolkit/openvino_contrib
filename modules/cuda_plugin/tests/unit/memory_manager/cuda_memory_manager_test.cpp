@@ -17,37 +17,37 @@
 class MemoryManagerTest : public testing::Test,
                           public CUDAPlugin::IOperationMeta {
 public:
-  void SetUp() override {
-    // Allocate shared memory block for constant tensors
-    {
-      const std::vector<uint8_t> data(256, 0xA5);
-      CUDAPlugin::ImmutableMemoryBlockBuilder builder;
-      for (auto id : sharedConstantIds_) {
-        builder.addAllocation(id.buffer_id, &data[0], data.size());
-      }
-      immutableTensors_ = builder.build();
+    using TensorID = CUDAPlugin::TensorID;
+
+    void SetUp() override {
+        // Allocate shared memory block for constant tensors
+        {
+            const std::vector<uint8_t> data(256, 0xA5);
+            CUDAPlugin::ImmutableMemoryBlockBuilder builder;
+            for (auto id : sharedConstantIds_) {
+                builder.addAllocation(id.GetId(), &data[0], data.size());
+            }
+            immutableTensors_ = builder.build();
+        }
+
+        // Create MemoryModel for mutable tensors
+        {
+            CUDAPlugin::MemoryModelBuilder builder;
+            const size_t size = 1;
+            for (int i = 0; i < mutableTensorIDs_.size(); ++i) {
+                builder.addAllocation(mutableTensorIDs_[i].GetId(), i, i + 2, size);
+            }
+            mutableMemoryModel_ = builder.build();
+        }
     }
 
-    // Create MemoryModel for mutable tensors
-    {
-      CUDAPlugin::MemoryModelBuilder builder;
-      const size_t size = 1;
-      for (int i = 0; i< mutableTensorIds_.size(); ++i) {
-        builder.addAllocation(mutableTensorIds_[i].buffer_id, i, i + 2, size);
-      }
-      mutableMemoryModel_ = builder.build();
-    }
-  }
+    const std::vector<TensorID> sharedConstantIds_ = {
+        TensorID{0}, TensorID{1}, TensorID{2}, TensorID{5}, TensorID{7}, TensorID{9}};
+    const std::vector<TensorID> mutableTensorIDs_ = {
+        TensorID{101}, TensorID{104}, TensorID{103}, TensorID{105}, TensorID{120}, TensorID{121}};
 
-  const std::vector<CUDAPlugin::TensorID> sharedConstantIds_ = {
-    0, 1, 2, 5, 7, 9
-  };
-  const std::vector<CUDAPlugin::TensorID> mutableTensorIds_ = {
-    101, 104, 103, 105, 120, 121
-  };
-
-  std::shared_ptr<CUDAPlugin::DeviceMemBlock> immutableTensors_;
-  CUDAPlugin::MemoryModel::Ptr mutableMemoryModel_;
+    std::shared_ptr<CUDAPlugin::DeviceMemBlock> immutableTensors_;
+    CUDAPlugin::MemoryModel::Ptr mutableMemoryModel_;
 
 public: // CUDAPlugin::IOperationMeta
   std::vector<CUDAPlugin::TensorID> inputIds_;
@@ -75,7 +75,7 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
 
   // Setup operation input identifiers to include all allocated tensors
   inputIds_ = sharedConstantIds_;
-  inputIds_.insert(inputIds_.end(), mutableTensorIds_.begin(), mutableTensorIds_.end());
+  inputIds_.insert(inputIds_.end(), mutableTensorIDs_.begin(), mutableTensorIDs_.end());
 
   // Request device side input pointers providing previously set tensor identifiers
   auto inputTensorPointers = memory_manager->inputTensorPointers(*this);
@@ -84,7 +84,7 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
   EXPECT_TRUE(inputIds_.size() == inputTensorPointers.size());
   const uint8_t* mutableBlockAllocationBase = nullptr;
   for (int i = 0; i < inputIds_.size(); ++i) {
-    const BufferID buffer_id = inputIds_[i].buffer_id;
+    const TensorID buffer_id = inputIds_[i];
     const void* actual = inputTensorPointers[i].get();
     if (i < sharedConstantIds_.size()) {
       // buffer_id represents tensor from shared constants memory block
@@ -94,12 +94,12 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
       // buffer_id represents tensor from mutable memory block allocated by MemoryManager
       if (mutableBlockAllocationBase == nullptr) {
         ptrdiff_t offset = -1;
-        ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
+        ASSERT_TRUE(mutableMemoryModel_->offsetForBuffer(buffer_id.GetId(), offset));
         mutableBlockAllocationBase = reinterpret_cast<const uint8_t*>(actual) - offset;
       }
 
       ptrdiff_t offset = -1;
-      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
+      ASSERT_TRUE(mutableMemoryModel_->offsetForBuffer(buffer_id.GetId(), offset));
       const void* expected = mutableBlockAllocationBase + offset;
       EXPECT_EQ(actual, expected);
     }
@@ -112,7 +112,7 @@ TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
 
   // Setup operation output identifiers to include tensors from mutable memory blob only.
-  outputIds_ = mutableTensorIds_;
+  outputIds_ = mutableTensorIDs_;
 
   // Request device side output pointers providing previously set tensor identifiers
   auto outputTensorPointers = memory_manager->outputTensorPointers(*this);
@@ -121,17 +121,17 @@ TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
   EXPECT_TRUE(outputIds_.size() == outputTensorPointers.size());
   const uint8_t* mutableBlockAllocationBase = nullptr;
   for (int i = 0; i < outputIds_.size(); ++i) {
-    const BufferID buffer_id = outputIds_[i].buffer_id;
+    const BufferID buffer_id = outputIds_[i].GetId();
     const void* actual = outputTensorPointers[i].get();
 
     if (mutableBlockAllocationBase == nullptr) {
       ptrdiff_t offset = -1;
-      ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
+      ASSERT_TRUE(mutableMemoryModel_->offsetForBuffer(buffer_id, offset));
       mutableBlockAllocationBase = reinterpret_cast<const uint8_t*>(actual) - offset;
     }
 
     ptrdiff_t offset = -1;
-    ASSERT_TRUE(mutableMemoryModel_->offsetForTensor(buffer_id, offset));
+    ASSERT_TRUE(mutableMemoryModel_->offsetForBuffer(buffer_id, offset));
     const void* expected = mutableBlockAllocationBase + offset;
     EXPECT_EQ(actual, expected);
   }
@@ -158,9 +158,9 @@ TEST_F(MemoryManagerTest, OperationHasNoOutputs) {
 TEST_F(MemoryManagerTest, InvalidInputTensorID) {
   using namespace CUDAPlugin;
 
-  const TensorID invalid_buffer_id = 9999;
+  const TensorID invalid_buffer_id{9999};
   ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
-  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_buffer_id));
+  ASSERT_EQ(0, std::count(mutableTensorIDs_.begin(), mutableTensorIDs_.end(), invalid_buffer_id));
 
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
   inputIds_ = sharedConstantIds_;
@@ -177,12 +177,12 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
 TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
   using namespace CUDAPlugin;
 
-  const TensorID invalid_buffer_id = 9999;
+  const TensorID invalid_buffer_id{9999};
   ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
-  ASSERT_EQ(0, std::count(mutableTensorIds_.begin(), mutableTensorIds_.end(), invalid_buffer_id));
+  ASSERT_EQ(0, std::count(mutableTensorIDs_.begin(), mutableTensorIDs_.end(), invalid_buffer_id));
 
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
-  outputIds_ = mutableTensorIds_;
+  outputIds_ = mutableTensorIDs_;
   outputIds_.emplace_back(invalid_buffer_id);
 
   #ifdef NDEBUG
@@ -197,7 +197,7 @@ TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
   using namespace CUDAPlugin;
 
   auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
-  outputIds_ = mutableTensorIds_;
+  outputIds_ = mutableTensorIDs_;
   outputIds_.emplace_back(sharedConstantIds_[0]);
 
   #ifdef NDEBUG

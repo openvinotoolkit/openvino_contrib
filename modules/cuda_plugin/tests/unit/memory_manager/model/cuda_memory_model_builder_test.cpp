@@ -63,14 +63,14 @@ TEST(MemoryModelBuilder, Build) {
   MemoryModelBuilder builder;
   const size_t size = 1;
   const size_t allocation_size = applyAllignment(size);
-  builder.addAllocation(BufferID{0}, 0, 1, size);
-  builder.addAllocation(BufferID{1}, 1, 2, size);
-  builder.addAllocation(BufferID{2}, 2, 3, size);
-  builder.addAllocation(BufferID{3}, 3, 4, size);
+  builder.addAllocation(0, 0, 1, size);
+  builder.addAllocation(1, 1, 2, size);
+  builder.addAllocation(2, 2, 3, size);
+  builder.addAllocation(3, 3, 4, size);
 
   MemoryModel::Ptr model = builder.build();
   auto existingOffset = [&model](BufferID id, ptrdiff_t& offset) {
-    ASSERT_TRUE(model->offsetForTensor(id, offset));
+    ASSERT_TRUE(model->offsetForBuffer(id, offset));
   };
   auto offsetForId = [&existingOffset](BufferID id) {
     ptrdiff_t offset = -1;
