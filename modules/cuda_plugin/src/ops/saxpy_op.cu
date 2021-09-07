@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <kernels/saxpy.cuh>
+#include "details/cuda_ie_api_import_fix.hpp"
+// ^^ must come before any other ie includes which use
+// INFERENCE_ENGINE_DEPRECATED
 #include <cuda_operation_registry.hpp>
+#include <kernels/saxpy.cuh>
 
-#include "details/cuda_ngraph_import.hpp"
 #include "saxpy_op.hpp"
 
 namespace CUDAPlugin {
