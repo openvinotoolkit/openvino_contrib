@@ -10,27 +10,32 @@ namespace CUDAPlugin {
 
 class GatherOp : public OperationBase {
 public:
-  GatherOp(const CUDA::CreationContext& context,
-           const ngraph::Node& node,
-           IndexCollection&& inputIds,
-           IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) override;
+    GatherOp(const CUDA::CreationContext& context,
+             const ngraph::Node& node,
+             IndexCollection&& inputIds,
+             IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
 
 private:
-    template <typename IndexType>
-    void Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs);
+    template<typename IndexType>
+    void ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs,
+                           Outputs outputs);
 
-    size_t element_size_;
+    template<typename DataType, typename IndexType>
+    void ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs);
+
+    ngraph::element::Type_t element_type_;
     ngraph::element::Type_t indices_type_;
     unsigned num_dicts_;
     unsigned index_range_;
     unsigned data_length_;
-    unsigned dict_size_;
     unsigned indices_size_;
-    unsigned out_size_;
+    bool gather_chunks_;
+    unsigned blocks_per_grid_;
+    unsigned threads_per_block_;
 };
 
 } // namespace CUDAPlugin
