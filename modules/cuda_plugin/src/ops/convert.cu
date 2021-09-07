@@ -2,12 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "details/cuda_ie_api_import_fix.hpp"
+// ^^ must come before any other ie includes which use
+// INFERENCE_ENGINE_DEPRECATED
+#include "details/cuda_ngraph_import_fix.hpp"
+// ^^ must come before any other ngraph includes which use
+// NGRAPH_DEPRECATED
 #include <array>
-#include <gsl/gsl_assert>
-#include <utility>
-#include "details/cuda_ngraph_import.hpp"
-#include <cuda_operation_registry.hpp>
 #include <cuda/cuda_type_traits.hpp>
+#include <cuda_operation_registry.hpp>
+#include <gsl/gsl_assert>
+#include <ngraph/node.hpp>
+#include <utility>
+
 #include "convert.hpp"
 
 namespace CUDAPlugin {
