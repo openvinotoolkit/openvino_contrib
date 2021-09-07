@@ -10,27 +10,22 @@
 
 namespace CUDAPlugin {
 
-void
-ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
-  IE_ASSERT(data != nullptr);
-  model_builder_.addAllocation(id, bsize);
-  allocations_.emplace_back(AllocRecord {id, data, bsize});
+void ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
+    IE_ASSERT(data != nullptr);
+    model_builder_.addAllocation(id, bsize);
+    allocations_.emplace_back(AllocRecord{id, data, bsize});
 }
 
-size_t ImmutableMemoryBlockBuilder::deviceMemoryBlockSize() const {
-    return model_builder_.deviceMemoryBlockSize();
-}
+size_t ImmutableMemoryBlockBuilder::deviceMemoryBlockSize() const { return model_builder_.deviceMemoryBlockSize(); }
 
-std::shared_ptr<DeviceMemBlock>
-ImmutableMemoryBlockBuilder::build() {
-  auto memory_block = std::make_shared<DeviceMemBlock>(model_builder_.build());
-  for (const auto& allocation : allocations_) {
-    void* device_ptr = memory_block->deviceTensorPtr(allocation.id);
-    IE_ASSERT(device_ptr != nullptr);
-    throwIfError(::cudaMemcpy(device_ptr, allocation.data, allocation.bsize,
-                              cudaMemcpyHostToDevice));
-  }
-  return memory_block;
+std::shared_ptr<DeviceMemBlock> ImmutableMemoryBlockBuilder::build() {
+    auto memory_block = std::make_shared<DeviceMemBlock>(model_builder_.build());
+    for (const auto& allocation : allocations_) {
+        void* device_ptr = memory_block->deviceBufferPtr(allocation.id);
+        IE_ASSERT(device_ptr != nullptr);
+        throwIfError(::cudaMemcpy(device_ptr, allocation.data, allocation.bsize, cudaMemcpyHostToDevice));
+    }
+    return memory_block;
 }
 
 }  // namespace CUDAPlugin

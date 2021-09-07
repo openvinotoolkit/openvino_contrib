@@ -4,55 +4,82 @@
 
 #pragma once
 
+#include <ie_extension.h>
+
 #include <cstdint>
-#include <memory>
-#include <unordered_map>
+#include <error.hpp>
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
 
 namespace CUDAPlugin {
 
 using BufferID = unsigned;
 
-struct TensorID {
-    BufferID buffer_id{};
-    unsigned offset{};
+class TensorID {
+public:
+    using Ptr = std::shared_ptr<TensorID>;
 
-    TensorID() = default;
+    explicit TensorID(BufferID buffer_id) : id_{buffer_id} {}
 
-    TensorID(BufferID buffer_id)
-        : buffer_id{buffer_id} {
+    /**
+     * Returns tensor id
+     */
+    [[nodiscard]] BufferID GetId() const { return id_; }
+
+    /**
+     * Returns offset of the current tensor within buffer (root tensor)
+     */
+    [[nodiscard]] unsigned GetOffset() const {
+        unsigned offset = offset_;
+        if (parent_tensor_) {
+            offset += parent_tensor_->GetOffset();
+        }
+        return offset;
     }
 
-    TensorID(BufferID buffer_id, unsigned offset)
-        : buffer_id{buffer_id}
-        , offset{offset} {
+    /**
+     * Returns root tensor (buffer, allocation object)
+     */
+    [[nodiscard]] const TensorID& GetBuffer() const {
+        if (parent_tensor_) {
+            return parent_tensor_->GetBuffer();
+        }
+        return *this;
+    }
+
+    /**
+     * Sets parent tensor (parent buffer) and offset for it
+     * @param parent_tensor Parent tensor
+     * @param offset Offset within parent tensor
+     */
+    void SetParent(std::shared_ptr<TensorID> parent_tensor, unsigned offset) {
+        parent_tensor_ = std::move(parent_tensor);
+        offset_ = offset;
     }
 
     bool operator==(const TensorID& t) const {
-        return buffer_id == t.buffer_id && offset == t.offset;
+        return id_ == t.id_;
     }
 
     bool operator!=(const TensorID& t) const {
         return !(operator==(t));
     }
+
+private:
+    BufferID id_{};
+    std::shared_ptr<TensorID> parent_tensor_;
+    unsigned offset_{};
 };
 
 inline
 std::ostream& operator<<(std::ostream& s, const TensorID& t) {
-    s << "Id: " << t.buffer_id << ", ";
-    s << "Offset: " << t.offset;
+    s << "ID: " << t.GetId() << ", ";
+    s << "BufferID: " << t.GetBuffer().GetId() << ", ";
+    s << "Offset: " << t.GetOffset();
     return s;
 }
 
-}
-
-namespace std {
-
-template <>
-struct hash<CUDAPlugin::TensorID> {
-    std::size_t operator()(const CUDAPlugin::TensorID& t) const {
-        return std::hash<unsigned>()(t.buffer_id) ^ std::hash<unsigned>()(t.offset);
-    }
-};
-
-}
+}  // namespace CUDAPlugin

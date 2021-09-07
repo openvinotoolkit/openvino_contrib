@@ -82,22 +82,24 @@ class OperationBufferExtractorTest: public testing::Test {
     }
 
 protected:
+    using TensorID = CUDAPlugin::TensorID;
+
     struct OpIndex {
-      using Type = size_t;
-      constexpr static Type Parameter = 0;
-      constexpr static Type Constant_Multiplier = 1;
-      constexpr static Type Multiply = 2;
-      constexpr static Type Constant_Bias = 3;
-      constexpr static Type Add_Bias = 4;
-      constexpr static Type Constant_Unsqueeze_Axes = 5;
-      constexpr static Type Unsqueeze = 6;
-      constexpr static Type Relu = 7;
-      constexpr static Type Constant_Squeeze_Axes = 8;
-      constexpr static Type Squeeze = 9;
-      constexpr static Type Add_Squeeze_Multiply = 10;
-      constexpr static Type Constant_Reshape_Pattern = 11;
-      constexpr static Type Reshape = 12;
-      constexpr static Type Result = 13;
+        using Type = size_t;
+        constexpr static Type Parameter = 0;
+        constexpr static Type Constant_Multiplier = 1;
+        constexpr static Type Multiply = 2;
+        constexpr static Type Constant_Bias = 3;
+        constexpr static Type Add_Bias = 4;
+        constexpr static Type Constant_Unsqueeze_Axes = 5;
+        constexpr static Type Unsqueeze = 6;
+        constexpr static Type Relu = 7;
+        constexpr static Type Constant_Squeeze_Axes = 8;
+        constexpr static Type Squeeze = 9;
+        constexpr static Type Add_Squeeze_Multiply = 10;
+        constexpr static Type Constant_Reshape_Pattern = 11;
+        constexpr static Type Reshape = 12;
+        constexpr static Type Result = 13;
     };
 
     struct OutputBufferIndex {
@@ -116,11 +118,11 @@ protected:
       constexpr static Type Squeeze_Mutable_Workbuffer = 11;
     };
 
-    std::vector<CUDAPlugin::TensorID> inputBufferIndices(OpIndex::Type op_idx) {
+    std::vector<TensorID> inputBufferIndices(OpIndex::Type op_idx) {
         return extractor_->inputTensorIds(*exec_sequence_.at(op_idx));
     }
 
-    std::vector<CUDAPlugin::TensorID> outputBufferIndices(OpIndex::Type op_idx) {
+    std::vector<TensorID> outputBufferIndices(OpIndex::Type op_idx) {
         return extractor_->outputTensorIds(*exec_sequence_.at(op_idx));
     }
 
@@ -194,44 +196,49 @@ TEST_F(OperationBufferExtractorTest, CheckNodeInputsAreValid) {
     ASSERT_TRUE(inputBufferIndices(OpIndex::Parameter).empty());
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Multiplier).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Multiply),
-                ElementsAre(OutputBufferIndex::Parameter, OutputBufferIndex::Constant_Multiplier));
+                ElementsAre(TensorID{OutputBufferIndex::Parameter}, TensorID{OutputBufferIndex::Constant_Multiplier}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Bias).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Add_Bias),
-                ElementsAre(OutputBufferIndex::Multiply, OutputBufferIndex::Constant_Bias));
+                ElementsAre(TensorID{OutputBufferIndex::Multiply}, TensorID{OutputBufferIndex::Constant_Bias}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Unsqueeze_Axes).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Unsqueeze),
-                ElementsAre(OutputBufferIndex::Add_Bias, OutputBufferIndex::Constant_Unsqueeze_Axes));
+                ElementsAre(TensorID{OutputBufferIndex::Add_Bias}, TensorID{OutputBufferIndex::Constant_Unsqueeze_Axes}));
     ASSERT_THAT(inputBufferIndices(OpIndex::Relu),
-                ElementsAre(OutputBufferIndex::Add_Bias));
+                ElementsAre(TensorID{OutputBufferIndex::Add_Bias}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Squeeze_Axes).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Squeeze),
-                ElementsAre(OutputBufferIndex::Relu, OutputBufferIndex::Constant_Squeeze_Axes));
+                ElementsAre(TensorID{OutputBufferIndex::Relu}, TensorID{OutputBufferIndex::Constant_Squeeze_Axes}));
     ASSERT_THAT(inputBufferIndices(OpIndex::Add_Squeeze_Multiply),
-                ElementsAre(OutputBufferIndex::Relu, OutputBufferIndex::Multiply));
+                ElementsAre(TensorID{OutputBufferIndex::Relu}, TensorID{OutputBufferIndex::Multiply}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Reshape_Pattern).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Reshape),
-                ElementsAre(OutputBufferIndex::Add_Squeeze_Multiply, OutputBufferIndex::Constant_Reshape_Pattern));
+                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}, TensorID{OutputBufferIndex::Constant_Reshape_Pattern}));
     ASSERT_THAT(inputBufferIndices(OpIndex::Result),
-                ElementsAre(OutputBufferIndex::Add_Squeeze_Multiply));
+                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}));
 }
 
 
 TEST_F(OperationBufferExtractorTest, CheckNodeOutputsAreValid) {
     using ::testing::ElementsAre;
 
-    ASSERT_THAT(outputBufferIndices(OpIndex::Parameter), ElementsAre(OutputBufferIndex::Parameter));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Multiplier), ElementsAre(OutputBufferIndex::Constant_Multiplier));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Multiply), ElementsAre(OutputBufferIndex::Multiply));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Bias), ElementsAre(OutputBufferIndex::Constant_Bias));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Add_Bias), ElementsAre(OutputBufferIndex::Add_Bias));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Unsqueeze_Axes), ElementsAre(OutputBufferIndex::Constant_Unsqueeze_Axes));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Unsqueeze), ElementsAre(OutputBufferIndex::Add_Bias));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Relu), ElementsAre(OutputBufferIndex::Relu));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Squeeze_Axes), ElementsAre(OutputBufferIndex::Constant_Squeeze_Axes));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Squeeze), ElementsAre(OutputBufferIndex::Relu));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Add_Squeeze_Multiply), ElementsAre(OutputBufferIndex::Add_Squeeze_Multiply));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Reshape_Pattern), ElementsAre(OutputBufferIndex::Constant_Reshape_Pattern));
-    ASSERT_THAT(outputBufferIndices(OpIndex::Reshape), ElementsAre(OutputBufferIndex::Add_Squeeze_Multiply));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Parameter), ElementsAre(TensorID{OutputBufferIndex::Parameter}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Multiplier),
+                ElementsAre(TensorID{OutputBufferIndex::Constant_Multiplier}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Multiply), ElementsAre(TensorID{OutputBufferIndex::Multiply}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Bias), ElementsAre(TensorID{OutputBufferIndex::Constant_Bias}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Add_Bias), ElementsAre(TensorID{OutputBufferIndex::Add_Bias}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Unsqueeze_Axes),
+                ElementsAre(TensorID{OutputBufferIndex::Constant_Unsqueeze_Axes}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Unsqueeze), ElementsAre(TensorID{OutputBufferIndex::Add_Bias}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Relu), ElementsAre(TensorID{OutputBufferIndex::Relu}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Squeeze_Axes),
+                ElementsAre(TensorID{OutputBufferIndex::Constant_Squeeze_Axes}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Squeeze), ElementsAre(TensorID{OutputBufferIndex::Relu}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Add_Squeeze_Multiply),
+                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Constant_Reshape_Pattern),
+                ElementsAre(TensorID{OutputBufferIndex::Constant_Reshape_Pattern}));
+    ASSERT_THAT(outputBufferIndices(OpIndex::Reshape), ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}));
     ASSERT_TRUE(outputBufferIndices(OpIndex::Result).empty());
 }
 
@@ -316,7 +323,7 @@ TEST_F(OperationBufferExtractorTest, CheckImmutableWorkbufferIndices) {
     ASSERT_THAT(buffer_indices_.immutableIds, ElementsAre(OutputBufferIndex::Squeeze_Imutable_Workbuffer));
 }
 
-class OperationBufferExtractorSplitConcatOptimizedTest: public testing::Test {
+class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
     /**
      * Creates a graph with the following structure (left to right):
      * ```
@@ -366,20 +373,22 @@ class OperationBufferExtractorSplitConcatOptimizedTest: public testing::Test {
     }
 
    protected:
-    struct OpIndex {
-        using Type = size_t;
-        constexpr static Type Parameter = 0;
-        constexpr static Type Constant_Multiplier = 1;
-        constexpr static Type Constant_Adder_0 = 2;
-        constexpr static Type Multiply = 3;
-        constexpr static Type Constant_Adder_1 = 4;
-        constexpr static Type Add_0 = 5;
-        constexpr static Type ConcatOptimized = 6;
-        constexpr static Type Add_1 = 7;
-        constexpr static Type Constant_Reshape_Pattern = 8;
-        constexpr static Type Reshape = 9;
-        constexpr static Type Result = 10;
-    };
+       using TensorID = CUDAPlugin::TensorID;
+
+       struct OpIndex {
+           using Type = size_t;
+           constexpr static Type Parameter = 0;
+           constexpr static Type Constant_Multiplier = 1;
+           constexpr static Type Constant_Adder_0 = 2;
+           constexpr static Type Multiply = 3;
+           constexpr static Type Constant_Adder_1 = 4;
+           constexpr static Type Add_0 = 5;
+           constexpr static Type ConcatOptimized = 6;
+           constexpr static Type Add_1 = 7;
+           constexpr static Type Constant_Reshape_Pattern = 8;
+           constexpr static Type Reshape = 9;
+           constexpr static Type Result = 10;
+       };
 
     struct OutputBufferIndex {
         using Type = unsigned;
@@ -387,18 +396,16 @@ class OperationBufferExtractorSplitConcatOptimizedTest: public testing::Test {
         constexpr static Type Constant_Multiplier = 1;
         constexpr static Type Constant_Adder_0 = 2;
         constexpr static Type Constant_Adder_1 = 4;
-        constexpr static Type ConcatOptimized = 3;
-        constexpr static Type Add_1 = 6;
-        constexpr static Type Constant_Reshape_Pattern = 7;
-        constexpr static Type Reshape = 9;
-        constexpr static Type Result = 10;
+        constexpr static Type ConcatOptimized = 6;
+        constexpr static Type Add_1 = 7;
+        constexpr static Type Constant_Reshape_Pattern = 8;
     };
 
-    std::vector<CUDAPlugin::TensorID> inputBufferIndices(OpIndex::Type op_idx) {
+    std::vector<TensorID> inputBufferIndices(OpIndex::Type op_idx) {
         return extractor_->inputTensorIds(*exec_sequence_.at(op_idx));
     }
 
-    std::vector<CUDAPlugin::TensorID> outputBufferIndices(OpIndex::Type op_idx) {
+    std::vector<TensorID> outputBufferIndices(OpIndex::Type op_idx) {
         return extractor_->outputTensorIds(*exec_sequence_.at(op_idx));
     }
 
@@ -417,7 +424,7 @@ class OperationBufferExtractorSplitConcatOptimizedTest: public testing::Test {
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
 };
 
-TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckTestIntegrity) {
+TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckTestIntegrity) {
     using namespace ngraph;
     using namespace CUDAPlugin;
     EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
@@ -433,7 +440,7 @@ TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckTestIntegrity) {
     EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
 }
 
-TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckMutableBuffersIndices) {
+TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckMutableBuffersIndices) {
     using ::testing::ElementsAre;
     auto buffer_indices = extractor_->mutableBuffersIds();
     std::sort(buffer_indices.begin(), buffer_indices.end());
@@ -443,7 +450,7 @@ TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckMutableBuffersIndi
         OutputBufferIndex::Add_1));
 }
 
-TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckImmutableBuffersIndices) {
+TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckImmutableBuffersIndices) {
     using ::testing::ElementsAre;
     auto immutable_buffer_indices = extractor_->immutableBuffersIds();
     std::sort(immutable_buffer_indices.begin(), immutable_buffer_indices.end());
@@ -452,4 +459,149 @@ TEST_F(OperationBufferExtractorSplitConcatOptimizedTest, CheckImmutableBuffersIn
         OutputBufferIndex::Constant_Adder_0,
         OutputBufferIndex::Constant_Adder_1,
         OutputBufferIndex::Constant_Reshape_Pattern));
+}
+
+class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
+    /**
+     * Creates a graph with the following structure (left to right):
+     * ```
+     * Parameter           --> Reshape -->
+     *          \         /               \
+     *            Multiply --> Add --> ConcatOptimized --> Add --> Reshape --> Result
+     *          /             /                           /
+     *   Constant         Constant                      Constant
+     *    (Multiplier)     (Adder_0)                     (Adder_1)
+     *
+     * ```
+     */
+    void SetUp() override {
+        auto input = std::make_shared<ngraph::opset1::Parameter>(ngraph::element::f32, ngraph::Shape({1, 8, 16, 16}));
+
+        std::vector<float> multiplier_values = {0.23};
+        auto multiplier =
+            std::make_shared<ngraph::opset1::Constant>(ngraph::element::f32, ngraph::Shape{1}, multiplier_values);
+
+        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
+
+        std::vector<float> adder_0_values = {0.33};
+        auto adder_0 = std::make_shared<ngraph::opset1::Constant>(
+            ngraph::element::f32, ngraph::Shape{1, 8, 16, 16}, adder_0_values);
+        auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
+
+        auto reshape_const = std::make_shared<ngraph::opset1::Constant>(
+            ngraph::element::i32, ngraph::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
+        auto reshape0 = std::make_shared<ngraph::opset1::Reshape>(multiply, reshape_const, true);
+
+        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ngraph::OutputVector{reshape0, add_0}, 1);
+
+        std::vector<float> adder_1_values = {0.55};
+        auto adder_1 = std::make_shared<ngraph::opset1::Constant>(
+            ngraph::element::f32, ngraph::Shape{1, 16, 16, 16}, adder_1_values);
+        auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
+
+        std::vector<int32_t> reshape_pattern_values = {0, 1};
+        auto reshape_pattern =
+            std::make_shared<ngraph::opset1::Constant>(ngraph::element::i32, ngraph::Shape{2}, reshape_pattern_values);
+        auto reshape1 = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
+
+        ngraph::ParameterVector inputs{input};
+        ngraph::NodeVector outputs{reshape1};
+        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
+
+        exec_sequence_ = ngraph_function_->get_ordered_ops();
+        extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
+    }
+
+protected:
+    using TensorID = CUDAPlugin::TensorID;
+
+    struct OpIndex {
+        using Type = size_t;
+        constexpr static Type Parameter = 0;
+        constexpr static Type Constant_Multiplier = 1;
+        constexpr static Type Constant_Adder_0 = 2;
+        constexpr static Type Multiply = 3;
+        constexpr static Type Constant_Reshape_0 = 4;
+        constexpr static Type Reshape_0 = 5;
+        constexpr static Type Constant_Adder_1 = 6;
+        constexpr static Type Add_0 = 7;
+        constexpr static Type ConcatOptimized = 8;
+        constexpr static Type Add_1 = 9;
+        constexpr static Type Constant_Reshape_Pattern = 10;
+        constexpr static Type Reshape1 = 11;
+        constexpr static Type Result = 12;
+    };
+
+    struct OutputBufferIndex {
+        using Type = unsigned;
+        constexpr static Type Parameter = 0;
+        constexpr static Type Constant_Multiplier = 1;
+        constexpr static Type Constant_Adder_0 = 2;
+        constexpr static Type Constant_Reshape_0_Pattern = 4;
+        constexpr static Type Constant_Adder_1 = 5;
+        constexpr static Type ConcatOptimized = 7;
+        constexpr static Type Add_1 = 8;
+        constexpr static Type Constant_Reshape_1_Pattern = 9;
+    };
+
+    std::vector<TensorID> inputBufferIndices(OpIndex::Type op_idx) {
+        return extractor_->inputTensorIds(*exec_sequence_.at(op_idx));
+    }
+
+    std::vector<TensorID> outputBufferIndices(OpIndex::Type op_idx) {
+        return extractor_->outputTensorIds(*exec_sequence_.at(op_idx));
+    }
+
+    template <typename T>
+    std::vector<T> immutableBuffer(OutputBufferIndex::Type idx) {
+        auto span = extractor_->immutableBuffer(idx);
+        const T* begin = reinterpret_cast<const T*>(span.data());
+        EXPECT_EQ(span.size() % sizeof(T), 0);
+        const size_t size = span.size() / sizeof(T);
+        return std::vector<T>(begin, begin + size);
+    }
+
+protected:
+    std::unique_ptr<ngraph::Function> ngraph_function_;
+    std::vector<std::shared_ptr<ngraph::Node>> exec_sequence_;
+    std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
+};
+
+TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckTestIntegrity) {
+    using namespace ngraph;
+    using namespace CUDAPlugin;
+    EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
+    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
+    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
+    EXPECT_TRUE(is_type<opset1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
+    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_0)));
+    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape_0)));
+    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_1)));
+    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_0)));
+    EXPECT_TRUE(is_type<nodes::ConcatOptimized>(exec_sequence_.at(OpIndex::ConcatOptimized)));
+    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_1)));
+    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
+    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape1)));
+    EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
+}
+
+TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckMutableBuffersIndices) {
+    using ::testing::ElementsAre;
+    auto buffer_indices = extractor_->mutableBuffersIds();
+    std::sort(buffer_indices.begin(), buffer_indices.end());
+    ASSERT_THAT(
+        buffer_indices,
+        ElementsAre(OutputBufferIndex::Parameter, OutputBufferIndex::ConcatOptimized, OutputBufferIndex::Add_1));
+}
+
+TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckImmutableBuffersIndices) {
+    using ::testing::ElementsAre;
+    auto immutable_buffer_indices = extractor_->immutableBuffersIds();
+    std::sort(immutable_buffer_indices.begin(), immutable_buffer_indices.end());
+    ASSERT_THAT(immutable_buffer_indices,
+                ElementsAre(OutputBufferIndex::Constant_Multiplier,
+                            OutputBufferIndex::Constant_Adder_0,
+                            OutputBufferIndex::Constant_Reshape_0_Pattern,
+                            OutputBufferIndex::Constant_Adder_1,
+                            OutputBufferIndex::Constant_Reshape_1_Pattern));
 }

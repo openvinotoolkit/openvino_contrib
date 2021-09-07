@@ -307,6 +307,9 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
         blob = InferenceEngine::make_shared_blob<uint8_t>({
                 Precision::U8, shape, layout });
         break;
+    case Precision::BOOL:
+        blob = InferenceEngine::make_shared_blob<bool>({Precision::BOOL, shape, layout});
+        break;
     default:
         throwIEException(fmt::format(
             "Cuda Plugin: Unsupported Input/Output Precision {}", precision));
@@ -330,6 +333,8 @@ InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(
         return Precision::I16;
     case Type_t::i32:
         return Precision::I32;
+    case Type_t::boolean:
+        return Precision::BOOL;
     default:
         throwIEException(
             fmt::format("Cuda Plugin: Unsupported Input/Output type {}", type));
