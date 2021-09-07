@@ -21,10 +21,10 @@ class OperationRegistryTest : public testing::Test {
   }
 
  public:
-    std::vector<TensorID> dummyInputTensorIds = {1, 2, 3};
-    std::vector<TensorID> dummyOutputTensorIds = {4, 5, 6};
-    CUDA::Device device_{};
-    bool optimizeOption = false;
+     std::vector<TensorID> dummyInputBufferIds = {TensorID{1}, TensorID{2}, TensorID{3}};
+     std::vector<TensorID> dummyOutputBufferIds = {TensorID{4}, TensorID{5}, TensorID{6}};
+     CUDA::Device device_{};
+     bool optimizeOption = false;
 };
 
 class SaxpyDummyNode : public ngraph::Node {
@@ -68,42 +68,32 @@ TEST_F(OperationRegistryTest, CheckOperation_NotFound) {
 TEST_F(OperationRegistryTest, GetOperationBuilder_Available) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
     ASSERT_TRUE(OperationRegistry::getInstance().createOperation(
-        CUDA::CreationContext{device_, optimizeOption},
-        saxpyDummyNode,
-        dummyInputTensorIds,
-        dummyOutputTensorIds));
+        CUDA::CreationContext{device_, optimizeOption}, saxpyDummyNode, dummyInputBufferIds, dummyOutputBufferIds));
 }
 
 TEST_F(OperationRegistryTest, GetOperationBuilder_NotFound) {
     auto superOperationDummyNode = std::make_shared<SuperOperationDummyNode>();
-    ASSERT_THROW(OperationRegistry::getInstance().createOperation(
-                     CUDA::CreationContext{device_, optimizeOption},
-                     superOperationDummyNode,
-                     dummyInputTensorIds,
-                     dummyOutputTensorIds),
-            std::out_of_range);
+    ASSERT_THROW(OperationRegistry::getInstance().createOperation(CUDA::CreationContext{device_, optimizeOption},
+                                                                  superOperationDummyNode,
+                                                                  dummyInputBufferIds,
+                                                                  dummyOutputBufferIds),
+                 std::out_of_range);
 }
 
 TEST_F(OperationRegistryTest, BuildOperation_Saxpy) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
     auto saxpyOperation = OperationRegistry::getInstance().createOperation(
-        CUDA::CreationContext{device_, optimizeOption},
-        saxpyDummyNode,
-        dummyInputTensorIds,
-        dummyOutputTensorIds);
+        CUDA::CreationContext{device_, optimizeOption}, saxpyDummyNode, dummyInputBufferIds, dummyOutputBufferIds);
     ASSERT_EQ(std::type_index(typeid(*saxpyOperation.get())), std::type_index(typeid(SaxpyOp)));
 }
 
 TEST_F(OperationRegistryTest, BuildOperationAndCheckTenorIds_Success) {
     auto saxpyDummyNode = std::make_shared<SaxpyDummyNode>();
     auto saxpyDummyOperation = OperationRegistry::getInstance().createOperation(
-        CUDA::CreationContext{device_, optimizeOption},
-        saxpyDummyNode,
-        dummyInputTensorIds,
-        dummyOutputTensorIds);
+        CUDA::CreationContext{device_, optimizeOption}, saxpyDummyNode, dummyInputBufferIds, dummyOutputBufferIds);
     ASSERT_TRUE(saxpyDummyOperation);
     auto inputIds = saxpyDummyOperation->GetInputIds();
     auto outputIds = saxpyDummyOperation->GetOutputIds();
-    ASSERT_EQ(std::vector<TensorID>(inputIds.begin(), inputIds.end()), dummyInputTensorIds);
-    ASSERT_EQ(std::vector<TensorID>(outputIds.begin(), outputIds.end()), dummyOutputTensorIds);
+    ASSERT_EQ(std::vector<TensorID>(inputIds.begin(), inputIds.end()), dummyInputBufferIds);
+    ASSERT_EQ(std::vector<TensorID>(outputIds.begin(), outputIds.end()), dummyOutputBufferIds);
 }

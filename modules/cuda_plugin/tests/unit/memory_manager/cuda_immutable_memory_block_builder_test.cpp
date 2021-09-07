@@ -44,9 +44,9 @@ TEST(ImmutableMemoryBlockBuilder, Build) {
     ASSERT_EQ(data_from_device, expected_data);
   };
 
-  verify_device_data(memory_block->deviceTensorPtr(t0_id), t0_data);
-  verify_device_data(memory_block->deviceTensorPtr(t1_id), t1_data);
-  verify_device_data(memory_block->deviceTensorPtr(t2_id), t2_data);
+  verify_device_data(memory_block->deviceTensorPtr(TensorID{t0_id}), t0_data);
+  verify_device_data(memory_block->deviceTensorPtr(TensorID{t1_id}), t1_data);
+  verify_device_data(memory_block->deviceTensorPtr(TensorID{t2_id}), t2_data);
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {

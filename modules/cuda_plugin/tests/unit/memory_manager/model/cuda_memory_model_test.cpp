@@ -18,8 +18,8 @@ TEST(MemoryModel, Empty) {
   ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
   ptrdiff_t offset {};
-  ASSERT_FALSE(model->offsetForTensor(0, offset));
-  ASSERT_FALSE(model->offsetForTensor(1, offset));
+  ASSERT_FALSE(model->offsetForBuffer(0, offset));
+  ASSERT_FALSE(model->offsetForBuffer(1, offset));
 }
 
 TEST(MemoryModel, NotEmpty) {
@@ -39,11 +39,11 @@ TEST(MemoryModel, NotEmpty) {
 
   ptrdiff_t offset {};
 
-  ASSERT_FALSE(model->offsetForTensor(invalid_id, offset));
+  ASSERT_FALSE(model->offsetForBuffer(invalid_id, offset));
 
-  ASSERT_TRUE(model->offsetForTensor(id1, offset));
+  ASSERT_TRUE(model->offsetForBuffer(id1, offset));
   ASSERT_EQ(offset, offset1);
 
-  ASSERT_TRUE(model->offsetForTensor(id2, offset));
+  ASSERT_TRUE(model->offsetForBuffer(id2, offset));
   ASSERT_EQ(offset, offset2);
 }

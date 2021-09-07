@@ -69,8 +69,8 @@ struct StridedSliceTest : testing::Test {
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         return registry.createOperation(CUDA::CreationContext{threadContext.device(), optimizeOption},
                                         create_node(),
-                                        std::vector<CUDAPlugin::TensorID>{0u},
-                                        std::vector<CUDAPlugin::TensorID>{0u});
+                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
+                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
     }();
 };
 

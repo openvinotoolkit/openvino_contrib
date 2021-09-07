@@ -112,6 +112,7 @@ class OperationBuffersExtractor {
     const std::unordered_map<BufferID, size_t>& immutableWorkbufferSizes() const {
         return immutable_workbuffers_;
     }
+
    private:
     /**
      * Internal buffer representation
@@ -129,6 +130,25 @@ class OperationBuffersExtractor {
     };
 
     /**
+     * Encapsulates mutable tensors extraction for the ngraph::Parameter node
+     * @param node ngraph::Parameter node from which tensors to be extracted
+     */
+    void extractParameterTensors(const NodePtr& node, int node_idx);
+
+    /**
+     * Encapsulates mutable tensors extraction for the ngraph::Result node
+     * @param node ngraph::Result node from which tensors to be extracted
+     */
+    void extractResultTensors(const NodePtr& node);
+
+    /**
+     * Encapsulates mutable tensors extraction for the Reshape like nodes
+     * (nodes that checked by @isReshapeOnlyNode(...))
+     * @param node Reshape like node from which tensors to be extracted
+     */
+    void extractReshapeTensors(const NodePtr& node, int node_idx);
+
+    /**
      * Encapsulates mutable tensors extraction for the given node
      * @param node ngraph node from which tensors to be extracted
      * @param node_idx Current node index
@@ -136,7 +156,7 @@ class OperationBuffersExtractor {
     void extractMutableTensors(const NodePtr& node, int node_idx);
 
     /**
-     * Merge mutable tensors in one buffer for ConcatOptimized node
+     * Merge mutable tensors in one tensor for ConcatOptimized node
      * @param node ConcatOptimized node (custom node)
      * @param node_idx Current node index
      */
@@ -184,6 +204,11 @@ class OperationBuffersExtractor {
     }
 
     /**
+     * Checks whether the given node is a parameter node
+     */
+    static bool IsParameterNode(const ngraph::Node& node);
+
+    /**
      * Checks whether the given node is a result node
      */
     static bool IsResultNode(const ngraph::Node& node);
@@ -216,9 +241,10 @@ class OperationBuffersExtractor {
     static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
    private:
     std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
+    std::unordered_map<BufferID, size_t> mutable_tensor_sizes_;
     std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
     std::unordered_map<BufferID, size_t> immutable_workbuffers_;
-    std::unordered_map<std::string, TensorID> tensor_names_;
+    std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
     unsigned next_buffer_id_{};
 };
 
