@@ -34,12 +34,12 @@ using Time = std::chrono::steady_clock;
 ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                                      Configuration cfg,
                                      InferenceEngine::ITaskExecutor::Ptr waitExecutor,
-                                     Plugin::Ptr plugin) :
-    InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr), // Disable default threads creation
-    cnn_network_(cnnNetwork),
-    cfg_(std::move(cfg)),
-    cuda_stream_executor_(std::move(waitExecutor)),
-    plugin_(std::move(plugin)) {
+                                     Plugin::Ptr plugin)
+    : InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr),  // Disable default threads creation
+      cnn_network_(cnnNetwork),
+      cfg_(std::move(cfg)),
+      cuda_stream_executor_(std::move(waitExecutor)),
+      plugin_(std::move(plugin)) {
     // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
     // you should select proper device based on KEY_DEVICE_ID or automatic behavior
     // In this case, _waitExecutor should also be created per device.
@@ -47,13 +47,12 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
     setNetworkOutputs(cnn_network_.getOutputsInfo());
     try {
         CompileNetwork(cnn_network_.getFunction());
-        InitExecutor(); // creates thread-based executor using for async requests
+        InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
     } catch (const InferenceEngine::Exception&) {
         throw;
     } catch (const std::exception& e) {
-        throwIEException(fmt::format(
-            "Standard exception from compilation library: {}", e.what()));
+        throwIEException(fmt::format("Standard exception from compilation library: {}", e.what()));
     } catch (...) {
         throwIEException("Generic exception is thrown");
     }
@@ -62,25 +61,21 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
 ExecutableNetwork::ExecutableNetwork(std::istream& model,
                                      Configuration cfg,
                                      InferenceEngine::ITaskExecutor::Ptr waitExecutor,
-                                     Plugin::Ptr plugin) :
-    cfg_(std::move(cfg)),
-    cuda_stream_executor_(std::move(waitExecutor)),
-    plugin_(std::move(plugin)) {
+                                     Plugin::Ptr plugin)
+    : cfg_(std::move(cfg)), cuda_stream_executor_(std::move(waitExecutor)), plugin_(std::move(plugin)) {
     // Read XML content
     std::string xmlString;
     std::uint64_t dataSize = 0;
-    model.read(reinterpret_cast<char *>(&dataSize), sizeof(dataSize));
+    model.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
     xmlString.resize(dataSize);
-    model.read(const_cast<char *>(xmlString.c_str()), dataSize);
+    model.read(const_cast<char*>(xmlString.c_str()), dataSize);
 
     // Read blob content
     InferenceEngine::Blob::Ptr dataBlob;
-    model.read(reinterpret_cast<char *>(&dataSize), sizeof(dataSize));
+    model.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
     if (0 != dataSize) {
-        dataBlob = InferenceEngine::make_shared_blob<std::uint8_t>(
-            InferenceEngine::TensorDesc(InferenceEngine::Precision::U8,
-                                        {static_cast<std::size_t>(dataSize)},
-                                        InferenceEngine::Layout::C));
+        dataBlob = InferenceEngine::make_shared_blob<std::uint8_t>(InferenceEngine::TensorDesc(
+            InferenceEngine::Precision::U8, {static_cast<std::size_t>(dataSize)}, InferenceEngine::Layout::C));
         dataBlob->allocate();
         model.read(dataBlob->buffer(), dataSize);
     }
@@ -97,16 +92,14 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     try {
         GraphTransformer transformer;
         auto original_function = cnn_network_.getFunction();
-        auto transformed_function = transformer.transform(
-            CUDA::Device{cfg_.deviceId}, original_function, ConfigMap{});
+        auto transformed_function = transformer.transform(CUDA::Device{cfg_.deviceId}, original_function, ConfigMap{});
         CompileNetwork(transformed_function);
-        InitExecutor(); // creates thread-based executor using for async requests
+        InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
     } catch (const InferenceEngine::Exception&) {
         throw;
     } catch (const std::exception& e) {
-        throwIEException(fmt::format(
-            "Standard exception from compilation library: {}", e.what()));
+        throwIEException(fmt::format("Standard exception from compilation library: {}", e.what()));
     } catch (...) {
         throwIEException("Generic exception is thrown");
     }
@@ -128,8 +121,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
 
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 
-    OperationBuffersExtractor opBuffersExtractor { orderedNodes };
-    std::vector<OperationBase::Ptr> init_sequence {};
+    OperationBuffersExtractor opBuffersExtractor{orderedNodes};
+    std::vector<OperationBase::Ptr> init_sequence{};
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     const std::string optimizeOptionString = cfg_.Get(CUDA_CONFIG_KEY(OPTIMIZE));
     const bool optimizeOption = optimizeOptionString == CUDA_CONFIG_VALUE(YES);
@@ -137,18 +130,20 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
         auto& node = orderedNodes[node_idx];
         if (!OperationRegistry::getInstance().hasOperation(node)) {
-        	throwIEException(fmt::format(
-                "Node: name = {}, description = {}; Is not found in OperationRegistry",
-                node->get_name(), node->description()));
+            throwIEException(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
+                                         node->get_name(),
+                                         node->description()));
         }
         auto inIds = opBuffersExtractor.inputTensorIds(*node);
         auto outIds = opBuffersExtractor.outputTensorIds(*node);
-        auto operation = OperationRegistry::getInstance().createOperation(creationContext, node, move(inIds), move(outIds));
-        if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(node_idx, operation->GetWorkBufferRequest()))) {
-          init_sequence.push_back(operation);
+        auto operation =
+            OperationRegistry::getInstance().createOperation(creationContext, node, move(inIds), move(outIds));
+        if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(
+                              node_idx, operation->GetWorkBufferRequest()))) {
+            init_sequence.push_back(operation);
         }
         if (!dynamic_cast<NopOp*>(operation.get())) {
-          exec_sequence_.push_back(operation);
+            exec_sequence_.push_back(operation);
         }
     }
 
@@ -157,77 +152,75 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
 }
 
 void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
-  const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
-  if (throughputStreams != CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) { return; }
-
-  struct BenchmarkResult {
-    unsigned numberOfInferRequests;
-    unsigned fps;
-
-    bool operator<(const BenchmarkResult& other) const {
-      return other.fps < this->fps;
+    const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    if (throughputStreams != CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+        return;
     }
-  };
 
-  auto start = Time::now();
+    struct BenchmarkResult {
+        unsigned numberOfInferRequests;
+        unsigned fps;
 
-  CreateBenchmarkInferRequest()->Infer();
+        bool operator<(const BenchmarkResult& other) const { return other.fps < this->fps; }
+    };
 
-  auto numMemManagers = memory_manager_pool_->Size();
-  std::mutex mtx;
-  std::condition_variable cond_var;
+    auto start = Time::now();
 
-  constexpr auto kTimesBenchmarkRun = 3;
-  std::vector<BenchmarkResult> benchmarks;
-  benchmarks.reserve(numMemManagers);
-  for (unsigned numInfers = 1; numInfers <= numMemManagers; ++numInfers) {
-    std::array<unsigned, kTimesBenchmarkRun> allFps{};
-    std::for_each(allFps.begin(), allFps.end(),
-                  [this, &mtx, &cond_var, &numInfers](auto& fps) {
-                    fps = RunBenchmarkFor(numInfers, mtx, cond_var);
-                  });
-    const unsigned fps = std::accumulate(allFps.begin(), allFps.end(), 0) / allFps.size();
-    benchmarks.push_back({numInfers, fps});
-  }
-  std::sort(benchmarks.begin(), benchmarks.end(), std::less<>{});
+    CreateBenchmarkInferRequest()->Infer();
 
-  constexpr auto kNumberBestThroughputs = 3;
-  std::vector<BenchmarkResult> optimalBenchmarks{};
-  optimalBenchmarks.reserve(kNumberBestThroughputs);
-  for (unsigned i = 0; i < kNumberBestThroughputs && i < benchmarks.size(); ++i) {
-    optimalBenchmarks.push_back(benchmarks[i]);
-  }
+    auto numMemManagers = memory_manager_pool_->Size();
+    std::mutex mtx;
+    std::condition_variable cond_var;
 
-  constexpr auto kMaxFpsRelativeDiff = 0.01;
-  const auto avgFps = std::accumulate(
-          optimalBenchmarks.begin(), optimalBenchmarks.end(), 0,
-      [](const auto init, const auto& z) { return init + z.fps; }) /
-      optimalBenchmarks.size();
-  const auto maxFpsDiff = kMaxFpsRelativeDiff * avgFps;
-
-  auto optimalBenchmarkResult = optimalBenchmarks[0];
-  for (auto& benchmark : optimalBenchmarks) {
-    if (std::fabs(optimalBenchmarkResult.fps - benchmark.fps) < maxFpsDiff &&
-        benchmark.numberOfInferRequests < optimalBenchmarkResult.numberOfInferRequests) {
-      optimalBenchmarkResult = benchmark;
+    constexpr auto kTimesBenchmarkRun = 3;
+    std::vector<BenchmarkResult> benchmarks;
+    benchmarks.reserve(numMemManagers);
+    for (unsigned numInfers = 1; numInfers <= numMemManagers; ++numInfers) {
+        std::array<unsigned, kTimesBenchmarkRun> allFps{};
+        std::for_each(allFps.begin(), allFps.end(), [this, &mtx, &cond_var, &numInfers](auto& fps) {
+            fps = RunBenchmarkFor(numInfers, mtx, cond_var);
+        });
+        const unsigned fps = std::accumulate(allFps.begin(), allFps.end(), 0) / allFps.size();
+        benchmarks.push_back({numInfers, fps});
     }
-  }
-  fmt::print("Optimal number infer-requests = {}\n", optimalBenchmarkResult.numberOfInferRequests);
-  if (optimalBenchmarkResult.numberOfInferRequests < numMemManagers) {
-    memory_manager_pool_->Resize(optimalBenchmarkResult.numberOfInferRequests);
-    fmt::print("Resize MemoryManagerPool from {} to {}\n", numMemManagers,
-               optimalBenchmarkResult.numberOfInferRequests);
-  }
-  auto duration = Time::now() - start;
-  auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-  fmt::print("Time of benchmark for optimal number infer-requests = {} ms\n",
-             durationMs.count());
+    std::sort(benchmarks.begin(), benchmarks.end(), std::less<>{});
+
+    constexpr auto kNumberBestThroughputs = 3;
+    std::vector<BenchmarkResult> optimalBenchmarks{};
+    optimalBenchmarks.reserve(kNumberBestThroughputs);
+    for (unsigned i = 0; i < kNumberBestThroughputs && i < benchmarks.size(); ++i) {
+        optimalBenchmarks.push_back(benchmarks[i]);
+    }
+
+    constexpr auto kMaxFpsRelativeDiff = 0.01;
+    const auto avgFps = std::accumulate(optimalBenchmarks.begin(),
+                                        optimalBenchmarks.end(),
+                                        0,
+                                        [](const auto init, const auto& z) { return init + z.fps; }) /
+                        optimalBenchmarks.size();
+    const auto maxFpsDiff = kMaxFpsRelativeDiff * avgFps;
+
+    auto optimalBenchmarkResult = optimalBenchmarks[0];
+    for (auto& benchmark : optimalBenchmarks) {
+        if (std::fabs(optimalBenchmarkResult.fps - benchmark.fps) < maxFpsDiff &&
+            benchmark.numberOfInferRequests < optimalBenchmarkResult.numberOfInferRequests) {
+            optimalBenchmarkResult = benchmark;
+        }
+    }
+    fmt::print("Optimal number infer-requests = {}\n", optimalBenchmarkResult.numberOfInferRequests);
+    if (optimalBenchmarkResult.numberOfInferRequests < numMemManagers) {
+        memory_manager_pool_->Resize(optimalBenchmarkResult.numberOfInferRequests);
+        fmt::print(
+            "Resize MemoryManagerPool from {} to {}\n", numMemManagers, optimalBenchmarkResult.numberOfInferRequests);
+    }
+    auto duration = Time::now() - start;
+    auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    fmt::print("Time of benchmark for optimal number infer-requests = {} ms\n", durationMs.count());
 }
 
-unsigned int ExecutableNetwork::RunBenchmarkFor(
-    const int numInfers,
-    std::mutex& mtx,
-    std::condition_variable& cond_var) {
+unsigned int ExecutableNetwork::RunBenchmarkFor(const int numInfers,
+                                                std::mutex& mtx,
+                                                std::condition_variable& cond_var) {
     std::unique_lock<std::mutex> lock{mtx};
     uint32_t callbackCalled = 0;
     std::vector<InferenceEngine::IInferRequestInternal::Ptr> inferRequests;
@@ -246,8 +239,7 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(
     for (auto& e : inferRequests) {
         e->StartAsync();
     }
-    cond_var.wait(
-        lock, [&callbackCalled, &numInfers] { return numInfers == callbackCalled; });
+    cond_var.wait(lock, [&callbackCalled, &numInfers] { return numInfers == callbackCalled; });
     const auto duration = Time::now() - start;
     const auto fps = numInfers * (std::chrono::seconds(1) / duration);
     return fps;
@@ -257,8 +249,8 @@ std::vector<InferenceEngine::gpu::DevicePointer<void*>> ExecutableNetwork::getSh
     const IOperationExec& operation) {
     std::vector<InferenceEngine::gpu::DevicePointer<void*>> result{};
     const auto& ids = operation.GetWorkbufferIds();
-    for(const auto immutable_id : ids.immutableIds) {
-        void* ptr = immutable_workbuffers_->deviceTensorPtr(immutable_id);
+    for (const auto immutable_id : ids.immutableIds) {
+        void* ptr = immutable_workbuffers_->deviceBufferPtr(immutable_id);
         IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
         result.emplace_back(ptr);
     }
@@ -266,8 +258,8 @@ std::vector<InferenceEngine::gpu::DevicePointer<void*>> ExecutableNetwork::getSh
 }
 
 void ExecutableNetwork::InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence) {
-    for(auto op : init_sequence) {
-      op->InitSharedImmutableWorkbuffers(getSharedWorkbuffers(*op));
+    for (auto op : init_sequence) {
+        op->InitSharedImmutableWorkbuffers(getSharedWorkbuffers(*op));
     }
     immutable_workbuffers_.reset();
 }
@@ -283,14 +275,15 @@ void ExecutableNetwork::InitExecutor() {
     // and memory consumption can be larger than it is expected.
     // So Inference Engone provides executors cache.
     _taskExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
-    _callbackExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
+    _callbackExecutor =
+        InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
-std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize, const std::size_t memoryBlobSize) const {
+std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize,
+                                                         const std::size_t memoryBlobSize) const {
     static constexpr std::size_t reasonable_limit_of_streams = 10;
     if (memoryBlobSize == 0) {
-        throwIEException(
-            "Model is not loaded properly. Size of tensors for model is 0 !!");
+        throwIEException("Model is not loaded properly. Size of tensors for model is 0 !!");
     }
     CUDA::Device device{cfg_.deviceId};
     device.setCurrent();
@@ -308,12 +301,12 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
         return std::min({maxStreamsSupported, availableInferRequests, reasonable_limit_of_streams});
     } else {
         const std::size_t numStreams = std::stoi(throughputStreams);
-        return std::min({ maxStreamsSupported, numStreams, availableInferRequests });
+        return std::min({maxStreamsSupported, numStreams, availableInferRequests});
     }
 }
 
-std::shared_ptr<MemoryManagerPool>
-ExecutableNetwork::CreateMemoryManagerPool(const OperationBuffersExtractor& opBuffersExtractor) {
+std::shared_ptr<MemoryManagerPool> ExecutableNetwork::CreateMemoryManagerPool(
+    const OperationBuffersExtractor& opBuffersExtractor) {
     ImmutableMemoryBlockBuilder constants_block_builder;
     MemoryModelBuilder mutable_model_builder;
     ImmutableMemoryModelBuilder immutable_workbuffer_model_builder;
@@ -356,30 +349,32 @@ int ExecutableNetwork::GetCudaDeviceId() const noexcept {
     return std::stoi(deviceId);
 }
 
-InferenceEngine::IInferRequestInternal::Ptr
-ExecutableNetwork::CreateBenchmarkInferRequestImpl(
-    InferenceEngine::InputsDataMap networkInputs,
-    InferenceEngine::OutputsDataMap networkOutputs) {
-    return std::make_shared<CudaInferRequest>(networkInputs, networkOutputs,
-                                              std::shared_ptr<ExecutableNetwork>(this, [](ExecutableNetwork*) {}));
+InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkInferRequestImpl(
+    InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) {
+    return std::make_shared<CudaInferRequest>(
+        networkInputs, networkOutputs, std::shared_ptr<ExecutableNetwork>(this, [](ExecutableNetwork*) {}));
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkInferRequest() {
     auto internalRequest = CreateBenchmarkInferRequestImpl(_networkInputs, _networkOutputs);
     return std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(move(internalRequest)),
-                                                   _taskExecutor, cuda_stream_executor_, _callbackExecutor);
+                                                   _taskExecutor,
+                                                   cuda_stream_executor_,
+                                                   _callbackExecutor);
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferRequestImpl(
     InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) {
-    return std::make_shared<CudaInferRequest>(networkInputs, networkOutputs,
-                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+    return std::make_shared<CudaInferRequest>(
+        networkInputs, networkOutputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferRequest() {
     auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
     return std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
-                                                   _taskExecutor, cuda_stream_executor_, _callbackExecutor);
+                                                   _taskExecutor,
+                                                   cuda_stream_executor_,
+                                                   _callbackExecutor);
 }
 
 InferenceEngine::Parameter ExecutableNetwork::GetConfig(const std::string& name) const { return cfg_.Get(name); }
@@ -387,13 +382,16 @@ InferenceEngine::Parameter ExecutableNetwork::GetConfig(const std::string& name)
 InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name) const {
     // TODO: return more supported values for metrics
     if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
-        IE_SET_METRIC_RETURN(
-            SUPPORTED_METRICS,
-            std::vector<std::string>{METRIC_KEY(NETWORK_NAME), METRIC_KEY(SUPPORTED_METRICS),
-                                     METRIC_KEY(SUPPORTED_CONFIG_KEYS), METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
+        IE_SET_METRIC_RETURN(SUPPORTED_METRICS,
+                             std::vector<std::string>{METRIC_KEY(NETWORK_NAME),
+                                                      METRIC_KEY(SUPPORTED_METRICS),
+                                                      METRIC_KEY(SUPPORTED_CONFIG_KEYS),
+                                                      METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
-        std::vector<std::string> configKeys = {CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT),
-                                               CONFIG_KEY(CPU_THROUGHPUT_STREAMS), CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
+        std::vector<std::string> configKeys = {CONFIG_KEY(DEVICE_ID),
+                                               CONFIG_KEY(PERF_COUNT),
+                                               CONFIG_KEY(CPU_THROUGHPUT_STREAMS),
+                                               CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);
@@ -406,15 +404,11 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         const unsigned value = memory_manager_pool_->Size();
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
-        throwIEException(
-            fmt::format("Unsupported ExecutableNetwork metric: {}", name));
+        throwIEException(fmt::format("Unsupported ExecutableNetwork metric: {}", name));
     }
 }
 
-InferenceEngine::CNNNetwork
-ExecutableNetwork::GetExecGraphInfo() {
-    return cnn_network_;
-}
+InferenceEngine::CNNNetwork ExecutableNetwork::GetExecGraphInfo() { return cnn_network_; }
 
 void ExecutableNetwork::Export(std::ostream& modelStream) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "ExecutableNetwork::Export");
@@ -422,8 +416,7 @@ void ExecutableNetwork::Export(std::ostream& modelStream) {
     // Note: custom ngraph extensions are not supported
     std::map<std::string, ngraph::OpSet> custom_opsets;
     std::stringstream xmlFile, binFile;
-    ngraph::pass::Serialize serializer(xmlFile, binFile,
-                                       ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
+    ngraph::pass::Serialize serializer(xmlFile, binFile, ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
     serializer.run_on_function(ngraph::clone_function(*function_));
 
     auto m_constants = binFile.str();

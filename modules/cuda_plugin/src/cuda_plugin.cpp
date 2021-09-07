@@ -55,9 +55,11 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
 
         if (output_precision != InferenceEngine::Precision::FP32 &&
             output_precision != InferenceEngine::Precision::FP16 &&
-            output_precision != InferenceEngine::Precision::U8 && output_precision != InferenceEngine::Precision::I32) {
+            output_precision != InferenceEngine::Precision::I32 &&
+            output_precision != InferenceEngine::Precision::I16 && output_precision != InferenceEngine::Precision::U8 &&
+            output_precision != InferenceEngine::Precision::BOOL) {
             throwIEException(
-                "CUDA device supports only U8, FP16, FP32 and I32 output "
+                "CUDA device supports only BOOL, U8, I16, I32, FP16 and FP32 output "
                 "precision.");
         }
     }
@@ -66,11 +68,12 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
         auto input_precision = networkInput.second->getTensorDesc().getPrecision();
 
         if (input_precision != InferenceEngine::Precision::FP32 &&
-            input_precision != InferenceEngine::Precision::FP16 && input_precision != InferenceEngine::Precision::I16 &&
-            input_precision != InferenceEngine::Precision::U8 && input_precision != InferenceEngine::Precision::I32) {
+            input_precision != InferenceEngine::Precision::FP16 && input_precision != InferenceEngine::Precision::I32 &&
+            input_precision != InferenceEngine::Precision::I16 && input_precision != InferenceEngine::Precision::U8 &&
+            input_precision != InferenceEngine::Precision::BOOL) {
             throwIEException(
                 fmt::format("Input image format {} is not supported yet. Supported "
-                            "formats are: FP32, FP16, I16, U8 and I32.",
+                            "formats are: FP32, FP16, I32, I16, U8 and BOOL.",
                             input_precision));
         }
     }

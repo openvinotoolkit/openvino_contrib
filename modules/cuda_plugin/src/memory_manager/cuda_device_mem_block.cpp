@@ -14,10 +14,17 @@ namespace CUDAPlugin {
 
 DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model) : model_{move(model)} {}
 
+void* DeviceMemBlock::deviceBufferPtr(const BufferID& id) {
+    if (ptrdiff_t offset = 0; model_->offsetForBuffer(id, offset))
+        return reinterpret_cast<uint8_t*>(device_mem_ptr_.get()) + offset;
+    return nullptr;
+}
+
 void* DeviceMemBlock::deviceTensorPtr(const TensorID& id) {
-  if (ptrdiff_t offset = 0; model_->offsetForTensor(id.buffer_id, offset))
-    return reinterpret_cast<uint8_t*>(device_mem_ptr_.get()) + offset + id.offset;
-  return nullptr;
+    if (auto bufferPtr = deviceBufferPtr(id.GetBuffer().GetId()); bufferPtr) {
+        return reinterpret_cast<uint8_t*>(bufferPtr) + id.GetOffset();
+    }
+    return nullptr;
 }
 
 }  // namespace CUDAPlugin
