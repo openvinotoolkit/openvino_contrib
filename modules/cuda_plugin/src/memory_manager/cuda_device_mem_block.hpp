@@ -25,6 +25,15 @@ class DeviceMemBlock {
     DeviceMemBlock(MemoryModel::Ptr model);
 
     /**
+     * Provides buffer memory address if any.
+     *
+     * @param [in] id Buffer identifier.
+     * @returns device memory pointer if buffer is located within the blob
+     * or nullptr otherwise.
+     */
+    void* deviceBufferPtr(const BufferID& id);
+
+    /**
      * Provides tensor memory address if any.
      *
      * @param [in] id Tensor identifier.

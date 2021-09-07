@@ -23,24 +23,32 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
     const auto num_ordered_nodes = ordered_nodes.size();
     for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
         const auto& node = ordered_nodes[node_idx];
-        if (IsResultNode(*node))
-            continue;
+        if (IsParameterNode(*node))
+            extractParameterTensors(node, node_idx);
+        else if (IsResultNode(*node))
+            extractResultTensors(node);
         else if (IsConstantNode(*node))
             extractImmutableTensors(node);
         else if (IsConcatOptimizedNode(*node))
             mergeConcatMutableTensors(node, node_idx);
+        else if (isReshapeOnlyNode(*node))
+            extractReshapeTensors(node, node_idx);
         else
             extractMutableTensors(node, node_idx);
     }
     for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
         for (const auto& input : ordered_nodes[node_idx]->inputs()) {
             try {
-                const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
+                const auto tensorName = GetTensorNameInternal(input);
+                const auto& tensorId = tensor_names_.at(tensorName);
                 if (!IsConstantNode(*input.get_source_output().get_node_shared_ptr())) {
-                    mutable_buffers_.at(tensorId.buffer_id).lifespan_end = node_idx;
-                    if (mutable_buffers_.at(tensorId.buffer_id).size <
-                        GetTensorByteSize(input))
+                    auto& mutableBuffer = mutable_buffers_.at(tensorId->GetBuffer().GetId());
+                    if (node_idx > mutableBuffer.lifespan_end) {
+                        mutableBuffer.lifespan_end = node_idx;
+                    }
+                    if (mutableBuffer.size < GetTensorByteSize(input)) {
                         ThrowBufferSizesAreNotMatchError(input);
+                    }
                 }
             } catch (std::out_of_range& e) {
                 ThrowGraphIsBadFormedError(input);
@@ -54,7 +62,7 @@ OperationBuffersExtractor::inputTensorIds(const ngraph::Node& node) const {
     std::vector<TensorID> result {};
     for (const auto& input : node.inputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
-        result.push_back(tensorId);
+        result.push_back(*tensorId);
     }
     return result;
 }
@@ -66,7 +74,7 @@ OperationBuffersExtractor::outputTensorIds(const ngraph::Node& node) const {
     std::vector<TensorID> result {};
     for (const auto& output : node.outputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(output));
-        result.push_back(tensorId);
+        result.push_back(*tensorId);
     }
     return result;
 }
@@ -89,8 +97,7 @@ int OperationBuffersExtractor::mutableBufferLifespanEnd(BufferID buffer_id) cons
     }
 }
 
-std::size_t
-OperationBuffersExtractor::mutableBufferSize(BufferID buffer_id) const {
+std::size_t OperationBuffersExtractor::mutableBufferSize(BufferID buffer_id) const {
     try {
         return mutable_buffers_.at(buffer_id).size;
     } catch (std::out_of_range& e) {
@@ -119,7 +126,7 @@ OperationBuffersExtractor::mutableBuffersIds() const {
 }
 
 std::vector<BufferID> OperationBuffersExtractor::immutableBuffersIds() const {
-    std::vector<BufferID> result { };
+    std::vector<BufferID> result{};
     for (const auto& pair : immutable_buffers_) {
         result.push_back(pair.first);
     }
@@ -135,71 +142,92 @@ std::size_t OperationBuffersExtractor::GetTensorByteSize(const ngraph::Input<ngr
 }
 
 void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, int node_idx) {
-    std::vector<BufferID> mergedTensorIds;
-    std::vector<std::pair<std::string, TensorID>> mergedTensors;
+    std::vector<std::pair<std::string, TensorID::Ptr>> mergedTensors;
     mergedTensors.reserve(node->inputs().size());
     for (const auto& input : node->inputs()) {
-        auto output = input.get_source_output();
-        const auto& tensorName = GetTensorNameInternal(output);
+        const auto& tensorName = GetTensorNameInternal(input.get_source_output());
         const auto& tensorId = tensor_names_.at(tensorName);
+        Expects(&tensorId->GetBuffer() == tensorId.get());
         mergedTensors.emplace_back(tensorName, tensorId);
-        mergedTensorIds.push_back(tensorId.buffer_id);
     }
+    Expects(!mergedTensors.empty());
 
-    std::vector<std::pair<BufferID, BufferDesc>> filteredBufferDescs;
-    std::copy_if(mutable_buffers_.begin(), mutable_buffers_.end(), std::back_inserter(filteredBufferDescs),
-                 [&mergedTensorIds](const auto& t){
-                   return mergedTensorIds.end() != std::find(mergedTensorIds.begin(), mergedTensorIds.end(), t.first);
-                 });
+    std::vector<BufferID> mergedBufferIds;
+    std::transform(mergedTensors.begin(), mergedTensors.end(), std::back_inserter(mergedBufferIds), [](const auto& nt) {
+        return nt.second->GetBuffer().GetId();
+    });
 
-    const auto minBufferId = *std::min_element(mergedTensorIds.begin(), mergedTensorIds.end());
-    unsigned totalSize = 0;
-    for (const auto& tn : mergedTensors) {
-        auto& tensorId = tensor_names_[tn.first];
-        const auto origId = tensorId.buffer_id;
-        tensorId.buffer_id = minBufferId;
-        tensorId.offset += totalSize;
-        auto foundBufferDesc = std::find_if(filteredBufferDescs.begin(), filteredBufferDescs.end(),
-                                        [origId](const auto& t) {
-                                          return t.first == origId;
-                                        });
-        totalSize += foundBufferDesc->second.size;
-    }
-
-    mutable_buffers_.at(minBufferId).size = totalSize;
-    for (const auto& i : mergedTensorIds) {
-        if (i == minBufferId) {
-            continue;
+    int minLifespanStart = mutable_buffers_.at(mergedBufferIds.front()).lifespan_start;
+    for (const auto& bufferId : mergedBufferIds) {
+        const int lifespanStart = mutable_buffers_.at(bufferId).lifespan_start;
+        if (lifespanStart < minLifespanStart) {
+            minLifespanStart = lifespanStart;
         }
-        mutable_buffers_.erase(i);
     }
 
     const auto& output = node->output(0);
-    mutable_buffers_.emplace(std::make_pair(minBufferId,
-                                            BufferDesc { node_idx, node_idx, totalSize }));
-    tensor_names_.emplace(GetTensorNameInternal(output), minBufferId);
+    auto mergedTensorByteSize = GetTensorByteSize(output);
+    auto parentTensor = std::make_shared<TensorID>(next_buffer_id_);
+    next_buffer_id_ += 1;
+    tensor_names_.emplace(GetTensorNameInternal(output), parentTensor);
+
+    mutable_buffers_.emplace(std::make_pair(parentTensor->GetBuffer().GetId(),
+                                            BufferDesc{minLifespanStart, node_idx, mergedTensorByteSize}));
+    for (const auto& bufferId : mergedBufferIds) {
+        mutable_buffers_.erase(bufferId);
+    }
+
+    unsigned totalSize = 0;
+    for (const auto& t : mergedTensors) {
+        auto& tensor = tensor_names_[t.first];
+        tensor->SetParent(parentTensor, totalSize);
+        totalSize += mutable_tensor_sizes_.at(tensor->GetId());
+    }
+    Expects(mergedTensorByteSize == totalSize);
+}
+
+void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int node_idx) {
+    try {
+        Expects(node->inputs().size() >= 1);
+        Expects(node->outputs().size() == 1);
+        const auto input = node->inputs().at(0);
+        const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
+        const auto output = node->outputs().at(0);
+        tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
+    } catch (std::out_of_range&) {
+        throwIEException(fmt::format("Failed to extract output buffer for reshape only node '{}'", node->get_name()));
+    }
 }
 
 void OperationBuffersExtractor::extractMutableTensors(const NodePtr& node, int node_idx) {
-    if (isReshapeOnlyNode(*node)) {
-        try {
-            Expects(node->inputs().size() >= 1);
-            Expects(node->outputs().size() == 1);
-            const auto input = node->inputs().at(0);
-            const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
-            const auto output = node->outputs().at(0);
+    for (const auto& output : node->outputs()) {
+        auto tensorByteSize = GetTensorByteSize(output);
+        mutable_tensor_sizes_[next_buffer_id_] = tensorByteSize;
+        mutable_buffers_.emplace(std::make_pair(next_buffer_id_, BufferDesc{node_idx, node_idx, tensorByteSize}));
+        tensor_names_.emplace(GetTensorNameInternal(output), std::make_shared<TensorID>(next_buffer_id_));
+        next_buffer_id_++;
+    }
+}
+
+void OperationBuffersExtractor::extractParameterTensors(const NodePtr& node, int node_idx) {
+    if (node->inputs().size() > 0) {
+        Expects(node->get_output_size() > 0);
+        auto input = node->inputs().front().get_source_output();
+        const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
+        for (auto& output : node->outputs()) {
             tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
-        } catch (std::out_of_range&) {
-            throwIEException(fmt::format(
-                "Failed to extract output buffer for reshape only node '{}'",
-                node->get_name()));
         }
     } else {
-        for (const auto& output : node->outputs()) {
-            mutable_buffers_.emplace(std::make_pair(
-                next_buffer_id_, BufferDesc { node_idx, node_idx, GetTensorByteSize(output) }));
-            tensor_names_.emplace(GetTensorNameInternal(output), next_buffer_id_);
-            next_buffer_id_++;
+        extractMutableTensors(node, node_idx);
+    }
+}
+
+void OperationBuffersExtractor::extractResultTensors(const NodePtr& node) {
+    if (node->get_output_size() > 0) {
+        auto input = node->inputs().front().get_source_output();
+        const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
+        for (auto& output : node->outputs()) {
+            tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
         }
     }
 }
@@ -208,26 +236,31 @@ void OperationBuffersExtractor::extractImmutableTensors(const NodePtr& node) {
     auto constant = std::dynamic_pointer_cast<ngraph::op::v0::Constant>(node);
     const Byte * ptr = reinterpret_cast<const Byte*>(constant->get_data_ptr());
     auto span = gsl::make_span(ptr, GetTensorByteSize(node->output(0)));
-    immutable_buffers_.emplace(std::make_pair(next_buffer_id_, span));
-    tensor_names_.emplace(GetTensorNameInternal(node->output(0)), next_buffer_id_);
+    auto tensor = std::make_shared<TensorID>(next_buffer_id_);
+    immutable_buffers_.emplace(std::make_pair(tensor->GetId(), span));
+    tensor_names_.emplace(GetTensorNameInternal(node->output(0)), tensor);
     next_buffer_id_++;
 }
 
 WorkbufferIds OperationBuffersExtractor::processWorkbufferRequest(int node_idx, const WorkbufferRequest& request) {
     WorkbufferIds result {};
     for(auto size : request.immutable_sizes) {
-        immutable_workbuffers_.emplace(std::make_pair(next_buffer_id_, size));
+        immutable_workbuffers_.emplace(next_buffer_id_, size);
         result.immutableIds.push_back(next_buffer_id_);
         next_buffer_id_++;
     }
     for(auto size : request.mutable_sizes) {
         // mutable workbuffers share the same memory space with mutable I/O buffers
         mutable_buffers_.emplace(std::make_pair(
-            next_buffer_id_, BufferDesc { node_idx, node_idx, size }));
+            next_buffer_id_, BufferDesc{ node_idx, node_idx, size }));
         result.mutableIds.push_back(next_buffer_id_);
         next_buffer_id_++;
     }
     return result;
+}
+
+bool OperationBuffersExtractor::IsParameterNode(const ngraph::Node& node) {
+    return dynamic_cast<const ngraph::op::v0::Parameter*>(&node) != nullptr;
 }
 
 bool OperationBuffersExtractor::IsResultNode(const ngraph::Node& node) {

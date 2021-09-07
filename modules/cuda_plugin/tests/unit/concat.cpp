@@ -56,8 +56,8 @@ struct ConcatTest : testing::Test {
     allocate(axis);
     auto& registry { OperationRegistry::getInstance() };
     auto concatNode = std::make_shared<ngraph::op::Concat>(params, axis);
-    auto inputIDs  = std::vector<TensorID>{0, 1, 2};
-    auto outputIDs = std::vector<TensorID>{0};
+    auto inputIDs = std::vector<TensorID>{TensorID{0}, TensorID{1}, TensorID{2}};
+    auto outputIDs = std::vector<TensorID>{TensorID{0}};
     ASSERT_TRUE(registry.hasOperation(concatNode));
     auto operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, concatNode, inputIDs, outputIDs);
     ASSERT_TRUE(operation);

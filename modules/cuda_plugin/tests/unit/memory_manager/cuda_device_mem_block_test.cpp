@@ -20,7 +20,7 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
     ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
     auto mem_block = std::make_unique<DeviceMemBlock>(model);
-    ASSERT_TRUE(mem_block->deviceTensorPtr(0) == nullptr);
+    ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{0}) == nullptr);
   }
 
   // The only allocation is of zero size. Zero size tensors are forbidden
@@ -39,7 +39,7 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
     ASSERT_EQ(model->deviceMemoryBlockSize(), 0);
 
     auto mem_block = std::make_unique<DeviceMemBlock>(model);
-    ASSERT_TRUE(mem_block->deviceTensorPtr(buffer_id) == nullptr);
+    ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{buffer_id}) == nullptr);
   }
 }
 
@@ -59,12 +59,12 @@ TEST(DeviceMemBlock, VerifyDevicePointers) {
 
   const BufferID first_allocation_id = 0;
   const uint8_t* const block_base_addr =
-    reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(first_allocation_id));
+    reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(TensorID{first_allocation_id}));
   ASSERT_TRUE(block_base_addr != nullptr);
 
   // Verify tensor pointers
   for (BufferID id = 0; id < alloc_count; ++id) {
-    const uint8_t* const actual_addr = reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(id));
+    const uint8_t* const actual_addr = reinterpret_cast<uint8_t*>(mem_block->deviceTensorPtr(TensorID{id}));
     const uint8_t* const expected_addr = block_base_addr + offsets.at(id);
     ASSERT_EQ(actual_addr, expected_addr);
   }
@@ -83,6 +83,6 @@ TEST(DeviceMemBlock, NullPtrIfTensorNotFound) {
   auto mem_block = std::make_unique<DeviceMemBlock>(model);
 
   // Returns nullptr for unknown tensor id's
-  ASSERT_TRUE(mem_block->deviceTensorPtr(0) == nullptr);
-  ASSERT_TRUE(mem_block->deviceTensorPtr(4) == nullptr);
+  ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{0}) == nullptr);
+  ASSERT_TRUE(mem_block->deviceTensorPtr(TensorID{4}) == nullptr);
 }
