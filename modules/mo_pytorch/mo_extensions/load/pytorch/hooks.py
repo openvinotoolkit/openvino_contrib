@@ -370,42 +370,6 @@ class OpenVINOShapeTensor(OpenVINOTensor):
                 res += [item]
         return res
 
-    # def __floordiv__(self, a):
-    #     if isinstance(a, OpenVINOTensor):
-    #         class Div(nn.Module):
-    #             pass
-    #         return forward_hook(Div(), (self, a))
-    #     else:
-    #         class Div(nn.Module):
-    #             def __init__(self, value):
-    #                 super().__init__()
-    #                 value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
-    #                 self.register_buffer('div', value)
-
-    #         return forward_hook(Div(a), (self,))
-    
-    # def __float__(self):
-    #     assert(len(self.dynamic_shape) == 1), 'float() cast must be applied only for scalar value'
-    #     return float(self.dynamic_shape[0])
-
-    # def __int__(self):
-    #     assert(len(self.dynamic_shape) == 1), 'float() cast must be applied only for scalar value'
-    #     return int(self.dynamic_shape[0])
-
-    # def __sub__(self, a):
-    #     if isinstance(a, OpenVINOTensor):
-    #         class Sub(nn.Module):
-    #             pass
-    #         return forward_hook(Sub(), (self, a))
-    #     else:
-    #         class Sub(nn.Module):
-    #             def __init__(self, value):
-    #                 super().__init__()
-    #                 value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
-    #                 self.register_buffer('sub', value)
-
-    #         return forward_hook(Sub(a), (self,))
-
 
 @implements(F.max_pool2d)
 def function_hook(input, *args, **kwargs):
@@ -442,7 +406,6 @@ def function_hook(input, *args, **kwargs):
             self.stride = stride
             self.padding = padding
 
-    # output = F.avg_pool2d(input.tensor(), *args, **kwargs)
     return forward_hook(AvgPool2d(*args, **kwargs), (input,))
 
 
@@ -550,9 +513,12 @@ def function_hook(input, *args, **kwargs):
 
 
 @implements(torch.conv2d)
+@implements(torch.conv3d)
 def function_hook(input, weight, bias, *args, **kwargs):
 
-    class Convolution(nn.Conv2d):
+    base = nn.Conv2d if input.dim() == 4 else nn.Conv3d
+
+    class Convolution(base):
         def __init__(self, weight, bias, stride, padding, dilation, groups):
             super().__init__(in_channels=weight.shape[1] * groups,
                              out_channels=weight.shape[0],
@@ -570,34 +536,13 @@ def function_hook(input, weight, bias, *args, **kwargs):
         def infer_shapes(self, inputs):
             shape = list(inputs[0].dynamic_shape)
             shape[1] = self.out_channels
-            for i in range(2):
+            for i in range(input.dim() - 2):
                 p = self.padding if isinstance(self.padding, int) else self.padding[i]
                 k = self.kernel_size if isinstance(self.kernel_size, int) else self.kernel_size[i]
                 d = self.dilation if isinstance(self.dilation, int) else self.dilation[i]
                 s = self.stride if isinstance(self.stride, int) else self.stride[i]
                 shape[2 + i] = 1 + (shape[2 + i] + 2 * p - d * (k - 1) - 1) // s
             return shape
-
-    return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,))
-
-
-@implements(torch.conv3d)
-def function_hook(input, weight, bias, *args, **kwargs):
-
-    class Convolution(nn.Conv3d):
-        def __init__(self, weight, bias, stride, padding, dilation, groups):
-            super().__init__(in_channels=weight.shape[1] * groups,
-                             out_channels=weight.shape[0],
-                             kernel_size=weight.shape[2:],
-                             stride=stride,
-                             padding=padding,
-                             dilation=dilation,
-                             groups=groups,
-                             bias=not bias is None)
-            params = {'weight': weight}
-            if not bias is None:
-                params['bias'] = bias
-            self.load_state_dict(params)
 
     return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,))
 
