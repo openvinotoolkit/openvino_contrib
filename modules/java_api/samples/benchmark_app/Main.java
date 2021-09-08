@@ -395,7 +395,7 @@ public class Main {
                 // overhead (and should return immediately).
                 // The primary reason for calling the method is exception checking/re-throwing.
                 // Callback, that governs the actual execution can handle errors as well,
-                // but as it uses just error codes it has no details like ‘what()’ method of
+                // but as it uses just error codes it has no details like `what()` method of
                 // `std::exception`.
                 // So, rechecking for any exceptions here.
                 inferRequest._wait();
