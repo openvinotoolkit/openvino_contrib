@@ -199,7 +199,7 @@ class TestModels(unittest.TestCase):
     def test_rugpt3(self):
         from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
-        model_name_or_path = "sberbank-ai/rugpt3medium_based_on_gpt2"
+        model_name_or_path = "rugpt3medium_based_on_gpt2"
         tokenizer = GPT2Tokenizer.from_pretrained(model_name_or_path)
         model = GPT2LMHeadModel.from_pretrained(model_name_or_path)
 

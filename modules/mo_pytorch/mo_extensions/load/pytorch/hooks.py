@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -41,7 +42,7 @@ def forward_hook(self, inputs, output=None):
     # ordered by connection
     for idx, (key, value) in enumerate(self.state_dict().items()):
         param_name = name + '/' + key
-        graph.add_node(param_name, kind='op', op='Const', value=value.numpy())
+        graph.add_node(param_name, name=param_name, kind='op', op='Const', value=value.numpy())
         edge_attrs = {
             'out': 0,
             'in': len(inputs) + idx,
@@ -55,20 +56,26 @@ def forward_hook(self, inputs, output=None):
 
     if isinstance(output, tuple):
         outputs = []
-        for i, out in enumerate(output):
+        shapes = self.infer_shapes(inputs)
+        assert(len(shapes) == len(output))
+        for i, (out, shape) in enumerate(zip(output, shapes)):
             if not isinstance(out, OpenVINOTensor):
                 out = OpenVINOTensor(out)
-                out.graph = graph
 
+            out.graph = graph
             out.node_name = name
             out.port_id = i
+            out.dynamic_shape = shape
             outputs.append(out)
         return tuple(outputs)
 
     if not isinstance(output, OpenVINOTensor):
-        output = OpenVINOTensor(output)
+        output = OpenVINOShapeTensor(output) if isinstance(inputs[0], OpenVINOShapeTensor) else OpenVINOTensor(output)
         output.graph = graph
-        output.dims = inputs[0].dims
+        if hasattr(self, 'infer_shapes'):
+            output.dynamic_shape = self.infer_shapes(inputs)
+        else:
+            output.dynamic_shape = inputs[0].dynamic_shape
 
     output.node_name = name
     return output
@@ -82,12 +89,10 @@ class OpenVINOTensor(object):
         self.graph = None
         self.node_name = None
         self.port_id = 0
-        # self.shape = value.shape if value else []
-        # self.requires_grad = self._value.requires_grad
+        self.dynamic_shape = None
         self.requires_grad = False
         self.device = 'cpu'
-        # self.dtype = value.dtype if value else None
-        self.dims = 0
+        self.dtype = None
         if self.requires_grad:
             raise Error('Model in training mode is used')
 
@@ -101,21 +106,17 @@ class OpenVINOTensor(object):
         return self
 
     def dim(self):
-        return self.dims
+        return len(self.dynamic_shape)
     
     @property
     def shape(self):
-        class Shape(nn.Module):
-            def __init__(self):
-                super().__init__()
-
-        return forward_hook(Shape(), (self,))
+        return tuple(self.dynamic_shape)
 
     def size(self, dim=None):
-        return self._value.size(dim) if dim else self._value.size()
+        return self.dynamic_shape[dim] if dim else self.shape
 
     def split(self, split_size, dim):
-        num_splits = self._value.shape[dim] // split_size
+        num_splits = self.dynamic_shape[dim] // split_size
 
         class Split(nn.Module):
             def __init__(self, num_splits, dim):
@@ -123,21 +124,19 @@ class OpenVINOTensor(object):
                 self.num_splits = num_splits
                 self.dim = dim
 
-        res = self._value.split(split_size, dim)
-        return forward_hook(Split(num_splits, dim), (self,), res)
+            def infer_shapes(self, inputs):
+                shape = list(inputs[0].dynamic_shape)
+                shape[dim] = shape[dim] // num_splits
+                return [shape] * num_splits
 
-    def data_ptr(self):
-        return self._value.data_ptr()
+        outputs = tuple([OpenVINOTensor() for _ in range(num_splits)])
+        return forward_hook(Split(num_splits, dim), (self,), outputs)
 
     # Overrides += over tensors
     def __iadd__(self, a):
-        # self._value += a._value
         class Add(nn.Module):
             pass
 
-        # NOTE: need to recreate OpenVINOTensor to run forward_hook
-        output = OpenVINOTensor()
-        output.graph = self.graph
         return forward_hook(Add(), (self, a))
 
     def __add__(self, a):
@@ -158,8 +157,7 @@ class OpenVINOTensor(object):
         if isinstance(a, OpenVINOTensor):
             class Add(nn.Module):
                 pass
-            res = self._value + a._value
-            return forward_hook(Add(), (self, a), res)
+            return forward_hook(Add(), (self, a))
         else:
             class Add(nn.Module):
                 def __init__(self, value):
@@ -167,8 +165,7 @@ class OpenVINOTensor(object):
                     value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
                     self.register_buffer('add', value)
 
-            res = self._value + a
-            return forward_hook(Add(a), (self,), res)
+            return forward_hook(Add(a), (self,))
 
     def __getitem__(self, key):
         begin_id = []
@@ -179,6 +176,13 @@ class OpenVINOTensor(object):
         
         if not isinstance(key, tuple):
             key = (key,)
+
+        # As we don't support network reshapeability at this moment, return static values
+        if isinstance(self, OpenVINOShapeTensor):
+            res = tuple(self.dynamic_shape)
+            for item in key:
+                res = res[item]
+            return res
 
         for item in key:
             if isinstance(item, int):
@@ -210,9 +214,22 @@ class OpenVINOTensor(object):
                 self.register_buffer('begin_id', torch.tensor(begin))
                 self.register_buffer('end_id', torch.tensor(end))
 
-        # res = self._value[key] 
-        sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
+            def infer_shapes(self, inputs):
+                def canonical(dim, size):
+                    return dim if dim >= 0 else size + dim
 
+                shape = list(inputs[0].dynamic_shape)
+                for i, shrink in enumerate(shrink_axis_mask):
+                    if shrink:
+                        continue
+                    dim = shape[i]
+                    begin = canonical(begin_id[i], dim) if begin_mask[i] else 0
+                    end = canonical(end_id[i], dim) if end_mask[i] else dim - 1
+                    shape[i] = end - begin + 1
+                
+                return shape if shape else [1]
+
+        sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
         return forward_hook(sslice, (self,))
 
     # a * value
@@ -220,8 +237,7 @@ class OpenVINOTensor(object):
         if isinstance(a, OpenVINOTensor):
             class Mul(nn.Module):
                 pass
-            res = self._value * a._value
-            return forward_hook(Mul(), (self, a), res)
+            return forward_hook(Mul(), (self, a))
         else:
             class Mul(nn.Module):
                 def __init__(self, value):
@@ -229,15 +245,13 @@ class OpenVINOTensor(object):
                     value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
                     self.register_buffer('mul', value)
 
-            res = self._value * a
-            return forward_hook(Mul(a), (self,), res)
+            return forward_hook(Mul(a), (self,))
 
     def __rmul__(self, a):
         if isinstance(a, OpenVINOTensor):
             class Mul(nn.Module):
                 pass
-            res = self._value * a._value
-            return forward_hook(Mul(), (self, a), res)
+            return forward_hook(Mul(), (self, a))
         else:
             class Mul(nn.Module):
                 def __init__(self, value):
@@ -245,15 +259,13 @@ class OpenVINOTensor(object):
                     value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
                     self.register_buffer('mul', value)
 
-            res = self._value * a
-            return forward_hook(Mul(a), (self,), res)
+            return forward_hook(Mul(a), (self,))
 
     def __truediv__(self, a):
         if isinstance(a, OpenVINOTensor):
             class Div(nn.Module):
                 pass
-            res = self._value / a._value
-            return forward_hook(Div(), (self, a), res)
+            return forward_hook(Div(), (self, a))
         else:
             class Div(nn.Module):
                 def __init__(self, value):
@@ -261,57 +273,43 @@ class OpenVINOTensor(object):
                     value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
                     self.register_buffer('div', value)
 
-            res = self._value / a
-            return forward_hook(Div(a), (self,), res)
+            return forward_hook(Div(a), (self,))
 
     def view(self, *shape):
-        res = self._value.view(shape)
-
         class Reshape(nn.Module):
             def __init__(self, shape):
                 super().__init__()
                 self.shape = shape
 
-        return forward_hook(Reshape(shape), (self,), res)
+            def infer_shapes(self, inputs):
+                target_shape = list(self.shape)  # Create a copy of shape and replace -1
+                for i, val in enumerate(self.shape):
+                    if val == -1:
+                        target_shape[i] = np.prod(inputs[0].dynamic_shape) // abs(np.prod(target_shape))
+                        break
+                return target_shape
+
+        return forward_hook(Reshape(shape), (self,))
+
 
     def reshape(self, *shape):
-        res = OpenVINOTensor(self._value.reshape(shape))
-        res.graph = self.graph
-
-        class Reshape(nn.Module):
-            def __init__(self, shape):
-                super().__init__()
-                self.shape = shape
-
-        forward_hook(Reshape(shape), (self,), res)
-        return res
+        return self.view(*shape)
 
     def permute(self, *order):
-        res = OpenVINOTensor(self._value.permute(order))
-        res.graph = self.graph
-
         class Transpose(nn.Module):
             def __init__(self, order):
                 super().__init__()
                 self.order = order
 
-        forward_hook(Transpose(order), (self,), res)
-        return res
+            def infer_shapes(self, inputs):
+                return [inputs[0].dynamic_shape[i] for i in self.order]
+
+        return forward_hook(Transpose(order), (self,))
 
     def transpose(self, dim0, dim1):
-        res = OpenVINOTensor(self._value.transpose(dim0, dim1))
-        res.graph = self.graph
-
-        class Transpose(nn.Module):
-            def __init__(self, order):
-                super().__init__()
-                self.order = order
-
-        order = [i for i in range(len(self._value.shape))]
+        order = [i for i in range(self.dim())]
         order[dim0], order[dim1] = order[dim1], order[dim0]
-
-        forward_hook(Transpose(order), (self,), res)
-        return res
+        return self.permute(*order)
 
     def sigmoid(self):
         class Sigmoid(nn.Module):
@@ -321,10 +319,7 @@ class OpenVINOTensor(object):
         return forward_hook(Sigmoid(), (self,))
 
     def contiguous(self):
-        res = OpenVINOTensor(self._value.contiguous())
-        res.node_name = self.node_name
-        res.graph = self.graph
-        return res
+        return self
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
@@ -352,13 +347,64 @@ def register_functional_hook(func):
     def function_hook(input, *args, **kwargs):
         output = OpenVINOTensor()
         output.graph = input.graph
-        output.dims = input.dims
+        output.dynamic_shape = list(input.dynamic_shape)
         return output
 
 register_functional_hook(F.adaptive_avg_pool2d)
 register_functional_hook(F.linear)
 register_functional_hook(F.dropout)
 register_functional_hook(F.dropout3d)
+
+
+# Separate class which tracks torch.Size
+class OpenVINOShapeTensor(OpenVINOTensor):
+    def __init__(self, value=None):
+        super().__init__()
+
+    def __add__(self, other):
+        res = list(self.dynamic_shape)
+        for item in other:
+            if isinstance(item, OpenVINOTensor):
+                res += item.dynamic_shape
+            else:
+                res += [item]
+        return res
+
+    # def __floordiv__(self, a):
+    #     if isinstance(a, OpenVINOTensor):
+    #         class Div(nn.Module):
+    #             pass
+    #         return forward_hook(Div(), (self, a))
+    #     else:
+    #         class Div(nn.Module):
+    #             def __init__(self, value):
+    #                 super().__init__()
+    #                 value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+    #                 self.register_buffer('div', value)
+
+    #         return forward_hook(Div(a), (self,))
+    
+    # def __float__(self):
+    #     assert(len(self.dynamic_shape) == 1), 'float() cast must be applied only for scalar value'
+    #     return float(self.dynamic_shape[0])
+
+    # def __int__(self):
+    #     assert(len(self.dynamic_shape) == 1), 'float() cast must be applied only for scalar value'
+    #     return int(self.dynamic_shape[0])
+
+    # def __sub__(self, a):
+    #     if isinstance(a, OpenVINOTensor):
+    #         class Sub(nn.Module):
+    #             pass
+    #         return forward_hook(Sub(), (self, a))
+    #     else:
+    #         class Sub(nn.Module):
+    #             def __init__(self, value):
+    #                 super().__init__()
+    #                 value = value if isinstance(value, torch.Tensor) else torch.tensor(value)
+    #                 self.register_buffer('sub', value)
+
+    #         return forward_hook(Sub(a), (self,))
 
 
 @implements(F.max_pool2d)
@@ -374,7 +420,16 @@ def function_hook(input, *args, **kwargs):
             self.return_indices = return_indices
             self.ceil_mode = ceil_mode
 
-    # output = F.max_pool2d(input.tensor(), *args, **kwargs)
+        def infer_shapes(self, inputs):
+            shape = list(inputs[0].dynamic_shape)
+            for i in range(2):
+                p = self.padding if isinstance(self.padding, int) else self.padding[i]
+                k = self.kernel_size if isinstance(self.kernel_size, int) else self.kernel_size[i]
+                d = self.dilation if isinstance(self.dilation, int) else self.dilation[i]
+                s = self.stride if isinstance(self.stride, int) else self.stride[i]
+                shape[2 + i] = 1 + (shape[2 + i] + 2 * p - d * (k - 1) - 1) // s
+            return shape
+
     return forward_hook(MaxPool2d(*args, **kwargs), (input,))
 
 
@@ -408,8 +463,7 @@ def function_hook(input, *args, **kwargs):
         def __init__(self):
             super().__init__()
 
-    output = torch.tanh(input.tensor(), *args, **kwargs)
-    return forward_hook(Tanh(*args, **kwargs), (input,), output)
+    return forward_hook(Tanh(*args, **kwargs), (input,))
 
 
 @implements(torch.pow)
@@ -420,8 +474,7 @@ def function_hook(input, *args, **kwargs):
             super().__init__()
             self.exponent = exponent
 
-    output = torch.pow(input.tensor(), *args, **kwargs)
-    return forward_hook(Pow(*args, **kwargs), (input,), output)
+    return forward_hook(Pow(*args, **kwargs), (input,))
 
 
 @implements(torch.unsqueeze)
@@ -431,9 +484,7 @@ def unsqueeze(input, dim):
             super().__init__()
             self.register_buffer('unsqueeze_dims', torch.tensor(dim))
 
-    output = torch.unsqueeze(input._value, dim)
-    forward_hook(Unsqueeze(dim), (input,), output)
-    return forward_hook(Unsqueeze(dim), (input,), output)
+    return forward_hook(Unsqueeze(dim), (input,))
 
 
 @implements(F.relu)
@@ -464,8 +515,7 @@ def function_hook(input, dim, _stacklevel, dtype):
             super().__init__()
             self.dim = dim
 
-    output = F.softmax(input.tensor(), dim, _stacklevel, dtype)
-    return forward_hook(Softmax(dim), (input,), output)
+    return forward_hook(Softmax(dim), (input,))
 
 
 @implements(F.leaky_relu)
@@ -516,6 +566,17 @@ def function_hook(input, weight, bias, *args, **kwargs):
             if not bias is None:
                 params['bias'] = bias
             self.load_state_dict(params)
+
+        def infer_shapes(self, inputs):
+            shape = list(inputs[0].dynamic_shape)
+            shape[1] = self.out_channels
+            for i in range(2):
+                p = self.padding if isinstance(self.padding, int) else self.padding[i]
+                k = self.kernel_size if isinstance(self.kernel_size, int) else self.kernel_size[i]
+                d = self.dilation if isinstance(self.dilation, int) else self.dilation[i]
+                s = self.stride if isinstance(self.stride, int) else self.stride[i]
+                shape[2 + i] = 1 + (shape[2 + i] + 2 * p - d * (k - 1) - 1) // s
+            return shape
 
     return forward_hook(Convolution(weight, bias, *args, **kwargs), (input,))
 
@@ -570,10 +631,10 @@ def function_hook(input, *args, **kwargs):
 
 
 @implements(F.interpolate)
-def function_hook(input, size, scale_factor, mode, align_corners, recompute_scale_factor):
+def function_hook(input, *args, **kwargs):
 
     class Upsample(nn.Module):
-        def __init__(self):
+        def __init__(self, size, scale_factor, mode, align_corners, recompute_scale_factor):
             super().__init__()
             self.size = size
             self.scale_factor = scale_factor
@@ -582,10 +643,7 @@ def function_hook(input, size, scale_factor, mode, align_corners, recompute_scal
             self.recompute_scale_factor = recompute_scale_factor
             self.dims = input.dim()
 
-    if isinstance(size, OpenVINOTensor):
-        return forward_hook(Upsample(), (input, size))
-    else:
-        return forward_hook(Upsample(), (input,))
+    return forward_hook(Upsample(*args, **kwargs), (input,))
 
 
 # x - value
@@ -596,24 +654,32 @@ def function_hook(value, x):
             super().__init__()
             self.register_buffer('sub', value)
 
-    res = x._value - value
-    return forward_hook(Sub(value), (x,), res)
+    return forward_hook(Sub(value), (x,))
 
 
-# Workaround for a bug https://github.com/pytorch/pytorch/issues/34294
-original_cat = torch.cat
-def concat(inputs, dim=0):
+@implements(torch.cat)
+def function_hook(inputs, dim=0):
     class Concat(nn.Module):
         def __init__(self, dim):
             super().__init__()
             self.dim = dim
 
-    if not isinstance(inputs[0], OpenVINOTensor):
-        return original_cat(inputs, dim)
+        def infer_shapes(self, inputs):
+            shape = list(inputs[0].dynamic_shape)
+            if shape[self.dim] == -1:
+                return shape
 
+            for inp in inputs[1:]:
+                if inp.dynamic_shape[self.dim] == -1:
+                    shape[self.dim] = -1
+                    return shape
+
+                shape[self.dim] += inp.dynamic_shape[self.dim]
+
+            return shape
+
+    inputs = [inp if isinstance(inp, OpenVINOTensor) else OpenVINOTensor(inp) for inp in inputs]
     return forward_hook(Concat(dim), inputs)
-
-torch.cat = concat
 
 
 @implements(torch.embedding)
@@ -624,8 +690,10 @@ def function_hook(weight, input, *args, **kwargs):
             super().__init__()
             self.register_buffer('weight', weight)
 
-    output = torch.embedding(weight, input.tensor(), *args, **kwargs)
-    return forward_hook(Embedding(weight), (input,), output)
+        def infer_shapes(self, inputs):
+            return inputs[0].dynamic_shape + [weight.shape[1]]
+
+    return forward_hook(Embedding(weight), (input,))
 
 
 @implements(F.layer_norm)
@@ -638,8 +706,7 @@ def function_hook(input, normalized_shape, weight, bias, eps):
             self.register_buffer('bias', bias)
             self.eps = eps
 
-    output = F.layer_norm(input.tensor(), normalized_shape, weight, bias, eps)
-    return forward_hook(LayerNorm(), (input,), output)
+    return forward_hook(LayerNorm(), (input,))
 
 
 @implements(torch.addmm)
@@ -651,20 +718,27 @@ def function_hook(bias, mat1, mat2):
             self.register_buffer('weight', weight)
             self.register_buffer('bias', bias)
 
-    output = torch.addmm(bias, mat1.tensor(), mat2)
-    return forward_hook(ADDMM(mat2, bias), (mat1,), output)
+        def infer_shapes(self, inputs):
+            return inputs[0].dynamic_shape[:-1] + [self.state_dict()['weight'].shape[1]]
+
+    return forward_hook(ADDMM(mat2, bias), (mat1,))
 
 
 @implements(torch.stack)
-def function_hook(inputs):
+def function_hook(inputs, dim=0):
 
     class Stack(nn.Module):
         def __init__(self):
             super().__init__()
+            self.dim = dim
 
-    tensors = [inp.tensor() for inp in inputs]
-    output = torch.stack(tensors)
-    return forward_hook(Stack(), inputs, output)
+        def infer_shapes(self, inputs):
+            shape = inputs[0].dynamic_shape
+            shape.insert(dim, len(inputs))
+            return shape
+
+    inputs = [inp if isinstance(inp, OpenVINOTensor) else OpenVINOTensor(inp) for inp in inputs]
+    return forward_hook(Stack(), inputs)
 
 
 @implements(torch.matmul)
@@ -674,8 +748,7 @@ def function_hook(mat0, mat1):
         def __init__(self):
             super().__init__()
 
-    output = torch.matmul(mat0.tensor(), mat1.tensor())
-    return forward_hook(Matmul(), (mat0, mat1), output)
+    return forward_hook(Matmul(), (mat0, mat1))
 
 
 @implements(torch.where)
@@ -687,5 +760,4 @@ def function_hook(condition, x, y):
             self.register_buffer('condition', condition)
             self.register_buffer('y', y)
 
-    output = torch.where(condition, x.tensor(), y)
-    return forward_hook(Where(), (x,), output)
+    return forward_hook(Where(), (x,))
