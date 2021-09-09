@@ -4,6 +4,7 @@ resources:
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+    ref: releases/2021/4
 
 jobs:
 - job: Lin
