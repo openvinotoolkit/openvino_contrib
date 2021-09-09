@@ -70,7 +70,7 @@ def forward_hook(self, inputs, output=None):
         return tuple(outputs)
 
     if not isinstance(output, OpenVINOTensor):
-        output = OpenVINOShapeTensor(output) if isinstance(inputs[0], OpenVINOShapeTensor) else OpenVINOTensor(output)
+        output = OpenVINOTensor(output)
         output.graph = graph
         if hasattr(self, 'infer_shapes'):
             output.dynamic_shape = self.infer_shapes(inputs)
@@ -176,13 +176,6 @@ class OpenVINOTensor(object):
         
         if not isinstance(key, tuple):
             key = (key,)
-
-        # As we don't support network reshapeability at this moment, return static values
-        if isinstance(self, OpenVINOShapeTensor):
-            res = tuple(self.dynamic_shape)
-            for item in key:
-                res = res[item]
-            return res
 
         for item in key:
             if isinstance(item, int):
@@ -354,21 +347,6 @@ register_functional_hook(F.adaptive_avg_pool2d)
 register_functional_hook(F.linear)
 register_functional_hook(F.dropout)
 register_functional_hook(F.dropout3d)
-
-
-# Separate class which tracks torch.Size
-class OpenVINOShapeTensor(OpenVINOTensor):
-    def __init__(self, value=None):
-        super().__init__()
-
-    def __add__(self, other):
-        res = list(self.dynamic_shape)
-        for item in other:
-            if isinstance(item, OpenVINOTensor):
-                res += item.dynamic_shape
-            else:
-                res += [item]
-        return res
 
 
 @implements(F.max_pool2d)
@@ -692,6 +670,9 @@ def function_hook(mat0, mat1):
     class Matmul(nn.Module):
         def __init__(self):
             super().__init__()
+
+        def infer_shapes(self, inputs):
+            return inputs[0].dynamic_shape[:-1] + [inputs[1].dynamic_shape[-1]]
 
     return forward_hook(Matmul(), (mat0, mat1))
 
