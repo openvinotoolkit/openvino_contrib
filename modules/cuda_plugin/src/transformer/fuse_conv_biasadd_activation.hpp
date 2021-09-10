@@ -10,45 +10,45 @@
 namespace ngraph::pass {
 
 class FuseConvolutionWithBiasAdd : public ngraph::pass::MatcherPass {
- public:
-  NGRAPH_RTTI_DECLARATION;
-  FuseConvolutionWithBiasAdd();
+public:
+    NGRAPH_RTTI_DECLARATION;
+    FuseConvolutionWithBiasAdd();
 };
 
 class FuseConvolutionWithBiasaddAdd : public ngraph::pass::MatcherPass {
- public:
-  NGRAPH_RTTI_DECLARATION;
-  FuseConvolutionWithBiasaddAdd();
+public:
+    NGRAPH_RTTI_DECLARATION;
+    FuseConvolutionWithBiasaddAdd();
 };
 
 class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
- public:
-  static constexpr auto Name = "SinkReluToFusedConvolution";
+public:
+    static constexpr auto Name = "SinkReluToFusedConvolution";
 
-  NGRAPH_RTTI_DECLARATION;
-  SinkReluToFusedConvolution();
+    NGRAPH_RTTI_DECLARATION;
+    SinkReluToFusedConvolution();
 };
 
 class SinkSigmoidToFusedConvolution : public ngraph::pass::MatcherPass {
- public:
-  static constexpr auto Name = "SinkSigmoidToFusedConvolution";
+public:
+    static constexpr auto Name = "SinkSigmoidToFusedConvolution";
 
-  NGRAPH_RTTI_DECLARATION;
-  SinkSigmoidToFusedConvolution();
+    NGRAPH_RTTI_DECLARATION;
+    SinkSigmoidToFusedConvolution();
 };
 
-class CudaFuseConvBiasAddActivation: public ngraph::pass::GraphRewrite {
- public:
-  NGRAPH_RTTI_DECLARATION;
-  CudaFuseConvBiasAddActivation();
+class CudaFuseConvBiasAddActivation : public ngraph::pass::GraphRewrite {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    CudaFuseConvBiasAddActivation();
 };
 
 class CudaFuseConvBackpropDataAdd : public ngraph::pass::MatcherPass {
- public:
-  static constexpr auto Name = "FuseConvBackpropData2DAdd";
+public:
+    static constexpr auto Name = "FuseConvBackpropDataAdd";
 
-  NGRAPH_RTTI_DECLARATION;
-  CudaFuseConvBackpropDataAdd();
+    NGRAPH_RTTI_DECLARATION;
+    CudaFuseConvBackpropDataAdd();
 };
 
 }  // namespace ngraph::pass

@@ -14,23 +14,21 @@ constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
 
 template <typename TConvNode>
 ConvolutionParams::ConvolutionParams(const TConvNode& node)
-    : element_type_{ node.get_input_element_type(ConvArgIndices::input) }
-    , input_shape_{ node.get_input_shape(ConvArgIndices::input) }
-    , filter_shape_{ node.get_input_shape(ConvArgIndices::filter) }
-    , output_shape_{ node.get_output_shape(ConvArgIndices::output) }
-    , strides_{ node.get_strides() }
-    , dilations_{ node.get_dilations() }
-    , padding_before_{ node.get_pads_begin() }
-    , padding_after_{ node.get_pads_end() }
-{
+    : element_type_{node.get_input_element_type(ConvArgIndices::input)},
+      input_shape_{node.get_input_shape(ConvArgIndices::input)},
+      filter_shape_{node.get_input_shape(ConvArgIndices::filter)},
+      output_shape_{node.get_output_shape(ConvArgIndices::output)},
+      strides_{node.get_strides()},
+      dilations_{node.get_dilations()},
+      padding_before_{node.get_pads_begin()},
+      padding_after_{node.get_pads_end()} {
     Expects(input_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
     Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
 
     InferPadding(node);
 
-    if (input_shape_.size() == CONV_1D_DIMS_NUMBER)
-        ConvertConv1DToConv2D();
+    if (input_shape_.size() == CONV_1D_DIMS_NUMBER) ConvertConv1DToConv2D();
 
     const size_t dims_number = NumberOfDims();
     Ensures(input_shape_.size() == dims_number);
@@ -47,7 +45,7 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     Ensures(padding_after_.size() == spatial_dims_number);
 }
 template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node);
-template ConvolutionParams::ConvolutionParams(const nodes::FusedConv2D& node);
+template ConvolutionParams::ConvolutionParams(const nodes::FusedConvolution& node);
 
 template <typename TConvNode>
 void ConvolutionParams::InferPadding(const TConvNode& node) {
@@ -56,17 +54,15 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
         case ngraph::op::PadType::EXPLICIT:
             break;
         case ngraph::op::PadType::SAME_LOWER:
-        case ngraph::op::PadType::SAME_UPPER:
-        {
-            const ngraph::Shape filter_spatial_shape {filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
-                                                      filter_shape_.end()};
+        case ngraph::op::PadType::SAME_UPPER: {
+            const ngraph::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
+                                                     filter_shape_.end()};
             padding_before_.clear();
             padding_after_.clear();
-            ngraph::infer_auto_padding(input_shape_, filter_spatial_shape, strides_, dilations_,
-                                       pad_type, padding_before_, padding_after_);
+            ngraph::infer_auto_padding(
+                input_shape_, filter_spatial_shape, strides_, dilations_, pad_type, padding_before_, padding_after_);
         } break;
-        case ngraph::op::PadType::VALID:
-        {
+        case ngraph::op::PadType::VALID: {
             size_t spatial_dims_number = NumberOfSpatialDims();
             padding_before_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
             padding_after_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
@@ -77,8 +73,7 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
 }
 
 void ConvolutionParams::ConvertConv1DToConv2D() {
-    if (input_shape_.size() != CONV_1D_DIMS_NUMBER)
-        return;
+    if (input_shape_.size() != CONV_1D_DIMS_NUMBER) return;
 
     Expects(input_shape_.size() == CONV_1D_DIMS_NUMBER);
     input_shape_.insert(input_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
@@ -93,18 +88,17 @@ void ConvolutionParams::ConvertConv1DToConv2D() {
 }
 
 template <typename TConvNode>
-ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
-    const TConvNode& node)
-    : element_type_{ node.get_input_element_type(ConvBackArgIndices::doutput) }
-    , doutput_shape_{ node.get_input_shape(ConvBackArgIndices::doutput) }
-    , filter_shape_{ node.get_input_shape(ConvBackArgIndices::filter) }
-    , dinput_shape_{ static_cast<const ngraph::Node&>(node).get_output_shape(0) }
-    , strides_{ node.get_strides() }
-    , dilations_{ node.get_dilations() }
-    , pads_begin_{ node.get_pads_begin() }
-    , pads_end_{ node.get_pads_end() }
-    , auto_pad_{ node.get_auto_pad() }
-    , output_padding_{ node.get_output_padding() } {
+ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& node)
+    : element_type_{node.get_input_element_type(ConvBackArgIndices::doutput)},
+      doutput_shape_{node.get_input_shape(ConvBackArgIndices::doutput)},
+      filter_shape_{node.get_input_shape(ConvBackArgIndices::filter)},
+      dinput_shape_{static_cast<const ngraph::Node&>(node).get_output_shape(0)},
+      strides_{node.get_strides()},
+      dilations_{node.get_dilations()},
+      pads_begin_{node.get_pads_begin()},
+      pads_end_{node.get_pads_end()},
+      auto_pad_{node.get_auto_pad()},
+      output_padding_{node.get_output_padding()} {
     Expects(doutput_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
     Expects(element_type_ == node.get_input_element_type(ConvBackArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvBackArgIndices::dinput));
@@ -127,12 +121,12 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
     Ensures(pads_begin_.size() == spatial_dims_number);
     Ensures(pads_end_.size() == spatial_dims_number);
 }
-template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const ngraph::op::v1::ConvolutionBackpropData& node);
-template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const nodes::FusedConvBackpropData2D& node);
+template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
+    const ngraph::op::v1::ConvolutionBackpropData& node);
+template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const nodes::FusedConvBackpropData& node);
 
 void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {
-    if (doutput_shape_.size() != CONV_1D_DIMS_NUMBER)
-        return;
+    if (doutput_shape_.size() != CONV_1D_DIMS_NUMBER) return;
 
     Expects(doutput_shape_.size() == CONV_1D_DIMS_NUMBER);
     doutput_shape_.insert(doutput_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
@@ -146,12 +140,11 @@ void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {
     pads_end_.insert(pads_end_.begin(), 0);
 }
 
-FusedConvolutionParams::FusedConvolutionParams(
-    const CUDAPlugin::nodes::FusedConv2D& node)
-    : conv_{ node }
-    , bias_shape_{ node.get_input_shape(FusedConvolutionIndices::bias) }
-    , activation_{ node.get_activation() } {
-    Expects(conv_.NumberOfSpatialDims() == 2);
+FusedConvolutionParams::FusedConvolutionParams(const CUDAPlugin::nodes::FusedConvolution& node)
+    : conv_{node},
+      bias_shape_{node.get_input_shape(FusedConvolutionIndices::bias)},
+      activation_{node.get_activation()} {
+    Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
     Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionIndices::bias));
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionIndices::add);
@@ -159,8 +152,8 @@ FusedConvolutionParams::FusedConvolutionParams(
 }
 
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
-    const CUDAPlugin::nodes::FusedConvBackpropData2D& node)
-    : conv_{ node } {
+    const CUDAPlugin::nodes::FusedConvBackpropData& node)
+    : conv_{node} {
     Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionBackwardDataIndices<4>::add);
@@ -171,4 +164,4 @@ FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
     }
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin::Convolution::Details
