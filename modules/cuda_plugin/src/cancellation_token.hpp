@@ -4,10 +4,11 @@
 
 #pragma once
 
-#include <atomic>
-#include <functional>
 #include <ie_extension.h>
-#include <cpp_interfaces/exception2status.hpp>
+
+#include <atomic>
+#include <error.hpp>
+#include <functional>
 #include <utility>
 
 namespace CUDAPlugin {
@@ -38,7 +39,7 @@ class CancellationToken {
             if (cancel_callback_) {
                 cancel_callback_();
             }
-            THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED);
+            throwInferCancelled();
         }
     }
 

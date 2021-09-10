@@ -1,30 +1,29 @@
 diff --git a/inference-engine/samples/benchmark_app/CMakeLists.txt b/inference-engine/samples/benchmark_app/CMakeLists.txt
-index a74294a0f..8acaf9306 100644
+index b37495e5e..9dc5da800 100644
 --- a/inference-engine/samples/benchmark_app/CMakeLists.txt
 +++ b/inference-engine/samples/benchmark_app/CMakeLists.txt
 @@ -10,3 +10,4 @@ ie_add_sample(NAME benchmark_app
                HEADERS ${HDR}
-               DEPENDENCIES format_reader
-               OPENCV_DEPENDENCIES imgcodecs)
+               DEPENDENCIES format_reader ie_samples_utils
+               OPENCV_DEPENDENCIES core)
 +add_dependencies(benchmark_app CUDAPlugin)
-\ No newline at end of file
 diff --git a/inference-engine/samples/benchmark_app/benchmark_app.hpp b/inference-engine/samples/benchmark_app/benchmark_app.hpp
-index 9ac25bb82..16bfa0f20 100644
+index af18c908e..2cbe202ab 100644
 --- a/inference-engine/samples/benchmark_app/benchmark_app.hpp
 +++ b/inference-engine/samples/benchmark_app/benchmark_app.hpp
-@@ -53,6 +53,9 @@ static const char infer_num_streams_message[] = "Optional. Number of streams to
- /// @brief message for enforcing of BF16 execution where it is possible
- static const char enforce_bf16_message[] = "Optional. Enforcing of floating point operations execution in bfloat16 precision where it is acceptable.";
+@@ -62,6 +62,9 @@ static const char enforce_bf16_message[] = "Optional. By default floating point
+                                            "                                  'true'  - enable  bfloat16 regardless of platform support\n"
+                                            "                                  'false' - disable bfloat16 regardless of platform support";
  
 +/// @brief message for optimization mode
 +static const char optimize_mode_message[] = "Optional. Optimize mode for particular device";
 +
  /// @brief message for user library argument
- static const char custom_cpu_library_message[] = "Required for CPU custom layers. Absolute path to a shared library with the kernels implementations.";
- 
-@@ -108,6 +111,10 @@ static const char layout_message[] = "Optional. Prompts how network layouts shou
- // @brief message for quantization bits
- static const char gna_qb_message[] = "Optional. Weight bits for quantization:  8 or 16 (default)";
+ static const char custom_cpu_library_message[] = "Required for CPU custom layers. Absolute path to a shared library with the kernels "
+                                                  "implementations.";
+@@ -143,6 +146,10 @@ static constexpr char iop_message[] = "Optional. Specifies precision for input a
+                                       "                                             Overwrites precision from ip and op options for "
+                                       "specified layers.";
  
 +/// @brief message for #input_type
 +static const char input_type_message[] = "Optional. Input type among [U8, FP16, FP32]";
@@ -33,17 +32,17 @@ index 9ac25bb82..16bfa0f20 100644
  /// @brief Define flag for showing help message <br>
  DEFINE_bool(h, false, help_message);
  
-@@ -147,6 +154,9 @@ DEFINE_uint32(t, 0, execution_time_message);
+@@ -182,6 +189,9 @@ DEFINE_uint32(t, 0, execution_time_message);
  /// @brief Number of infer requests in parallel
  DEFINE_uint32(nireq, 0, infer_requests_count_message);
  
 +/// @brief Input type
 +DEFINE_string(input_type, "U8", input_type_message);
 +
- /// @brief Number of threads to use for inference on the CPU in throughput mode (also affects Hetero cases)
+ /// @brief Number of threads to use for inference on the CPU in throughput mode (also affects Hetero
+ /// cases)
  DEFINE_uint32(nthreads, 0, infer_num_threads_message);
- 
-@@ -156,6 +166,9 @@ DEFINE_string(nstreams, "", infer_num_streams_message);
+@@ -192,6 +202,9 @@ DEFINE_string(nstreams, "", infer_num_streams_message);
  /// @brief Enforces bf16 execution with bfloat16 precision on systems having this capability
  DEFINE_bool(enforcebf16, false, enforce_bf16_message);
  
@@ -53,7 +52,7 @@ index 9ac25bb82..16bfa0f20 100644
  /// @brief Define parameter for batch size <br>
  /// Default is 0 (that means don't specify)
  DEFINE_uint32(b, 0, batch_size_message);
-@@ -232,6 +245,8 @@ static void showUsage() {
+@@ -288,6 +301,8 @@ static void showUsage() {
      std::cout << "    -report_folder            " << report_folder_message << std::endl;
      std::cout << "    -exec_graph_path          " << exec_graph_path_message << std::endl;
      std::cout << "    -pc                       " << pc_message << std::endl;
@@ -63,10 +62,10 @@ index 9ac25bb82..16bfa0f20 100644
      std::cout << "    -dump_config              " << dump_config_message << std::endl;
      std::cout << "    -load_config              " << load_config_message << std::endl;
 diff --git a/inference-engine/samples/benchmark_app/main.cpp b/inference-engine/samples/benchmark_app/main.cpp
-index a786eef50..03ed81321 100644
+index cd7ddc641..1d9b479d1 100644
 --- a/inference-engine/samples/benchmark_app/main.cpp
 +++ b/inference-engine/samples/benchmark_app/main.cpp
-@@ -286,6 +286,13 @@ int main(int argc, char *argv[]) {
+@@ -295,6 +295,13 @@ int main(int argc, char* argv[]) {
  
                  if (isFlagSetInCommandLine("nthreads"))
                      device_config[GNA_CONFIG_KEY(LIB_N_THREADS)] = std::to_string(FLAGS_nthreads);
@@ -79,13 +78,12 @@ index a786eef50..03ed81321 100644
 +                }
              } else {
                  std::vector<std::string> supported_config_keys = ie.GetMetric(device, METRIC_KEY(SUPPORTED_CONFIG_KEYS));
-                 auto supported = [&] (const std::string& key) {
-@@ -374,7 +381,15 @@ int main(int argc, char *argv[]) {
-             next_step();
- 
-             for (auto& item : inputInfo) {
--                if (app_inputs_info.at(item.first).isImage()) {
-+                if (FLAGS_input_type == "FP16") {
+                 auto supported = [&](const std::string& key) {
+@@ -406,6 +413,14 @@ int main(int argc, char* argv[]) {
+                 // if it an image, set U8
+                 if (!FLAGS_ip.empty() || FLAGS_iop.find(item.first) != std::string::npos) {
+                     app_inputs_info.at(item.first).precision = item.second->getPrecision();
++                } else if (FLAGS_input_type == "FP16") {
 +                    /** Set the precision of input data provided by the user, should be called before load of the network to the device **/
 +                    app_inputs_info.at(item.first).precision = Precision::FP16;
 +                    item.second->setPrecision(app_inputs_info.at(item.first).precision);
@@ -93,7 +91,6 @@ index a786eef50..03ed81321 100644
 +                    /** Set the precision of input data provided by the user, should be called before load of the network to the device **/
 +                    app_inputs_info.at(item.first).precision = Precision::FP32;
 +                    item.second->setPrecision(app_inputs_info.at(item.first).precision);
-+                } else if (app_inputs_info.at(item.first).isImage() || FLAGS_input_type == "FP16") {
-                     /** Set the precision of input data provided by the user, should be called before load of the network to the device **/
+                 } else if (app_inputs_info.at(item.first).isImage()) {
                      app_inputs_info.at(item.first).precision = Precision::U8;
                      item.second->setPrecision(app_inputs_info.at(item.first).precision);

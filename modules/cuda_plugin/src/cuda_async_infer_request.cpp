@@ -55,10 +55,6 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
     }
 }
 
-CudaAsyncInferRequest::~CudaAsyncInferRequest() {
-    InferenceEngine::AsyncInferRequestThreadSafeDefault::StopAndWait();
-}
-
 void CudaAsyncInferRequest::Cancel() {
     InferenceEngine::AsyncInferRequestThreadSafeDefault::Cancel();
     _inferRequest->Cancel();

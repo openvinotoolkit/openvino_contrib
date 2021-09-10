@@ -5,12 +5,11 @@
 #include <ie_metric_helpers.hpp>
 // ^^ must come before ie_plugin_config.hpp, which is included by
 // hetero_plugin_config.hpp
-#include "cuda_plugin.hpp"
-
 #include <fmt/format.h>
 
 #include <cuda/props.hpp>
 #include <hetero/hetero_plugin_config.hpp>
+#include <ie_algorithm.hpp>
 #include <ie_ngraph_utils.hpp>
 #include <ie_plugin_config.hpp>
 #include <ngraph/op/util/op_types.hpp>
@@ -22,6 +21,7 @@
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
+#include "cuda_plugin.hpp"
 using namespace CUDAPlugin;
 
 Plugin::Plugin() {
@@ -40,8 +40,8 @@ Plugin::~Plugin() {
     // ExecutorManager::getInstance()->clear("CudaCallbackExecutor");
 }
 
-InferenceEngine::ExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork & network,
-                                                                           const ConfigMap &config) {
+InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
+                                                                            const ConfigMap& config) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "Plugin::LoadExeNetworkImpl");
 
     auto cfg = Configuration{ config, _cfg };
@@ -102,18 +102,14 @@ InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(
   }
 }
 
-// InferenceEngine::ExecutableNetworkInternal::Ptr
-InferenceEngine::ExecutableNetwork
-Plugin::ImportNetworkImpl(std::istream& model, const std::map<std::string, std::string>& config) {
+InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::ImportNetwork(
+    std::istream& model, const std::map<std::string, std::string>& config) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CUDAPlugin::ImportNetworkImpl");
 
     Configuration cfg(config);
     auto waitExecutor = GetStreamExecutor(cfg);
-    auto exec_network_impl = std::make_shared<ExecutableNetwork>(model, cfg,
-                                                                 waitExecutor,
-        std::static_pointer_cast<Plugin>(shared_from_this()));
-
-    return make_executable_network(exec_network_impl);
+    return std::make_shared<ExecutableNetwork>(model, std::move(cfg), move(waitExecutor),
+                                               std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::CNNNetwork &network, const ConfigMap& config) const {
@@ -203,13 +199,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     return res;
 }
 
-void Plugin::AddExtension(InferenceEngine::IExtensionPtr /*extension*/) {
-    // TODO: add extensions if plugin supports extensions
-    //IE_THROW(NotImplemented);
-    THROW_IE_EXCEPTION_WITH_STATUS(NOT_IMPLEMENTED);
-}
-
-void Plugin::SetConfig(const ConfigMap &config) {
+void Plugin::SetConfig(const ConfigMap& config) {
     _cfg = Configuration{config, _cfg};
 }
 

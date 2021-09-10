@@ -23,7 +23,11 @@ namespace CUDAPlugin {
 [[gnu::cold, noreturn]] void throwIEException(
     const std::string& msg, const std::experimental::source_location& location =
                                 std::experimental::source_location::current());
-[[gnu::cold]] void logError(const std::string& msg,
-                            const std::experimental::source_location& location =
-                                std::experimental::source_location::current());
+[[gnu::cold, noreturn]] void throwNotFound(const std::string& msg, const std::experimental::source_location& location =
+                                                                       std::experimental::source_location::current());
+[[gnu::cold, noreturn]] void throwInferCancelled(
+    const std::string& msg = {},
+    const std::experimental::source_location& location = std::experimental::source_location::current());
+[[gnu::cold]] void logError(const std::string& msg, const std::experimental::source_location& location =
+                                                        std::experimental::source_location::current());
 }  // namespace CUDAPlugin
