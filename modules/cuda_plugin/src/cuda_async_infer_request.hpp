@@ -17,8 +17,6 @@ public:
                           const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
                           const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor);
 
-    ~CudaAsyncInferRequest() override;
-
     /**
      * Cancel AsyncInferRequest
      */
