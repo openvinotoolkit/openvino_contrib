@@ -4,47 +4,40 @@
 
 #pragma once
 
-#include <map>
-#include <string>
-#include <vector>
-#include <memory>
-#include <unordered_map>
-#include <chrono>
-#include <optional>
 #include <atomic>
-
-#include <ie_common.h>
-#include <cpp_interfaces/impl/ie_infer_request_internal.hpp>
-#include <cpp_interfaces/impl/ie_executable_network_internal.hpp>
-#include <threading/ie_itask_executor.hpp>
-#include <openvino/itt.hpp>
-
+#include <chrono>
+#include <cpp_interfaces/interface/ie_iinfer_request_internal.hpp>
+#include <map>
+#include <memory>
 #include <ngraph/runtime/tensor.hpp>
+#include <openvino/itt.hpp>
+#include <optional>
+#include <string>
+#include <threading/ie_itask_executor.hpp>
+#include <unordered_map>
+#include <vector>
 
-#include "utils/perf_timing.hpp"
+#include "cancellation_token.hpp"
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
-#include "cancellation_token.hpp"
+#include "utils/perf_timing.hpp"
 
 namespace CUDAPlugin {
 
 class ExecutableNetwork;
 
 // ! [infer_request:header]
-class CudaInferRequest : public InferenceEngine::InferRequestInternal {
-public:
+class CudaInferRequest : public InferenceEngine::IInferRequestInternal {
+   public:
     using Ptr = std::shared_ptr<CudaInferRequest>;
     using PerformaceCounters = std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>;
 
-    CudaInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
-                         const InferenceEngine::OutputsDataMap&    networkOutputs,
-                         const std::shared_ptr<ExecutableNetwork>& executableNetwork);
+    CudaInferRequest(const InferenceEngine::InputsDataMap& networkInputs,
+                     const InferenceEngine::OutputsDataMap& networkOutputs,
+                     const std::shared_ptr<ExecutableNetwork>& executableNetwork);
 
-    void InferImpl() override {
-        THROW_IE_EXCEPTION_WITH_STATUS(NOT_IMPLEMENTED);
-    }
     PerformaceCounters GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
 

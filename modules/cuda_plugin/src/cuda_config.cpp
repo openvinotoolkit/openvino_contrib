@@ -6,7 +6,6 @@
 
 #include <fmt/format.h>
 
-#include <cpp_interfaces/exception2status.hpp>
 #include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 #include <error.hpp>
 
@@ -57,7 +56,7 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             perfCount = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
-            throwIEException(NOT_FOUND_str + ": " + key);
+            throwNotFound(key);
         }
     }
 }
@@ -80,6 +79,6 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     } else if (name == CONFIG_KEY_INTERNAL(CPU_THREADS_PER_STREAM)) {
         return {std::to_string(streams_executor_config_._threadsPerStream)};
     } else {
-        throwIEException(NOT_FOUND_str + ": " + name);
+        throwNotFound(name);
     }
 }
