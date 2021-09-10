@@ -35,6 +35,10 @@ private:
     bool gather_chunks_;
     unsigned blocks_per_grid_;
     unsigned threads_per_block_;
+    unsigned grid_dim_x_;
+    unsigned dicts_batch_stride_;
+    unsigned indices_batch_stride_;
+    unsigned out_batch_stride_;
 };
 
 } // namespace CUDAPlugin
