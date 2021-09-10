@@ -6,7 +6,7 @@
 
 #include <cuda_operation_base.hpp>
 #include <memory>
-#include <transformer/nodes/fused_convolution2d.hpp>
+#include <transformer/nodes/fused_convolution.hpp>
 
 #include "convolution_components.hpp"
 
@@ -14,11 +14,15 @@ namespace CUDAPlugin {
 
 class FusedConvolutionOp : public OperationCuDnn {
 public:
-    using NodeOp = CUDAPlugin::nodes::FusedConv2D;
-    FusedConvolutionOp(const CUDA::CreationContext& context, const NodeOp& node,
-                       IndexCollection&& inputIds, IndexCollection&& outputIds);
-    void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-                 Outputs outputTensors, const Workbuffers& workbuffers) override;
+    using NodeOp = CUDAPlugin::nodes::FusedConvolution;
+    FusedConvolutionOp(const CUDA::CreationContext& context,
+                       const NodeOp& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}

@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <optional>
 #include <ngraph/op/convolution.hpp>
+#include <optional>
 
-#include "transformer/nodes/fused_convolution2d.hpp"
-#include "transformer/nodes/fused_convolution_backprop_data2d.hpp"
+#include "transformer/nodes/fused_convolution.hpp"
+#include "transformer/nodes/fused_convolution_backprop_data.hpp"
 
 namespace CUDAPlugin::Convolution::Details {
 
@@ -87,7 +87,7 @@ struct ConvolutionBackwardDataParams {
 
 /**
  * @brief Defines tensor indices for the following nodes:
- *  - `CUDAPlugin::nodes::FusedConv2D`
+ *  - `CUDAPlugin::nodes::FusedConvolution`
  */
 struct FusedConvolutionIndices {
     static constexpr size_t input = 0;
@@ -99,10 +99,10 @@ struct FusedConvolutionIndices {
 
 /**
  * @brief Unified parameters as they are consumed by the following nodes:
- *  - `CUDAPlugin::nodes::FusedConv2D`
+ *  - `CUDAPlugin::nodes::FusedConvolution`
  */
 struct FusedConvolutionParams {
-  FusedConvolutionParams(const CUDAPlugin::nodes::FusedConv2D& node);
+  FusedConvolutionParams(const CUDAPlugin::nodes::FusedConvolution& node);
 
     ConvolutionParams conv_;
     ngraph::Shape bias_shape_;
@@ -112,7 +112,7 @@ struct FusedConvolutionParams {
 
 /**
  * @brief Defines tensor indices for the following nodes:
- *  - `CUDAPlugin::nodes::FusedConv2D`
+ *  - `CUDAPlugin::nodes::FusedConvBackpropData`
  */
 template <std::size_t InputSize>
 struct FusedConvolutionBackwardDataIndices;
@@ -136,10 +136,10 @@ struct FusedConvolutionBackwardDataIndices<4> {
 
 /**
  * @brief Unified parameters as they are consumed by the following nodes:
- *  - `CUDAPlugin::nodes::FusedConv2D`
+ *  - `CUDAPlugin::nodes::FusedConvBackpropData`
  */
 struct FusedConvolutionBackwardDataParams {
-  FusedConvolutionBackwardDataParams(const CUDAPlugin::nodes::FusedConvBackpropData2D& node);
+  FusedConvolutionBackwardDataParams(const CUDAPlugin::nodes::FusedConvBackpropData& node);
 
   ConvolutionBackwardDataParams conv_;
   ngraph::Shape add_shape_;
