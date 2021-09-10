@@ -134,10 +134,10 @@ class TestModels(unittest.TestCase):
                 cv.rectangle(img, (int(xmin), int(ymin)), (int(xmax), int(ymax)), color=(0, 180, 255), thickness=3)
 
         # Convert model to OpenVINO IR
-        mo_pytorch.convert(model, input_shape=[1, 3, height, width], model_name='retinanet_R_50_FPN_1x')
+        mo_pytorch.convert(model, input_shape=[1, 3, height, width], model_name='model')
 
         # Get OpenVINO prediction
-        net = self.ie.read_network('retinanet_R_50_FPN_1x.xml', 'retinanet_R_50_FPN_1x.bin')
+        net = self.ie.read_network('model.xml')
         exec_net = self.ie.load_network(net, 'CPU')
         outs = exec_net.infer({'input': inp.reshape(1, 3, height, width)})
         ie_detections = next(iter(outs.values()))
@@ -195,7 +195,7 @@ class TestModels(unittest.TestCase):
 
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 5e-4)
-    
+
     def test_rugpt3(self):
         from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
