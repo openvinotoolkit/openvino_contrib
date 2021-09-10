@@ -13,14 +13,14 @@
 #include <transformations/utils/utils.hpp>
 
 #include "nodes/cuda_plugin_custom_node_types.hpp"
-#include "nodes/fused_convolution2d.hpp"
-#include "nodes/fused_convolution_backprop_data2d.hpp"
+#include "nodes/fused_convolution.hpp"
+#include "nodes/fused_convolution_backprop_data.hpp"
 
 using namespace ngraph;
 
 using ActivationMode = CUDAPlugin::nodes::ActivationMode;
-using FusedConv = CUDAPlugin::nodes::FusedConv2D;
-using FusedConvBackpropData = CUDAPlugin::nodes::FusedConvBackpropData2D;
+using FusedConv = CUDAPlugin::nodes::FusedConvolution;
+using FusedConvBackpropData = CUDAPlugin::nodes::FusedConvBackpropData;
 
 template <class A, class B>
 std::pair<std::shared_ptr<A>, std::shared_ptr<B>> parse_eltwise_inputs(
@@ -44,7 +44,7 @@ std::pair<std::shared_ptr<A>, std::shared_ptr<B>> parse_eltwise_inputs(
   return {eltwise, constant};
 }
 
-bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
+bool fuse_convolution_with_biasadd(ngraph::pattern::Matcher &m) {
   auto eltwise = m.get_match_root();
   auto [m_conv, m_const] =
       parse_eltwise_inputs<ngraph::opset1::Convolution,
@@ -65,30 +65,35 @@ bool fuse_convolution2d_with_biasadd(ngraph::pattern::Matcher &m) {
   const ngraph::Output<Node> &filters = m_conv->input(1).get_source_output();
   const ngraph::Output<Node> &bias = m_const->output(0);
 
-  constexpr auto conv2d_bias_rank_min{3};
-  constexpr auto conv2d_bias_rank_max{4};
-  const auto& bias_shape = bias.get_shape();
+  constexpr auto conv_bias_rank_min{3};
+  constexpr auto conv_bias_rank_max{5};
+  const auto &bias_shape = bias.get_shape();
   const auto bias_rank = bias_shape.size();
-  if (bias_rank < conv2d_bias_rank_min || bias_rank > conv2d_bias_rank_max) {
+  if (bias_rank < conv_bias_rank_min || bias_rank > conv_bias_rank_max) {
     return false;
   }
-  constexpr auto nchw_channel_dim_reverse_offset = 3;
+
+  const auto num_spatial_dims = m_conv->get_output_shape(0).size() - 2;
+  const auto nchw_channel_dim_reverse_offset = num_spatial_dims + 1;
   const auto output_shape = m_conv->get_output_shape(0);
   if (bias_shape.at(bias_shape.size() - nchw_channel_dim_reverse_offset) !=
       output_shape.at(output_shape.size() - nchw_channel_dim_reverse_offset)) {
     return false;
   }
 
-  auto fused_conv = std::make_shared<FusedConv>(
-      data,                      //
-      filters,                   //
-      bias,                      //
-      m_conv->get_strides(),     //
-      m_conv->get_pads_begin(),  //
-      m_conv->get_pads_end(),    //
-      m_conv->get_dilations(),   //
-      m_conv->get_auto_pad(),    //
-      ActivationMode::NO_ACTIVATION);
+  if (num_spatial_dims == 3) {
+      return false;  // NOTE: 3D convolution fusing was disabled due to 3d_unet bad performance
+  }
+
+  auto fused_conv = std::make_shared<FusedConv>(data,                      //
+                                                filters,                   //
+                                                bias,                      //
+                                                m_conv->get_strides(),     //
+                                                m_conv->get_pads_begin(),  //
+                                                m_conv->get_pads_end(),    //
+                                                m_conv->get_dilations(),   //
+                                                m_conv->get_auto_pad(),    //
+                                                ActivationMode::NO_ACTIVATION);
   ngraph::Output<ngraph::Node> new_conv(fused_conv);
 
   fused_conv->set_friendly_name(eltwise->get_friendly_name());
@@ -284,7 +289,7 @@ ngraph::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
       ngraph::pattern::wrap_type<opset1::Add>({conv, pattern::any_input()});
 
   matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
-    return fuse_convolution2d_with_biasadd(m);
+    return fuse_convolution_with_biasadd(m);
   };
 
   auto m = std::make_shared<ngraph::pattern::Matcher>(
@@ -349,7 +354,7 @@ pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
 }
 
 NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBiasAddActivation,
-                       "CudaFuseConv2DBiasAddActivation", 0);
+                       "CudaFuseConvBiasAddActivation", 0);
 
 ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
   add_matcher<FuseConvolutionWithBiasAdd>();
