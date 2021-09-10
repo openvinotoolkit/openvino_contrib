@@ -34,15 +34,14 @@ using namespace utils;
 
 using Time = std::chrono::steady_clock;
 
-CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap&                     networkInputs,
-                                   const InferenceEngine::OutputsDataMap&                    networkOutputs,
-                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork) :
-    InferRequestInternal(networkInputs, networkOutputs),
-    _executableNetwork(executableNetwork),
-    cancellation_token_{[this] {
-        memory_manager_proxy_.reset();
-    }} {
-    // TODO: allocate infer request device and host buffers if needed, fill actual list of profiling tasks
+CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& networkInputs,
+                                   const InferenceEngine::OutputsDataMap& networkOutputs,
+                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork)
+    : IInferRequestInternal(networkInputs, networkOutputs),
+      _executableNetwork(executableNetwork),
+      cancellation_token_{[this] { memory_manager_proxy_.reset(); }} {
+    // TODO: allocate infer request device and host buffers if needed, fill
+    // actual list of profiling tasks
 
     std::string name = _executableNetwork->newRequestName();
     _profilingTask = {
@@ -94,10 +93,11 @@ void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Preprocess]);
     cancellation_token_.Check();
     auto start = Time::now();
-    InferRequestInternal::execDataPreprocessing(_deviceInputs);
+    IInferRequestInternal::execDataPreprocessing(_deviceInputs);
     // NOTE: After InferRequestInternal::execDataPreprocessing call
-    //       input can points to other memory region than it was allocated in constructor.
-    //       That is why we assign network_input_blobs_[inputName] after InferRequestInternal::execDataPreprocessing(...)
+    //       input can points to other memory region than it was allocated in
+    //       constructor. That is why we assign network_input_blobs_[inputName]
+    //       after InferRequestInternal::execDataPreprocessing(...)
     for (auto&& netInput : _networkInputs) {
         const auto& inputName = netInput.first;
         const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
