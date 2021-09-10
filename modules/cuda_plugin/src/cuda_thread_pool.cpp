@@ -8,16 +8,20 @@
 
 #include <details/ie_exception.hpp>
 
+#include "cuda_latch.hpp"
+
 namespace CUDAPlugin {
 
 static thread_local CUDA::ThreadContext* contextPtr = nullptr;
 
 CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
     try {
+        CudaLatch latch {_numThreads};
         for (int i = 0; i < _numThreads; ++i) {
-            threads_.emplace_back([this, d] {
+            threads_.emplace_back([this, d, &latch] {
                 CUDA::ThreadContext context{d};
                 contextPtr = &context;
+                latch.count_down();
                 while (true) {
                     Task task;
                     {
@@ -40,6 +44,7 @@ CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
                 }
             });
         }
+        latch.wait();
     } catch (...) {
         stopThreadPool();
         throw;
