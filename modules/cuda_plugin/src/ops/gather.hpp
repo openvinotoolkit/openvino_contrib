@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
+#include <kernels/gather.hpp>
 
 namespace CUDAPlugin {
 
@@ -20,25 +21,7 @@ public:
                  const Workbuffers& workbuffers) const override;
 
 private:
-    template <typename IndexType>
-    void ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const;
-
-    template <typename DataType, typename IndexType>
-    void ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const;
-
-    ngraph::element::Type_t element_type_;
-    ngraph::element::Type_t indices_type_;
-    unsigned num_dicts_;
-    unsigned index_range_;
-    unsigned data_length_;
-    unsigned indices_size_;
-    bool gather_chunks_;
-    unsigned blocks_per_grid_;
-    unsigned threads_per_block_;
-    unsigned grid_dim_x_;
-    unsigned dicts_batch_stride_;
-    unsigned indices_batch_stride_;
-    unsigned out_batch_stride_;
+    std::optional<kernel::Gather> gather_kernel_;
 };
 
 }  // namespace CUDAPlugin
