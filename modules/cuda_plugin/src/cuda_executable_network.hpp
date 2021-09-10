@@ -37,28 +37,25 @@ public:
                       InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                       std::shared_ptr<Plugin> plugin);
 
-    ~ExecutableNetwork() override = default;
-
     // Methods from a base class ExecutableNetworkThreadSafeDefault
 
     InferenceEngine::CNNNetwork GetExecGraphInfo() override;
-    void ExportImpl(std::ostream& model) override;
-    InferenceEngine::InferRequestInternal::Ptr CreateInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
-                                                                      InferenceEngine::OutputsDataMap networkOutputs) override;
-    InferenceEngine::IInferRequest::Ptr CreateInferRequest() override;
+    void Export(std::ostream& model) override;
+    InferenceEngine::IInferRequestInternal::Ptr CreateInferRequestImpl(
+        InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) override;
+    InferenceEngine::IInferRequestInternal::Ptr CreateInferRequest() override;
 
-    InferenceEngine::Parameter GetMetric(const std::string &name) const override;
-    InferenceEngine::Parameter GetConfig(const std::string &name) const override;
+    InferenceEngine::Parameter GetMetric(const std::string& name) const override;
+    InferenceEngine::Parameter GetConfig(const std::string& name) const override;
     std::string newRequestName() {
-      return "Cuda" + std::to_string(cfg_.deviceId) + "_" +
-             function_->get_friendly_name() + "_Req" +
-             std::to_string(request_id_++);
+        return "Cuda" + std::to_string(cfg_.deviceId) + "_" + function_->get_friendly_name() + "_Req" +
+               std::to_string(request_id_++);
     }
     const ngraph::op::Parameter& parameter(const std::string& name) const {
-      return *function_->get_parameters().at(input_index_.at(name));
+        return *function_->get_parameters().at(input_index_.at(name));
     }
     const ngraph::op::Result& result(const std::string& name) const {
-      return *function_->get_results().at(output_index_.at(name));
+        return *function_->get_results().at(output_index_.at(name));
     }
 
 private:
@@ -67,31 +64,27 @@ private:
     void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
     void InitExecutor();
     std::size_t GetOptimalNumberOfStreams(std::size_t constBlobSize, std::size_t memoryBlobSize) const;
-    InferenceEngine::InferRequestInternal::Ptr
-    CreateBenchmarkInferRequestImpl(InferenceEngine::InputsDataMap networkInputs,
-                                    InferenceEngine::OutputsDataMap networkOutputs);
-    InferenceEngine::IInferRequest::Ptr CreateBenchmarkInferRequest();
+    InferenceEngine::IInferRequestInternal::Ptr CreateBenchmarkInferRequestImpl(
+        InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs);
+    InferenceEngine::IInferRequestInternal::Ptr CreateBenchmarkInferRequest();
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
     int GetCudaDeviceId() const noexcept;
     void InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
-    std::vector<InferenceEngine::gpu::DevicePointer<void*>>
-    getSharedWorkbuffers(const IOperationExec& operation);
+    std::vector<InferenceEngine::gpu::DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
     void BenchmarkOptimalNumberOfRequests();
-    unsigned int RunBenchmarkFor(int numInfers,
-                                 std::mutex& mtx,
-                                 std::condition_variable& cond_var);
+    unsigned int RunBenchmarkFor(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);
 
-    std::atomic<std::size_t>                    request_id_ = {0};
-    InferenceEngine::CNNNetwork                 cnn_network_;
-    Configuration                               cfg_;
-    InferenceEngine::ITaskExecutor::Ptr         cuda_stream_executor_;
-    std::shared_ptr<Plugin>                     plugin_;
-    std::shared_ptr<const ngraph::Function>     function_;
-    std::vector<OperationBase::Ptr>             exec_sequence_;
-    std::map<std::string, std::size_t>          input_index_;
-    std::map<std::string, std::size_t>          output_index_;
-    std::shared_ptr<MemoryManagerPool>          memory_manager_pool_;
-    std::shared_ptr<DeviceMemBlock>             immutable_workbuffers_;
+    std::atomic<std::size_t> request_id_ = {0};
+    InferenceEngine::CNNNetwork cnn_network_;
+    Configuration cfg_;
+    InferenceEngine::ITaskExecutor::Ptr cuda_stream_executor_;
+    std::shared_ptr<Plugin> plugin_;
+    std::shared_ptr<const ngraph::Function> function_;
+    std::vector<OperationBase::Ptr> exec_sequence_;
+    std::map<std::string, std::size_t> input_index_;
+    std::map<std::string, std::size_t> output_index_;
+    std::shared_ptr<MemoryManagerPool> memory_manager_pool_;
+    std::shared_ptr<DeviceMemBlock> immutable_workbuffers_;
 };
 
 }  // namespace CUDAPlugin

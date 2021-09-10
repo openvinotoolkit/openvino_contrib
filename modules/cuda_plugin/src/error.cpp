@@ -4,19 +4,34 @@
 
 #include "error.hpp"
 
+#include <fmt/format.h>
+
 #include <details/ie_exception.hpp>
 
 namespace CUDAPlugin {
-[[gnu::cold, noreturn]] void throwIEException(
-    const std::string& msg,
-    const std::experimental::source_location& location) {
-    throw InferenceEngine::details::InferenceEngineException(
-        location.file_name(), location.line(), msg);
+namespace {
+template <typename T>
+[[gnu::cold, noreturn]] void throwException(const std::string& msg,
+                                            const std::experimental::source_location& location) {
+    throw T{fmt::format("{}:{}({}): {}", location.file_name(), location.line(), location.function_name(), msg)};
+}
+}  // namespace
+
+[[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
+                                              const std::experimental::source_location& location) {
+    throwException<InferenceEngine::GeneralError>(msg, location);
 }
 
-[[gnu::cold]] void logError(
-    const std::string& /*msg*/,
-    const std::experimental::source_location& /*location*/) {
+[[gnu::cold, noreturn]] void throwNotFound(const std::string& msg, const std::experimental::source_location& location) {
+    throwException<InferenceEngine::NotFound>(msg, location);
+}
+
+[[gnu::cold, noreturn]] void throwInferCancelled(const std::string& msg,
+                                                 const std::experimental::source_location& location) {
+    throwException<InferenceEngine::InferCancelled>(msg, location);
+}
+
+[[gnu::cold]] void logError(const std::string& /*msg*/, const std::experimental::source_location& /*location*/) {
 }  // TODO: log somewhere
 
 }  // namespace CUDAPlugin
