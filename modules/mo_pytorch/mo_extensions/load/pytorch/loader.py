@@ -80,7 +80,6 @@ class PyTorchLoader(Loader):
             inputs[name] = inp
             inp.graph = graph
             inp.node_name = name
-            inp.dynamic_shape = shape
             graph.add_node(name, kind='op', op='Parameter', name=name, shape=shape)
 
         model = argv.input_model

@@ -195,7 +195,7 @@ class TestModels(unittest.TestCase):
 
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 5e-4)
-    
+
     def test_rugpt3(self):
         from transformers import GPT2LMHeadModel, GPT2Tokenizer
 

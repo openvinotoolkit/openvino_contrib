@@ -90,6 +90,8 @@ class OpenVINOTensor(object):
         self.node_name = None
         self.port_id = 0
         self.dynamic_shape = None
+        if hasattr(value, 'shape'):
+            self.dynamic_shape = list(value.shape) or [1]
         self.requires_grad = False
         self.device = 'cpu'
         self.dtype = None
@@ -211,14 +213,18 @@ class OpenVINOTensor(object):
                 def canonical(dim, size):
                     return dim if dim >= 0 else size + dim
 
+                axis = 0
                 shape = list(inputs[0].dynamic_shape)
-                for i, shrink in enumerate(shrink_axis_mask):
-                    if shrink:
+                for i in range(len(shrink_axis_mask)):
+                    if shrink_axis_mask[i]:
+                        del shape[axis]
                         continue
-                    dim = shape[i]
+
+                    dim = shape[axis]
                     begin = canonical(begin_id[i], dim) if begin_mask[i] else 0
-                    end = canonical(end_id[i], dim) if end_mask[i] else dim - 1
-                    shape[i] = end - begin + 1
+                    end = canonical(end_id[i], dim) if end_mask[i] else dim
+                    shape[axis] = end - begin
+                    axis += 1
 
                 return shape if shape else [1]
 
@@ -298,6 +304,19 @@ class OpenVINOTensor(object):
                 return [inputs[0].dynamic_shape[i] for i in self.order]
 
         return forward_hook(Transpose(order), (self,))
+
+    def unsqueeze(self, dim):
+        class Unsqueeze(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer('unsqueeze_dims', torch.tensor(dim))
+
+            def infer_shapes(self, inputs):
+                shape = list(inputs[0].dynamic_shape)
+                shape.insert(1, dim if dim >= 0 else (len(shape) + dim + 1))
+                return shape
+
+        return forward_hook(Unsqueeze(), (self,))
 
     def transpose(self, dim0, dim1):
         order = [i for i in range(self.dim())]
@@ -420,12 +439,7 @@ def function_hook(input, *args, **kwargs):
 
 @implements(torch.unsqueeze)
 def unsqueeze(input, dim):
-    class Unsqueeze(nn.Module):
-        def __init__(self, dim):
-            super().__init__()
-            self.register_buffer('unsqueeze_dims', torch.tensor(dim))
-
-    return forward_hook(Unsqueeze(dim), (input,))
+    return input.unsqueeze(dim)
 
 
 @implements(F.relu)
