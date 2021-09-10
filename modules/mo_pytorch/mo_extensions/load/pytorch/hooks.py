@@ -107,13 +107,13 @@ class OpenVINOTensor(object):
 
     def dim(self):
         return len(self.dynamic_shape)
-    
+
     @property
     def shape(self):
         return tuple(self.dynamic_shape)
 
     def size(self, dim=None):
-        return self.dynamic_shape[dim] if dim else self.shape
+        return self.shape if dim is None else self.dynamic_shape[dim]
 
     def split(self, split_size, dim):
         num_splits = self.dynamic_shape[dim] // split_size
@@ -173,7 +173,7 @@ class OpenVINOTensor(object):
         begin_mask = []
         end_mask = []
         shrink_axis_mask = []
-        
+
         if not isinstance(key, tuple):
             key = (key,)
 
@@ -200,9 +200,9 @@ class OpenVINOTensor(object):
 
         class StridedSlice(nn.Module):
             def __init__(self, begin, end, begin_mask, end_mask, shrink_mask):
-                super().__init__() 
+                super().__init__()
                 self.begin_mask = begin_mask
-                self.end_mask = end_mask 
+                self.end_mask = end_mask
                 self.shrink_axis_mask = shrink_mask
                 self.register_buffer('begin_id', torch.tensor(begin))
                 self.register_buffer('end_id', torch.tensor(end))
@@ -219,7 +219,7 @@ class OpenVINOTensor(object):
                     begin = canonical(begin_id[i], dim) if begin_mask[i] else 0
                     end = canonical(end_id[i], dim) if end_mask[i] else dim - 1
                     shape[i] = end - begin + 1
-                
+
                 return shape if shape else [1]
 
         sslice = StridedSlice(begin_id, end_id, begin_mask, end_mask, shrink_axis_mask)
