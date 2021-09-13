@@ -91,7 +91,7 @@ cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi,python3 \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=OFF \
-      -DPYTHON3_LIMITED_API=ON -DPYTHON3_PACKAGES_PATH=$STAGING_DIR/opencv/python \
+      -DPYTHON3_LIMITED_API=ON \
       -DPYTHON3_INCLUDE_PATH=/opt/python3.7_arm/include/python3.7m \
       -DPYTHON3_LIBRARIES=/opt/python3.7_arm/lib \
       -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/python3.7/site-packages/numpy/core/include \
@@ -99,6 +99,7 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       -D CMAKE_SKIP_INSTALL_RPATH=ON \
       -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
       -D OPENCV_BIN_INSTALL_PATH=bin \
+      -D OPENCV_PYTHON3_INSTALL_PATH=python \
       -D OPENCV_INCLUDE_INSTALL_PATH=include \
       -D OPENCV_LIB_INSTALL_PATH=lib \
       -D OPENCV_CONFIG_INSTALL_PATH=cmake \
@@ -116,12 +117,19 @@ make -j$BUILD_JOBS && \
 cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/opencv -P cmake_install.cmake && \
 echo export OpenCV_DIR=\$INSTALLDIR/opencv/cmake > $STAGING_DIR/opencv/setupvars.sh && \
 echo export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH >> $STAGING_DIR/opencv/setupvars.sh && \
+mkdir -p $STAGING_DIR/python/python3 && cp -r $STAGING_DIR/opencv/python/cv2 $STAGING_DIR/python/python3 && \
 cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
 
 #Build OpenVINO
 mkdir -p $OPENVINO_HOME/build && \
 cd $OPENVINO_HOME/build && \
 cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
+      -DPYTHON_INCLUDE_DIRS="/opt/python3.7_arm/include/python3.7m" \
+      -DPYTHON_LIBRARY="/opt/python3.7_arm/lib/libpython3.7m.so" \
+      -DENABLE_PYTHON=ON \
+      -DNGRAPH_PYTHON_BUILD_ENABLE=ON \
+      -DNGRAPH_ONNX_IMPORT_ENABLE=ON \
+      -DPYTHON_MODULE_EXTENSION=".so" \
       -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_GAPI_TESTS=OFF \
       -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
@@ -141,7 +149,9 @@ cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/opt/python3.7_arm/bin/python3.7" \
+      -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/opt/python3.7_arm/bin/python3.7m" \
+      -DPYTHON_INCLUDE_PATH=/opt/python3.7_arm/include/python3.7m \
+      -DPYTHON_LIBRARIES=/opt/python3.7_arm/lib \
       -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
@@ -156,7 +166,10 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
   mkdir -p $OMZ_DEMOS_BUILD && \
   cd $OMZ_DEMOS_BUILD && \
   cmake -DCMAKE_BUILD_TYPE=Release \
-        -DENABLE_PYTHON=OFF \
+        -DENABLE_PYTHON=ON \
+        -DPYTHON_EXECUTABLE=/usr/local/bin/python3.7m \
+        -DPYTHON_INCLUDE_DIR="/opt/python3.7_arm/include/python3.7m" \
+        -DPYTHON_LIBRARY="/opt/python3.7_arm/lib" \
         -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
         -DInferenceEngine_DIR=$OPENVINO_HOME/build \
         -DOpenCV_DIR=$OPENCV_HOME/build \
@@ -164,9 +177,10 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
         $OMZ_HOME/demos && \
   cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
   cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
-  mkdir -p $STAGING_DIR/deployment_tools/inference_engine/demos && \
-  cp -vr $OMZ_DEMOS_BUILD $STAGING_DIR/deployment_tools/inference_engine/demos || \
-  fail 21 "Open Model Zoo package structure preparation failed. Stopping"
+  python3 $OMZ_HOME/ci/prepare-openvino-content.py l $OMZ_DEMOS_BUILD && \
+  cp -vr $OMZ_DEMOS_BUILD/dev/. $STAGING_DIR && \
+  find $OMZ_DEMOS_BUILD -type d -name "Release" -exec cp -vr {} $STAGING_DIR/deployment_tools/open_model_zoo/demos \; || \
+  fail 21 "Open Model Zoo package preparation failed. Stopping"
 fi
 
 #Package creation
