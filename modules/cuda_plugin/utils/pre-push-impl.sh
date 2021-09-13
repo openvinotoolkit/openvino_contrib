@@ -35,7 +35,7 @@ cmake --build . -j$(nproc) --target ${SUITES[*]}
 # IMPORTED_LOCATION_DEBUG "/home/user/ov/openvino/bin/intel64/Debug/lib/libinference_engine.so"
 # or
 # IMPORTED_LOCATION_RELEASE "/home/user/ov/openvino/bin/intel64/Release/lib/libinference_engine.so"
-CMAKE_FILE_PATH=$OPENVINO_BUILD_PATH/inference_engine_targets.cmake
+CMAKE_FILE_PATH=$OPENVINO_BUILD_PATH/InferenceEngineTargets.cmake
 if [ ! -f $CMAKE_FILE_PATH ]; then
   echo "Couldn't find $CMAKE_FILE_PATH"
   echo "Try running cmake in openvino build"
