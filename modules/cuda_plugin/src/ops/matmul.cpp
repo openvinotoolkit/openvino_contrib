@@ -87,9 +87,11 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
         case SwitchCase(CUDA_R_8I, CUDA_R_32I): {
             return CUDA_R_32I;
         }
+#if __has_include(<cuda_bf16.h>)
         case SwitchCase(CUDA_R_16BF, CUDA_R_16BF):
-        case SwitchCase(CUDA_R_8I, CUDA_R_32F):
         case SwitchCase(CUDA_R_16BF, CUDA_R_32F):
+#endif
+        case SwitchCase(CUDA_R_8I, CUDA_R_32F):
         case SwitchCase(CUDA_R_16F, CUDA_R_32F):
         case SwitchCase(CUDA_R_32F, CUDA_R_32F):
         case SwitchCase(CUDA_C_8I, CUDA_C_32F):

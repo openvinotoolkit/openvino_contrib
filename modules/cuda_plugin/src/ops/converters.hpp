@@ -30,18 +30,31 @@ template <>
 inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::element::Type &type) {
     using ngraph::element::Type_t;
     switch (static_cast<Type_t>(type)) {
+#if CUDART_VERSION >= 11020
         case Type_t::bf16: return CUDA_R_16BF;
-        case Type_t::f16: return CUDA_R_16F;
-        case Type_t::f32: return CUDA_R_32F;
-        case Type_t::f64: return CUDA_R_64F;
-        case Type_t::i8: return CUDA_R_8I;
-        case Type_t::u8: return CUDA_R_8U;
-        case Type_t::i16: return CUDA_R_16I;
-        case Type_t::u16: return CUDA_R_16U;
-        case Type_t::i32: return CUDA_R_32I;
-        case Type_t::u32: return CUDA_R_32U;
-        case Type_t::i64: return CUDA_R_64I;
-        case Type_t::u64: return CUDA_R_64U;
+        case Type_t::i16:
+            return CUDA_R_16I;
+        case Type_t::u16:
+            return CUDA_R_16U;
+        case Type_t::i64:
+            return CUDA_R_64I;
+        case Type_t::u64:
+            return CUDA_R_64U;
+#endif
+        case Type_t::f16:
+            return CUDA_R_16F;
+        case Type_t::f32:
+            return CUDA_R_32F;
+        case Type_t::f64:
+            return CUDA_R_64F;
+        case Type_t::i8:
+            return CUDA_R_8I;
+        case Type_t::u8:
+            return CUDA_R_8U;
+        case Type_t::i32:
+            return CUDA_R_32I;
+        case Type_t::u32:
+            return CUDA_R_32U;
         default:
             throwIEException(
                 fmt::format("The ngraph element type {} is not supported by "
