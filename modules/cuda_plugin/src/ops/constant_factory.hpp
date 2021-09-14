@@ -4,7 +4,9 @@
 
 #pragma once
 
+#if __has_include(<cuda_bf16.h>)
 #include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 #include <cudnn_ops_infer.h>
 #include <fmt/format.h>
@@ -27,7 +29,10 @@ union AnyNumeric {
     std::int64_t i64;
     std::uint64_t u64;
     __half h16;
+#if __has_include(<cuda_bf16.h>)
     __nv_bfloat16 bh16;
+    explicit constexpr AnyNumeric(__nv_bfloat16 c) : bh16{c} {}
+#endif
     float f32;
     double f64;
     AnyNumeric() = delete;
@@ -59,12 +64,7 @@ union AnyNumeric {
     explicit constexpr AnyNumeric(std::int64_t c)
         : i64{c} {
     }
-    explicit constexpr AnyNumeric(__half c)
-        : h16{c} {
-    }
-    explicit constexpr AnyNumeric(__nv_bfloat16 c)
-        : bh16{c} {
-    }
+    explicit constexpr AnyNumeric(__half c) : h16{c} {}
     explicit constexpr AnyNumeric(float c)
         : f32{c} {
     }
@@ -83,10 +83,12 @@ struct one<__half> {
     const inline static AnyNumeric value { __float2half(1.0f) };
 };
 
+#if __has_include(<cuda_bf16.h>)
 template<>
 struct one<__nv_bfloat16> {
     const inline static AnyNumeric value { __float2bfloat16(1.0f) };
 };
+#endif
 
 template<class T>
 struct zero {
@@ -98,10 +100,12 @@ struct zero<__half> {
     const inline static AnyNumeric value { __float2half(0.0f) };
 };
 
+#if __has_include(<cuda_bf16.h>)
 template<>
 struct zero<__nv_bfloat16> {
     const inline static AnyNumeric value { __float2bfloat16(0.0f) };
 };
+#endif
 
 } // namespace constants
 
@@ -117,11 +121,25 @@ struct zero<__nv_bfloat16> {
 template <template<typename T> class C>
 inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
     switch (computeType) {
-        case CUDA_R_16F: {
-            return C<__half>::value;
-        }
+#if __has_include(<cuda_bf16.h>)
         case CUDA_R_16BF: {
             return C<__nv_bfloat16>::value;
+        }
+        case CUDA_R_16I: {
+            return C<std::int16_t>::value;
+        }
+        case CUDA_R_16U: {
+            return C<std::uint16_t>::value;
+        }
+        case CUDA_R_64I: {
+            return C<std::int64_t>::value;
+        }
+        case CUDA_R_64U: {
+            return C<std::uint64_t>::value;
+        }
+#endif
+        case CUDA_R_16F: {
+            return C<__half>::value;
         }
         case CUDA_R_32F: {
             return C<float>::value;
@@ -135,23 +153,11 @@ inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
         case CUDA_R_8U: {
             return C<std::uint8_t>::value;
         }
-        case CUDA_R_16I: {
-            return C<std::int16_t>::value;
-        }
-        case CUDA_R_16U: {
-            return C<std::uint16_t>::value;
-        }
         case CUDA_R_32I: {
             return C<std::int32_t>::value;
         }
         case CUDA_R_32U: {
             return C<std::uint32_t>::value;
-        }
-        case CUDA_R_64I: {
-            return C<std::int64_t>::value;
-        }
-        case CUDA_R_64U: {
-            return C<std::uint64_t>::value;
         }
         default:
             throwIEException(
