@@ -44,7 +44,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
                                                                             const ConfigMap& config) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "Plugin::LoadExeNetworkImpl");
 
-    auto cfg = Configuration{ config, _cfg };
+    auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
     InferenceEngine::OutputsDataMap networkOutputs = network.getOutputsInfo();
 
@@ -84,24 +84,21 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     // Create stream executor for given device
     auto waitExecutor = GetStreamExecutor(cfg);
     return std::make_shared<ExecutableNetwork>(
-        transformed_network, cfg, waitExecutor,
-        std::static_pointer_cast<Plugin>(shared_from_this()));
+        transformed_network, cfg, waitExecutor, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
-InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(
-    const Configuration& cfg) {
-  // TODO: get available integer value instead of chain of conversions
-  auto param = cfg.Get(CONFIG_KEY(DEVICE_ID));
-  const std::string& deviceId = param;
-  CUDA::Device device{std::stoi(deviceId)};
-  const size_t numConcurrentStreams =
-      maxConcurrentStreams(device);
-  {
-    std::lock_guard<std::mutex> lock{mtx_};
-    auto& p = device_thread_pool_[deviceId];
-    if (!p) p = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
-    return p;
-  }
+InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(const Configuration& cfg) {
+    // TODO: get available integer value instead of chain of conversions
+    auto param = cfg.Get(CONFIG_KEY(DEVICE_ID));
+    const std::string& deviceId = param;
+    CUDA::Device device{std::stoi(deviceId)};
+    const size_t numConcurrentStreams = maxConcurrentStreams(device);
+    {
+        std::lock_guard<std::mutex> lock{mtx_};
+        auto& p = device_thread_pool_[deviceId];
+        if (!p) p = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
+        return p;
+    }
 }
 
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::ImportNetwork(
@@ -110,11 +107,12 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::ImportNetwork(
 
     Configuration cfg(config);
     auto waitExecutor = GetStreamExecutor(cfg);
-    return std::make_shared<ExecutableNetwork>(model, std::move(cfg), move(waitExecutor),
-                                               std::static_pointer_cast<Plugin>(shared_from_this()));
+    return std::make_shared<ExecutableNetwork>(
+        model, std::move(cfg), move(waitExecutor), std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
-InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::CNNNetwork &network, const ConfigMap& config) const {
+InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::CNNNetwork& network,
+                                                         const ConfigMap& config) const {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CUDAPlugin::QueryNetwork");
 
     InferenceEngine::QueryNetworkResult res;
@@ -122,8 +120,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
 
     auto function = network.getFunction();
     if (function == nullptr) {
-        throwIEException(
-            "CUDA Plugin supports only ngraph cnn network representation");
+        throwIEException("CUDA Plugin supports only ngraph cnn network representation");
     }
 
     // 1. First of all we should store initial input operation set
@@ -135,8 +132,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     }
 
     // 2. It is needed to apply all transformations as it is done in LoadExeNetworkImpl
-    auto transformedFunction =
-        transformer_.transform(CUDA::Device{cfg.deviceId}, network.getFunction(), config);
+    auto transformedFunction = transformer_.transform(CUDA::Device{cfg.deviceId}, network.getFunction(), config);
 
     // 3. The same input node can be transformed into supported and unsupported backend node
     // So we need store as supported either unsupported node sets
@@ -167,7 +163,8 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
         // 5. If some housekeeping nodes were not added - add them.
         if (InferenceEngine::details::contains(supported, node->get_friendly_name())) {
             for (auto&& inputNodeOutput : node->input_values()) {
-                if (ngraph::op::is_constant(inputNodeOutput.get_node()) || ngraph::op::is_parameter(inputNodeOutput.get_node())) {
+                if (ngraph::op::is_constant(inputNodeOutput.get_node()) ||
+                    ngraph::op::is_parameter(inputNodeOutput.get_node())) {
                     supported.emplace(inputNodeOutput.get_node()->get_friendly_name());
                 }
             }
@@ -182,7 +179,8 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
 
         // 6. Eliminate subgraphs that consist of housekeeping nodes only
         if (ngraph::op::is_constant(node) || ngraph::op::is_parameter(node)) {
-            if (!InferenceEngine::details::contains(supported, node->output(0).get_target_inputs().begin()->get_node()->get_friendly_name())) {
+            if (!InferenceEngine::details::contains(
+                    supported, node->output(0).get_target_inputs().begin()->get_node()->get_friendly_name())) {
                 supported.erase(node->get_friendly_name());
             }
         } else if (ngraph::op::is_output(node)) {
@@ -201,32 +199,29 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     return res;
 }
 
-void Plugin::SetConfig(const ConfigMap& config) {
-    _cfg = Configuration{config, _cfg};
-}
+void Plugin::SetConfig(const ConfigMap& config) { _cfg = Configuration{config, _cfg}; }
 
-InferenceEngine::Parameter Plugin::GetConfig(const std::string& name, const std::map<std::string, InferenceEngine::Parameter> & /*options*/) const {
+InferenceEngine::Parameter Plugin::GetConfig(
+    const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& /*options*/) const {
     return _cfg.Get(name);
 }
 
-InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std::map<std::string, InferenceEngine::Parameter> & options) const {
+InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
+                                             const std::map<std::string, InferenceEngine::Parameter>& options) const {
     using namespace InferenceEngine::CUDAMetrics;
     if (METRIC_KEY(SUPPORTED_METRICS) == name) {
-        std::vector<std::string> supportedMetrics = {
-            METRIC_KEY(AVAILABLE_DEVICES),
-            METRIC_KEY(SUPPORTED_METRICS),
-            METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-            METRIC_KEY(FULL_DEVICE_NAME),
-//            METRIC_KEY(IMPORT_EXPORT_SUPPORT),
-//            METRIC_KEY(DEVICE_ARCHITECTURE),
-            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
-            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) };
+        std::vector<std::string> supportedMetrics = {METRIC_KEY(AVAILABLE_DEVICES),
+                                                     METRIC_KEY(SUPPORTED_METRICS),
+                                                     METRIC_KEY(SUPPORTED_CONFIG_KEYS),
+                                                     METRIC_KEY(FULL_DEVICE_NAME),
+                                                     //            METRIC_KEY(IMPORT_EXPORT_SUPPORT),
+                                                     //            METRIC_KEY(DEVICE_ARCHITECTURE),
+                                                     METRIC_KEY(OPTIMIZATION_CAPABILITIES),
+                                                     METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS)};
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(DEVICE_ID),
-            CONFIG_KEY(PERF_COUNT),
-            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
+            CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT), CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
@@ -236,27 +231,26 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (METRIC_KEY(AVAILABLE_DEVICES) == name) {
         // TODO: fill list of available devices
-        std::vector<std::string> availableDevices = { "" };
+        std::vector<std::string> availableDevices = {""};
         IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
     } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
         std::string name = getCudaAttribute<Plugin::cuda_attribute::name, std::string>();
         IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
-//    } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
-//        IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
-//    } else if (METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
-//        // TODO: return device architecture for device specified by DEVICE_ID config
-//        std::string arch = "CUDA";
-//        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, arch);
+        //    } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
+        //        IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
+        //    } else if (METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
+        //        // TODO: return device architecture for device specified by DEVICE_ID config
+        //        std::string arch = "CUDA";
+        //        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, arch);
     } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
         // TODO: fill actual list of supported capabilities: e.g. Cuda device supports only FP32
-        std::vector<std::string> capabilities = { METRIC_VALUE(FP32) /*, TEMPLATE_METRIC_VALUE(HARDWARE_CONVOLUTION)*/ };
+        std::vector<std::string> capabilities = {METRIC_VALUE(FP32) /*, TEMPLATE_METRIC_VALUE(HARDWARE_CONVOLUTION)*/};
         IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
     } else if (METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) == name) {
         // TODO: fill with actual values
         using uint = unsigned int;
         IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(uint{1}, uint{1}, uint{1}));
-    } else  {
+    } else {
         throwIEException("Unsupported device metric: " + name);
     }
 }
-
