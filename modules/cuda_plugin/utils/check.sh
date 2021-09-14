@@ -2,7 +2,11 @@
 
 set -exuo pipefail
 
-if [[ $(type -P clang-format-10) ]]; then
+if [[ $(type -P clang-format-12) ]]; then
+	ver=-12
+elif [[ $(type -P clang-format-11) ]]; then
+	ver=-11
+elif [[ $(type -P clang-format-10) ]]; then
 	ver=-10
 elif [[ $(type -P clang-format-9) ]]; then
 	ver=-9
