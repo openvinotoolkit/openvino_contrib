@@ -292,6 +292,24 @@ void CudaInferRequest::convertPrecision<__half, std::uint8_t>(const Blob::Ptr& s
                    [](auto x) { return static_cast<std::uint8_t>(static_cast<float>(x)); });
 }
 
+template <>
+void CudaInferRequest::convertPrecision<std::int16_t, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const std::int16_t*>();
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+                   [](auto x) { return __float2half(static_cast<float>(x)); });
+}
+
+template <>
+void CudaInferRequest::convertPrecision<__half, std::int16_t>(const Blob::Ptr& src, const Blob::Ptr& dst) {
+    auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<std::int16_t*>(),
+                   [](auto x) { return static_cast<std::int16_t>(__half2float(x)); });
+}
+
 void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
     if (src->getTensorDesc().getPrecision() == dst->getTensorDesc().getPrecision()) {
         return;
@@ -304,6 +322,21 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     break;
                 case Precision::FP32:
                     convertPrecision<std::uint8_t, float>(src, dst);
+                    break;
+                default: {
+                    throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
+                                                 src->getTensorDesc().getPrecision(),
+                                                 dst->getTensorDesc().getPrecision()));
+                }
+            }
+        } break;
+        case Precision::I16: {
+            switch (dst->getTensorDesc().getPrecision()) {
+                case Precision::FP16:
+                    convertPrecision<std::int16_t, __half>(src, dst);
+                    break;
+                case Precision::FP32:
+                    convertPrecision<std::int16_t, float>(src, dst);
                     break;
                 default: {
                     throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
