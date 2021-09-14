@@ -38,6 +38,10 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
         if (LIB MATCHES ".*cudart.*")
             add_library(cudart SHARED IMPORTED GLOBAL)
             set_target_properties(cudart PROPERTIES IMPORTED_LOCATION ${LIB})
+            # list contains /usr/local/cuda-10.2/lib64/libcudart_static.a;-pthread;dl;/usr/lib/x86_64-linux-gnu/librt.so
+            # and rt is not added via other ways when build contains no *.cu files
+            # and dl is not added via other ways when build contains no *.cu files in some other cases
+            target_link_libraries(cudart INTERFACE rt dl)
             add_library(CUDA::cudart ALIAS cudart)
         endif()
     endforeach()

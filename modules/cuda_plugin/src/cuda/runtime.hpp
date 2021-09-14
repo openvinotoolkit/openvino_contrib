@@ -145,25 +145,31 @@ class UniqueBase<Construct, Destruct, N*> {
 };
 
 class Allocation {
-  class Deleter {
-    cudaStream_t stream;  // no raii, fixme?
-    // maybe deallocation stream could be different, i.e. maybe we could have
-    // setStream method?
-   public:
-    Deleter(cudaStream_t stream) noexcept : stream{stream} {}
-    void operator()(void* p) const noexcept {
-      logIfError(cudaFreeAsync(p, stream));
-    }
-  };
-  std::unique_ptr<void, Deleter> p;
+    class Deleter {
+        cudaStream_t stream;  // no raii, fixme?
+        // maybe deallocation stream could be different, i.e. maybe we could have
+        // setStream method?
+        auto freeImpl(void* p) const noexcept {
+#if CUDART_VERSION >= 11020
+            return cudaFreeAsync(p, stream);
+#else
+            return cudaFree(p);
+#endif
+        }
 
- public:
-  Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
-  void* get() const noexcept { return p.get(); }
-  template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
-  operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
-    return InferenceEngine::gpu::DevicePointer<T*>{get()};
-  }
+    public:
+        Deleter(cudaStream_t stream) noexcept : stream{stream} {}
+        void operator()(void* p) const noexcept { logIfError(freeImpl(p)); }
+    };
+    std::unique_ptr<void, Deleter> p;
+
+public:
+    Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
+    void* get() const noexcept { return p.get(); }
+    template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
+    operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
+        return InferenceEngine::gpu::DevicePointer<T*>{get()};
+    }
 };
 
 class DefaultAllocation {
@@ -183,56 +189,51 @@ class DefaultAllocation {
   }
 };
 
-class Stream
-    : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream_t> {
-  void uploadImpl(void* dst, const void* src, std::size_t count) const {
-    throwIfError(
-        cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));
-  }
-  void downloadImpl(void* dst, const void* src, std::size_t count) const {
-    throwIfError(
-        cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToHost, get()));
-  }
-
- public:
-  Allocation malloc(std::size_t size) const {
-    return {create<void*, cudaError_t>(cudaMallocAsync, size, get()), get()};
-  }
-  void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src,
-              std::size_t count) const {
-    uploadImpl(dst.get(), src, count);
-  }
-  void transfer(InferenceEngine::gpu::DevicePointer<void*> dst,
-                InferenceEngine::gpu::DevicePointer<const void*> src,
-                std::size_t count) const {
-    throwIfError(
-        cudaMemcpyAsync(dst.get(), src.get(), count, cudaMemcpyDeviceToDevice, get()));
-  }
-  void upload(const Allocation& dst, const void* src, std::size_t count) const {
-    uploadImpl(dst.get(), src, count);
-  }
-  void download(void* dst, const Allocation& src, std::size_t count) const {
-    downloadImpl(dst, src.get(), count);
-  }
-  void download(void* dst, InferenceEngine::gpu::DevicePointer<const void*> src,
-                std::size_t count) const {
-    downloadImpl(dst, src.get(), count);
-  }
-  void download(void* dst, InferenceEngine::gpu::DevicePointer<void*> src,
-                std::size_t count) const {
-    downloadImpl(dst, src.get(), count);
-  }
-  void synchronize() const { throwIfError(cudaStreamSynchronize(get())); }
-#ifdef __CUDACC__
-  template <typename... Args>
-  void run(dim3 gridDim, dim3 blockDim, void (*kernel)(Args...),
-           Args... args) const {
-    kernel
-#ifndef __CDT_PARSER__
-        <<<gridDim, blockDim, 0, get()>>>
+class Stream : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream_t> {
+    void uploadImpl(void* dst, const void* src, std::size_t count) const {
+        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));
+    }
+    void downloadImpl(void* dst, const void* src, std::size_t count) const {
+        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToHost, get()));
+    }
+    auto mallocImpl(std::size_t size) const {
+        return create<void*, cudaError_t>(
+#if CUDART_VERSION >= 11020
+            cudaMallocAsync, size, get()
+#else
+            cudaMalloc, size
 #endif
-        (args...);
-  }
+        );
+    }
+
+public:
+    Allocation malloc(std::size_t size) const { return {mallocImpl(size), get()}; }
+    void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src, std::size_t count) const {
+        uploadImpl(dst.get(), src, count);
+    }
+    void transfer(InferenceEngine::gpu::DevicePointer<void*> dst,
+                  InferenceEngine::gpu::DevicePointer<const void*> src,
+                  std::size_t count) const {
+        throwIfError(cudaMemcpyAsync(dst.get(), src.get(), count, cudaMemcpyDeviceToDevice, get()));
+    }
+    void upload(const Allocation& dst, const void* src, std::size_t count) const { uploadImpl(dst.get(), src, count); }
+    void download(void* dst, const Allocation& src, std::size_t count) const { downloadImpl(dst, src.get(), count); }
+    void download(void* dst, InferenceEngine::gpu::DevicePointer<const void*> src, std::size_t count) const {
+        downloadImpl(dst, src.get(), count);
+    }
+    void download(void* dst, InferenceEngine::gpu::DevicePointer<void*> src, std::size_t count) const {
+        downloadImpl(dst, src.get(), count);
+    }
+    void synchronize() const { throwIfError(cudaStreamSynchronize(get())); }
+#ifdef __CUDACC__
+    template <typename... Args>
+    void run(dim3 gridDim, dim3 blockDim, void (*kernel)(Args...), Args... args) const {
+        kernel
+#ifndef __CDT_PARSER__
+            <<<gridDim, blockDim, 0, get()>>>
+#endif
+            (args...);
+    }
 #endif
 };
 
