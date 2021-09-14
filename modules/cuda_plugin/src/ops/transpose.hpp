@@ -4,13 +4,16 @@
 
 #pragma once
 
+#include <cuda.h>
+
 #include <cuda_operation_base.hpp>
+#include <ngraph/node.hpp>
 #include <optional>
 #include <unordered_map>
 #include <vector>
-#include <ngraph/node.hpp>
-#include <cuda.h>
+#if __has_include(<cuda_bf16.h>)
 #include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 
 namespace CUDAPlugin {
@@ -18,9 +21,9 @@ namespace CUDAPlugin {
 class TransposeOp : public OperationCuTensor {
 public:
     TransposeOp(const CUDA::CreationContext& context,
-             const std::shared_ptr<ngraph::Node>& node,
-             IndexCollection&& inputIds,
-             IndexCollection&& outputIds);
+                const std::shared_ptr<ngraph::Node>& node,
+                IndexCollection&& inputIds,
+                IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
@@ -49,9 +52,10 @@ private:
 
     ngraph::element::Type_t extractPermutationElementsType(const ngraph::Node& node);
 
-    template<typename T>
+    template <typename T>
     static std::vector<int> downloadPermutationVector(const InferenceRequestContext& context,
-            InferenceEngine::gpu::DevicePointer<const void*>, unsigned numDims);
+                                                      InferenceEngine::gpu::DevicePointer<const void*>,
+                                                      unsigned numDims);
 
 private:
     std::vector<std::int64_t> inputExtents_;
@@ -66,4 +70,4 @@ private:
     ngraph::element::Type_t permutationElementsType_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
