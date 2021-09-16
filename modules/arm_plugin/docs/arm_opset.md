@@ -42,7 +42,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [DeformablePSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DeformablePSROIPooling_1.md)                                                         | Not Supported |
 | [DepthToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/DepthToSpace_1.md)                                                                              | Supported*    |
 | [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                                                                       | Supported**   |
-| [DFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/DFT_7.md)                                                                                                 | Not Supported |
+| [DFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/DFT_7.md)                                                                                                 | Supported**   |
 | [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                                                                        | Supported     |
 | [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                                                              | Supported     |
 | [EmbeddingBagOffsetsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagOffsetsSum_3.md)                                                            | Supported**   |
@@ -75,7 +75,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                                                              | Supported**   |
 | [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                                                                    | Supported**   |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                                                                        | Supported     |
-| [IDFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/IDFT_7.md)                                                                                               | Not Supported |
+| [IDFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/IDFT_7.md)                                                                                               | Supported**   |
 | [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                                                                   | Supported*    |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                                                            | Supported*    |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                                                                  | Supported*    |
