@@ -60,3 +60,43 @@ class ConvFrontExtractor(FrontExtractorOp):
         # update the attributes of the node
         Convolution.update_node_stat(node, attrs)
         return cls.enabled
+
+class DeconvFrontExtractor(FrontExtractorOp):
+    op = 'Deconvolution'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        final_pads = get_pads(node.module)
+
+        # Extract strides attribute
+        strides = node.module.stride
+        final_strides = np.array([1, 1, *strides], dtype=np.int64)
+
+        # Extract dilations attribute
+        dilations = node.module.dilation
+        if isinstance(dilations, int):
+            dilations = [dilations, dilations]
+        final_dilations = np.array([1, 1, *dilations], dtype=np.int64)
+        attrs = {
+            'type': 'Deconvolution',
+            'pad': final_pads,
+            'stride': final_strides,
+            'dilation': final_dilations,
+            'group': node.module.groups,
+            'kernel_spatial': np.array(node.module.kernel_size, dtype=np.int64),
+
+            'input_feature_channel': 1,
+            'output_feature_channel': 0,
+
+            'channel_dims': np.array([1], dtype=np.int64),
+            'batch_dims': np.array([0], dtype=np.int64),
+            'layout': 'NCHW',
+            'in_ports_count': 2,
+
+            'output': node.module.out_channels,
+        }
+
+        # update the attributes of the node
+        Convolution.update_node_stat(node, attrs)
+        return cls.enabled

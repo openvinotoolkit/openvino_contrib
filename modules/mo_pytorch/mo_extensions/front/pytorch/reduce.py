@@ -13,19 +13,29 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-
 from mo.front.common.replacement import FrontReplacementOp
 from mo.graph.graph import Graph, Node
-from extensions.ops.select import Select
+from extensions.ops.ReduceOps import *
 from mo.ops.const import Const
+import numpy as np
 
 
-class Where(FrontReplacementOp):
-    op = 'Where'
+class ReduceSumReplacement(FrontReplacementOp):
+    op = 'ReduceSum'
     enabled = True
 
     def replace_op(self, graph: Graph, node: Node):
-        cond = Const(graph, {'value': node.module.condition}).create_node()
-        else_branch = Const(graph, {'value': node.module.y}).create_node()
-        select = Select(graph, dict(name=node.name)).create_node([cond, node.in_node(0), else_branch])
-        return [select.id]
+        axes = np.arange(node.module.num_axes)
+        axes = Const(graph, {'value': axes}).create_node()
+        red = ReduceSum(graph, dict(name=node.name)).create_node([node.in_node(0), axes])
+        return [red.id]
+
+
+class ReduceMeanReplacement(FrontReplacementOp):
+    op = 'ReduceMean'
+    enabled = True
+
+    def replace_op(self, graph: Graph, node: Node):
+        axis = Const(graph, {'value': node.module.dim}).create_node()
+        red = ReduceMean(graph, dict(name=node.name)).create_node([node.in_node(0), axis])
+        return [red.id]

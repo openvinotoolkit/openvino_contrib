@@ -25,7 +25,7 @@ class StackFrontExtractor(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         update_attrs = {
-            'axis': 0
+            'axis': node.module.dim,
         }
 
         # update the attributes of the node

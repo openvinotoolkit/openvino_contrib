@@ -1,9 +1,11 @@
 from fnmatch import fnmatch
 
 from .detectron2.retinanet import RetinaNet
+from .usrnet.usrnet import USRNet
 
 classes = [
-    RetinaNet()
+    RetinaNet(),
+    USRNet(),
 ]
 
 def register_model_hook(model):
