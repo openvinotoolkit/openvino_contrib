@@ -229,13 +229,16 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(
     std::mutex& mtx,
     std::condition_variable& cond_var) {
     std::unique_lock<std::mutex> lock{mtx};
-    std::atomic<uint32_t> callbackCalled{0};
+    uint32_t callbackCalled = 0;
     std::vector<InferenceEngine::IInferRequestInternal::Ptr> inferRequests;
     inferRequests.reserve(numInfers);
     for (int k = 0; k < numInfers; ++k) {
         inferRequests.push_back(CreateBenchmarkInferRequest());
-        inferRequests.back()->SetCallback([&callbackCalled, &cond_var](std::exception_ptr) {
-            callbackCalled.fetch_add(1, std::memory_order_acq_rel);
+        inferRequests.back()->SetCallback([&callbackCalled, &cond_var, &mtx](const std::exception_ptr&) {
+            {
+                std::lock_guard<std::mutex> lock{mtx};
+                ++callbackCalled;
+            }
             cond_var.notify_one();
         });
     }
@@ -244,7 +247,7 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(
         e->StartAsync();
     }
     cond_var.wait(
-        lock, [&callbackCalled, &numInfers] { return numInfers == callbackCalled.load(std::memory_order_acquire); });
+        lock, [&callbackCalled, &numInfers] { return numInfers == callbackCalled; });
     const auto duration = Time::now() - start;
     const auto fps = numInfers * (std::chrono::seconds(1) / duration);
     return fps;
