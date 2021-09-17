@@ -1,41 +1,42 @@
 diff --git a/inference-engine/samples/hello_classification/CMakeLists.txt b/inference-engine/samples/hello_classification/CMakeLists.txt
-index 303f54bb8..0e17d6188 100644
+index 9b0509bab..89cc77fe2 100644
 --- a/inference-engine/samples/hello_classification/CMakeLists.txt
 +++ b/inference-engine/samples/hello_classification/CMakeLists.txt
-@@ -3,5 +3,8 @@
+@@ -3,7 +3,9 @@
  #
  
  ie_add_sample(NAME hello_classification
 -              SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
 +              SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/nii_file_utils.cc"
 +                  "${CMAKE_CURRENT_SOURCE_DIR}/nii_file_utils.hh"
-               OPENCV_DEPENDENCIES imgcodecs)
-+
+               DEPENDENCIES ie_samples_utils
+               OPENCV_DEPENDENCIES core imgcodecs)
+ 
 +add_dependencies(hello_classification CUDAPlugin)
 diff --git a/inference-engine/samples/hello_classification/main.cpp b/inference-engine/samples/hello_classification/main.cpp
-index 11be6821d..a23d6e915 100644
+index 858a87ead..5810ca510 100644
 --- a/inference-engine/samples/hello_classification/main.cpp
 +++ b/inference-engine/samples/hello_classification/main.cpp
 @@ -11,6 +11,9 @@
- #include <inference_engine.hpp>
  #include <samples/ocv_common.hpp>
- #include <samples/classification_results.h>
+ #include <string>
+ #include <vector>
 +#include <iostream>
 +
 +#include "nii_file_utils.hh"
  
  using namespace InferenceEngine;
  
-@@ -23,6 +26,7 @@ using namespace InferenceEngine;
- #define tcout std::cout
- #define file_name_t std::string
- #define imread_t cv::imread
-+#define imread_grayscale_t(image_path) cv::imread(image_path, cv::IMREAD_GRAYSCALE)
- #define ClassificationResult_t ClassificationResult
+@@ -26,6 +29,7 @@ using namespace InferenceEngine;
+     #define tcout                  std::cout
+     #define file_name_t            std::string
+     #define imread_t               cv::imread
++    #define imread_grayscale_t(image_path) cv::imread(image_path, cv::IMREAD_GRAYSCALE)
+     #define ClassificationResult_t ClassificationResult
  #endif
  
-@@ -64,24 +68,45 @@ std::string simpleConvert(const std::wstring & wstr) {
- int wmain(int argc, wchar_t *argv[]) {
+@@ -73,23 +77,43 @@ std::string simpleConvert(const std::wstring& wstr) {
+ int wmain(int argc, wchar_t* argv[]) {
  #else
  
 +static UNUSED InferenceEngine::Blob::Ptr create3DMat2Blob(const cv::Mat &mat) {
@@ -50,28 +51,24 @@ index 11be6821d..a23d6e915 100644
 +void write_images_to_files(const std::string & prefix, std::vector<cv::Mat> & images, size_t max_size);
 +void normalize_images(std::vector<cv::Mat> & images);
 +
- int main(int argc, char *argv[]) {
+ int main(int argc, char* argv[]) {
  #endif
      try {
--        // ------------------------------ Parsing and validation of input args ---------------------------------
--        if (argc != 4) {
+         // ------------------------------ Parsing and validation of input arguments
+         // ---------------------------------
+         if (argc != 4) {
 -            tcout << "Usage : " << argv[0] << " <path_to_model> <path_to_image> <device_name>" << std::endl;
-+        // ------------------------------ Parsing and validation of input arguments
-+        // ---------------------------------
-+        if ( argc != 4 ) {
 +            std::cout << "Usage : " << argv[0] << " <path_to_model> <path_to_nii_image> <device_name>" << std::endl;
              return EXIT_FAILURE;
          }
--
-         const file_name_t input_model{argv[1]};
--        const file_name_t input_image_path{argv[2]};
+ 
+         const file_name_t input_model {argv[1]};
+-        const file_name_t input_image_path {argv[2]};
 -#if defined(ENABLE_UNICODE_PATH_SUPPORT) && defined(_WIN32)
 -        const std::string device_name = simpleConvert(argv[3]);
 -#else
--        const std::string device_name{argv[3]};
+-        const std::string device_name {argv[3]};
 -#endif
--        // -----------------------------------------------------------------------------------------------------
- 
 +        std::string nii_images_file = argv[2];
 +        std::vector<cv::Mat> images = get_images(nii_images_file);
 +        write_images_to_files("input", images, kImageShapeSize);
@@ -85,16 +82,14 @@ index 11be6821d..a23d6e915 100644
 +            }
 +        }
 +        united_image = united_image.t();
-+
 +        std::string device_name = argv[3];
-+        // -----------------------------------------------------------------------------------------------------
-         // --------------------------- 1. Load inference engine instance -------------------------------------
-         Core ie;
          // -----------------------------------------------------------------------------------------------------
-@@ -100,9 +125,10 @@ int main(int argc, char *argv[]) {
-         /* Mark input as resizable by setting of a resize algorithm.
-          * In this case we will be able to set an input blob of any shape to an infer request.
-          * Resize and layout conversions are executed automatically during inference */
+ 
+         // --------------------------- Step 1. Initialize inference engine core
+@@ -117,9 +141,10 @@ int main(int argc, char* argv[]) {
+          * In this case we will be able to set an input blob of any shape to an
+          * infer request. Resize and layout conversions are executed automatically
+          * during inference */
 -        input_info->getPreProcess().setResizeAlgorithm(RESIZE_BILINEAR);
 -        input_info->setLayout(Layout::NHWC);
 -        input_info->setPrecision(Precision::U8);
@@ -103,42 +98,36 @@ index 11be6821d..a23d6e915 100644
 +        input_info->setLayout(Layout::NCDHW);
 +        input_info->setPrecision(Precision::FP32);
  
-         // --------------------------- Prepare output blobs ----------------------------------------------------
-         DataPtr output_info = network.getOutputsInfo().begin()->second;
-@@ -110,19 +136,21 @@ int main(int argc, char *argv[]) {
+         // --------------------------- Prepare output blobs
+         // ----------------------------------------------------
+@@ -135,7 +160,12 @@ int main(int argc, char* argv[]) {
  
-         output_info->setPrecision(Precision::FP32);
-         // -----------------------------------------------------------------------------------------------------
--
--        // --------------------------- 4. Loading model to the device ------------------------------------------
+         // --------------------------- Step 4. Loading a model to the device
+         // ------------------------------------------
 -        ExecutableNetwork executable_network = ie.LoadNetwork(network, device_name);
-+        // --------------------------- Step 4. Loading a model to the device
-+        // ------------------------------------------
 +        ExecutableNetwork executable_network =
-+                device_name == "CUDA" ? ie.LoadNetwork(network, device_name,
-+                                        {
-+                                            {{"CUDA_THROUGHPUT_STREAMS", "1"}},
-+                                        })
-+                                      : ie.LoadNetwork(network, device_name);
++            device_name == "CUDA" ? ie.LoadNetwork(network, device_name,
++                                    {
++                                        {{"CUDA_THROUGHPUT_STREAMS", "1"}},
++                                    })
++                                  : ie.LoadNetwork(network, device_name);
          // -----------------------------------------------------------------------------------------------------
--
-         // --------------------------- 5. Create infer request -------------------------------------------------
-         InferRequest infer_request = executable_network.CreateInferRequest();
-         // -----------------------------------------------------------------------------------------------------
--
-         // --------------------------- 6. Prepare input --------------------------------------------------------
-         /* Read input image to a blob and set it to an infer request without resize and layout conversions. */
+ 
+         // --------------------------- Step 5. Create an infer request
+@@ -147,8 +177,7 @@ int main(int argc, char* argv[]) {
+         // --------------------------------------------------------
+         /* Read input image to a blob and set it to an infer request without resize
+          * and layout conversions. */
 -        cv::Mat image = imread_t(input_image_path);
--        Blob::Ptr imgBlob = wrapMat2Blob(image);  // just wrap Mat data by Blob::Ptr without allocating of new memory
+-        Blob::Ptr imgBlob = wrapMat2Blob(image);     // just wrap Mat data by Blob::Ptr
 +        Blob::Ptr imgBlob = create3DMat2Blob(united_image);
+                                                      // without allocating of new memory
          infer_request.SetBlob(input_name, imgBlob);  // infer_request accepts input blob of any size
          // -----------------------------------------------------------------------------------------------------
- 
-@@ -133,9 +161,20 @@ int main(int argc, char *argv[]) {
- 
-         // --------------------------- 8. Process output ------------------------------------------------------
+@@ -163,8 +192,19 @@ int main(int argc, char* argv[]) {
+         // ------------------------------------------------------
          Blob::Ptr output = infer_request.GetBlob(output_name);
--        // Print classification results
+         // Print classification results
 -        ClassificationResult_t classificationResult(output, {input_image_path});
 -        classificationResult.print();
 +        auto outputBuffer = output->buffer();
@@ -154,16 +143,15 @@ index 11be6821d..a23d6e915 100644
 +            result_images.push_back(res_image);
 +        }
 +        write_images_to_files("output", result_images, kImageShapeSize);
-+
          // -----------------------------------------------------------------------------------------------------
-     } catch (const std::exception & ex) {
+     } catch (const std::exception& ex) {
          std::cerr << ex.what() << std::endl;
 diff --git a/inference-engine/samples/hello_classification/nii_file_utils.cc b/inference-engine/samples/hello_classification/nii_file_utils.cc
 new file mode 100644
-index 000000000..5a6bc9756
+index 000000000..5aaaea051
 --- /dev/null
 +++ b/inference-engine/samples/hello_classification/nii_file_utils.cc
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,283 @@
 +// Copyright (C) 2018-2020 Intel Corporation
 +// SPDX-License-Identifier: Apache-2.0
 +//
@@ -254,7 +242,6 @@ index 000000000..5a6bc9756
 +
 +    if (bitpix != 32)
 +        throw std::runtime_error("Data type must be float");
-+
 +    short slice_start;
 +    infile.read(reinterpret_cast<char*>(&slice_start), sizeof(slice_start));
 +    bytes_read += infile.gcount();
@@ -424,6 +411,7 @@ index 000000000..5a6bc9756
 +    return images;
 +}
 +
++
 +void write_images_to_files(const std::string & prefix, std::vector<cv::Mat> & images, size_t max_number) {
 +    for (size_t i = 0; i < kImageShapeSize; ++i) {
 +        ostringstream oss;
@@ -446,12 +434,13 @@ index 000000000..5a6bc9756
 +    }
 +}
 +
++
 diff --git a/inference-engine/samples/hello_classification/nii_file_utils.hh b/inference-engine/samples/hello_classification/nii_file_utils.hh
 new file mode 100644
-index 000000000..87d6df0ea
+index 000000000..6fb8c24a9
 --- /dev/null
 +++ b/inference-engine/samples/hello_classification/nii_file_utils.hh
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,16 @@
 +// Copyright (C) 2018-2021 Intel Corporation
 +// SPDX-License-Identifier: Apache-2.0
 +//
@@ -467,4 +456,4 @@ index 000000000..87d6df0ea
 +std::vector<cv::Mat> get_images(const std::string & nii_file_name);
 +void write_images_to_files(const std::string & prefix, std::vector<cv::Mat> & images, size_t max_size);
 +void normalize_images(std::vector<cv::Mat> & images);
-* Unmerged path inference-engine/thirdparty/ade
++
