@@ -18,7 +18,7 @@
 namespace CUDAPlugin {
 
 class CudaThreadPool : public InferenceEngine::ITaskExecutor {
- public:
+public:
     using Task = std::function<void()>;
 
     CudaThreadPool(CUDA::Device d, unsigned _numThreads);
@@ -26,14 +26,14 @@ class CudaThreadPool : public InferenceEngine::ITaskExecutor {
     ~CudaThreadPool() override;
     void run(Task task) override;
 
- private:
+private:
     void stopThreadPool() noexcept;
 
     std::mutex mtx_;
-    std::atomic<bool> is_stopped_{false};
+    bool is_stopped_ = false;
     std::condition_variable queue_cond_var_;
     std::deque<Task> task_queue_;
     std::vector<CudaJThread> threads_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
