@@ -29,8 +29,8 @@ using InferenceEngine::gpu::InferenceRequestContext;
 
 class IOperationExec {
 public:
-    using Inputs = gsl::span<InferenceEngine::gpu::DevicePointer<const void*>>;
-    using Outputs = gsl::span<InferenceEngine::gpu::DevicePointer<void*>>;
+    using Inputs = gsl::span<const InferenceEngine::gpu::DevicePointer<const void*>>;
+    using Outputs = gsl::span<const InferenceEngine::gpu::DevicePointer<void*>>;
     using Buffers = std::vector<InferenceEngine::gpu::DevicePointer<void*>>;
     enum class WorkbufferStatus { NoInitNeeded, InitNeeded };
 
