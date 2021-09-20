@@ -43,7 +43,7 @@ private:
                                const std::vector<size_t>& matrixShapes,
                                const std::vector<int64_t>& matrixSizes,
                                const ngraph::AxisSet& reverseAxes,
-                               InferenceEngine::gpu::DevicePointer<void*>& buffer) const;
+                               InferenceEngine::gpu::DevicePointer<void*> buffer) const;
     void uploadDataToWorkbuffer(InferenceEngine::gpu::DevicePointer<void*> buffer, const std::vector<int64_t>& data);
 
     std::vector<int64_t> getNodeConstantValues(const ngraph::Node* node) const;
