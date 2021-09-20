@@ -11,48 +11,32 @@
 
 namespace CUDAPlugin {
 
-
 namespace details {
 
-template<typename TOperation>
-constexpr bool isConstructibleWithNodePtr = std::is_constructible<TOperation,
-  const CUDA::CreationContext&,
-  const std::shared_ptr<ngraph::Node>&,
-  OperationBase::IndexCollection&&,
-  OperationBase::IndexCollection&&>::value;
+template <typename TOperation>
+inline constexpr bool isConstructibleWithNodeRef = std::is_constructible_v<TOperation,
+                                                                           const CUDA::CreationContext&,
+                                                                           const ngraph::Node&,
+                                                                           OperationBase::IndexCollection&&,
+                                                                           OperationBase::IndexCollection&&>;
 
-template<typename TOperation>
-constexpr bool isConstructibleWithNodeRef = std::is_constructible<TOperation,
-  const CUDA::CreationContext&,
-  const ngraph::Node&,
-  OperationBase::IndexCollection&&,
-  OperationBase::IndexCollection&&>::value;
+template <typename T, typename = void>
+inline constexpr auto hasNodeOp = false;
 
-template<typename TOperation, typename NodeOp = typename TOperation::NodeOp>
-constexpr bool hasNodeOpType(int) {
-  return true;
-}
+template <typename T>
+inline constexpr auto hasNodeOp<T, std::void_t<typename T::NodeOp>> = true;
 
-template<typename TOperation>
-constexpr bool hasNodeOpType(long) { return false; }
-
-template<typename TOperation>
-constexpr bool constructibleWithNodeOpRef(int) {
-  if constexpr(hasNodeOpType<TOperation>(0)) {
-    return std::is_constructible<TOperation,
-        const CUDA::CreationContext&,
-        const typename TOperation::NodeOp&,
-        OperationBase::IndexCollection&&,
-        OperationBase::IndexCollection&&>::value;
-  }
-  return false;
-}
-
-template<typename TOperation>
-constexpr bool constructibleWithNodeOpRef(long) { return false; }
-
-template<typename TOperation>
-constexpr bool isConstructibleWithNodeOpRef = constructibleWithNodeOpRef<TOperation>(0);
+template <typename TOperation>
+inline constexpr bool isConstructibleWithNodeOpRef = [] {
+    if constexpr (hasNodeOp<TOperation>) {
+        return std::is_constructible_v<TOperation,
+                                       const CUDA::CreationContext&,
+                                       const typename TOperation::NodeOp&,
+                                       OperationBase::IndexCollection&&,
+                                       OperationBase::IndexCollection&&>;
+    }
+    return false;
+}();
 
 } // namespace details
 
@@ -68,33 +52,23 @@ class OperationRegistry final {
     static_assert(std::is_base_of_v<OperationBase, TOperation>,
                   "TOperation should derive from OperationBase");
     explicit Register(const std::string& opName) {
-      using namespace details;
-      if constexpr(isConstructibleWithNodeOpRef<TOperation>) {
-        getInstance().registerOp(opName,
-            [](const CUDA::CreationContext& context,
-               const std::shared_ptr<ngraph::Node>& node,
-               IndexCollection&& inputs, IndexCollection&& outputs) {
-              return std::make_shared<TOperation>(context,
-                  downcast<const typename TOperation::NodeOp>(node),
-                  move(inputs), move(outputs));
-            });
-      } else { if constexpr(isConstructibleWithNodeRef<TOperation>) {
-        getInstance().registerOp(opName,
-            [](const CUDA::CreationContext& context,
-               const std::shared_ptr<ngraph::Node>& node,
-               IndexCollection&& inputs, IndexCollection&& outputs) {
-              return std::make_shared<TOperation>(context, *node, move(inputs), move(outputs));
-            });
-      } else {
         getInstance().registerOp(
-        opName,
-        [](const CUDA::CreationContext& context,
-           const std::shared_ptr<ngraph::Node>& node,
-           IndexCollection&& inputs, IndexCollection&& outputs) {
-          return std::make_shared<TOperation>(context, node, move(inputs),
-                                              move(outputs));
-        });
-      }}
+            opName,
+            [](const CUDA::CreationContext& context,
+               const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputs,
+               IndexCollection&& outputs) {
+                if constexpr (details::isConstructibleWithNodeOpRef<TOperation>) {
+                    return std::make_shared<TOperation>(
+                        context, downcast<const typename TOperation::NodeOp>(node), move(inputs), move(outputs));
+                } else {
+                    if constexpr (details::isConstructibleWithNodeRef<TOperation>) {
+                        return std::make_shared<TOperation>(context, *node, move(inputs), move(outputs));
+                    } else {
+                        return std::make_shared<TOperation>(context, node, move(inputs), move(outputs));
+                    }
+                }
+            });
     }
   };
 
