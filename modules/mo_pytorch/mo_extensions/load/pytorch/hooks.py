@@ -75,7 +75,8 @@ def forward_hook(self, inputs, output=None):
     if isinstance(output, tuple):
         outputs = []
         shapes = self.infer_shapes(inputs)
-        assert(len(shapes) == len(output))
+        if len(shapes) != len(output):
+            raise Exception("Incorrect number of output shapes")
         for i, (out, shape) in enumerate(zip(output, shapes)):
             if not isinstance(out, OpenVINOTensor):
                 out = OpenVINOTensor(out)
