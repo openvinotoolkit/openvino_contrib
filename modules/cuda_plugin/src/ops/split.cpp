@@ -87,7 +87,7 @@ void SplitOp::Execute(const InferenceRequestContext& context,
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
     auto outputPtrs = buffers.mutable_buffers[0];
-    stream.upload(outputPtrs, reinterpret_cast<void**>(outputs.data()), sizeof(void*) * num_splits_);
+    stream.upload(outputPtrs, outputs.data(), sizeof(void*) * num_splits_);
     auto in = inputs[0];
     (*split_kernel_)(stream.get(), reinterpret_cast<const void*>(in.get()), reinterpret_cast<void**>(outputPtrs.get()));
 }
