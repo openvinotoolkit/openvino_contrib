@@ -276,7 +276,7 @@ void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& contex
                                            const std::vector<size_t>& matrixShapes,
                                            const std::vector<int64_t>& matrixSizes,
                                            const ngraph::AxisSet& reverseAxes,
-                                           InferenceEngine::gpu::DevicePointer<void*>& buffer) const {
+                                           InferenceEngine::gpu::DevicePointer<void*> buffer) const {
     for (auto axisIt = reverseAxes.rbegin(); axisIt != reverseAxes.rend(); ++axisIt) {
         const auto chunksNumber =
             *axisIt < matrixSizes.size() - 1 ? matrixSizes[*axisIt] / matrixSizes[*axisIt + 1] : matrixSizes[*axisIt];
