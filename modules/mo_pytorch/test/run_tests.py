@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 import numpy as np
 import torch
@@ -205,6 +206,7 @@ class TestModels(unittest.TestCase):
 
         text = "Александр Сергеевич Пушкин родился в "
         input_ids = tokenizer.encode(text, return_tensors="pt")
+        seq_len = input_ids.shape[1]
         result = model(input_ids)
 
         # Forward random input through the model to check that nothing got stuck from reference dat
@@ -212,17 +214,76 @@ class TestModels(unittest.TestCase):
         model(dummy_inp)
 
         # Generate OpenVINO IR
-        mo_pytorch.convert(model, input_shape='[1, 6],[6]', input='input_ids{i64},position_ids{i64}', model_name='model')
+        mo_pytorch.convert(model, input_shape='[1, {}],[{}]'.format(seq_len, seq_len),
+                           input='input_ids{i64},position_ids{i64}', model_name='model')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
         exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input_ids': input_ids, 'position_ids': np.arange(6)})
+        out = exec_net.infer({'input_ids': input_ids, 'position_ids': np.arange(seq_len)})
         out = next(iter(out.values()))
 
         ref = result[0].detach().numpy()
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 1e-4)
+
+
+    def test_usrnet(self):
+        sys.path.append('USRNet')
+        from models.network_usrnet import USRNet as net   # for pytorch version <= 1.7.1
+        from utils import utils_deblur
+        from utils import utils_sisr as sr
+        from utils import utils_image as util
+
+        np.random.seed(324)
+        torch.manual_seed(32)
+        inp = np.random.standard_normal([1, 3, 56, 112]).astype(np.float32)
+        sf = 4
+
+        # source: https://github.com/cszn/USRNet/blob/master/main_test_realapplication.py
+        def get_kernel_sigma():
+            noise_level_img = 2       # noise level for LR image, 0.5~3 for clean images
+            kernel_width_default_x1234 = [0.4, 0.7, 1.5, 2.0] # default Gaussian kernel widths of clean/sharp images for x1, x2, x3, x4
+
+            noise_level_model = noise_level_img/255.  # noise level of model
+            kernel_width = kernel_width_default_x1234[sf-1]
+
+            k = utils_deblur.fspecial('gaussian', 25, kernel_width)
+            k = sr.shift_pixel(k, sf)  # shift the kernel
+            k /= np.sum(k)
+            kernel = util.single2tensor4(k[..., np.newaxis])
+            sigma = torch.tensor(noise_level_model).float().view([1, 1, 1, 1])
+
+            return kernel, sigma
+
+        kernel, sigma = get_kernel_sigma()
+
+        model = net(n_iter=8, h_nc=64, in_nc=4, out_nc=3, nc=[64, 128, 256, 512],
+                    nb=2, act_mode="R", downsample_mode='strideconv', upsample_mode="convtranspose")
+        model.eval()
+
+        ref = model(torch.tensor(inp), kernel, sf, sigma)
+
+        # Forward random input through the model to check that nothing got stuck from reference data
+        dummy_inp = torch.randn(inp.shape)
+        dummy_kernel = torch.randn(kernel.shape)
+        dummy_sigma = torch.randn(sigma.shape)
+        model(dummy_inp, dummy_kernel, sf, dummy_sigma)
+
+        # Generate OpenVINO IR
+        mo_pytorch.convert(model, input_shape='[1, 3, 56, 112],[1, 1, 25, 25],[1, 1, 1, 1],[1]',
+                           input='x{f32},k{f32},sigma{f32},sf{f32}->4',
+                           model_name='model')
+
+        # Run model with OpenVINO and compare outputs
+        net = self.ie.read_network('model.xml')
+        exec_net = self.ie.load_network(net, 'CPU')
+        out = exec_net.infer({'x': inp, 'k': kernel, 'sigma': sigma})
+        out = next(iter(out.values()))
+
+        diff = np.max(np.abs(ref.detach().numpy() - out))
+        self.assertLessEqual(diff, 1e-4)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -30,7 +30,7 @@ jobs:
     BUILD_DIR: $(WORK_DIR)/build
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
-    SETUPVARS: $(INSTALL_DIR)/bin/setupvars.sh
+    SETUPVARS: $(INSTALL_DIR)/setupvars.sh
     GRADLE_VER: 6.5.1
 
   steps:
@@ -152,6 +152,7 @@ jobs:
       python3 -m pip install -U setuptools==51.0.0
       python3 -m pip install -r requirements.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
+      git clone https://github.com/cszn/USRNet --depth 1
     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
     displayName: 'Install PyTorch tests dependencies'
 
