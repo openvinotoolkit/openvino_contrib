@@ -40,3 +40,4 @@ This module let you convert PyTorch models directly to OpenVINO IR without using
 * `Detectron2 RetinaNet`
 * [3D-ResUNet](https://github.com/CBICA/BrainMaGe)
 * [ruGPT3Medium](https://github.com/sberbank-ai/ru-gpts)
+* [USRNet](https://github.com/cszn/USRNet)
