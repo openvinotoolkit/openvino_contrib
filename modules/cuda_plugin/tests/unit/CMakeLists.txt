@@ -5,13 +5,13 @@
 
 set(TARGET_NAME CudaUnitTests)
 set(EXCLUDED_SOURCE_PATHS)
-if(${CUDA_VERSION_MAJOR} EQUAL 10)
+if(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
 	set(EXCLUDED_SOURCE_PATHS
 		EXCLUDED_SOURCE_PATHS
 		concat.cpp # uses concat.cu 
 		operation_registry.cpp # uses saxpy.cu, could use something else
 	)
-endif(${CUDA_VERSION_MAJOR} EQUAL 10)
+endif(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
 
 addIeTargetTest(
         NAME ${TARGET_NAME}
