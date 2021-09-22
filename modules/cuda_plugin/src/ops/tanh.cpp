@@ -12,19 +12,19 @@
 
 namespace CUDAPlugin {
 
-Tanh::Tanh(const CUDA::CreationContext& context,
-           const std::shared_ptr<ngraph::Node>& node,
-           IndexCollection&& inputIds,
-           IndexCollection&& outputIds)
+TanhOp::TanhOp(const CUDA::CreationContext& context,
+               const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputIds,
+               IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
       x_desc_{CUDA::makeInputDnnTensorDescr(*node, 0)},
       y_desc_{CUDA::makeOutputDnnTensorDescr(*node, 0)},
       data_type_{convertDataType<cudnnDataType_t>(node->get_input_element_type(0))} {}
 
-void Tanh::Execute(const InferenceRequestContext& context,
-                   Inputs inputTensors,
-                   Outputs outputTensors,
-                   const Workbuffers&) const {
+void TanhOp::Execute(const InferenceRequestContext& context,
+                     Inputs inputTensors,
+                     Outputs outputTensors,
+                     const Workbuffers&) const {
     context.getThreadContext().dnnHandle().activationForward(tanh_desc_,
                                                              &NumericConst<constants::one>(data_type_),
                                                              x_desc_,
@@ -34,5 +34,5 @@ void Tanh::Execute(const InferenceRequestContext& context,
                                                              outputTensors[0].get());
 }
 
-OPERATION_REGISTER(Tanh, Tanh);
+OPERATION_REGISTER(TanhOp, Tanh);
 }  // namespace CUDAPlugin
