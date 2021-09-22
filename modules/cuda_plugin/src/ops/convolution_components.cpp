@@ -149,6 +149,14 @@ FusedConvolutionParams::FusedConvolutionParams(const CUDAPlugin::nodes::FusedCon
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionIndices::add);
     }
+
+    if (conv_.output_shape_.size() == CONV_1D_DIMS_NUMBER + 1 && bias_shape_.size() == CONV_1D_DIMS_NUMBER) {
+        bias_shape_.insert(bias_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
+    }
+    if (add_shape_ && conv_.output_shape_.size() == CONV_1D_DIMS_NUMBER + 1 &&
+        add_shape_->size() == CONV_1D_DIMS_NUMBER) {
+        add_shape_->insert(add_shape_->begin() + NON_SPATIAL_DIMS_NUMBER, 1);
+    }
 }
 
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
