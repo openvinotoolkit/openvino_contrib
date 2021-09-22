@@ -8,12 +8,12 @@
 
 namespace CUDAPlugin {
 
-class Tanh : public OperationCuDnn {
+class TanhOp : public OperationCuDnn {
 public:
-    Tanh(const CUDA::CreationContext& context,
-         const std::shared_ptr<ngraph::Node>& node,
-         IndexCollection&& inputIds,
-         IndexCollection&& outputIds);
+    TanhOp(const CUDA::CreationContext& context,
+           const std::shared_ptr<ngraph::Node>& node,
+           IndexCollection&& inputIds,
+           IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
