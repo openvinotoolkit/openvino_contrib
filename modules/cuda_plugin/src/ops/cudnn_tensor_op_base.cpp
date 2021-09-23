@@ -35,9 +35,12 @@ CUDA::DnnTensorDescriptor desc(
 }
 }  // namespace
 
-CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
-             IndexCollection&& inputIds, IndexCollection&& outputIds,
-             const cudnnOpTensorOp_t& opType, const cudnnNanPropagation_t& nanPropogationType)
+CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context,
+                                     const std::shared_ptr<ngraph::Node>& node,
+                                     IndexCollection&& inputIds,
+                                     IndexCollection&& outputIds,
+                                     const cudnnOpTensorOp_t& opType,
+                                     const cudnnNanPropagation_t& nanPropogationType)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
       in0(*node, IoParams::Type::INPUT, 0),
       in1(*node, IoParams::Type::INPUT, 1),
@@ -45,63 +48,66 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const
       // According to https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor
       // opTensorCompType for cudnnOpTensor should always be FLOAT unless inputs and outputs are
       // double which is not supported by CudaPlugin
-      op_desc_(opType, cudnnDataType_t::CUDNN_DATA_FLOAT, nanPropogationType) {
-  Expects(node->get_input_size() == 2);
-  Expects(node->get_output_size() == 1);
-  const auto& in_partial_shape0 = node->get_input_partial_shape(0);
-  const auto& in_partial_shape1 = node->get_input_partial_shape(1);
-  const auto& out_partial_shape = node->get_output_partial_shape(0);
-  if (in0.shape_.size() > max_supported_shape_size
-      || in1.shape_.size() > max_supported_shape_size) {
-      throwIEException(fmt::format(
-          "Currently max supported shape size for CuDnnTensorOpBase operation "
-          "is: {} {} {}",
-          max_supported_shape_size, in_partial_shape0, in_partial_shape1));
-  }
-  if (out.shape_ != in0.shape_ && out.shape_ != in1.shape_) {
-      throwIEException(
-          fmt::format("Currently at least one of the input shapes: {} of "
-                      "CuDnnTensorOpBase operation should be"
-                      "equal to the output shape: {}",
-                      in_partial_shape0, in_partial_shape1, out_partial_shape));
-  }
-  const auto size = in0.array_.size();
-  Expects(in1.array_.size() == size);
-  Expects(out.array_.size() == size);
-  bool has_0_broadcasts = false;
-  bool has_1_broadcasts = false;
-  for (int i = 0; i < size; ++i) {
-    if (in0.array_[i] != in1.array_[i]) {
-      if (in0.array_[i] == 1) {
-        has_0_broadcasts = true;
-      } else if (in1.array_[i] == 1) {
-        has_1_broadcasts = true;
-      } else {
-          throwIEException(fmt::format(
-              "Unsupported shapes for CuDnnTensorOpBase operation: {} {}",
-              in_partial_shape0, in_partial_shape1));
-      }
-    }
-  }
-  bias_index_ = 0;
-  dest_index_ = 1;
-  if (has_0_broadcasts || has_1_broadcasts) {
-    auto broadcast_spec = node->get_autob();
-    if (!(broadcast_spec == ngraph::op::AutoBroadcastSpec::NUMPY)) {
-        throwIEException(fmt::format(
-            "Unsupported broadcast type for CuDnnTensorOpBase operation: {}",
-            broadcast_spec.m_type));
-    }
-    if (has_0_broadcasts && has_1_broadcasts) {
+      op_desc_(opType, cudnnDataType_t::CUDNN_DATA_FLOAT, nanPropogationType),
+      op_type_(opType) {
+    Expects(node->get_input_size() == 2);
+    Expects(node->get_output_size() == 1);
+    const auto& in_partial_shape0 = node->get_input_partial_shape(0);
+    const auto& in_partial_shape1 = node->get_input_partial_shape(1);
+    const auto& out_partial_shape = node->get_output_partial_shape(0);
+    if (in0.shape_.size() > max_supported_shape_size || in1.shape_.size() > max_supported_shape_size) {
         throwIEException(
-            fmt::format("Currently CuDnnTensorOpBase operation supports "
-                        "broadcasting only in one "
-                        "of two input shapes: {} {}",
-                        in_partial_shape0, in_partial_shape1));
+            fmt::format("Currently max supported shape size for CuDnnTensorOpBase operation "
+                        "is: {} {} {}",
+                        max_supported_shape_size,
+                        in_partial_shape0,
+                        in_partial_shape1));
     }
-    bias_index_ = has_0_broadcasts ? 0 : 1;
-    dest_index_ = has_0_broadcasts ? 1 : 0;
-  }
+    if (out.shape_ != in0.shape_ && out.shape_ != in1.shape_) {
+        throwIEException(
+            fmt::format("Currently at least one of the input shapes: {}, {} of "
+                        "CuDnnTensorOpBase operation should be"
+                        "equal to the output shape: {}",
+                        in_partial_shape0,
+                        in_partial_shape1,
+                        out_partial_shape));
+    }
+    const auto size = in0.array_.size();
+    Expects(in1.array_.size() == size);
+    Expects(out.array_.size() == size);
+    bool has_0_broadcasts = false;
+    bool has_1_broadcasts = false;
+    for (int i = 0; i < size; ++i) {
+        if (in0.array_[i] != in1.array_[i]) {
+            if (in0.array_[i] == 1) {
+                has_0_broadcasts = true;
+            } else if (in1.array_[i] == 1) {
+                has_1_broadcasts = true;
+            } else {
+                throwIEException(fmt::format(
+                    "Unsupported shapes for CuDnnTensorOpBase operation: {} {}", in_partial_shape0, in_partial_shape1));
+            }
+        }
+    }
+    bias_index_ = 0;
+    dest_index_ = 1;
+    if (has_0_broadcasts || has_1_broadcasts) {
+        auto broadcast_spec = node->get_autob();
+        if (!(broadcast_spec == ngraph::op::AutoBroadcastSpec::NUMPY)) {
+            throwIEException(
+                fmt::format("Unsupported broadcast type for CuDnnTensorOpBase operation: {}", broadcast_spec.m_type));
+        }
+        if (has_0_broadcasts && has_1_broadcasts) {
+            throwIEException(
+                fmt::format("Currently CuDnnTensorOpBase operation supports "
+                            "broadcasting only in one "
+                            "of two input shapes: {} {}",
+                            in_partial_shape0,
+                            in_partial_shape1));
+        }
+        bias_index_ = has_0_broadcasts ? 0 : 1;
+        dest_index_ = has_0_broadcasts ? 1 : 0;
+    }
 }
 
 void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
@@ -112,14 +118,25 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
     Expects(outputTensors.size() == 1);
     const auto& bias_input = bias_index_ == 0 ? in0 : in1;
     const auto& dest_input = bias_index_ == 0 ? in1 : in0;
+
+    const void* alpha1 = &NumericConst<constants::one>(out.type_);
+    const void* alpha2 = &NumericConst<constants::one>(out.type_);
+    const void* beta = &NumericConst<constants::zero>(out.type_);
+
+    if (op_type_ == CUDNN_OP_TENSOR_MAX) {
+        alpha1 = &NumericStrictConst<constants::one>(out.type_);
+        alpha2 = &NumericStrictConst<constants::one>(out.type_);
+        beta = &NumericStrictConst<constants::zero>(out.type_);
+    }
+
     context.getThreadContext().dnnHandle().opTensor(op_desc_,
-                                                    &NumericConst<constants::one>(out.type_),
+                                                    alpha1,
                                                     dest_input.desc_,
                                                     inputTensors[dest_index_].get(),
-                                                    &NumericConst<constants::one>(out.type_),
+                                                    alpha2,
                                                     bias_input.desc_,
                                                     inputTensors[bias_index_].get(),
-                                                    &NumericConst<constants::zero>(out.type_),
+                                                    beta,
                                                     out.desc_,
                                                     outputTensors[0].get());
 }
