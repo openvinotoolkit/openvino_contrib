@@ -231,7 +231,7 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
                 Precision::U8, shape, layout });
         break;
     case Precision::BOOL:
-        blob = InferenceEngine::make_shared_blob<bool>({Precision::BOOL, shape, layout});
+        blob = InferenceEngine::make_shared_blob<uint8_t>({Precision::BOOL, shape, layout});
         break;
     default:
         throwIEException(fmt::format(
@@ -363,10 +363,21 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                 }
             }
         } break;
-        default : {
+        case Precision::BOOL: {
+            switch (dst->getTensorDesc().getPrecision()) {
+                case Precision::FP32:
+                    convertPrecision<int8_t, float>(src, dst);
+                    break;
+                default: {
+                    throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
+                                                 src->getTensorDesc().getPrecision(),
+                                                 dst->getTensorDesc().getPrecision()));
+                }
+            }
+        } break;
+        default: {
             throwIEException(
-                fmt::format("Unsupported precision conversion from {}",
-                            src->getTensorDesc().getPrecision()));
+                fmt::format("Unsupported precision conversion from {}", src->getTensorDesc().getPrecision()));
         }
     }
 }

@@ -71,13 +71,22 @@ template <>
 inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::element::Type& type) {
     using ngraph::element::Type_t;
     switch (static_cast<Type_t>(type)) {
-        case Type_t::bf16: return CUDNN_DATA_BFLOAT16;
-        case Type_t::f16: return CUDNN_DATA_HALF;
-        case Type_t::f32: return CUDNN_DATA_FLOAT;
-        case Type_t::f64: return CUDNN_DATA_DOUBLE;
-        case Type_t::i8: return CUDNN_DATA_INT8;
-        case Type_t::i32: return CUDNN_DATA_INT32;
-        case Type_t::i64: return CUDNN_DATA_INT64;
+        case Type_t::boolean:
+            return CUDNN_DATA_HALF;
+        case Type_t::bf16:
+            return CUDNN_DATA_BFLOAT16;
+        case Type_t::f16:
+            return CUDNN_DATA_HALF;
+        case Type_t::f32:
+            return CUDNN_DATA_FLOAT;
+        case Type_t::f64:
+            return CUDNN_DATA_DOUBLE;
+        case Type_t::i8:
+            return CUDNN_DATA_INT8;
+        case Type_t::i32:
+            return CUDNN_DATA_INT32;
+        case Type_t::i64:
+            return CUDNN_DATA_INT64;
         default:
             throwIEException(
                 fmt::format("The ngraph element type {} is not supported by "
