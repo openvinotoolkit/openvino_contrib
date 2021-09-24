@@ -24,7 +24,7 @@ Tanh::Tanh(const CUDA::CreationContext& context,
 void Tanh::Execute(const InferenceRequestContext& context,
                    Inputs inputTensors,
                    Outputs outputTensors,
-                   const Workbuffers&) {
+                   const Workbuffers&) const {
     context.getThreadContext().dnnHandle().activationForward(tanh_desc_,
                                                              &NumericConst<constants::one>(data_type_),
                                                              x_desc_,

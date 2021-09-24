@@ -196,7 +196,7 @@ StridedSliceOp::StridedSliceOp(const CUDA::CreationContext& context,
 void StridedSliceOp::Execute(const InferenceRequestContext& context,
                              Inputs inputs,
                              Outputs outputs,
-                             const Workbuffers& workbuffers) {
+                             const Workbuffers& workbuffers) const {
     switch (element_type_) {
         case ngraph::element::Type_t::f32:
             return callKernels<float>(context, inputs, outputs, workbuffers);
@@ -239,7 +239,7 @@ template <typename T>
 void StridedSliceOp::callKernels(const InferenceRequestContext& context,
                                  Inputs inputs,
                                  Outputs outputs,
-                                 const Workbuffers& workbuffers) {
+                                 const Workbuffers& workbuffers) const {
     callStridedSliceKernel<T>(context, inputs, outputs, workbuffers);
     callReverseAxesKernel<T>(context, outputs);
 }
@@ -248,7 +248,7 @@ template <typename T>
 void StridedSliceOp::callStridedSliceKernel(const InferenceRequestContext& context,
                                             Inputs inputs,
                                             Outputs outputs,
-                                            const Workbuffers& workbuffers) {
+                                            const Workbuffers& workbuffers) const {
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
 
@@ -266,7 +266,7 @@ void StridedSliceOp::callStridedSliceKernel(const InferenceRequestContext& conte
 }
 
 template <typename T>
-void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& context, Outputs outputs) {
+void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& context, Outputs outputs) const {
     callReverseAxesKernel<T>(
         context, slice_plan.reshape_out_shape, dst_matrix_sizes, slice_plan.reverse_axes, outputs[0]);
 }
@@ -276,7 +276,7 @@ void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& contex
                                            const std::vector<size_t>& matrixShapes,
                                            const std::vector<int64_t>& matrixSizes,
                                            const ngraph::AxisSet& reverseAxes,
-                                           InferenceEngine::gpu::DevicePointer<void*>& buffer) {
+                                           InferenceEngine::gpu::DevicePointer<void*>& buffer) const {
     for (auto axisIt = reverseAxes.rbegin(); axisIt != reverseAxes.rend(); ++axisIt) {
         const auto chunksNumber =
             *axisIt < matrixSizes.size() - 1 ? matrixSizes[*axisIt] / matrixSizes[*axisIt + 1] : matrixSizes[*axisIt];

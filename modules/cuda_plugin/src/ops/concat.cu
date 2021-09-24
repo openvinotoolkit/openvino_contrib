@@ -84,30 +84,48 @@ void ConcatOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
   CUDA::DefaultStream::stream().upload(buffers[0], chunks_.data(), immutableWbSize());
 }
 
-void ConcatOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers) {
-  switch (element_type_) {
-    case ngraph::element::Type_t::boolean: return Execute<bool>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::bf16: return Execute<__nv_bfloat16>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::f16: return Execute<__half>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::f32: return Execute<float>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::f64: return Execute<double>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::i8: return Execute<int8_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::i16: return Execute<int16_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::i32: return Execute<int32_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::i64: return Execute<int64_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::u8: return Execute<uint8_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::u16: return Execute<uint16_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::u32: return Execute<uint32_t>(context, inputs, outputs, buffers);
-    case ngraph::element::Type_t::u64: return Execute<uint64_t>(context, inputs, outputs, buffers);
-    default:
-        throwIEException(fmt::format(
-            "Input element type = {} is not supported by Split operation !!",
-            static_cast<ngraph::element::Type_t>(element_type_)));
-  }
+void ConcatOp::Execute(const InferenceRequestContext& context,
+                       Inputs inputs,
+                       Outputs outputs,
+                       const Workbuffers& buffers) const {
+    switch (element_type_) {
+        case ngraph::element::Type_t::boolean:
+            return Execute<bool>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::bf16:
+            return Execute<__nv_bfloat16>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f16:
+            return Execute<__half>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f32:
+            return Execute<float>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::f64:
+            return Execute<double>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i8:
+            return Execute<int8_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i16:
+            return Execute<int16_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i32:
+            return Execute<int32_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::i64:
+            return Execute<int64_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u8:
+            return Execute<uint8_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u16:
+            return Execute<uint16_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u32:
+            return Execute<uint32_t>(context, inputs, outputs, buffers);
+        case ngraph::element::Type_t::u64:
+            return Execute<uint64_t>(context, inputs, outputs, buffers);
+        default:
+            throwIEException(fmt::format("Input element type = {} is not supported by Split operation !!",
+                                         static_cast<ngraph::element::Type_t>(element_type_)));
+    }
 }
 
 template <typename T>
-void ConcatOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
+void ConcatOp::Execute(const InferenceRequestContext& context,
+                       Inputs inputs,
+                       Outputs outputs,
+                       const Workbuffers& workbuffers) const {
     Expects(inputs.size() == num_inputs_);
     Expects(outputs.size() == 1);
     auto& threadContext = context.getThreadContext();

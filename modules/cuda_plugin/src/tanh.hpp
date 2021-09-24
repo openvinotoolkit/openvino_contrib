@@ -17,7 +17,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers&) override;
+                 const Workbuffers&) const override;
 
 public:
     CUDA::TanhDescriptor tanh_desc_;

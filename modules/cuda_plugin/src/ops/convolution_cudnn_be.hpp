@@ -27,7 +27,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
     void InitSharedImmutableWorkbuffers(const Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
     const WorkbufferIds&  GetWorkbufferIds() const { return workbuffer_ids_; }
@@ -38,9 +38,10 @@ public:
 
 private:
     bool TryExecutePlan(const InferenceRequestContext& context,
-                        Inputs inputs, Outputs outputs,
+                        Inputs inputs,
+                        Outputs outputs,
                         void* workbuffer,
-                        const CUDA::DnnBEExecutionPlanDescriptor& plan);
+                        const CUDA::DnnBEExecutionPlanDescriptor& plan) const;
 
     static CUDA::DnnBETensorDescriptor
         MakeTensorDescriptor(int64_t id, cudnnDataType_t element_type,
@@ -48,7 +49,7 @@ private:
 
 private:
     WorkbufferIds workbuffer_ids_;
-    std::atomic<int64_t> exec_plan_index_hint_;
+    mutable std::atomic<int64_t> exec_plan_index_hint_;
     std::vector<CUDA::DnnBEExecutionPlanDescriptor> exec_plans_;
 };
 

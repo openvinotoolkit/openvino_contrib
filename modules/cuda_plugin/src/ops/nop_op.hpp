@@ -27,20 +27,16 @@ namespace CUDAPlugin {
  */
 class NopOp : public OperationBase {
 public:
-  using OperationBase::OperationBase;
+    using OperationBase::OperationBase;
 
-  gsl::span<const TensorID> GetInputIds() const override {
-    return gsl::span<const TensorID> {};
-  };
+    gsl::span<const TensorID> GetInputIds() const override { return gsl::span<const TensorID>{}; };
 
-  gsl::span<const TensorID> GetOutputIds() const override {
-    return gsl::span<const TensorID> {};
-  };
+    gsl::span<const TensorID> GetOutputIds() const override { return gsl::span<const TensorID>{}; };
 
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) override {}
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override {}
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

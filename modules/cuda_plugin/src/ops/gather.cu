@@ -171,8 +171,10 @@ GatherOp::GatherOp(const CUDA::CreationContext& context,
     }
 }
 
-void GatherOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs,
-                       const Workbuffers&) {
+void GatherOp::Execute(const InferenceRequestContext& context,
+                       Inputs inputs,
+                       Outputs outputs,
+                       const Workbuffers&) const {
     switch (indices_type_) {
         case ngraph::element::i64: return ExecuteByDataType<int64_t>(context, inputs, outputs);
         case ngraph::element::i32: return ExecuteByDataType<int32_t>(context, inputs, outputs);
@@ -182,9 +184,8 @@ void GatherOp::Execute(const InferenceRequestContext& context, Inputs inputs, Ou
     }
 }
 
-template<typename IndexType>
-void GatherOp::ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs,
-                                 Outputs outputs) {
+template <typename IndexType>
+void GatherOp::ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const {
     switch (element_type_) {
         case ngraph::element::boolean: return ExecuteImpl<bool, IndexType>(context, inputs,
                                                                            outputs);
@@ -218,8 +219,8 @@ void GatherOp::ExecuteByDataType(const InferenceRequestContext& context, Inputs 
     }
 }
 
-template<typename DataType, typename IndexType>
-void GatherOp::ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) {
+template <typename DataType, typename IndexType>
+void GatherOp::ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const {
     Expects(inputs.size() == 3);
     Expects(outputs.size() == 1);
 
