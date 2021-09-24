@@ -101,6 +101,38 @@ constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::element::
 }
 
 /**
+ * @brief Retruns the size of cudnnDataType_t type value in bytes
+ */
+inline constexpr std::size_t elementSize(cudnnDataType_t type) {
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+            return sizeof(float);
+        case CUDNN_DATA_DOUBLE:
+            return sizeof(double);
+        case CUDNN_DATA_HALF:
+            return sizeof(float) / 2;
+        case CUDNN_DATA_INT8:
+            return sizeof(std::int8_t);
+        case CUDNN_DATA_INT32:
+            return sizeof(std::int32_t);
+        case CUDNN_DATA_INT8x4:
+            return sizeof(std::int8_t) * 4;
+        case CUDNN_DATA_UINT8:
+            return sizeof(std::uint8_t);
+        case CUDNN_DATA_UINT8x4:
+            return sizeof(std::uint8_t) * 4;
+        case CUDNN_DATA_INT8x32:
+            return sizeof(std::int8_t) * 32;
+        case CUDNN_DATA_BFLOAT16:
+            return sizeof(std::uint16_t);
+        case CUDNN_DATA_INT64:
+            return sizeof(std::int64_t);
+        default:
+            throwIEException(fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", type));
+    }
+}
+
+/**
  * @brief Converts cuda plugin activation mode to cuDNN activation mode
  */
 inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::ActivationMode& mode) {
