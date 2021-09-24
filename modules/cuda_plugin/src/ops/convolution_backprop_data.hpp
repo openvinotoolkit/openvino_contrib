@@ -16,7 +16,7 @@ namespace CUDAPlugin {
  * which doesn't support asymmetric padding.
  */
 class ConvolutionBackpropDataOp : public OperationCuDnn {
-   public:
+public:
     using NodeOp = ngraph::op::v1::ConvolutionBackpropData;
     ConvolutionBackpropDataOp(const CUDA::CreationContext& context,
                               const NodeOp& node,
@@ -26,24 +26,20 @@ class ConvolutionBackpropDataOp : public OperationCuDnn {
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     using ArgIndices = Convolution::Details::ConvBackArgIndices;
 
-   private:
+private:
     Convolution::Details::ConvolutionBackpropDataDescriptorCuDnn descs_;
 };
 
-inline
-void ConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) {
-}
+inline void ConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) {}
 
-inline
-WorkbufferRequest
-ConvolutionBackpropDataOp::GetWorkBufferRequest() const {
+inline WorkbufferRequest ConvolutionBackpropDataOp::GetWorkBufferRequest() const {
     if (descs_.Algo().memory != 0) {
         return {{}, {descs_.Algo().memory}};
     } else {
@@ -51,4 +47,4 @@ ConvolutionBackpropDataOp::GetWorkBufferRequest() const {
     }
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

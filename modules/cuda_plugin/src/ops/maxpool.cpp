@@ -17,14 +17,16 @@ MaxPoolOp::MaxPoolOp(const CUDA::CreationContext& context,
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       impl_{dynamic_cast<const ngraph::op::v1::MaxPool&>(*node)} {}
 
-void MaxPoolOp::Execute(const InferenceRequestContext& context, Inputs inputs,
-                        Outputs outputs, const Workbuffers&) {
-  Expects(inputs.size() == 1);
-  Expects(outputs.size() == 1);
+void MaxPoolOp::Execute(const InferenceRequestContext& context,
+                        Inputs inputs,
+                        Outputs outputs,
+                        const Workbuffers&) const {
+    Expects(inputs.size() == 1);
+    Expects(outputs.size() == 1);
 
-  impl_.Execute(context.getThreadContext().dnnHandle(),
-                inputs[PoolingImpl::input_index].get(),
-                outputs[PoolingImpl::output_index].get());
+    impl_.Execute(context.getThreadContext().dnnHandle(),
+                  inputs[PoolingImpl::input_index].get(),
+                  outputs[PoolingImpl::output_index].get());
 }
 
 OPERATION_REGISTER(MaxPoolOp, MaxPool);

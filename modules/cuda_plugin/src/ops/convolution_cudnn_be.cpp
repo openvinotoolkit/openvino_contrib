@@ -108,8 +108,10 @@ WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
         return {};
 }
 
-void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs,
-                                 const Workbuffers& workbuffers) {
+void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
+                                 Inputs inputs,
+                                 Outputs outputs,
+                                 const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
     auto workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
@@ -123,8 +125,11 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context, Inputs 
     throwIEException("cuDNN BE API: Unsupported convolution");
 }
 
-bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context, Inputs inputs, Outputs outputs,
-                                        void* workbuffer, const CUDA::DnnBEExecutionPlanDescriptor& plan) {
+bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
+                                        Inputs inputs,
+                                        Outputs outputs,
+                                        void* workbuffer,
+                                        const CUDA::DnnBEExecutionPlanDescriptor& plan) const {
     CUDA::DnnBEVariantPackDescriptor variantPack;
     std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
     std::array<void*, 3> data_ptrs = {const_cast<void*>(inputs[ConvolutionOp::ArgIndices::input].get()),

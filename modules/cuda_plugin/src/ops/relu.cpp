@@ -21,11 +21,12 @@ class Relu : public OperationCuDnn {
       : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
         xDesc{CUDA::makeInputDnnTensorDescr(*node, 0)},
         yDesc{CUDA::makeOutputDnnTensorDescr(*node, 0)} {}
-  void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-               Outputs outputTensors, const Workbuffers&) override {
-    context.getThreadContext().dnnHandle().activationForward(
-        reluDesc, &one, xDesc, inputTensors[0].get(), &zero, yDesc,
-        outputTensors[0].get());
+  void Execute(const InferenceRequestContext& context,
+               Inputs inputTensors,
+               Outputs outputTensors,
+               const Workbuffers&) const override {
+      context.getThreadContext().dnnHandle().activationForward(
+          reluDesc, &one, xDesc, inputTensors[0].get(), &zero, yDesc, outputTensors[0].get());
   }
 };
 

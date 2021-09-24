@@ -16,9 +16,10 @@ public:
               IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) override;
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+
 private:
     static constexpr size_t kSize = 10000;
     dim3 grid_dim_;
