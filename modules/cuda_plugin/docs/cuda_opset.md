@@ -80,7 +80,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [LogSoftmax](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/LogSoftmax_5.md)                                      | Not Supported |
 | [Loop](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Loop_5.md)                                              | Not Supported |
 | [LRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/LRN_1.md)                                                 | Not Supported |
-| [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                            | Not Supported |
+| [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                            | Supported*    |
 | [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                    | Not Supported |
 | [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                  | Supported     |
 | [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                               | Supported     |
@@ -163,4 +163,11 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 
 * `'Concat'` layer is not optimized
 * `'Convert'` layer is not optimized
+* `'LSTMCell'`
+    * supported OpenVino version: default only (`LSTMCell v4`)
+    * supported activations: default only (`{"sigmoid", "tanh", "tanh"}`);
+    * supported activation alphas: default only (`1.0`);
+    * supported activation betas: default only (`0.0`);
+    * supported clipping mode: default only (no clipping: `0.0` or `infinity` `clip` value);
+    * shape limitations: no combination of `input_size == 1` and `hidden_size == 1` simultaneously
 * `'Split'` layer is not optimized
