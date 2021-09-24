@@ -13,9 +13,9 @@
 namespace CUDAPlugin {
 
 SaxpyOp::SaxpyOp(const CUDA::CreationContext& context,
-                     const std::shared_ptr<ngraph::Node>& node,
-                     IndexCollection&& inputIds,
-                     IndexCollection&& outputIds)
+                 const std::shared_ptr<ngraph::Node>& node,
+                 IndexCollection&& inputIds,
+                 IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     const unsigned max_block_size = context.device().props().maxThreadsPerBlock;
     const unsigned grid_size = kSize / max_block_size;
@@ -27,14 +27,13 @@ SaxpyOp::SaxpyOp(const CUDA::CreationContext& context,
 void SaxpyOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
-                      const Workbuffers&) {
-    saxpy<<<grid_dim_, block_dim_>>>(
-        kSize,
-        inputTensors[0].cast<const float*>().get(),
-        inputTensors[1].cast<const float*>().get(),
-        outputTensors[0].cast<float*>().get());
+                      const Workbuffers&) const {
+    saxpy<<<grid_dim_, block_dim_>>>(kSize,
+                                     inputTensors[0].cast<const float*>().get(),
+                                     inputTensors[1].cast<const float*>().get(),
+                                     outputTensors[0].cast<float*>().get());
 }
 
 OPERATION_REGISTER(SaxpyOp, Saxpy);
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

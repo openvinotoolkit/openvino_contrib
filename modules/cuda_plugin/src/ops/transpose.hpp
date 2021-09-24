@@ -27,7 +27,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
 
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;

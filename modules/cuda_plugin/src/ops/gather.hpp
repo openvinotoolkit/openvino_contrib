@@ -17,15 +17,14 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
 
 private:
-    template<typename IndexType>
-    void ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs,
-                           Outputs outputs);
+    template <typename IndexType>
+    void ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const;
 
-    template<typename DataType, typename IndexType>
-    void ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs);
+    template <typename DataType, typename IndexType>
+    void ExecuteImpl(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const;
 
     ngraph::element::Type_t element_type_;
     ngraph::element::Type_t indices_type_;

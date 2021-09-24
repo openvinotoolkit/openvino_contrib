@@ -14,21 +14,21 @@
 namespace CUDAPlugin {
 
 class FullyConnectedOp : public OperationCuBlas {
- public:
-  using NodeOp = nodes::FullyConnected;
-  FullyConnectedOp(const CUDA::CreationContext& context,
-                   const NodeOp& node,
-                   IndexCollection&& inputIds,
-                   IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) override;
+public:
+    using NodeOp = nodes::FullyConnected;
+    FullyConnectedOp(const CUDA::CreationContext& context,
+                     const NodeOp& node,
+                     IndexCollection&& inputIds,
+                     IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
 
- private:
-  MatMulOp matmul_op_;
-  size_t bias_size_ = 0;
-  int batch_bias_count_ = 0;
+private:
+    MatMulOp matmul_op_;
+    size_t bias_size_ = 0;
+    int batch_bias_count_ = 0;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -104,16 +104,24 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context, const
   }
 }
 
-void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context, Inputs inputTensors,
-                    Outputs outputTensors, const Workbuffers&) {
-  Expects(inputTensors.size() == 2);
-  Expects(outputTensors.size() == 1);
-  const auto& bias_input = bias_index_ == 0 ? in0 : in1;
-  const auto& dest_input = bias_index_ == 0 ? in1 : in0;
-  context.getThreadContext().dnnHandle().opTensor(op_desc_,
-      &NumericConst<constants::one>(out.type_), dest_input.desc_, inputTensors[dest_index_].get(),
-      &NumericConst<constants::one>(out.type_), bias_input.desc_, inputTensors[bias_index_].get(),
-      &NumericConst<constants::zero>(out.type_), out.desc_, outputTensors[0].get());
+void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
+                                Inputs inputTensors,
+                                Outputs outputTensors,
+                                const Workbuffers&) const {
+    Expects(inputTensors.size() == 2);
+    Expects(outputTensors.size() == 1);
+    const auto& bias_input = bias_index_ == 0 ? in0 : in1;
+    const auto& dest_input = bias_index_ == 0 ? in1 : in0;
+    context.getThreadContext().dnnHandle().opTensor(op_desc_,
+                                                    &NumericConst<constants::one>(out.type_),
+                                                    dest_input.desc_,
+                                                    inputTensors[dest_index_].get(),
+                                                    &NumericConst<constants::one>(out.type_),
+                                                    bias_input.desc_,
+                                                    inputTensors[bias_index_].get(),
+                                                    &NumericConst<constants::zero>(out.type_),
+                                                    out.desc_,
+                                                    outputTensors[0].get());
 }
 
 CuDnnTensorOpBase::IoParams::IoParams(const ngraph::Node& node, const Type& io_type, int index)

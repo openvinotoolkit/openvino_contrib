@@ -20,13 +20,16 @@ ResultOp::ResultOp(const CUDA::CreationContext& context,
     output_tensor_name_ = GetOutputTensorName(node);
 }
 
-void ResultOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
-  Expects(inputs.size() == 1);
-  Expects(outputs.size() == 0);
-  Expects(context.HasOutputBlob(output_tensor_name_));
-  auto blob = context.GetOutputBlob(output_tensor_name_);
-  auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
-  context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
+void ResultOp::Execute(const InferenceRequestContext& context,
+                       Inputs inputs,
+                       Outputs outputs,
+                       const Workbuffers&) const {
+    Expects(inputs.size() == 1);
+    Expects(outputs.size() == 0);
+    Expects(context.HasOutputBlob(output_tensor_name_));
+    auto blob = context.GetOutputBlob(output_tensor_name_);
+    auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
+    context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
 }
 
 std::string ResultOp::GetOutputTensorName(const ngraph::Node& node) {
