@@ -87,6 +87,16 @@ public:
              int n, int c, int h, int w) {
         throwIfError(cudnnSetTensor4dDescriptor(get(), format, dataType, n, c, h, w));
     }
+
+    void getTensorNdDescriptor(int nbDimsRequested, cudnnDataType_t& dataType, int& nbDims, int dimA[], int strideA[]) {
+        throwIfError(cudnnGetTensorNdDescriptor(get(), nbDimsRequested, &dataType, &nbDims, dimA, strideA));
+    }
+
+    size_t getTensorSizeInBytes() {
+        size_t size = 0;
+        throwIfError(cudnnGetTensorSizeInBytes(get(), &size));
+        return size;
+    }
 };
 
 class DnnActivationDescriptor
@@ -152,11 +162,35 @@ class DnnFilterDescriptor
     }
 };
 
-class DnnConvolutionDescriptor
-    : public UniqueBase<cudnnCreateConvolutionDescriptor,
-                        cudnnDestroyConvolutionDescriptor,
-                        cudnnConvolutionDescriptor_t> {
- public:
+class DnnRnnDataDescriptor
+    : public UniqueBase<cudnnCreateRNNDataDescriptor, cudnnDestroyRNNDataDescriptor, cudnnRNNDataDescriptor_t> {
+public:
+    DnnRnnDataDescriptor() = default;
+    DnnRnnDataDescriptor(cudnnDataType_t dataType,
+                         cudnnRNNDataLayout_t layout,
+                         int maxSeqLength,
+                         int batchSize,
+                         int vectorSize,
+                         const int seqLengthArray[],
+                         void* paddingFill) {
+        set(dataType, layout, maxSeqLength, batchSize, vectorSize, seqLengthArray, paddingFill);
+    }
+    void set(cudnnDataType_t dataType,
+             cudnnRNNDataLayout_t layout,
+             int maxSeqLength,
+             int batchSize,
+             int vectorSize,
+             const int seqLengthArray[],
+             void* paddingFill) {
+        throwIfError(cudnnSetRNNDataDescriptor(
+            get(), dataType, layout, maxSeqLength, batchSize, vectorSize, seqLengthArray, paddingFill));
+    }
+};
+
+class DnnConvolutionDescriptor : public UniqueBase<cudnnCreateConvolutionDescriptor,
+                                                   cudnnDestroyConvolutionDescriptor,
+                                                   cudnnConvolutionDescriptor_t> {
+public:
     DnnConvolutionDescriptor() {}
     DnnConvolutionDescriptor(int arrayLength, const int padA[], const int filterStrideA[],
              const int dilationA[], cudnnConvolutionMode_t mode, cudnnDataType_t dataType) {
@@ -170,29 +204,140 @@ class DnnConvolutionDescriptor
     }
 };
 
+class DnnRnnDescriptor : public UniqueBase<cudnnCreateRNNDescriptor, cudnnDestroyRNNDescriptor, cudnnRNNDescriptor_t> {
+public:
+    DnnRnnDescriptor() = default;
+    DnnRnnDescriptor(cudnnRNNAlgo_t algo,
+                     cudnnRNNMode_t cellMode,
+                     cudnnRNNBiasMode_t biasMode,
+                     cudnnDirectionMode_t dirMode,
+                     cudnnRNNInputMode_t inputMode,
+                     cudnnDataType_t dataType,
+                     cudnnDataType_t mathPrec,
+                     cudnnMathType_t mathType,
+                     int32_t inputSize,
+                     int32_t hiddenSize,
+                     int32_t projSize,
+                     int32_t numLayers,
+                     cudnnDropoutDescriptor_t dropoutDesc,
+                     uint32_t auxFlags) {
+        set(algo,
+            cellMode,
+            biasMode,
+            dirMode,
+            inputMode,
+            dataType,
+            mathPrec,
+            mathType,
+            inputSize,
+            hiddenSize,
+            projSize,
+            numLayers,
+            dropoutDesc,
+            auxFlags);
+    }
+    void set(cudnnRNNAlgo_t algo,
+             cudnnRNNMode_t cellMode,
+             cudnnRNNBiasMode_t biasMode,
+             cudnnDirectionMode_t dirMode,
+             cudnnRNNInputMode_t inputMode,
+             cudnnDataType_t dataType,
+             cudnnDataType_t mathPrec,
+             cudnnMathType_t mathType,
+             int32_t inputSize,
+             int32_t hiddenSize,
+             int32_t projSize,
+             int32_t numLayers,
+             cudnnDropoutDescriptor_t dropoutDesc,
+             uint32_t auxFlags) {
+        throwIfError(cudnnSetRNNDescriptor_v8(get(),
+                                              algo,
+                                              cellMode,
+                                              biasMode,
+                                              dirMode,
+                                              inputMode,
+                                              dataType,
+                                              mathPrec,
+                                              mathType,
+                                              inputSize,
+                                              hiddenSize,
+                                              projSize,
+                                              numLayers,
+                                              dropoutDesc,
+                                              auxFlags));
+    }
+    void setClip(cudnnRNNClipMode_t clipMode, cudnnNanPropagation_t clipNanOpt, double lclip, double rclip) {
+        throwIfError(cudnnRNNSetClip_v8(get(), clipMode, clipNanOpt, lclip, rclip));
+    }
+};
+
 class DnnHandle : public UniqueBase<cudnnCreate, cudnnDestroy, cudnnHandle_t> {
- public:
-  DnnHandle() {}
-  explicit DnnHandle(const Stream& stream) {
-    throwIfError(cudnnSetStream(get(), stream.get()));
-  }
-  void opTensor(const DnnOpTensorDescriptor& opTensorDesc, const void* alpha1,
-                const DnnTensorDescriptor& aDesc, const void* A,
-                const void* alpha2, const DnnTensorDescriptor& bDesc,
-                const void* B, const void* beta,
-                const DnnTensorDescriptor& cDesc, void* C) const {
-    throwIfError(cudnnOpTensor(get(), opTensorDesc.get(), alpha1, aDesc.get(),
-                               A, alpha2, bDesc.get(), B, beta, cDesc.get(),
-                               C));
-  }
-  // TODO: accept device pointers for x and y
-  void activationForward(const DnnActivationDescriptor& activationDesc,
-                         const void* alpha, const DnnTensorDescriptor& xDesc,
-                         const void* x, const void* beta,
-                         const DnnTensorDescriptor& yDesc, void* y) const {
-    throwIfError(cudnnActivationForward(get(), activationDesc.get(), alpha,
-                                        xDesc.get(), x, beta, yDesc.get(), y));
-  }
+public:
+    DnnHandle() {}
+    explicit DnnHandle(const Stream& stream) { throwIfError(cudnnSetStream(get(), stream.get())); }
+    void opTensor(const DnnOpTensorDescriptor& opTensorDesc,
+                  const void* alpha1,
+                  const DnnTensorDescriptor& aDesc,
+                  const void* A,
+                  const void* alpha2,
+                  const DnnTensorDescriptor& bDesc,
+                  const void* B,
+                  const void* beta,
+                  const DnnTensorDescriptor& cDesc,
+                  void* C) const {
+        throwIfError(cudnnOpTensor(
+            get(), opTensorDesc.get(), alpha1, aDesc.get(), A, alpha2, bDesc.get(), B, beta, cDesc.get(), C));
+    }
+    // TODO: accept device pointers for x and y
+    void activationForward(const DnnActivationDescriptor& activationDesc,
+                           const void* alpha,
+                           const DnnTensorDescriptor& xDesc,
+                           const void* x,
+                           const void* beta,
+                           const DnnTensorDescriptor& yDesc,
+                           void* y) const {
+        throwIfError(cudnnActivationForward(get(), activationDesc.get(), alpha, xDesc.get(), x, beta, yDesc.get(), y));
+    }
+    void rnnForward(const DnnRnnDescriptor& rnnDesc,
+                    cudnnForwardMode_t fwdMode,
+                    const int32_t devSeqLengths[],
+                    const DnnRnnDataDescriptor& xDesc,
+                    const void* x,
+                    const DnnRnnDataDescriptor& yDesc,
+                    void* y,
+                    const DnnTensorDescriptor& hDesc,
+                    const void* hx,
+                    void* hy,
+                    const DnnTensorDescriptor& cDesc,
+                    const void* cx,
+                    void* cy,
+                    size_t weightSpaceSize,
+                    const void* weightSpace,
+                    size_t workSpaceSize,
+                    void* workSpace,
+                    size_t reserveSpaceSize,
+                    void* reserveSpace) const {
+        throwIfError(cudnnRNNForward(get(),
+                                     rnnDesc.get(),
+                                     fwdMode,
+                                     devSeqLengths,
+                                     xDesc.get(),
+                                     x,
+                                     yDesc.get(),
+                                     y,
+                                     hDesc.get(),
+                                     hx,
+                                     hy,
+                                     cDesc.get(),
+                                     cx,
+                                     cy,
+                                     weightSpaceSize,
+                                     weightSpace,
+                                     workSpaceSize,
+                                     workSpace,
+                                     reserveSpaceSize,
+                                     reserveSpace));
+    }
 };
 
 }  // namespace CUDA
