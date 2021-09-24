@@ -71,16 +71,16 @@ PoolingImpl::PoolingImpl(const ngraph::op::AvgPool& node)
 }
 
 void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
-                            const void* input_tensor_device_ptr,
-                            void* output_tensor_device_ptr) {
-  throwIfError(cudnnPoolingForward(cudnn_context_handle.get(),       //
-                                   pooling_descriptor_.get(),        //
-                                   &constants::one<float>::value,    //
-                                   input_tensor_descriptor_.get(),   //
-                                   input_tensor_device_ptr,          //
-                                   &constants::zero<float>::value,   //
-                                   output_tensor_descriptor_.get(),  //
-                                   output_tensor_device_ptr));
+                          const void* input_tensor_device_ptr,
+                          void* output_tensor_device_ptr) const {
+    throwIfError(cudnnPoolingForward(cudnn_context_handle.get(),       //
+                                     pooling_descriptor_.get(),        //
+                                     &constants::one<float>::value,    //
+                                     input_tensor_descriptor_.get(),   //
+                                     input_tensor_device_ptr,          //
+                                     &constants::zero<float>::value,   //
+                                     output_tensor_descriptor_.get(),  //
+                                     output_tensor_device_ptr));
 }
 
 std::vector<int> PoolingImpl::tensor_shape_from_ngraph(

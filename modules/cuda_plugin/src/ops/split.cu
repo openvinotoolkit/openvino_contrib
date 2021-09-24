@@ -84,7 +84,10 @@ WorkbufferRequest SplitOp::GetWorkBufferRequest() const {
   return { {}, { mutableWbSize() } };
 }
 
-void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers) {
+void SplitOp::Execute(const InferenceRequestContext& context,
+                      Inputs inputs,
+                      Outputs outputs,
+                      const Workbuffers& buffers) const {
     switch (element_type_) {
         case ngraph::element::Type_t::boolean: return Execute<bool>(context, inputs, outputs, buffers);
         case ngraph::element::Type_t::bf16: return Execute<__nv_bfloat16>(context, inputs, outputs, buffers);
@@ -108,7 +111,10 @@ void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Out
 }
 
 template <typename T>
-void SplitOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers) {
+void SplitOp::Execute(const InferenceRequestContext& context,
+                      Inputs inputs,
+                      Outputs outputs,
+                      const Workbuffers& buffers) const {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == num_splits_);
     Expects(buffers.mutable_buffers.size() == 1);

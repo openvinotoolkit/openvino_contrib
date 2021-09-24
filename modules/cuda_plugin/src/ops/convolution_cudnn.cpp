@@ -17,8 +17,9 @@ ConvolutionCuDnn::ConvolutionCuDnn(const CUDA::CreationContext& context, const C
 }
 
 void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
-                               Inputs inputs, Outputs outputs,
-                               const Workbuffers& workbuffers) {
+                               Inputs inputs,
+                               Outputs outputs,
+                               const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
     void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();

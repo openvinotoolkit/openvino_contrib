@@ -16,10 +16,12 @@ class MaxPoolOp : public OperationCuDnn {
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-               Outputs outputTensors, const Workbuffers& workbuffers) override;
+  void Execute(const InferenceRequestContext& context,
+               Inputs inputTensors,
+               Outputs outputTensors,
+               const Workbuffers& workbuffers) const override;
 
- private:
+  private:
   PoolingImpl impl_;
 };
 

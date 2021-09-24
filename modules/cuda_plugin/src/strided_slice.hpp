@@ -21,7 +21,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputs,
                  Outputs outputs,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
 
@@ -30,20 +30,20 @@ private:
     void callKernels(const InferenceRequestContext& context,
                      Inputs inputs,
                      Outputs outputs,
-                     const Workbuffers& workbuffers);
+                     const Workbuffers& workbuffers) const;
     template <typename T>
     void callStridedSliceKernel(const InferenceRequestContext& context,
                                 const Inputs inputs,
                                 Outputs outputs,
-                                const Workbuffers& workbuffers);
+                                const Workbuffers& workbuffers) const;
     template <typename T>
-    void callReverseAxesKernel(const InferenceRequestContext& context, Outputs outputs);
+    void callReverseAxesKernel(const InferenceRequestContext& context, Outputs outputs) const;
     template <typename T>
     void callReverseAxesKernel(const InferenceRequestContext& context,
                                const std::vector<size_t>& matrixShapes,
                                const std::vector<int64_t>& matrixSizes,
                                const ngraph::AxisSet& reverseAxes,
-                               InferenceEngine::gpu::DevicePointer<void*>& buffer);
+                               InferenceEngine::gpu::DevicePointer<void*>& buffer) const;
     void uploadDataToWorkbuffer(InferenceEngine::gpu::DevicePointer<void*> buffer, const std::vector<int64_t>& data);
 
     std::vector<int64_t> getNodeConstantValues(const ngraph::Node* node) const;

@@ -18,11 +18,12 @@ class CuDnnTensorOpBase : public OperationCuDnn {
                    const cudnnOpTensorOp_t& opType,
                    const cudnnNanPropagation_t& nanPropogationType =
                       cudnnNanPropagation_t::CUDNN_PROPAGATE_NAN);
-    void Execute(const InferenceRequestContext& context, Inputs inputTensors,
-                Outputs outputTensors,
-                const Workbuffers& workbuffers) override;
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
 
-  private:
+private:
     struct IoParams {
       const cudnnDataType_t type_;
       const ngraph::Shape shape_;
