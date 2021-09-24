@@ -24,17 +24,16 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
 
-    int GetBatchCount() const {
-        return batch_count_;
-    }
+    int GetBatchCount() const { return batch_count_; }
 
     /**
-      * Get number of batches that equals to product between dimensions in range [matrixShape.begin(), matrixShape.end()-2)
-      * @param matrixShape Matrix to calculate number of batches
-      * @return Number of batches
-      */
+     * Get number of batches that equals to product between dimensions in range [matrixShape.begin(),
+     * matrixShape.end()-2)
+     * @param matrixShape Matrix to calculate number of batches
+     * @return Number of batches
+     */
     static int GetMatrixNumBatches(const ngraph::Shape& matrixShape);
     /**
      * Broadcast some shape to Matrix
@@ -54,7 +53,7 @@ public:
      */
     static cudaDataType_t GetComputeType(cudaDataType_t abDataType, cudaDataType_t cDataType);
 
- private:
+private:
     /**
      * Broadcast input shapes according OpenVINO documentation:
      * @reference https://docs.openvinotoolkit.org/latest/openvino_docs_ops_matrix_MatMul_1.html
@@ -68,21 +67,21 @@ public:
                                 bool& transposeB,
                                 ngraph::Shape& matrixCShape);
 
-  cudaDataType_t data_type_ = cudaDataType_t::CUDA_R_32F;
-  cudaDataType_t compute_type_ = cudaDataType_t::CUDA_R_32F;
-  int m_ = 0;
-  int k_ = 0;
-  int n_ = 0;
-  int ld_a_ = 0;
-  int ld_b_ = 0;
-  int ld_c_ = 0;
-  long long stride_a_ = 0;
-  long long stride_b_ = 0;
-  long long stride_c_ = 0;
-  int batch_count_ = 0;
-  const constants::AnyNumeric* beta_ = nullptr;
-  cublasOperation_t cublas_transpose_a_ = CUBLAS_OP_N;
-  cublasOperation_t cublas_transpose_b_ = CUBLAS_OP_N;
+    cudaDataType_t data_type_ = cudaDataType_t::CUDA_R_32F;
+    cudaDataType_t compute_type_ = cudaDataType_t::CUDA_R_32F;
+    int m_ = 0;
+    int k_ = 0;
+    int n_ = 0;
+    int ld_a_ = 0;
+    int ld_b_ = 0;
+    int ld_c_ = 0;
+    long long stride_a_ = 0;
+    long long stride_b_ = 0;
+    long long stride_c_ = 0;
+    int batch_count_ = 0;
+    const constants::AnyNumeric* beta_ = nullptr;
+    cublasOperation_t cublas_transpose_a_ = CUBLAS_OP_N;
+    cublasOperation_t cublas_transpose_b_ = CUBLAS_OP_N;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

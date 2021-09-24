@@ -6,9 +6,9 @@
 
 #include <ngraph/node.hpp>
 
+#include "convolution_cudnn_components.hpp"
 #include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
-#include "convolution_cudnn_components.hpp"
 
 namespace CUDAPlugin {
 
@@ -20,13 +20,13 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers&) override;
+                 const Workbuffers&) const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
     const WorkbufferIds& GetWorkbufferIds() const { return workbuffer_ids_; }
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
-      workbuffer_ids_ = workbufferIds;
-      return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+        workbuffer_ids_ = workbufferIds;
+        return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
     }
 
 private:
@@ -42,4 +42,4 @@ private:
     CUDA::DnnActivationDescriptor activation_desc_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -62,7 +62,10 @@ ConvertOp::ConvertOp(const CUDA::CreationContext& context,
     threads_per_block_ = (num_blocks_ == 1) ? size_ : max_block_size;
 }
 
-void ConvertOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
+void ConvertOp::Execute(const InferenceRequestContext& context,
+                        Inputs inputs,
+                        Outputs outputs,
+                        const Workbuffers&) const {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
     auto& threadContext = context.getThreadContext();

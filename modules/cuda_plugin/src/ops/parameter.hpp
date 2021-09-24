@@ -10,7 +10,7 @@
 namespace CUDAPlugin {
 
 class ParameterOp : public OperationBase {
- public:
+public:
     ParameterOp(const CUDA::CreationContext& context,
                 const ngraph::Node& node,
                 IndexCollection&& inputIds,
@@ -18,11 +18,11 @@ class ParameterOp : public OperationBase {
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
     static std::string GetInputTensorName(const ngraph::Node& node);
 
- private:
+private:
     std::string input_tensor_name_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
