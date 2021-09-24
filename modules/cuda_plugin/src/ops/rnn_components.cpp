@@ -1,0 +1,113 @@
+// Copyright (C) 2018-2021 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "rnn_components.hpp"
+
+#include <error.hpp>
+#include <gsl/gsl_assert>
+#include <ngraph/op/constant.hpp>
+#include <typeinfo>
+
+namespace CUDAPlugin::RNN::Details {
+
+namespace {
+
+const ngraph::op::v4::LSTMCell& toLSTMCell(const ngraph::Node& node) {
+    try {
+        return dynamic_cast<const ngraph::op::v4::LSTMCell&>(node);
+    } catch (const std::bad_cast&) {
+        throwIEException("Couldn't convert ngraph::Node node to ngraph::op::v4::LSTMCell");
+    }
+}
+
+}  // namespace
+
+LSTMCellParams::LSTMCellParams(const ngraph::Node& node) : LSTMCellParams(toLSTMCell(node)) {}
+
+LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
+    : hidden_size_{cell.get_hidden_size()},
+      activations_{cell.get_activations()},
+      activations_alpha_{cell.get_activations_alpha()},
+      activations_beta_{cell.get_activations_alpha()},
+      clip_{cell.get_clip()} {
+    const auto input_count = cell.get_input_size();
+    for (int i = 0; i < input_count; ++i) {
+        Expects(cell.get_input_partial_shape(i).rank().is_static());
+    }
+
+    Expects(input_count == 6);
+    Expects(cell.get_output_size() == 2);
+
+    const auto& x_shape = cell.get_input_shape(LSTMCellArgIndices::x);
+    Expects(x_shape.size() == 2);
+    input_size_ = x_shape[1];
+    batch_size_ = x_shape[0];
+
+    const auto& hi_shape = cell.get_input_shape(LSTMCellArgIndices::hidden_input);
+    Expects(hi_shape.size() == 2);
+    Expects(hi_shape[0] == batch_size_);
+    Expects(hi_shape[1] == hidden_size_);
+
+    const auto& ci_shape = cell.get_input_shape(LSTMCellArgIndices::cell_input);
+    Expects(ci_shape.size() == 2);
+    Expects(ci_shape[0] == batch_size_);
+    Expects(ci_shape[1] == hidden_size_);
+
+    const auto& w_shape = cell.get_input_shape(LSTMCellArgIndices::weights);
+    Expects(w_shape.size() == 2);
+    Expects(w_shape[0] == lin_layer_count * hidden_size_);
+    Expects(w_shape[1] == input_size_);
+
+    const auto& r_shape = cell.get_input_shape(LSTMCellArgIndices::recurrence_weights);
+    Expects(r_shape.size() == 2);
+    Expects(r_shape[0] == lin_layer_count * hidden_size_);
+    Expects(r_shape[1] == hidden_size_);
+
+    element_type_ = cell.get_input_element_type(LSTMCellArgIndices::x);
+    Expects(cell.get_input_element_type(LSTMCellArgIndices::hidden_input) == element_type_ &&
+            cell.get_input_element_type(LSTMCellArgIndices::cell_input) == element_type_ &&
+            cell.get_input_element_type(LSTMCellArgIndices::weights) == element_type_ &&
+            cell.get_input_element_type(LSTMCellArgIndices::recurrence_weights) == element_type_ &&
+            cell.get_output_element_type(LSTMCellArgIndices::hidden_output) == element_type_ &&
+            cell.get_output_element_type(LSTMCellArgIndices::cell_output) == element_type_);
+
+    const auto b_shape = cell.get_input_shape(LSTMCellArgIndices::biases);
+    Expects(b_shape.size() == 1);
+    Expects(b_shape[0] == lin_layer_count * hidden_size_);
+    Expects(cell.get_input_element_type(LSTMCellArgIndices::biases) == element_type_);
+
+    const auto& ho_shape = cell.get_output_shape(LSTMCellArgIndices::hidden_output);
+    Expects(ho_shape.size() == 2);
+    Expects(ho_shape[0] == batch_size_);
+    Expects(ho_shape[1] == hidden_size_);
+
+    const auto& co_shape = cell.get_output_shape(LSTMCellArgIndices::cell_output);
+    Expects(co_shape.size() == 2);
+    Expects(co_shape[0] == batch_size_);
+    Expects(co_shape[1] == hidden_size_);
+
+    const auto element_type_size = element_type_.size();
+
+    const auto w_constant =
+        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::weights));
+    const auto r_constant =
+        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::recurrence_weights));
+    const auto b_constant =
+        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::biases));
+    Expects(w_constant && r_constant && b_constant);
+
+    const auto w_data_host = w_constant->get_data_ptr<const uint8_t>();
+    const auto r_data_host = r_constant->get_data_ptr<const uint8_t>();
+    const auto b_data_host = b_constant->get_data_ptr<const uint8_t>();
+
+    const std::size_t w_size_bytes = ngraph::shape_size(w_shape) * element_type_size;
+    const std::size_t r_size_bytes = ngraph::shape_size(r_shape) * element_type_size;
+    const std::size_t b_size_bytes = ngraph::shape_size(b_shape) * element_type_size;
+
+    w_host_buffers_ = {w_data_host, w_size_bytes};
+    r_host_buffers_ = {r_data_host, r_size_bytes};
+    b_host_buffers_ = {b_data_host, b_size_bytes};
+}
+
+}  // namespace CUDAPlugin::RNN::Details

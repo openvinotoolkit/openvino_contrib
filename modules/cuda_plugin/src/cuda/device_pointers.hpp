@@ -55,8 +55,10 @@ template <typename T, std::size_t Extent = std::numeric_limits<std::size_t>::max
 class DeviceBuffer : private gsl::span<T, Extent> {
 public:
     explicit DeviceBuffer(gsl::span<T, Extent> o) noexcept : gsl::span<T, Extent>{o} {}
+    DeviceBuffer(T* pointer, std::size_t count) noexcept : gsl::span<T, Extent>{pointer, count} {}
     using gsl::span<T, Extent>::data;
     using gsl::span<T, Extent>::size;
+    using gsl::span<T, Extent>::size_bytes;
 
     auto as_mutable() const noexcept {
         return DeviceBuffer<std::remove_const_t<T>>{const_cast<std::remove_const_t<T>*>(this->data()), this->size()};
