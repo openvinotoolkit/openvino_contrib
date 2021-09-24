@@ -205,6 +205,9 @@ class Stream : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream
 #endif
         );
     }
+    void memsetImpl(void* dst, int value, size_t count) const {
+        throwIfError(cudaMemsetAsync(dst, value, count, get()));
+    }
 
 public:
     Allocation malloc(std::size_t size) const { return {mallocImpl(size), get()}; }
@@ -221,6 +224,10 @@ public:
     }
     void download(void* dst, CUDA::DevicePointer<void*> src, std::size_t count) const {
         downloadImpl(dst, src.get(), count);
+    }
+    void memset(const Allocation& dst, int value, std::size_t count) const { memsetImpl(dst.get(), value, count); }
+    void memset(CUDA::DevicePointer<void*> dst, int value, std::size_t count) const {
+        memsetImpl(dst.get(), value, count);
     }
     void synchronize() const { throwIfError(cudaStreamSynchronize(get())); }
 #ifdef __CUDACC__
@@ -242,9 +249,10 @@ class DefaultStream {
   void downloadImpl(void* dst, const void* src, std::size_t count) const {
     throwIfError(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost));
   }
+  void memsetImpl(void* dst, int value, std::size_t count) const { throwIfError(cudaMemset(dst, value, count)); }
   DefaultStream() = default;
 
- public:
+  public:
   static DefaultStream& stream() {
     static DefaultStream stream{};
     return stream;
@@ -270,6 +278,10 @@ class DefaultStream {
   void download(void* dst, CUDA::DevicePointer<void*> src,
                 std::size_t count) const {
     downloadImpl(dst, src.get(), count);
+  }
+  void memset(const Allocation& dst, int value, std::size_t count) const { memsetImpl(dst.get(), value, count); }
+  void memset(CUDA::DevicePointer<void*> dst, int value, std::size_t count) const {
+      memsetImpl(dst.get(), value, count);
   }
 };
 
