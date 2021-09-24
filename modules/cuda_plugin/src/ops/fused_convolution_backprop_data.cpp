@@ -50,7 +50,7 @@ FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CUDA::Creat
 void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& context,
                                              Inputs inputs,
                                              Outputs outputs,
-                                             const Workbuffers& workbuffers) {
+                                             const Workbuffers& workbuffers) const {
     using ArgIndices3Ins = Convolution::Details::FusedConvolutionBackwardDataIndices<3>;
     using ArgIndices4Ins = Convolution::Details::FusedConvolutionBackwardDataIndices<4>;
 

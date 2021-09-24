@@ -27,8 +27,9 @@ FusedConvolutionCuDnn::FusedConvolutionCuDnn(
 }
 
 void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
-                                    Inputs inputs, Outputs outputs,
-                                    const Workbuffers& workbuffers) {
+                                    Inputs inputs,
+                                    Outputs outputs,
+                                    const Workbuffers& workbuffers) const {
     using ArgIndices = FusedConvolutionOp::ArgIndices;
 
     const bool includesOnlyBiasAdd = inputs.size() == 3;

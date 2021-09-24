@@ -19,11 +19,10 @@ ConvolutionBackpropDataOp::ConvolutionBackpropDataOp(
     , descs_{ context, {{node}} } {
 }
 
-void ConvolutionBackpropDataOp::Execute(
-    const InferenceRequestContext& context,
-    Inputs inputs,
-    Outputs outputs,
-    const Workbuffers& workbuffers) {
+void ConvolutionBackpropDataOp::Execute(const InferenceRequestContext& context,
+                                        Inputs inputs,
+                                        Outputs outputs,
+                                        const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 2 || inputs.size() == 3);
     Expects(outputs.size() == 1);
     void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();

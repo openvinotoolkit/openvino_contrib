@@ -23,13 +23,16 @@ class SplitOp : public OperationBase {
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
  private:
     size_t mutableWbSize() const { return sizeof(float *) * num_splits_; }
     template <typename T>
-    void Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& buffers);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputs,
+                 Outputs outputs,
+                 const Workbuffers& buffers) const;
 
     ngraph::element::Type_t element_type_;
     size_t num_splits_ = 0;

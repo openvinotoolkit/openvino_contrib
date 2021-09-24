@@ -35,7 +35,10 @@ FullyConnectedOp::FullyConnectedOp(const CUDA::CreationContext& context,
     batch_bias_count_ = matMulBatchCount/batchBiasCount;
 }
 
-void FullyConnectedOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
+void FullyConnectedOp::Execute(const InferenceRequestContext& context,
+                               Inputs inputs,
+                               Outputs outputs,
+                               const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 3);
     Expects(outputs.size() == 1);
     auto& stream = context.getThreadContext().stream();

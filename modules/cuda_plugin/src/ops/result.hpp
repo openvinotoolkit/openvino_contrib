@@ -11,7 +11,7 @@
 namespace CUDAPlugin {
 
 class ResultOp : public OperationBase {
- public:
+public:
     using NodeOp = ngraph::op::v0::Result;
     ResultOp(const CUDA::CreationContext& context,
              const NodeOp& node,
@@ -20,11 +20,11 @@ class ResultOp : public OperationBase {
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) override;
+                 const Workbuffers& workbuffers) const override;
     static std::string GetOutputTensorName(const ngraph::Node& node);
 
- private:
+private:
     std::string output_tensor_name_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

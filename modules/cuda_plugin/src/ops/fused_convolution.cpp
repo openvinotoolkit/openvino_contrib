@@ -33,7 +33,7 @@ FusedConvolutionOp::FusedConvolutionOp(const CUDA::CreationContext& context,
 void FusedConvolutionOp::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
                                  Outputs outputs,
-                                 const Workbuffers& workbuffers) {
+                                 const Workbuffers& workbuffers) const {
     impl_->Execute(context, inputs, outputs, workbuffers);
 }
 

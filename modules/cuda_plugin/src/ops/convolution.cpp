@@ -28,7 +28,10 @@ ConvolutionOp::ConvolutionOp(const CUDA::CreationContext& context,
     CreateImpl(context, node);
 }
 
-void ConvolutionOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers& workbuffers) {
+void ConvolutionOp::Execute(const InferenceRequestContext& context,
+                            Inputs inputs,
+                            Outputs outputs,
+                            const Workbuffers& workbuffers) const {
     impl_->Execute(context, inputs, outputs, workbuffers);
 }
 

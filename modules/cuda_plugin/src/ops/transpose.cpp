@@ -34,7 +34,9 @@ TransposeOp::TransposeOp(const CUDA::CreationContext& context,
 }
 
 void TransposeOp::Execute(const InferenceRequestContext& context,
-    Inputs inputTensors, Outputs outputTensors, const Workbuffers&) {
+                          Inputs inputTensors,
+                          Outputs outputTensors,
+                          const Workbuffers&) const {
     Expects(inputTensors.size() == 1 || inputTensors.size() == 2);
     Expects(outputTensors.size() == 1);
 
@@ -65,7 +67,6 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
         outputTensors[0].get(), &outputDesc, outputMode.data(),
         inputElementsType_, context.getThreadContext().stream().get()));
 }
-
 
 std::vector<std::int64_t> TransposeOp::extractInputExtents(const ngraph::Node& node) {
     std::vector<std::int64_t> result;

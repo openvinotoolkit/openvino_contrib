@@ -24,7 +24,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers&) override;
+                 const Workbuffers&) const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 

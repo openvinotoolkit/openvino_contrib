@@ -4,9 +4,10 @@
 
 #pragma once
 
-#include <ngraph/op/convolution.hpp>
-#include <memory>
 #include <cuda_operation_base.hpp>
+#include <memory>
+#include <ngraph/op/convolution.hpp>
+
 #include "convolution_components.hpp"
 
 namespace CUDAPlugin {
@@ -21,7 +22,7 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers&) override;
+                 const Workbuffers&) const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
@@ -37,4 +38,4 @@ private:
     std::unique_ptr<IOperationExec> impl_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

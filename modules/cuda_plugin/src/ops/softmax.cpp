@@ -122,17 +122,22 @@ SoftmaxOp::SoftmaxOp(const CUDA::CreationContext& context,
       tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());
   }
 
-void SoftmaxOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, const Workbuffers&) {
-  Expects(inputs.size() == 1);
-  Expects(outputs.size() == 1);
-  throwIfError(cudnnSoftmaxForward(
-      context.getThreadContext().dnnHandle().get(),
-      cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
-      cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
-      &constants::one<float>::value, tensor_descriptor_.get(), inputs[0].get(),
-      &constants::zero<float>::value, tensor_descriptor_.get(),
-      outputs[0].get()));
-}
+  void SoftmaxOp::Execute(const InferenceRequestContext& context,
+                          Inputs inputs,
+                          Outputs outputs,
+                          const Workbuffers&) const {
+      Expects(inputs.size() == 1);
+      Expects(outputs.size() == 1);
+      throwIfError(cudnnSoftmaxForward(context.getThreadContext().dnnHandle().get(),
+                                       cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
+                                       cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
+                                       &constants::one<float>::value,
+                                       tensor_descriptor_.get(),
+                                       inputs[0].get(),
+                                       &constants::zero<float>::value,
+                                       tensor_descriptor_.get(),
+                                       outputs[0].get()));
+  }
 
 OPERATION_REGISTER(SoftmaxOp, Softmax);
 } // namespace CUDAPlugin
