@@ -29,4 +29,8 @@ struct cuda_type_traits<ngraph::element::Type_t::bf16> { /* 8bit exponent, 7bit 
 };
 
 #endif
+
+template <ngraph::element::Type_t Type>
+using cuda_type_traits_t = typename cuda_type_traits<Type>::value_type;
+
 }  // namespace CUDA
