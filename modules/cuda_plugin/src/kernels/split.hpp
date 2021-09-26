@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "types.hpp"
+#include "cuda_type_traits.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {

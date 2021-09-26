@@ -8,7 +8,7 @@
 #include <fmt/format.h>
 
 #include <error.hpp>
-#include <kernels/types.hpp>
+#include <kernels/cuda_type_traits.hpp>
 #include <ngraph/type/element_type.hpp>
 
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
@@ -22,13 +22,13 @@ namespace CUDAPlugin {
   * @return Converted T data type
   */
 template <typename T>
-T convertDataType(const ngraph::element::Type &type);
+T convertDataType(ngraph::element::Type type);
 
 /**
  * @brief Converts OpenVINO data type to cuda data type
  */
 template <>
-inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::element::Type &type) {
+inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::element::Type type) {
     using ngraph::element::Type_t;
     switch (static_cast<Type_t>(type)) {
 #if CUDART_VERSION >= 11020
@@ -68,7 +68,7 @@ inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::el
  * @brief Converts OpenVINO data type to cuDNN data type
  */
 template <>
-inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::element::Type& type) {
+inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::element::Type type) {
     using ngraph::element::Type_t;
     switch (static_cast<Type_t>(type)) {
         case Type_t::boolean:
@@ -95,6 +95,11 @@ inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::
     }
 }
 
+template <>
+constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::element::Type type) {
+    return static_cast<kernel::Type_t>(static_cast<int>(ngraph::element::Type_t{type}));
+}
+
 /**
  * @brief Converts cuda plugin activation mode to cuDNN activation mode
  */
@@ -111,44 +116,12 @@ inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::Activa
     }
 }
 
-template <>
-inline constexpr CUDAPlugin::kernel::Type_t convertDataType<CUDAPlugin::kernel::Type_t>(
-    const ngraph::element::Type &type) {
-    using nType_t = ngraph::element::Type_t;
-    using kType_t = kernel::Type_t;
-    switch (static_cast<nType_t>(type)) {
-#if CUDART_VERSION >= 11020
-        case nType_t::bf16:
-            return kType_t::bf16;
-        case nType_t::i16:
-            return kType_t::i16;
-        case nType_t::u16:
-            return kType_t::u16;
-        case nType_t::i64:
-            return kType_t::i64;
-        case nType_t::u64:
-            return kType_t::u64;
-#endif
-        case nType_t::f16:
-            return kType_t::f16;
-        case nType_t::f32:
-            return kType_t::f32;
-        case nType_t::f64:
-            return kType_t::f64;
-        case nType_t::i8:
-            return kType_t::i8;
-        case nType_t::u8:
-            return kType_t::u8;
-        case nType_t::i32:
-            return kType_t::i32;
-        case nType_t::u32:
-            return kType_t::u32;
-        default:
-            throwIEException(
-                fmt::format("The ngraph element type {} is not supported by "
-                            "the cuda library",
-                            type.c_type_string()));
-    }
-}
-
 }  // namespace CUDAPlugin
+
+namespace ngraph::element {
+
+#define X(val) static_assert(static_cast<int>(Type_t::val) == static_cast<int>(CUDAPlugin::kernel::Type_t::val));
+CUDAPLUGIN_LIST_TYPE_T_VALUES
+#undef X
+
+}  // namespace ngraph::element
