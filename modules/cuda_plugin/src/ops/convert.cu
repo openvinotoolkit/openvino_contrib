@@ -87,8 +87,8 @@ struct Convert {
         using namespace ngraph::element;
         constexpr Type_t output_type = static_cast<Type_t>(OutputType + static_cast<size_t>(Type_t::boolean));
         constexpr Type_t input_type = static_cast<Type_t>(InputType + static_cast<size_t>(Type_t::boolean));
-        using TOutput = typename CUDA::cuda_type_traits<output_type>::value_type;
-        using TInput = typename CUDA::cuda_type_traits<input_type>::value_type;
+        using TOutput = CUDA::cuda_type_traits_t<output_type>;
+        using TInput = CUDA::cuda_type_traits_t<input_type>;
         if (OutputType == InputType) {
             if (output.get() == input.get()) return;
             throwIfError(cudaMemcpyAsync(
