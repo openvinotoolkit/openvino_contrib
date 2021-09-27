@@ -4,7 +4,7 @@
 //
 
 #include <common_test_utils/test_constants.hpp>
-#include "behavior/add_output.hpp"
+#include "execution_graph_tests/add_output.hpp"
 #include "functional_test_utils/plugin_cache.hpp"
 #include "ngraph_functions/subgraph_builders.hpp"
 
