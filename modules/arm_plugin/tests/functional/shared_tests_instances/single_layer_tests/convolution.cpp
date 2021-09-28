@@ -70,7 +70,8 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPadding, ConvolutionLayerTes
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
+        ::testing::Values(std::vector<std::vector<std::pair<size_t, size_t>>>(NULL_RANGE)),
+        ::testing::Values<std::vector<std::vector<std::vector<size_t>>>>({{{1, 3, 30}}}),
         ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     ConvolutionLayerTest::getTestCaseName);
 
@@ -81,7 +82,8 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid, ConvolutionLayerTest,
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
+        ::testing::Values(std::vector<std::vector<std::pair<size_t, size_t>>>(NULL_RANGE)),
+        ::testing::Values<std::vector<std::vector<std::vector<size_t>>>>({{{1, 3, 30}}}),
         ::testing::Values(CommonTestUtils::DEVICE_CPU)),
     ConvolutionLayerTest::getTestCaseName);
 
@@ -148,7 +150,8 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPadding, ConvolutionLayerTes
                         ::testing::ValuesIn(netPrecisions),
                         ::testing::Values(inPrc), ::testing::Values(outPrc),
                         ::testing::Values(inLayout), ::testing::Values(outLayout),
-                        ::testing::Values(InferenceEngine::SizeVector({1, 3, 30, 30})),
+                                ::testing::Values(std::vector<std::vector<std::pair<size_t, size_t>>>(NULL_RANGE)),
+                                ::testing::Values<std::vector<std::vector<std::vector<size_t>>>>({{{1, 3, 30, 30}}}),
                         ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionLayerTest::getTestCaseName);
 
@@ -158,7 +161,8 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AutoPadValid, ConvolutionLayerTest,
                         ::testing::ValuesIn(netPrecisions),
                         ::testing::Values(inPrc), ::testing::Values(outPrc),
                         ::testing::Values(inLayout), ::testing::Values(outLayout),
-                        ::testing::Values(InferenceEngine::SizeVector({1, 3, 30, 30})),
+                                ::testing::Values(std::vector<std::vector<std::pair<size_t, size_t>>>(NULL_RANGE)),
+                                ::testing::Values<std::vector<std::vector<std::vector<size_t>>>>({{{1, 3, 30, 30}}}),
                         ::testing::Values(CommonTestUtils::DEVICE_CPU)),
                         ConvolutionLayerTest::getTestCaseName);
 }  // namespace
