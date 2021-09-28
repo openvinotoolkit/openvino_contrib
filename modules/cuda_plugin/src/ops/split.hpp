@@ -5,17 +5,19 @@
 #pragma once
 
 #include <cudnn_ops_infer.h>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/op/softmax.hpp>
+
 #include <cuda_operation_base.hpp>
 #include <gpu/device_pointers.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
+#include <kernels/split.hpp>
+#include <ngraph/op/softmax.hpp>
+#include <ngraph/shape.hpp>
+#include <ngraph/type/element_type.hpp>
 
 namespace CUDAPlugin {
 
 class SplitOp : public OperationBase {
- public:
+public:
     SplitOp(const CUDA::CreationContext& context,
             const ngraph::Node& node,
             IndexCollection&& inputIds,
@@ -26,20 +28,16 @@ class SplitOp : public OperationBase {
                  const Workbuffers& workbuffers) const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
- private:
-    size_t mutableWbSize() const { return sizeof(float *) * num_splits_; }
+private:
+    [[nodiscard]] size_t mutableWbSize() const { return split_kernel_.value().mutableWbSize(); }
     template <typename T>
     void Execute(const InferenceRequestContext& context,
                  Inputs inputs,
                  Outputs outputs,
                  const Workbuffers& buffers) const;
 
-    ngraph::element::Type_t element_type_;
     size_t num_splits_ = 0;
-    size_t num_split_chunks_ = 0;
-    size_t split_step_size_ = 0;
-    unsigned num_blocks_;
-    unsigned threads_per_block_;
+    std::optional<kernel::Split> split_kernel_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
