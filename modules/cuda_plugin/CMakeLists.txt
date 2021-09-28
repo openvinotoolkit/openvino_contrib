@@ -16,11 +16,6 @@ if (CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
 endif()
 
-# cmake 3.13 doesn't understand CMAKE_CUDA_STANDARD 17 yet
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(CMAKE_CUDA_FLAGS "-std=c++17")
-endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-
 set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
 
 find_package(InferenceEngineDeveloperPackage REQUIRED)
@@ -64,6 +59,15 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
 else()
     find_package(CUDAToolkit REQUIRED)
 endif()
+
+# cmake 3.13 doesn't understand CMAKE_CUDA_STANDARD 17 yet
+if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    if(CUDAToolkit_VERSION_MAJOR EQUAL 10)
+        set(CMAKE_CUDA_FLAGS "-std=c++14")
+    else(CUDAToolkit_VERSION_MAJOR EQUAL 10)
+        set(CMAKE_CUDA_FLAGS "-std=c++17")
+    endif(CUDAToolkit_VERSION_MAJOR EQUAL 10)
+endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
 find_library(CUDNN_PATH
              NAMES cudnn
