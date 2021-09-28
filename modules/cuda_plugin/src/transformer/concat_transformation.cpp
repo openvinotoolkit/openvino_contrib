@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-//
-// Created by dkotov on 8/18/21.
-//
-
 #include "concat_transformation.hpp"
 
 #include <exec_graph_info.hpp>

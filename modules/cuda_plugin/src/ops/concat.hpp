@@ -5,12 +5,14 @@
 #pragma once
 
 #include <cudnn_ops_infer.h>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/op/concat.hpp>
+
 #include <cuda_operation_base.hpp>
 #include <gpu/device_pointers.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
+#include <kernels/concat.hpp>
+#include <ngraph/op/concat.hpp>
+#include <ngraph/shape.hpp>
+#include <ngraph/type/element_type.hpp>
 
 namespace CUDAPlugin {
 
@@ -28,29 +30,12 @@ class ConcatOp : public OperationBase {
   WorkbufferRequest GetWorkBufferRequest() const override;
   void InitSharedImmutableWorkbuffers(const Buffers&) override;
 
-  using VoidDevPtr = InferenceEngine::gpu::DevicePointer<void*>;
-  using ConstVoidDevPtr = InferenceEngine::gpu::DevicePointer<const void*>;
-  struct Chunk {
-      size_t input;
-      size_t offset;
-  };
-
  private:
-    size_t immutableWbSize() const { return sizeof(Chunk) * chunks_.size(); }
-    size_t mutableWbSize() const { return sizeof(float *) * num_inputs_; }
-    template <typename T>
-    void Execute(const InferenceRequestContext& context,
-                 Inputs inputs,
-                 Outputs outputs,
-                 const Workbuffers& buffers) const;
+     size_t immutableWbSize() const { return concat_kernel_.value().immutableWbSize(); }
+     size_t mutableWbSize() const { return concat_kernel_.value().mutableWbSize(); }
 
-    ngraph::element::Type_t element_type_;
-    size_t num_inputs_ {};
-    std::vector<Chunk> chunks_;
-    size_t chunk_size_;
-    size_t all_chunk_size_ = 0;
-    size_t num_blocks_;
-    size_t threads_per_block_;
+     std::size_t num_inputs_;
+     std::optional<kernel::Concat> concat_kernel_;
 };
 
 } // namespace CUDAPlugin
