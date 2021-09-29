@@ -7,7 +7,7 @@
 #include <ie_layouts.h>
 
 #include <cuda/creation_context.hpp>
-#include <gpu/device_pointers.hpp>
+#include <cuda/device_pointers.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
 #include <memory>
 #include <memory_manager/model/cuda_memory_model.hpp>
@@ -29,9 +29,9 @@ using InferenceEngine::gpu::InferenceRequestContext;
 
 class IOperationExec {
 public:
-    using Inputs = gsl::span<const InferenceEngine::gpu::DevicePointer<const void*>>;
-    using Outputs = gsl::span<const InferenceEngine::gpu::DevicePointer<void*>>;
-    using Buffers = std::vector<InferenceEngine::gpu::DevicePointer<void*>>;
+    using Inputs = gsl::span<const CUDA::DevicePointer<const void*>>;
+    using Outputs = gsl::span<const CUDA::DevicePointer<void*>>;
+    using Buffers = std::vector<CUDA::DevicePointer<void*>>;
     enum class WorkbufferStatus { NoInitNeeded, InitNeeded };
 
     virtual ~IOperationExec() = default;
