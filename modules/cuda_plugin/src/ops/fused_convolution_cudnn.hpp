@@ -14,8 +14,7 @@ namespace CUDAPlugin {
 
 class FusedConvolutionCuDnn : public IOperationExec {
 public:
-    FusedConvolutionCuDnn(const CUDA::CreationContext& context,
-                          const Convolution::Details::FusedConvolutionParams& params);
+    FusedConvolutionCuDnn(const CreationContext& context, const Convolution::Details::FusedConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,

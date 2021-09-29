@@ -12,7 +12,7 @@ namespace CUDAPlugin {
 
 class ConvertOp : public OperationBase {
 public:
-    ConvertOp(const CUDA::CreationContext& context,
+    ConvertOp(const CreationContext& context,
               const std::shared_ptr<ngraph::Node>& node,
               IndexCollection&& inputIds,
               IndexCollection&& outputIds);

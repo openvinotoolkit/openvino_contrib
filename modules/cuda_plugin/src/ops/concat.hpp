@@ -17,25 +17,25 @@
 namespace CUDAPlugin {
 
 class ConcatOp : public OperationBase {
- public:
-  using NodeOp = ngraph::op::Concat;
-  ConcatOp(const CUDA::CreationContext& context,
-            const NodeOp& node,
-            IndexCollection&& inputIds,
-            IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) const override;
-  WorkbufferRequest GetWorkBufferRequest() const override;
-  void InitSharedImmutableWorkbuffers(const Buffers&) override;
+public:
+    using NodeOp = ngraph::op::Concat;
+    ConcatOp(const CreationContext& context,
+             const NodeOp& node,
+             IndexCollection&& inputIds,
+             IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
+    void InitSharedImmutableWorkbuffers(const Buffers&) override;
 
- private:
-     size_t immutableWbSize() const { return concat_kernel_.value().immutableWbSize(); }
-     size_t mutableWbSize() const { return concat_kernel_.value().mutableWbSize(); }
+private:
+    size_t immutableWbSize() const { return concat_kernel_.value().immutableWbSize(); }
+    size_t mutableWbSize() const { return concat_kernel_.value().mutableWbSize(); }
 
-     std::size_t num_inputs_;
-     std::optional<kernel::Concat> concat_kernel_;
+    std::size_t num_inputs_;
+    std::optional<kernel::Concat> concat_kernel_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

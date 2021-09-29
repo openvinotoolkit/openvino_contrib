@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <cuda/creation_context.hpp>
+#include <cuda_creation_context.hpp>
 
 #include "convolution_components.hpp"
 #include "cuda/dnn.hpp"
@@ -38,7 +38,6 @@ private:
     IntArray paddings_;
 };
 
-
 /**
  * @brief Presents convolution parameters in a form suitable for cuDNN API.
  */
@@ -71,9 +70,8 @@ private:
  */
 class ConvolutionDescriptorsCuDnn {
 public:
-    ConvolutionDescriptorsCuDnn(
-      const CUDA::CreationContext& context,
-      const Convolution::Details::ConvolutionParamsCuDnn& params);
+    ConvolutionDescriptorsCuDnn(const CreationContext& context,
+                                const Convolution::Details::ConvolutionParamsCuDnn& params);
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
     const CUDA::DnnTensorDescriptor& Input() const { return input_; }
@@ -99,11 +97,10 @@ private:
     bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
                                 cudnnDataType_t convDataType);
     void FindAlgo(const CUDA::DnnHandle& dnnHandle);
-    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                 cudnnDataType_t convDataType);
+    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
 
-   private:
-    CUDA::CreationContext context_;
+private:
+    CreationContext context_;
     ConvolutionParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
     CUDA::DnnTensorDescriptor input_;
@@ -113,13 +110,12 @@ private:
     cudnnConvolutionFwdAlgoPerf_t algo_perf_;
 };
 
-
 /**
  * @brief Prepares all data required for cuDNN convolution API invocation.
  */
 class ConvolutionBackpropDataDescriptorCuDnn {
- public:
-    ConvolutionBackpropDataDescriptorCuDnn(const CUDA::CreationContext& context,
+public:
+    ConvolutionBackpropDataDescriptorCuDnn(const CreationContext& context,
                                            const Convolution::Details::ConvolutionBackpropDataParamsCuDnn& params);
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
@@ -143,13 +139,12 @@ private:
                                  cudnnDataType_t convDataType);
     void BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle);
     void GetAlgo(const CUDA::DnnHandle& dnnHandle);
-    bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                cudnnDataType_t convDataType);
+    bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
     void FindAlgo(const CUDA::DnnHandle& dnnHandle);
-    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                 cudnnDataType_t convDataType);
-   private:
-    CUDA::CreationContext context_;
+    bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
+
+private:
+    CreationContext context_;
     ConvolutionBackpropDataParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
     CUDA::DnnFilterDescriptor filter_desc_;
@@ -159,5 +154,4 @@ private:
     cudnnConvolutionBwdDataAlgoPerf_t algo_perf_;
 };
 
-
-} // namespace CUDAPlugin::Convolution::Details
+}  // namespace CUDAPlugin::Convolution::Details

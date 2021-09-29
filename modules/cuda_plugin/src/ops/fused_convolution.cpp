@@ -14,7 +14,7 @@
 
 namespace CUDAPlugin {
 
-FusedConvolutionOp::FusedConvolutionOp(const CUDA::CreationContext& context,
+FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
                                        const NodeOp& node,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds)
@@ -45,7 +45,7 @@ IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(Workbuffer
     return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 
-void FusedConvolutionOp::CreateImpl(const CUDA::CreationContext& context, const NodeOp& node) {
+void FusedConvolutionOp::CreateImpl(const CreationContext& context, const NodeOp& node) {
     const Convolution::Details::FusedConvolutionParams params{node};
     try {
         impl_ = std::make_unique<FusedConvolutionCuDnn>(context, params);

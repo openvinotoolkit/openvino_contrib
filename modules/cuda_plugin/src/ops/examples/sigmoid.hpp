@@ -10,8 +10,8 @@
 namespace CUDAPlugin {
 
 class SigmoidOp : public OperationBase {
- public:
-    SigmoidOp(const CUDA::CreationContext& context,
+public:
+    SigmoidOp(const CreationContext& context,
               const std::shared_ptr<ngraph::Node>& node,
               IndexCollection&& inputIds,
               IndexCollection&& outputIds);
@@ -20,11 +20,11 @@ class SigmoidOp : public OperationBase {
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) override;
 
- private:
+private:
     size_t input_size_;
     size_t output_size_;
     unsigned num_blocks_;
     unsigned threads_per_block_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
