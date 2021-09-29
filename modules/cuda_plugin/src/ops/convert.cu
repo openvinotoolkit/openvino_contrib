@@ -80,27 +80,28 @@ using namespace kernel;
 
 template<size_t OutputType, size_t InputType>
 struct Convert {
-  static void function(const CUDA::Stream& stream, size_t size,
-                       InferenceEngine::gpu::DevicePointer<void*> output,
-                       InferenceEngine::gpu::DevicePointer<const void*> input,
-                       unsigned numBlocks, unsigned threadsPerBlock) {
-    using namespace InferenceEngine::gpu;
-    using namespace ngraph;
-    using namespace ngraph::element;
-    constexpr Type_t output_type =  static_cast<Type_t>(OutputType + static_cast<size_t>(Type_t::boolean));
-    constexpr Type_t input_type =  static_cast<Type_t>(InputType + static_cast<size_t>(Type_t::boolean));
-    using TOutput = typename cuda_type_traits<output_type>::value_type;
-    using TInput = typename cuda_type_traits<input_type>::value_type;
-    if (OutputType == InputType) {
-      if (output.get() == input.get()) return;
-      throwIfError(cudaMemcpyAsync(output.get(), input.get(),
-                                   size * sizeof(TOutput),
-                                   cudaMemcpyDeviceToDevice, stream.get()));
-    } else {
-      convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
-          size, static_cast<TOutput *>(output.get()), static_cast<const TInput *>(input.get()));
+    static void function(const CUDA::Stream& stream,
+                         size_t size,
+                         CUDA::DevicePointer<void*> output,
+                         CUDA::DevicePointer<const void*> input,
+                         unsigned numBlocks,
+                         unsigned threadsPerBlock) {
+        using namespace InferenceEngine::gpu;
+        using namespace ngraph;
+        using namespace ngraph::element;
+        constexpr Type_t output_type = static_cast<Type_t>(OutputType + static_cast<size_t>(Type_t::boolean));
+        constexpr Type_t input_type = static_cast<Type_t>(InputType + static_cast<size_t>(Type_t::boolean));
+        using TOutput = typename CUDA::cuda_type_traits<output_type>::value_type;
+        using TInput = typename CUDA::cuda_type_traits<input_type>::value_type;
+        if (OutputType == InputType) {
+            if (output.get() == input.get()) return;
+            throwIfError(cudaMemcpyAsync(
+                output.get(), input.get(), size * sizeof(TOutput), cudaMemcpyDeviceToDevice, stream.get()));
+        } else {
+            convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream.get()>>>(
+                size, static_cast<TOutput*>(output.get()), static_cast<const TInput*>(input.get()));
+        }
     }
-  }
 };
 
 using Type_t = ngraph::element::Type_t;

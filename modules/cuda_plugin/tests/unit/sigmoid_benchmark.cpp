@@ -19,8 +19,8 @@
 
 namespace {
 
-using devptr_t = InferenceEngine::gpu::DevicePointer<void*>;
-using cdevptr_t = InferenceEngine::gpu::DevicePointer<const void*>;
+using devptr_t = CUDA::DevicePointer<void*>;
+using cdevptr_t = CUDA::DevicePointer<const void*>;
 
 struct SigmoidTest : testing::Test {
     using TensorID = CUDAPlugin::TensorID;

@@ -21,12 +21,8 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
     using Type_t = ngraph::element::Type_t;
-    using convert_t = void (*)(const CUDA::Stream&,
-                               size_t,
-                               InferenceEngine::gpu::DevicePointer<void*>,
-                               InferenceEngine::gpu::DevicePointer<const void*>,
-                               unsigned,
-                               unsigned);
+    using convert_t = void (*)(
+        const CUDA::Stream&, size_t, CUDA::DevicePointer<void*>, CUDA::DevicePointer<const void*>, unsigned, unsigned);
 
 private:
     static convert_t getConvertKernel(Type_t output_type, Type_t input_type);
