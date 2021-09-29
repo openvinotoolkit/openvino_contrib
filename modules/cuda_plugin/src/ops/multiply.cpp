@@ -7,10 +7,11 @@
 
 namespace CUDAPlugin {
 
-MultiplyOp::MultiplyOp(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
-                       IndexCollection&& inputIds, IndexCollection&& outputIds)
-    : CuDnnTensorOpBase{context, node, move(inputIds), move(outputIds),
-                         cudnnOpTensorOp_t::CUDNN_OP_TENSOR_MUL} {}
+MultiplyOp::MultiplyOp(const CreationContext& context,
+                       const std::shared_ptr<ngraph::Node>& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds)
+    : CuDnnTensorOpBase{context, node, move(inputIds), move(outputIds), cudnnOpTensorOp_t::CUDNN_OP_TENSOR_MUL} {}
 
 OPERATION_REGISTER(MultiplyOp, Multiply);
 

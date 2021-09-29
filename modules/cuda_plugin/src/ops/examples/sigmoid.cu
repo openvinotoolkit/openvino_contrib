@@ -2,22 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-#include <gsl/gsl_assert>
 #include <cuda_operation_registry.hpp>
+#include <gsl/gsl_assert>
 #include <utility>
+#include <vector>
+
 #include "sigmoid.hpp"
 
 namespace CUDAPlugin {
 
-static __global__ void sigmoid(const size_t inputSize, const float *x, float *y) {
+static __global__ void sigmoid(const size_t inputSize, const float* x, float* y) {
     const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < inputSize) {
         y[i] = 1 / (1 + expf(-x[i]));
     }
 }
 
-SigmoidOp::SigmoidOp(const CUDA::CreationContext& context,
+SigmoidOp::SigmoidOp(const CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
@@ -35,17 +36,19 @@ SigmoidOp::SigmoidOp(const CUDA::CreationContext& context,
     threads_per_block_ = (num_blocks_ == 1) ? input_size_ : maxBlockSize;
 }
 
-void SigmoidOp::Execute(const InferenceRequestContext& context, Inputs inputs, Outputs outputs, 
+void SigmoidOp::Execute(const InferenceRequestContext& context,
+                        Inputs inputs,
+                        Outputs outputs,
                         const Workbuffers& workbuffers) {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 1);
-    stream.run(
-            num_blocks_, threads_per_block_,
-            sigmoid,
-            input_size_,
-            static_cast<const float *>(inputs[0].get()),
-            static_cast<float *>(outputs[0].get()));
+    stream.run(num_blocks_,
+               threads_per_block_,
+               sigmoid,
+               input_size_,
+               static_cast<const float*>(inputs[0].get()),
+               static_cast<float*>(outputs[0].get()));
 }
 
 OPERATION_REGISTER(SigmoidOp, Sigmoid);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -27,7 +27,7 @@ struct SigmoidTest : testing::Test {
     using ElementType = float;
     static constexpr int length = 1024;
     static constexpr size_t size = length * sizeof(ElementType);
-    CUDA::ThreadContext threadContext{{}};
+    CUDAPlugin::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
@@ -38,7 +38,7 @@ struct SigmoidTest : testing::Test {
         auto param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{length});
         auto node = std::make_shared<ngraph::op::v0::Sigmoid>(param->output(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDA::CreationContext{threadContext.device(), optimizeOption},
+        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0u}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -49,7 +49,7 @@ struct SigmoidTest : testing::Test {
 TEST_F(SigmoidTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20;
-    InferenceEngine::gpu::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in;
     std::random_device r_device;

@@ -23,7 +23,7 @@ namespace {
 constexpr unsigned ELS_PER_THREAD_CHUNKS = 2;
 constexpr unsigned ELS_PER_THREAD_DICTS = 1;
 
-} // namespace
+}  // namespace
 
 namespace kernel {
 
@@ -49,8 +49,8 @@ static inline __device__ void gather(unsigned data_length,
         if (thread_offset >= data_length) {
             return;
         }
-        dst_data[data_length * (indices_index + dict * indices_size) + thread_offset]
-            = src_dict[data_length * (dict_index + dict * index_range) + thread_offset];
+        dst_data[data_length * (indices_index + dict * indices_size) + thread_offset] =
+            src_dict[data_length * (dict_index + dict * index_range) + thread_offset];
     }
 }
 
@@ -108,7 +108,7 @@ static __global__ void dicts_gather(
 
 }  // namespace kernel
 
-GatherOp::GatherOp(const CUDA::CreationContext& context,
+GatherOp::GatherOp(const CreationContext& context,
                    const ngraph::Node& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
@@ -131,9 +131,8 @@ GatherOp::GatherOp(const CUDA::CreationContext& context,
         case ngraph::element::Type_t::undefined:
         case ngraph::element::Type_t::dynamic:
         case ngraph::element::Type_t::u1:
-            throwIEException(
-                    fmt::format("Params element type = {} is not supported by Gather operation!",
-                                static_cast<ngraph::element::Type_t>(element_type_)));
+            throwIEException(fmt::format("Params element type = {} is not supported by Gather operation!",
+                                         static_cast<ngraph::element::Type_t>(element_type_)));
     }
     Expects(node.get_output_element_type(0) == element_type_);
 
@@ -193,13 +192,12 @@ GatherOp::GatherOp(const CUDA::CreationContext& context,
     const auto max_indices_index = indices_size_ - 1;
     const auto max_dict_index = num_dicts_ - 1;
 
-    const bool boundary_ok = data_length_ <= out_size
-        - (data_length_ * (max_indices_index + max_dict_index * indices_size_));
+    const bool boundary_ok =
+        data_length_ <= out_size - (data_length_ * (max_indices_index + max_dict_index * indices_size_));
     Expects(boundary_ok);
 
-    const unsigned num_chunks = data_length_ % ELS_PER_THREAD_CHUNKS == 0
-                                    ? data_length_ / ELS_PER_THREAD_CHUNKS
-                                    : data_length_ / ELS_PER_THREAD_CHUNKS + 1;
+    const unsigned num_chunks = data_length_ % ELS_PER_THREAD_CHUNKS == 0 ? data_length_ / ELS_PER_THREAD_CHUNKS
+                                                                          : data_length_ / ELS_PER_THREAD_CHUNKS + 1;
 
     const auto& device_props = context.device().props();
     const auto max_block_size = device_props.maxThreadsPerBlock;
@@ -208,9 +206,8 @@ GatherOp::GatherOp(const CUDA::CreationContext& context,
     gather_chunks_ = std::max(num_chunks, num_dicts_) == num_chunks;
 
     if (gather_chunks_) {
-        blocks_per_grid_ = num_chunks % max_block_size == 0
-                                            ? num_chunks / max_block_size
-                                            : num_chunks / max_block_size + 1;
+        blocks_per_grid_ =
+            num_chunks % max_block_size == 0 ? num_chunks / max_block_size : num_chunks / max_block_size + 1;
         threads_per_block_ = blocks_per_grid_ == 1 ? num_chunks : max_block_size;
         grid_dim_x_ = num_dicts_ * batch_count;
 
@@ -218,9 +215,8 @@ GatherOp::GatherOp(const CUDA::CreationContext& context,
         Expects(indices_size_ <= max_grid_size[1]);
         Expects(blocks_per_grid_ <= max_grid_size[2]);
     } else {
-        blocks_per_grid_ = num_dicts_ % max_block_size == 0
-                                            ? num_dicts_ / max_block_size
-                                            : num_dicts_ / max_block_size + 1;
+        blocks_per_grid_ =
+            num_dicts_ % max_block_size == 0 ? num_dicts_ / max_block_size : num_dicts_ / max_block_size + 1;
         threads_per_block_ = blocks_per_grid_ == 1 ? num_dicts_ : max_block_size;
         grid_dim_x_ = data_length_ * batch_count;
 
@@ -235,46 +231,48 @@ void GatherOp::Execute(const InferenceRequestContext& context,
                        Outputs outputs,
                        const Workbuffers&) const {
     switch (indices_type_) {
-        case ngraph::element::i64: return ExecuteByDataType<int64_t>(context, inputs, outputs);
-        case ngraph::element::i32: return ExecuteByDataType<int32_t>(context, inputs, outputs);
-        default: throwIEException(
-                fmt::format("Index element type = {} is not supported by Gather operation !!",
-                indices_type_));
+        case ngraph::element::i64:
+            return ExecuteByDataType<int64_t>(context, inputs, outputs);
+        case ngraph::element::i32:
+            return ExecuteByDataType<int32_t>(context, inputs, outputs);
+        default:
+            throwIEException(
+                fmt::format("Index element type = {} is not supported by Gather operation !!", indices_type_));
     }
 }
 
 template <typename IndexType>
 void GatherOp::ExecuteByDataType(const InferenceRequestContext& context, Inputs inputs, Outputs outputs) const {
     switch (element_type_) {
-        case ngraph::element::boolean: return ExecuteImpl<bool, IndexType>(context, inputs,
-                                                                           outputs);
-        case ngraph::element::bf16: return ExecuteImpl<__nv_bfloat16, IndexType>(context, inputs,
-                                                                                 outputs);
-        case ngraph::element::f16: return ExecuteImpl<__half, IndexType>(context, inputs,
-                                                                         outputs);
-        case ngraph::element::f32: return ExecuteImpl<float, IndexType>(context, inputs,
-                                                                        outputs);
-        case ngraph::element::f64: return ExecuteImpl<double, IndexType>(context, inputs,
-                                                                         outputs);
-        case ngraph::element::i8: return ExecuteImpl<int8_t, IndexType>(context, inputs,
-                                                                        outputs);
-        case ngraph::element::i16: return ExecuteImpl<int16_t, IndexType>(context, inputs,
-                                                                          outputs);
-        case ngraph::element::i32: return ExecuteImpl<int32_t, IndexType>(context, inputs,
-                                                                          outputs);
-        case ngraph::element::i64: return ExecuteImpl<int64_t, IndexType>(context, inputs,
-                                                                          outputs);
-        case ngraph::element::u8: return ExecuteImpl<uint8_t, IndexType>(context, inputs,
-                                                                          outputs);
-        case ngraph::element::u16: return ExecuteImpl<uint16_t, IndexType>(context, inputs,
-                                                                           outputs);
-        case ngraph::element::u32: return ExecuteImpl<uint32_t, IndexType>(context, inputs,
-                                                                           outputs);
-        case ngraph::element::u64: return ExecuteImpl<uint64_t, IndexType>(context, inputs,
-                                                                           outputs);
-        default: throwIEException(
-                fmt::format("Index element type = {} is not supported by Gather operation !!",
-                            indices_type_));
+        case ngraph::element::boolean:
+            return ExecuteImpl<bool, IndexType>(context, inputs, outputs);
+        case ngraph::element::bf16:
+            return ExecuteImpl<__nv_bfloat16, IndexType>(context, inputs, outputs);
+        case ngraph::element::f16:
+            return ExecuteImpl<__half, IndexType>(context, inputs, outputs);
+        case ngraph::element::f32:
+            return ExecuteImpl<float, IndexType>(context, inputs, outputs);
+        case ngraph::element::f64:
+            return ExecuteImpl<double, IndexType>(context, inputs, outputs);
+        case ngraph::element::i8:
+            return ExecuteImpl<int8_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::i16:
+            return ExecuteImpl<int16_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::i32:
+            return ExecuteImpl<int32_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::i64:
+            return ExecuteImpl<int64_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::u8:
+            return ExecuteImpl<uint8_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::u16:
+            return ExecuteImpl<uint16_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::u32:
+            return ExecuteImpl<uint32_t, IndexType>(context, inputs, outputs);
+        case ngraph::element::u64:
+            return ExecuteImpl<uint64_t, IndexType>(context, inputs, outputs);
+        default:
+            throwIEException(
+                fmt::format("Index element type = {} is not supported by Gather operation !!", indices_type_));
     }
 }
 
@@ -317,4 +315,4 @@ void GatherOp::ExecuteImpl(const InferenceRequestContext& context, Inputs inputs
 }
 
 OPERATION_REGISTER(GatherOp, Gather);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

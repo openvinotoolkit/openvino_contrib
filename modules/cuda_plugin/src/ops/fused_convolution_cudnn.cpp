@@ -15,12 +15,11 @@
 
 namespace CUDAPlugin {
 
-FusedConvolutionCuDnn::FusedConvolutionCuDnn(
-    const CUDA::CreationContext& context,
-    const Convolution::Details::FusedConvolutionParams& params)
-    : conv_descs_{ context, params.conv_ }
-    , bias_desc_{ MakeBiasDescriptor(params.bias_shape_, params.conv_.element_type_) }
-    , activation_desc_{ MakeActivationDescriptor(params.activation_) } {
+FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
+                                             const Convolution::Details::FusedConvolutionParams& params)
+    : conv_descs_{context, params.conv_},
+      bias_desc_{MakeBiasDescriptor(params.bias_shape_, params.conv_.element_type_)},
+      activation_desc_{MakeActivationDescriptor(params.activation_)} {
     if (params.add_shape_) {
         add_desc_ = MakeBiasDescriptor(params.add_shape_.value(), params.conv_.element_type_);
     }
@@ -36,7 +35,7 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     const bool includesSecondAddition = inputs.size() == 4;
     Expects(includesOnlyBiasAdd || includesSecondAddition);
     Expects(outputs.size() == 1);
-    void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
+    void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     const auto& dnnHandle = context.getThreadContext().dnnHandle();
 
     const constants::AnyNumeric* alpha2 = nullptr;
@@ -51,52 +50,45 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
         zTensorDesc = add_desc_.value().get();
         zTensorIn = inputs[ArgIndices::add].get();
     }
-    throwIfError(::cudnnConvolutionBiasActivationForward(
-        dnnHandle.get(),
-        &NumericConst<constants::one>(conv_descs_.ElementType()),
-        conv_descs_.Input().get(),
-        inputs[ArgIndices::input].get(),
-        conv_descs_.Filter().get(),
-        inputs[ArgIndices::filter].get(),
-        conv_descs_.Conv().get(),
-        conv_descs_.Algo().algo,
-        workbuffer,
-        conv_descs_.Algo().memory,
-        alpha2,
-        zTensorDesc,
-        zTensorIn,
-        bias_desc_.get(),
-        inputs[ArgIndices::bias].get(),
-        activation_desc_.get(),
-        conv_descs_.Output().get(),
-        outputs[ArgIndices::output].get()));
+    throwIfError(::cudnnConvolutionBiasActivationForward(dnnHandle.get(),
+                                                         &NumericConst<constants::one>(conv_descs_.ElementType()),
+                                                         conv_descs_.Input().get(),
+                                                         inputs[ArgIndices::input].get(),
+                                                         conv_descs_.Filter().get(),
+                                                         inputs[ArgIndices::filter].get(),
+                                                         conv_descs_.Conv().get(),
+                                                         conv_descs_.Algo().algo,
+                                                         workbuffer,
+                                                         conv_descs_.Algo().memory,
+                                                         alpha2,
+                                                         zTensorDesc,
+                                                         zTensorIn,
+                                                         bias_desc_.get(),
+                                                         inputs[ArgIndices::bias].get(),
+                                                         activation_desc_.get(),
+                                                         conv_descs_.Output().get(),
+                                                         outputs[ArgIndices::output].get()));
 }
 
 WorkbufferRequest FusedConvolutionCuDnn::GetWorkBufferRequest() const {
     if (conv_descs_.Algo().memory != 0)
-      return {{}, {conv_descs_.Algo().memory}};
+        return {{}, {conv_descs_.Algo().memory}};
     else
-      return {{}, {}};
+        return {{}, {}};
 }
 
-CUDA::DnnTensorDescriptor FusedConvolutionCuDnn::MakeBiasDescriptor(
-    const ngraph::Shape& shape,
-    ngraph::element::Type_t element_type) {
+CUDA::DnnTensorDescriptor FusedConvolutionCuDnn::MakeBiasDescriptor(const ngraph::Shape& shape,
+                                                                    ngraph::element::Type_t element_type) {
     std::array<int, CUDNN_DIM_MAX> int_shape;
     std::copy(shape.begin(), shape.end(), int_shape.begin());
-    return CUDA::DnnTensorDescriptor {
-        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
-        convertDataType<cudnnDataType_t>(element_type),
-        static_cast<int>(shape.size()),
-        int_shape.data()
-    };
+    return CUDA::DnnTensorDescriptor{cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+                                     convertDataType<cudnnDataType_t>(element_type),
+                                     static_cast<int>(shape.size()),
+                                     int_shape.data()};
 }
 
 CUDA::DnnActivationDescriptor FusedConvolutionCuDnn::MakeActivationDescriptor(nodes::ActivationMode mode) {
-    return CUDA::DnnActivationDescriptor {
-        convertActivationMode(mode),
-        CUDNN_PROPAGATE_NAN, 0
-    };
+    return CUDA::DnnActivationDescriptor{convertActivationMode(mode), CUDNN_PROPAGATE_NAN, 0};
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

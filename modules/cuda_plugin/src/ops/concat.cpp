@@ -20,7 +20,7 @@
 
 namespace CUDAPlugin {
 
-ConcatOp::ConcatOp(const CUDA::CreationContext& context,
+ConcatOp::ConcatOp(const CreationContext& context,
                    const NodeOp& concatOp,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)

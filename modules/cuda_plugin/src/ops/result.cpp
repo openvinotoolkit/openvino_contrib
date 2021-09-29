@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "result.hpp"
+
 #include <cuda_runtime.h>
+
+#include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <cuda_operation_registry.hpp>
 #include <utility>
-
-#include "result.hpp"
 
 namespace CUDAPlugin {
 
-ResultOp::ResultOp(const CUDA::CreationContext& context,
+ResultOp::ResultOp(const CreationContext& context,
                    const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
@@ -42,4 +43,4 @@ std::string ResultOp::GetOutputTensorName(const ngraph::Node& node) {
 }
 
 OPERATION_REGISTER(ResultOp, Result);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

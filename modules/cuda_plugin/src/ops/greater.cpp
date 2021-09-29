@@ -7,7 +7,7 @@
 
 namespace CUDAPlugin {
 
-GreaterOp::GreaterOp(const CUDA::CreationContext& context,
+GreaterOp::GreaterOp(const CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)

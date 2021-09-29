@@ -34,7 +34,7 @@ struct StridedSliceTest : testing::Test {
     const ngraph::Shape constTensorShape{3};
     const size_t constantTensorSize = ngraph::shape_size(constTensorShape) * sizeof(AuxilaryElementType);
 
-    CUDA::ThreadContext threadContext{{}};
+    CUDAPlugin::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(inputBufferSize);
     CUDA::Allocation inBeginAlloc = threadContext.stream().malloc(constantTensorSize);
     CUDA::Allocation inEndAlloc = threadContext.stream().malloc(constantTensorSize);
@@ -67,7 +67,7 @@ struct StridedSliceTest : testing::Test {
     CUDAPlugin::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        return registry.createOperation(CUDA::CreationContext{threadContext.device(), optimizeOption},
+        return registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
                                         create_node(),
                                         std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
                                         std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
@@ -77,7 +77,7 @@ struct StridedSliceTest : testing::Test {
 TEST_F(StridedSliceTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    InferenceEngine::gpu::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;

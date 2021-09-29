@@ -10,7 +10,7 @@
 
 namespace CUDAPlugin {
 
-MaxPoolOp::MaxPoolOp(const CUDA::CreationContext& context,
+MaxPoolOp::MaxPoolOp(const CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
