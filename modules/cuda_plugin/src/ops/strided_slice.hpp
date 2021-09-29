@@ -8,6 +8,7 @@
 #include <ngraph/op/strided_slice.hpp>
 
 #include "ngraph/slice_plan.hpp"
+#include "kernels/strided_slice.hpp"
 
 namespace CUDAPlugin {
 
@@ -49,15 +50,17 @@ private:
     std::vector<int64_t> getNodeConstantValues(const ngraph::Node* node) const;
 
 private:
-    std::vector<int64_t> src_matrix_sizes;
-    std::vector<int64_t> dst_matrix_sizes;
+    std::vector<int64_t> src_matrix_sizes_;
+    std::vector<int64_t> dst_matrix_sizes_;
 
-    ngraph::SlicePlan slice_plan;
+    ngraph::SlicePlan slice_plan_;
 
     unsigned max_threads_per_block_{0};
     unsigned blocks_number_{0};
     unsigned threads_per_block_{0};
     ngraph::element::Type_t element_type_;
+
+    std::optional<kernel::StridedSliceKernelOp> kernel_op_;
 };
 
 }  // namespace CUDAPlugin
