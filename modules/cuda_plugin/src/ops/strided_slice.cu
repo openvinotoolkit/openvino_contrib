@@ -276,7 +276,7 @@ void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& contex
                                            const std::vector<size_t>& matrixShapes,
                                            const std::vector<int64_t>& matrixSizes,
                                            const ngraph::AxisSet& reverseAxes,
-                                           InferenceEngine::gpu::DevicePointer<void*> buffer) const {
+                                           CUDA::DevicePointer<void*> buffer) const {
     for (auto axisIt = reverseAxes.rbegin(); axisIt != reverseAxes.rend(); ++axisIt) {
         const auto chunksNumber =
             *axisIt < matrixSizes.size() - 1 ? matrixSizes[*axisIt] / matrixSizes[*axisIt + 1] : matrixSizes[*axisIt];
@@ -298,8 +298,7 @@ void StridedSliceOp::callReverseAxesKernel(const InferenceRequestContext& contex
     }
 }
 
-void StridedSliceOp::uploadDataToWorkbuffer(InferenceEngine::gpu::DevicePointer<void*> buffer,
-                                            const std::vector<int64_t>& data) {
+void StridedSliceOp::uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, const std::vector<int64_t>& data) {
     auto& stream = CUDA::DefaultStream::stream();
     stream.upload(buffer, data.data(), size_bytes(data));
 }

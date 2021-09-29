@@ -4,9 +4,8 @@
 
 #pragma once
 #include <cstddef>
+#include <cuda/device_pointers.hpp>
 #include <vector>
-
-#include <gpu/device_pointers.hpp>
 
 namespace CUDAPlugin {
 
@@ -23,10 +22,10 @@ struct WorkbufferRequest {
  * @brief Workbuffers - structure holding preallocated memory buffers
  */
 struct Workbuffers {
-  using immutable_buffer = InferenceEngine::gpu::DevicePointer<const void*>;
-  using mutable_buffer = InferenceEngine::gpu::DevicePointer<void*>;
-  std::vector<immutable_buffer> immutable_buffers;
-  std::vector<mutable_buffer> mutable_buffers;
+    using immutable_buffer = CUDA::DevicePointer<const void*>;
+    using mutable_buffer = CUDA::DevicePointer<void*>;
+    std::vector<immutable_buffer> immutable_buffers;
+    std::vector<mutable_buffer> mutable_buffers;
 };
 
 /**

@@ -264,8 +264,8 @@ const ParamsVec all_params = {smoke_01_params,
 
 template <typename ElementType, typename IndicesType>
 void test_one_shape(const GatherTestParams& params) {
-    using devptr_t = InferenceEngine::gpu::DevicePointer<void*>;
-    using cdevptr_t = InferenceEngine::gpu::DevicePointer<const void*>;
+    using devptr_t = CUDA::DevicePointer<void*>;
+    using cdevptr_t = CUDA::DevicePointer<const void*>;
     using microseconds = std::chrono::duration<double, std::micro>;
     using milliseconds = std::chrono::duration<double, std::milli>;
 
