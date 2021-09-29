@@ -15,7 +15,7 @@
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
-using devptr_t = DevicePointer<void*>;
+using devptr_t = CUDA::DevicePointer<void*>;
 
 /**
  * @brief Fill InferenceEngine blob with random values

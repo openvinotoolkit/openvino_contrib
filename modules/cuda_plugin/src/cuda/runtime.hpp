@@ -6,8 +6,8 @@
 
 #include <cuda_runtime.h>
 
+#include <cuda/device_pointers.hpp>
 #include <error.hpp>
-#include <gpu/device_pointers.hpp>
 
 #include "props.hpp"
 
@@ -167,8 +167,8 @@ public:
     Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
     void* get() const noexcept { return p.get(); }
     template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
-    operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
-        return InferenceEngine::gpu::DevicePointer<T*>{get()};
+    operator CUDA::DevicePointer<T*>() const noexcept {
+        return CUDA::DevicePointer<T*>{get()};
     }
 };
 
@@ -184,8 +184,8 @@ class DefaultAllocation {
   explicit DefaultAllocation(void* p) noexcept : p{p} {}
   void* get() const noexcept { return p.get(); }
   template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
-  operator InferenceEngine::gpu::DevicePointer<T*>() const noexcept {
-      return InferenceEngine::gpu::DevicePointer<T*>{get()};
+  operator CUDA::DevicePointer<T*>() const noexcept {
+      return CUDA::DevicePointer<T*>{get()};
   }
 };
 
@@ -208,20 +208,18 @@ class Stream : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream
 
 public:
     Allocation malloc(std::size_t size) const { return {mallocImpl(size), get()}; }
-    void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src, std::size_t count) const {
+    void upload(CUDA::DevicePointer<void*> dst, const void* src, std::size_t count) const {
         uploadImpl(dst.get(), src, count);
     }
-    void transfer(InferenceEngine::gpu::DevicePointer<void*> dst,
-                  InferenceEngine::gpu::DevicePointer<const void*> src,
-                  std::size_t count) const {
+    void transfer(CUDA::DevicePointer<void*> dst, CUDA::DevicePointer<const void*> src, std::size_t count) const {
         throwIfError(cudaMemcpyAsync(dst.get(), src.get(), count, cudaMemcpyDeviceToDevice, get()));
     }
     void upload(const Allocation& dst, const void* src, std::size_t count) const { uploadImpl(dst.get(), src, count); }
     void download(void* dst, const Allocation& src, std::size_t count) const { downloadImpl(dst, src.get(), count); }
-    void download(void* dst, InferenceEngine::gpu::DevicePointer<const void*> src, std::size_t count) const {
+    void download(void* dst, CUDA::DevicePointer<const void*> src, std::size_t count) const {
         downloadImpl(dst, src.get(), count);
     }
-    void download(void* dst, InferenceEngine::gpu::DevicePointer<void*> src, std::size_t count) const {
+    void download(void* dst, CUDA::DevicePointer<void*> src, std::size_t count) const {
         downloadImpl(dst, src.get(), count);
     }
     void synchronize() const { throwIfError(cudaStreamSynchronize(get())); }
@@ -255,7 +253,7 @@ class DefaultStream {
   auto malloc(std::size_t size) const {
     return DefaultAllocation{create<void*, cudaError_t>(cudaMalloc, size)};
   }
-  void upload(InferenceEngine::gpu::DevicePointer<void*> dst, const void* src,
+  void upload(CUDA::DevicePointer<void*> dst, const void* src,
               std::size_t count) const {
     uploadImpl(dst.get(), src, count);
   }
@@ -265,11 +263,11 @@ class DefaultStream {
   void download(void* dst, const Allocation& src, std::size_t count) const {
     downloadImpl(dst, src.get(), count);
   }
-  void download(void* dst, InferenceEngine::gpu::DevicePointer<const void*> src,
+  void download(void* dst, CUDA::DevicePointer<const void*> src,
                 std::size_t count) const {
     downloadImpl(dst, src.get(), count);
   }
-  void download(void* dst, InferenceEngine::gpu::DevicePointer<void*> src,
+  void download(void* dst, CUDA::DevicePointer<void*> src,
                 std::size_t count) const {
     downloadImpl(dst, src.get(), count);
   }

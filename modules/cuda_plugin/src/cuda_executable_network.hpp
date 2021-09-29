@@ -4,17 +4,16 @@
 
 #pragma once
 
-#include <ngraph/function.hpp>
 #include <cpp_interfaces/impl/ie_executable_network_thread_safe_default.hpp>
+#include <ngraph/function.hpp>
 
+#include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
 #include "cuda_infer_request.hpp"
-#include "cuda_async_infer_request.hpp"
 #include "cuda_op_buffers_extractor.hpp"
-
-#include "memory_manager/model/cuda_memory_model.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
 #include "memory_manager/cuda_memory_manager_pool.hpp"
+#include "memory_manager/model/cuda_memory_model.hpp"
 
 class ExecNetworkTest;
 
@@ -70,7 +69,7 @@ private:
     std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
     int GetCudaDeviceId() const noexcept;
     void InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
-    std::vector<InferenceEngine::gpu::DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
+    std::vector<CUDA::DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
     void BenchmarkOptimalNumberOfRequests();
     unsigned int RunBenchmarkFor(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);
 

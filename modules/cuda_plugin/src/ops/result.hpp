@@ -4,8 +4,8 @@
 
 #pragma once
 
+#include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
-#include <gpu/device_pointers.hpp>
 #include <ngraph/op/result.hpp>
 
 namespace CUDAPlugin {
