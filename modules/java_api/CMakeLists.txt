@@ -2,13 +2,6 @@
 
 project(inference_engine_java_api)
 
-# Find Java
-
-find_package(Java REQUIRED)
-include(UseJava)
-
-set(JAVA_AWT_INCLUDE_PATH NotNeeded)
-
 if (NOT CMAKE_CROSSCOMPILING)
     find_package(JNI REQUIRED)
 endif()
@@ -32,13 +25,11 @@ add_library(${PROJECT_NAME} SHARED ${sources})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${InferenceEngine_LIBRARIES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${JNI_INCLUDE_DIRS})
 
-# Build java part
+install(TARGETS ${PROJECT_NAME} EXPORT OpenVINOTargets
+        RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT java_api
+        ARCHIVE DESTINATION ${IE_CPACK_ARCHIVE_PATH} COMPONENT java_api
+        LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT java_api)
 
-file(GLOB_RECURSE java_source ${CMAKE_CURRENT_SOURCE_DIR}/org/intel/openvino/*.java)
-add_jar(inference_engine_jar ${java_source}
-        OUTPUT_NAME ${PROJECT_NAME}
-        OUTPUT_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-
-if(ENABLE_SAMPLES)
-    add_subdirectory(samples)
-endif()
+# if(ENABLE_SAMPLES)
+#     add_subdirectory(samples)
+# endif()

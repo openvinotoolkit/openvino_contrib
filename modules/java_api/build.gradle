@@ -17,12 +17,34 @@ allprojects {
     apply plugin: "com.jfrog.artifactory"
 }
 
+def native_resources = [
+    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64",  // UNIX
+    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release",  // Windows
+    System.getenv('TBB_DIR') + "/../lib/",
+]
+
+def resources_list = ""
+native_resources.each {
+    def tree = fileTree(it) {
+        include '*'
+    }
+    tree.visit { FileVisitDetails details ->
+        if (!details.file.isDirectory()) {
+            resources_list += details.file.name + "\n"
+        }
+    }
+}
+
+file('native').mkdirs()
+file('native/resources_list.txt').text = "${resources_list}"
+
 sourceSets {
     main {
         java {
             srcDirs = ["org"]
         }
         resources {
+            srcDirs = native_resources
             srcDir 'native'
         }
     }
