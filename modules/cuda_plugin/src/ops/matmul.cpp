@@ -19,7 +19,7 @@
 namespace CUDAPlugin {
 
 template <typename TOperation>
-MatMulOp::MatMulOp(const CUDA::CreationContext& context,
+MatMulOp::MatMulOp(const CreationContext& context,
                    const TOperation& op,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
@@ -69,8 +69,14 @@ MatMulOp::MatMulOp(const CUDA::CreationContext& context,
     Ensures(ld_c_ != 0);
     Ensures(batch_count_ != 0);
 }
-template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const ngraph::op::MatMul&, IndexCollection&&, IndexCollection&&);
-template MatMulOp::MatMulOp(const CUDA::CreationContext& context, const nodes::FullyConnected&, IndexCollection&&, IndexCollection&&);
+template MatMulOp::MatMulOp(const CreationContext& context,
+                            const ngraph::op::MatMul&,
+                            IndexCollection&&,
+                            IndexCollection&&);
+template MatMulOp::MatMulOp(const CreationContext& context,
+                            const nodes::FullyConnected&,
+                            IndexCollection&&,
+                            IndexCollection&&);
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
     constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr {

@@ -6,7 +6,7 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <cuda/thread_context.hpp>
+#include <cuda_thread_context.hpp>
 #include <deque>
 #include <mutex>
 #include <queue>
@@ -22,7 +22,7 @@ public:
     using Task = std::function<void()>;
 
     CudaThreadPool(CUDA::Device d, unsigned _numThreads);
-    const CUDA::ThreadContext& GetThreadContext();
+    const ThreadContext& GetThreadContext();
     ~CudaThreadPool() override;
     void run(Task task) override;
 

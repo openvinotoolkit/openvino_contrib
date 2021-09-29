@@ -46,32 +46,27 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
 
     std::string name = _executableNetwork->newRequestName();
     _profilingTask = {
-      openvino::itt::handle(name + "_Preprocess"),
-      openvino::itt::handle(name + "_Postprocess"),
-      openvino::itt::handle(name + "_StartPipline"),
-      openvino::itt::handle(name + "_WaitPipline"),
+        openvino::itt::handle(name + "_Preprocess"),
+        openvino::itt::handle(name + "_Postprocess"),
+        openvino::itt::handle(name + "_StartPipline"),
+        openvino::itt::handle(name + "_WaitPipline"),
     };
 
     for (auto&& [inputName, userInputInfo] : _networkInputs) {
         const auto& inputDescr = userInputInfo->getTensorDesc();
-        auto userInputBlob = allocateBlob(inputDescr.getDims(), inputDescr.getPrecision(),
-                         inputDescr.getLayout());
+        auto userInputBlob = allocateBlob(inputDescr.getDims(), inputDescr.getPrecision(), inputDescr.getLayout());
         _inputs[inputName] = userInputBlob;
         const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
         if (inputDescr.getPrecision() != networkPrecision) {
-            _deviceInputs[inputName] = allocateBlob(
-                inputDescr.getDims(),
-                Precision::FP32,
-                TensorDesc::getLayoutByDims(inputDescr.getDims()));
+            _deviceInputs[inputName] =
+                allocateBlob(inputDescr.getDims(), Precision::FP32, TensorDesc::getLayoutByDims(inputDescr.getDims()));
         } else {
             _deviceInputs[inputName] = userInputBlob;
         }
         const auto& deviceInputDescr = _deviceInputs[inputName]->getTensorDesc();
         if (deviceInputDescr.getPrecision() != networkPrecision) {
-            network_input_blobs_[inputName] = allocateBlob(
-                inputDescr.getDims(),
-                networkPrecision,
-                TensorDesc::getLayoutByDims(inputDescr.getDims()));
+            network_input_blobs_[inputName] =
+                allocateBlob(inputDescr.getDims(), networkPrecision, TensorDesc::getLayoutByDims(inputDescr.getDims()));
         }
     }
     for (auto&& [outputName, userOutputInfo] : _networkOutputs) {
@@ -80,10 +75,8 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
         _outputs[outputName] = userOutputBlob;
         const auto networkPrecision = convertType(_executableNetwork->result(outputName).get_element_type());
         if (descr.getPrecision() != networkPrecision) {
-            network_output_blobs_[outputName] = allocateBlob(
-                descr.getDims(),
-                networkPrecision,
-                TensorDesc::getLayoutByDims(descr.getDims()));
+            network_output_blobs_[outputName] =
+                allocateBlob(descr.getDims(), networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
         } else {
             network_output_blobs_[outputName] = userOutputBlob;
         }
@@ -117,13 +110,12 @@ void CudaInferRequest::inferPreprocess() {
     profiler_.StopStage(Profiler::Preprocess);
 }
 
-void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
+void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
     try {
         OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::StartPipeline])
         infer_count_++;
         profiler_.StartStage();
-        memory_manager_proxy_ =
-                _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
+        memory_manager_proxy_ = _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
         auto& manager = memory_manager_proxy_->Get();
         InferenceRequestContext inferRequestContext{network_input_blobs_, network_output_blobs_, threadContext};
         auto& stream = threadContext.stream();
@@ -134,7 +126,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
             op->Execute(inferRequestContext, inputTensors, outputTensors, manager.workBuffers(*op));
         }
         profiler_.StopStage(Profiler::StartPipeline);
-    } catch(...) {
+    } catch (...) {
         // TODO:
         // Log error once logger is available
         memory_manager_proxy_.reset();
@@ -142,7 +134,7 @@ void CudaInferRequest::startPipeline(const CUDA::ThreadContext& threadContext) {
     }
 }
 
-void CudaInferRequest::waitPipeline(const CUDA::ThreadContext& threadContext) {
+void CudaInferRequest::waitPipeline(const ThreadContext& threadContext) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::WaitPipeline])
     cancellation_token_.Check();
     profiler_.StartStage();
@@ -176,39 +168,34 @@ void CudaInferRequest::Cancel() {
 }
 
 InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
-  InferenceEngineProfileInfo result {};
-  op.GetCategory().copy(result.exec_type, sizeof(result.exec_type)-1);
-  op.GetTypeName().copy(result.layer_type, sizeof(result.layer_type)-1);
-  result.execution_index = execution_index;
-  return result;
+    InferenceEngineProfileInfo result{};
+    op.GetCategory().copy(result.exec_type, sizeof(result.exec_type) - 1);
+    op.GetTypeName().copy(result.layer_type, sizeof(result.layer_type) - 1);
+    result.execution_index = execution_index;
+    return result;
 }
 
-InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const std::string& layer, const std::string_view& exec_type) {
-  InferenceEngineProfileInfo result {};
-  exec_type.copy(result.exec_type, sizeof(result.exec_type)-1);
-  layer.copy(result.layer_type, sizeof(result.layer_type)-1);
-  result.execution_index = 0;
-  return result;
+InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const std::string& layer,
+                                                            const std::string_view& exec_type) {
+    InferenceEngineProfileInfo result{};
+    exec_type.copy(result.exec_type, sizeof(result.exec_type) - 1);
+    layer.copy(result.layer_type, sizeof(result.layer_type) - 1);
+    result.execution_index = 0;
+    return result;
 }
 
-constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long realTime_uSec, long long cpuTime_uSec = 0) noexcept {
-  return InferenceEngineProfileInfo {
-    InferenceEngineProfileInfo::EXECUTED,
-    realTime_uSec,
-    cpuTime_uSec
-  };
+constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long realTime_uSec,
+                                                                      long long cpuTime_uSec = 0) noexcept {
+    return InferenceEngineProfileInfo{InferenceEngineProfileInfo::EXECUTED, realTime_uSec, cpuTime_uSec};
 }
 
 Profiler::PerformaceCounters CudaInferRequest::GetPerformanceCounts() const { return profiler_.GetPerformanceCounts(); }
 
-std::shared_ptr<ExecutableNetwork>
-CudaInferRequest::GetExecNetwork() {
-    return _executableNetwork;
-}
+std::shared_ptr<ExecutableNetwork> CudaInferRequest::GetExecNetwork() { return _executableNetwork; }
 
-InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
-        const std::vector<std::size_t>& shape, InferenceEngine::Precision precision,
-        InferenceEngine::Layout layout) {
+InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(const std::vector<std::size_t>& shape,
+                                                          InferenceEngine::Precision precision,
+                                                          InferenceEngine::Layout layout) {
     Blob::Ptr blob;
     switch (precision) {
     case Precision::FP16:
@@ -241,74 +228,68 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(
     return blob;
 }
 
-InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(
-        ngraph::element::Type_t type) {
+InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(ngraph::element::Type_t type) {
     using InferenceEngine::Precision;
     using ngraph::element::Type_t;
     switch (type) {
-    case Type_t::f16:
-        return Precision::FP16;
-    case Type_t::f32:
-        return Precision::FP32;
-    case Type_t::u8:
-        return Precision::U8;
-    case Type_t::i16:
-        return Precision::I16;
-    case Type_t::i32:
-        return Precision::I32;
-    case Type_t::boolean:
-        return Precision::BOOL;
-    default:
-        throwIEException(
-            fmt::format("Cuda Plugin: Unsupported Input/Output type {}", type));
+        case Type_t::f16:
+            return Precision::FP16;
+        case Type_t::f32:
+            return Precision::FP32;
+        case Type_t::u8:
+            return Precision::U8;
+        case Type_t::i16:
+            return Precision::I16;
+        case Type_t::i32:
+            return Precision::I32;
+        case Type_t::boolean:
+            return Precision::BOOL;
+        default:
+            throwIEException(fmt::format("Cuda Plugin: Unsupported Input/Output type {}", type));
     }
 }
 
-template<typename SrcT, typename DstT>
+template <typename SrcT, typename DstT>
 void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
     std::copy_n(InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const SrcT*>(),
                 src->size(),
                 InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<DstT*>());
 }
 
-template<>
+template <>
 void CudaInferRequest::convertPrecision<__half, float>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
-    std::transform(
-        begin,
-        begin + src->size(),
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<float*>(),
-        __half2float);
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<float*>(),
+                   __half2float);
 }
 
-template<>
+template <>
 void CudaInferRequest::convertPrecision<float, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const float*>();
-    std::transform(
-        begin,
-        begin + src->size(),
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
-        __float2half);
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+                   __float2half);
 }
 
-template<>
+template <>
 void CudaInferRequest::convertPrecision<std::uint8_t, __half>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const std::uint8_t*>();
-    std::transform(
-        begin,
-        begin + src->size(),
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
-        [](auto x) { return __float2half(static_cast<float>(x)); });
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<__half*>(),
+                   [](auto x) { return __float2half(static_cast<float>(x)); });
 }
 
-template<>
+template <>
 void CudaInferRequest::convertPrecision<__half, std::uint8_t>(const Blob::Ptr& src, const Blob::Ptr& dst) {
     auto begin = InferenceEngine::as<InferenceEngine::MemoryBlob>(src)->rmap().as<const __half*>();
-    std::transform(
-        begin,
-        begin + src->size(),
-        InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<std::uint8_t*>(),
-        [](auto x) { return static_cast<std::uint8_t>(static_cast<float>(x)); });
+    std::transform(begin,
+                   begin + src->size(),
+                   InferenceEngine::as<InferenceEngine::MemoryBlob>(dst)->wmap().as<std::uint8_t*>(),
+                   [](auto x) { return static_cast<std::uint8_t>(static_cast<float>(x)); });
 }
 
 void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& dst) {
@@ -316,19 +297,18 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
         return;
     }
     switch (src->getTensorDesc().getPrecision()) {
-        case Precision::U8 : {
+        case Precision::U8: {
             switch (dst->getTensorDesc().getPrecision()) {
                 case Precision::FP16:
-                  convertPrecision<std::uint8_t, __half>(src, dst);
-                  break;
+                    convertPrecision<std::uint8_t, __half>(src, dst);
+                    break;
                 case Precision::FP32:
                     convertPrecision<std::uint8_t, float>(src, dst);
                     break;
-                default : {
-                    throwIEException(fmt::format(
-                        "Unsupported precision conversion from {} to {}",
-                        src->getTensorDesc().getPrecision(),
-                        dst->getTensorDesc().getPrecision()));
+                default: {
+                    throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
+                                                 src->getTensorDesc().getPrecision(),
+                                                 dst->getTensorDesc().getPrecision()));
                 }
             }
         } break;
@@ -341,12 +321,11 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     convertPrecision<__half, float>(src, dst);
                     break;
                 default:
-                    throwIEException(fmt::format(
-                        "Unsupported precision conversion from {} to {}",
-                        src->getTensorDesc().getPrecision(),
-                        dst->getTensorDesc().getPrecision()));
-                }
-                break;
+                    throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
+                                                 src->getTensorDesc().getPrecision(),
+                                                 dst->getTensorDesc().getPrecision()));
+            }
+            break;
         case Precision::FP32: {
             switch (dst->getTensorDesc().getPrecision()) {
                 case Precision::U8:
@@ -355,11 +334,10 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                 case Precision::FP16:
                     convertPrecision<float, __half>(src, dst);
                     break;
-                default : {
-                    throwIEException(fmt::format(
-                        "Unsupported precision conversion from {} to {}",
-                        src->getTensorDesc().getPrecision(),
-                        dst->getTensorDesc().getPrecision()));
+                default: {
+                    throwIEException(fmt::format("Unsupported precision conversion from {} to {}",
+                                                 src->getTensorDesc().getPrecision(),
+                                                 dst->getTensorDesc().getPrecision()));
                 }
             }
         } break;
@@ -382,4 +360,4 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
     }
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

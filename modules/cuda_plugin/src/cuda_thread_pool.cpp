@@ -12,24 +12,21 @@
 
 namespace CUDAPlugin {
 
-static thread_local CUDA::ThreadContext* contextPtr = nullptr;
+static thread_local ThreadContext* contextPtr = nullptr;
 
 CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
     try {
-        CudaLatch latch {_numThreads};
+        CudaLatch latch{_numThreads};
         for (int i = 0; i < _numThreads; ++i) {
             threads_.emplace_back([this, d, &latch] {
-                CUDA::ThreadContext context{d};
+                ThreadContext context{d};
                 contextPtr = &context;
                 latch.count_down();
                 while (true) {
                     Task task;
                     {
                         std::unique_lock<std::mutex> lock(mtx_);
-                        queue_cond_var_.wait(lock,
-                        [&] {
-                            return !task_queue_.empty() || is_stopped_;
-                        });
+                        queue_cond_var_.wait(lock, [&] { return !task_queue_.empty() || is_stopped_; });
                         if (is_stopped_) {
                             break;
                         }
@@ -51,9 +48,7 @@ CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
     }
 }
 
-CudaThreadPool::~CudaThreadPool() {
-    stopThreadPool();
-}
+CudaThreadPool::~CudaThreadPool() { stopThreadPool(); }
 
 void CudaThreadPool::stopThreadPool() noexcept {
     {
@@ -64,7 +59,7 @@ void CudaThreadPool::stopThreadPool() noexcept {
     threads_.clear();
 }
 
-const CUDA::ThreadContext& CudaThreadPool::GetThreadContext() {
+const ThreadContext& CudaThreadPool::GetThreadContext() {
     if (!contextPtr) {
         throwIEException(
             "Call GetThreadContext() not from ThreadPool owned thread is not "

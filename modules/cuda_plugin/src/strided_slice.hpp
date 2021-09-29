@@ -14,7 +14,7 @@ namespace CUDAPlugin {
 class StridedSliceOp : public OperationBase {
 public:
     using NodeOp = ngraph::op::v1::StridedSlice;
-    StridedSliceOp(const CUDA::CreationContext& context,
+    StridedSliceOp(const CreationContext& context,
                    const NodeOp& stridedSliceOp,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);

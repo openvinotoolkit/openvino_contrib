@@ -10,7 +10,7 @@ namespace CUDAPlugin {
 
 class GatherOp : public OperationBase {
 public:
-    GatherOp(const CUDA::CreationContext& context,
+    GatherOp(const CreationContext& context,
              const ngraph::Node& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
@@ -41,4 +41,4 @@ private:
     unsigned out_batch_stride_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

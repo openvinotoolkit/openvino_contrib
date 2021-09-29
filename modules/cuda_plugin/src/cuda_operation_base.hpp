@@ -6,9 +6,9 @@
 
 #include <ie_layouts.h>
 
-#include <cuda/creation_context.hpp>
+#include <cuda_creation_context.hpp>
 #include <cuda/device_pointers.hpp>
-#include <gpu/gpu_context_api_cuda.hpp>
+#include <cuda_inference_request_context.hpp>
 #include <memory>
 #include <memory_manager/model/cuda_memory_model.hpp>
 #include <string>
@@ -24,8 +24,6 @@ class Node;
 }
 
 namespace CUDAPlugin {
-
-using InferenceEngine::gpu::InferenceRequestContext;
 
 class IOperationExec {
 public:
@@ -67,7 +65,7 @@ public:
     using Ptr = std::shared_ptr<OperationBase>;
     using WeakPtr = std::weak_ptr<OperationBase>;
     using IndexCollection = std::vector<TensorID>;
-    OperationBase(const CUDA::CreationContext& context,
+    OperationBase(const CreationContext& context,
                   const ngraph::Node& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
@@ -78,7 +76,7 @@ public:
     void InitSharedImmutableWorkbuffers(const Buffers&) override {}
 
 protected:
-    OperationBase(const CUDA::CreationContext& context,
+    OperationBase(const CreationContext& context,
                   const std::shared_ptr<ngraph::Node>& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds)

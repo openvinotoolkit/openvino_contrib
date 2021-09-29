@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <utility>
+#include "cuda_operation_base.hpp"
 
 #include <ngraph/node.hpp>
-
-#include "cuda_operation_base.hpp"
+#include <utility>
 
 namespace CUDAPlugin {
 
-OperationBase::OperationBase(const CUDA::CreationContext& /*context*/,
+OperationBase::OperationBase(const CreationContext& /*context*/,
                              const ngraph::Node& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
@@ -19,4 +18,4 @@ OperationBase::OperationBase(const CUDA::CreationContext& /*context*/,
       input_ids_{move(inputIds)},
       output_ids_{move(outputIds)} {}
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -10,10 +10,10 @@ namespace CUDAPlugin {
 
 class SaxpyOp : public OperationBase {
 public:
-    SaxpyOp(const CUDA::CreationContext& context,
-              const std::shared_ptr<ngraph::Node>& node,
-              IndexCollection&& inputIds,
-              IndexCollection&& outputIds);
+    SaxpyOp(const CreationContext& context,
+            const std::shared_ptr<ngraph::Node>& node,
+            IndexCollection&& inputIds,
+            IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -26,4 +26,4 @@ private:
     dim3 block_dim_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

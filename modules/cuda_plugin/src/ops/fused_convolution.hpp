@@ -15,7 +15,7 @@ namespace CUDAPlugin {
 class FusedConvolutionOp : public OperationCuDnn {
 public:
     using NodeOp = CUDAPlugin::nodes::FusedConvolution;
-    FusedConvolutionOp(const CUDA::CreationContext& context,
+    FusedConvolutionOp(const CreationContext& context,
                        const NodeOp& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds);
@@ -32,7 +32,7 @@ public:
     using ArgIndices = Convolution::Details::FusedConvolutionIndices;
 
 private:
-    void CreateImpl(const CUDA::CreationContext& context, const NodeOp& node);
+    void CreateImpl(const CreationContext& context, const NodeOp& node);
     std::unique_ptr<IOperationExec> impl_;
 };
 

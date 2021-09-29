@@ -2,19 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <gsl/gsl_assert>
-#include <details/ie_exception.hpp>
-
 #include "convolution_cudnn.hpp"
-#include "convolution.hpp"
-#include "constant_factory.hpp"
+
 #include <cudnn.h>
+
+#include <details/ie_exception.hpp>
+#include <gsl/gsl_assert>
+
+#include "constant_factory.hpp"
+#include "convolution.hpp"
 
 namespace CUDAPlugin {
 
-ConvolutionCuDnn::ConvolutionCuDnn(const CUDA::CreationContext& context, const Convolution::Details::ConvolutionParams& params)
-    : descs_{ context, params }  {
-}
+ConvolutionCuDnn::ConvolutionCuDnn(const CreationContext& context,
+                                   const Convolution::Details::ConvolutionParams& params)
+    : descs_{context, params} {}
 
 void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                Inputs inputs,
@@ -22,29 +24,28 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
-    void * workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
-    cudnnStatus_t status = ::cudnnConvolutionForward(
-                                context.getThreadContext().dnnHandle().get(),
-                                &NumericConst<constants::one>(descs_.ElementType()),
-                                descs_.Input().get(),
-                                inputs[ConvolutionOp::ArgIndices::input].get(),
-                                descs_.Filter().get(),
-                                inputs[ConvolutionOp::ArgIndices::filter].get(),
-                                descs_.Conv().get(),
-                                descs_.Algo().algo,
-                                workbuffer,
-                                descs_.Algo().memory,
-                                &NumericConst<constants::zero>(descs_.ElementType()),
-                                descs_.Output().get(),
-                                outputs[ConvolutionOp::ArgIndices::output].get());
+    void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
+    cudnnStatus_t status = ::cudnnConvolutionForward(context.getThreadContext().dnnHandle().get(),
+                                                     &NumericConst<constants::one>(descs_.ElementType()),
+                                                     descs_.Input().get(),
+                                                     inputs[ConvolutionOp::ArgIndices::input].get(),
+                                                     descs_.Filter().get(),
+                                                     inputs[ConvolutionOp::ArgIndices::filter].get(),
+                                                     descs_.Conv().get(),
+                                                     descs_.Algo().algo,
+                                                     workbuffer,
+                                                     descs_.Algo().memory,
+                                                     &NumericConst<constants::zero>(descs_.ElementType()),
+                                                     descs_.Output().get(),
+                                                     outputs[ConvolutionOp::ArgIndices::output].get());
     throwIfError(status);
 }
 
 WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
     if (descs_.Algo().memory != 0)
-      return {{}, {descs_.Algo().memory}};
+        return {{}, {descs_.Algo().memory}};
     else
-      return {{}, {}};
+        return {{}, {}};
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -17,7 +17,7 @@ class MatMulOp : public OperationCuBlas {
 public:
     using NodeOp = ngraph::op::MatMul;
     template <typename TOperation>
-    MatMulOp(const CUDA::CreationContext& context,
+    MatMulOp(const CreationContext& context,
              const TOperation& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
