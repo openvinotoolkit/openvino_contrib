@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "parameter.hpp"
+
 #include <cuda_runtime.h>
+
+#include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <cuda_operation_registry.hpp>
-
-#include "parameter.hpp"
 
 namespace CUDAPlugin {
 
-ParameterOp::ParameterOp(const CUDA::CreationContext& context,
+ParameterOp::ParameterOp(const CreationContext& context,
                          const ngraph::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
@@ -31,9 +32,7 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
     context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->byteSize());
 }
 
-std::string ParameterOp::GetInputTensorName(const ngraph::Node& node) {
-    return node.get_friendly_name();
-}
+std::string ParameterOp::GetInputTensorName(const ngraph::Node& node) { return node.get_friendly_name(); }
 
 OPERATION_REGISTER(ParameterOp, Parameter);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

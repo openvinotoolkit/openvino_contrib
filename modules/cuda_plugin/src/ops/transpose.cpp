@@ -19,7 +19,7 @@ using namespace std::string_literals;
 
 namespace CUDAPlugin {
 
-TransposeOp::TransposeOp(const CUDA::CreationContext& context,
+TransposeOp::TransposeOp(const CreationContext& context,
                          const std::shared_ptr<ngraph::Node>& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)

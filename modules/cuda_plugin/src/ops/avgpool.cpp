@@ -10,7 +10,7 @@
 
 namespace CUDAPlugin {
 
-AvgPoolOp::AvgPoolOp(const CUDA::CreationContext& context,
+AvgPoolOp::AvgPoolOp(const CreationContext& context,
                      const std::shared_ptr<ngraph::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)

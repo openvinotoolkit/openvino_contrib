@@ -18,7 +18,7 @@ namespace CUDAPlugin {
 class ConvolutionBackpropDataOp : public OperationCuDnn {
 public:
     using NodeOp = ngraph::op::v1::ConvolutionBackpropData;
-    ConvolutionBackpropDataOp(const CUDA::CreationContext& context,
+    ConvolutionBackpropDataOp(const CreationContext& context,
                               const NodeOp& node,
                               IndexCollection&& inputIds,
                               IndexCollection&& outputIds);

@@ -16,26 +16,24 @@ namespace {
 
 template <typename T, std::size_t N>
 std::array<T, N> toArray(const ngraph::Shape& shape) {
-  std::array<T, N> a;
-  a.fill(static_cast<T>(1));
-  if (shape.empty()) return a;
-  std::copy(shape.rbegin(), shape.rend(), a.rbegin());
-  return a;
+    std::array<T, N> a;
+    a.fill(static_cast<T>(1));
+    if (shape.empty()) return a;
+    std::copy(shape.rbegin(), shape.rend(), a.rbegin());
+    return a;
 }
 
 using ShapeArray = std::array<int, CuDnnTensorOpBase::max_supported_shape_size>;
 
-CUDA::DnnTensorDescriptor desc(
-    const cudnnDataType_t type, ShapeArray& dims) {
-  ShapeArray strides;
-  strides.back() = 1;
-  for (int i = dims.size() - 1; i > 0; i--)
-    strides[i - 1] = strides[i] * dims[i];
-  return { type, static_cast<int>(dims.size()), dims.data(), strides.data() };
+CUDA::DnnTensorDescriptor desc(const cudnnDataType_t type, ShapeArray& dims) {
+    ShapeArray strides;
+    strides.back() = 1;
+    for (int i = dims.size() - 1; i > 0; i--) strides[i - 1] = strides[i] * dims[i];
+    return {type, static_cast<int>(dims.size()), dims.data(), strides.data()};
 }
 }  // namespace
 
-CuDnnTensorOpBase::CuDnnTensorOpBase(const CUDA::CreationContext& context,
+CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
                                      const std::shared_ptr<ngraph::Node>& node,
                                      IndexCollection&& inputIds,
                                      IndexCollection&& outputIds,
@@ -144,8 +142,7 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
 CuDnnTensorOpBase::IoParams::IoParams(const ngraph::Node& node, const Type& io_type, int index)
     : type_(convertDataType<cudnnDataType_t>(io_type == Type::INPUT ? node.get_input_element_type(index)
                                                                     : node.get_output_element_type(index))),
-      shape_(io_type == Type::INPUT ? node.get_input_shape(index)
-                                    : node.get_output_shape(index)),
+      shape_(io_type == Type::INPUT ? node.get_input_shape(index) : node.get_output_shape(index)),
       array_(toArray<int, max_supported_shape_size>(shape_)),
       desc_(desc(type_, array_)) {}
 

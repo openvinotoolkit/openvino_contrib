@@ -12,7 +12,7 @@
 
 namespace CUDAPlugin {
 
-SaxpyOp::SaxpyOp(const CUDA::CreationContext& context,
+SaxpyOp::SaxpyOp(const CreationContext& context,
                  const std::shared_ptr<ngraph::Node>& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)

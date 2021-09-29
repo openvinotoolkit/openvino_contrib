@@ -12,7 +12,7 @@
 
 namespace CUDAPlugin {
 
-TanhOp::TanhOp(const CUDA::CreationContext& context,
+TanhOp::TanhOp(const CreationContext& context,
                const std::shared_ptr<ngraph::Node>& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds)

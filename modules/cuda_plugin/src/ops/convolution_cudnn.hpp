@@ -17,7 +17,7 @@ namespace CUDAPlugin {
  */
 class ConvolutionCuDnn : public IOperationExec {
 public:
-    ConvolutionCuDnn(const CUDA::CreationContext& context, const Convolution::Details::ConvolutionParams& params);
+    ConvolutionCuDnn(const CreationContext& context, const Convolution::Details::ConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
