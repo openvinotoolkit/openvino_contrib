@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 class FusedConvolutionBackpropDataOp : public OperationCuDnn {
 public:
     using NodeOp = CUDAPlugin::nodes::FusedConvBackpropData;
-    FusedConvolutionBackpropDataOp(const CUDA::CreationContext& context,
+    FusedConvolutionBackpropDataOp(const CreationContext& context,
                                    const NodeOp& node,
                                    IndexCollection&& inputIds,
                                    IndexCollection&& outputIds);

@@ -6,11 +6,11 @@
 
 #include <cuda_config.hpp>
 
-#include "blas.hpp"
-#include "dnn.hpp"
-#include "tensor.hpp"
+#include "cuda/blas.hpp"
+#include "cuda/dnn.hpp"
+#include "cuda/tensor.hpp"
 
-namespace CUDA {
+namespace CUDAPlugin {
 
 class CreationContext {
   CUDA::Device device_;
@@ -24,4 +24,4 @@ class CreationContext {
   bool optimizeOption() const noexcept { return optimize_option_; }
 };
 
-}  // namespace CUDA
+}  // namespace CUDAPlugin

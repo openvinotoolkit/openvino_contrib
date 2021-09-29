@@ -35,7 +35,7 @@ struct ReluTest : testing::Test {
     using ElementType = float;
     static constexpr int length = 5;
     static constexpr size_t size = length * sizeof(ElementType);
-    CUDA::ThreadContext threadContext{{}};
+    CUDAPlugin::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
@@ -48,7 +48,7 @@ struct ReluTest : testing::Test {
         auto node = std::make_shared<ngraph::op::v0::Relu>(param->output(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         TASSERT_TRUE(registry.hasOperation(node));
-        auto op = registry.createOperation(CUDA::CreationContext{device, optimizeOption},
+        auto op = registry.createOperation(CUDAPlugin::CreationContext{device, optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0u}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -58,7 +58,7 @@ struct ReluTest : testing::Test {
 };
 
 TEST_F(ReluTest, canExecuteSync) {
-    InferenceEngine::gpu::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

@@ -9,9 +9,11 @@
 namespace CUDAPlugin {
 
 class MultiplyOp : public CuDnnTensorOpBase {
-  public:
-    MultiplyOp(const CUDA::CreationContext& context, const std::shared_ptr<ngraph::Node>& node,
-               IndexCollection&& inputIds, IndexCollection&& outputIds);
+public:
+    MultiplyOp(const CreationContext& context,
+               const std::shared_ptr<ngraph::Node>& node,
+               IndexCollection&& inputIds,
+               IndexCollection&& outputIds);
 };
 
 }  // namespace CUDAPlugin

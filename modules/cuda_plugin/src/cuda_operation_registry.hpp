@@ -15,7 +15,7 @@ namespace details {
 
 template <typename TOperation>
 inline constexpr bool isConstructibleWithNodeRef = std::is_constructible_v<TOperation,
-                                                                           const CUDA::CreationContext&,
+                                                                           const CreationContext&,
                                                                            const ngraph::Node&,
                                                                            OperationBase::IndexCollection&&,
                                                                            OperationBase::IndexCollection&&>;
@@ -30,7 +30,7 @@ template <typename TOperation>
 inline constexpr bool isConstructibleWithNodeOpRef = [] {
     if constexpr (hasNodeOp<TOperation>) {
         return std::is_constructible_v<TOperation,
-                                       const CUDA::CreationContext&,
+                                       const CreationContext&,
                                        const typename TOperation::NodeOp&,
                                        OperationBase::IndexCollection&&,
                                        OperationBase::IndexCollection&&>;
@@ -38,13 +38,13 @@ inline constexpr bool isConstructibleWithNodeOpRef = [] {
     return false;
 }();
 
-} // namespace details
+}  // namespace details
 
 class OperationRegistry final {
  public:
   using IndexCollection = OperationBase::IndexCollection;
   using OperationBuilder = std::function<OperationBase::Ptr(
-          const CUDA::CreationContext&, const std::shared_ptr<ngraph::Node>&,
+          const CreationContext&, const std::shared_ptr<ngraph::Node>&,
           IndexCollection&&, IndexCollection&&)>;
   template <typename TOperation>
   class Register {
@@ -54,7 +54,7 @@ class OperationRegistry final {
     explicit Register(const std::string& opName) {
         getInstance().registerOp(
             opName,
-            [](const CUDA::CreationContext& context,
+            [](const CreationContext& context,
                const std::shared_ptr<ngraph::Node>& node,
                IndexCollection&& inputs,
                IndexCollection&& outputs) {
@@ -76,12 +76,12 @@ class OperationRegistry final {
 
   bool hasOperation(const std::shared_ptr<ngraph::Node>& node);
 
-  OperationBase::Ptr createOperation(const CUDA::CreationContext& context,
+  OperationBase::Ptr createOperation(const CreationContext& context,
                                      const std::shared_ptr<ngraph::Node>& node,
                                      IndexCollection&& inIds,
                                      IndexCollection&& outIds);
 
-  OperationBase::Ptr createOperation(const CUDA::CreationContext& context,
+  OperationBase::Ptr createOperation(const CreationContext& context,
                                      const std::shared_ptr<ngraph::Node>& node,
                                      gsl::span<const TensorID> inIds,
                                      gsl::span<const TensorID> outIds);
@@ -107,6 +107,5 @@ class OperationRegistry final {
  *           where NodeOp is a type's inner alias for a concrete OpenVINO Node class
  * @param name - a textual operator's name
  */
-#define OPERATION_REGISTER(type, name)                                    \
-  [[maybe_unused]] ::CUDAPlugin::OperationRegistry::Register<type> \
-      op_register_##name{#name};
+#define OPERATION_REGISTER(type, name) \
+    [[maybe_unused]] ::CUDAPlugin::OperationRegistry::Register<type> op_register_##name{#name};

@@ -11,18 +11,18 @@
 namespace CUDAPlugin {
 
 class AvgPoolOp : public OperationCuDnn {
- public:
-  explicit AvgPoolOp(const CUDA::CreationContext& context,
-                     const std::shared_ptr<ngraph::Node>& node,
-                     IndexCollection&& inputIds,
-                     IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) const override;
+public:
+    explicit AvgPoolOp(const CreationContext& context,
+                       const std::shared_ptr<ngraph::Node>& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
 
-  private:
-  PoolingImpl impl_;
+private:
+    PoolingImpl impl_;
 };
 
 }  // namespace CUDAPlugin

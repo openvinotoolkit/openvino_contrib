@@ -164,7 +164,7 @@ auto size_bytes(const std::vector<T>& v) noexcept {
 
 }  // namespace
 
-StridedSliceOp::StridedSliceOp(const CUDA::CreationContext& context,
+StridedSliceOp::StridedSliceOp(const CreationContext& context,
                                const NodeOp& stridedSliceOp,
                                IndexCollection&& inputIds,
                                IndexCollection&& outputIds)
