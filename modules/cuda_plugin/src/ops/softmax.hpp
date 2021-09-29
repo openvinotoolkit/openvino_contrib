@@ -5,12 +5,13 @@
 #pragma once
 
 #include <cudnn_ops_infer.h>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/op/softmax.hpp>
+
+#include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
-#include <gpu/device_pointers.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
+#include <ngraph/op/softmax.hpp>
+#include <ngraph/shape.hpp>
+#include <ngraph/type/element_type.hpp>
 
 namespace CUDAPlugin {
 

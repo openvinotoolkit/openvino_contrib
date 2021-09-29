@@ -240,12 +240,11 @@ bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
     return true;
 }
 
-void ConvolutionDescriptorsCuDnn::FindAlgo(
-    const CUDA::DnnHandle& dnnHandle,
-    InferenceEngine::gpu::DevicePointer<const void*> inPtr,
-    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-    InferenceEngine::gpu::DevicePointer<void*> outPtr,
-    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace) {
+void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle,
+                                           CUDA::DevicePointer<const void*> inPtr,
+                                           CUDA::DevicePointer<const void*> filterPtr,
+                                           CUDA::DevicePointer<void*> outPtr,
+                                           CUDA::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
             if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_HALF))
@@ -261,13 +260,12 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(
     throwIEException("cuDNN: Unsupported convolution");
 }
 
-bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(
-    const CUDA::DnnHandle& dnnHandle,
-    InferenceEngine::gpu::DevicePointer<const void*> inPtr,
-    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-    InferenceEngine::gpu::DevicePointer<void*> outPtr,
-    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
-    cudnnDataType_t convDataType) {
+bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                                          CUDA::DevicePointer<const void*> inPtr,
+                                                          CUDA::DevicePointer<const void*> filterPtr,
+                                                          CUDA::DevicePointer<void*> outPtr,
+                                                          CUDA::DeviceBuffer<std::byte> workspace,
+                                                          cudnnDataType_t convDataType) {
     cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
     conv_ = params_.MakeConvolutionDescriptor(convDataType);
     const int requestedAlgoCount = 1;
@@ -514,12 +512,11 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(
     return true;
 }
 
-void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(
-    const CUDA::DnnHandle& dnnHandle,
-    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-    InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
-    InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace) {
+void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle,
+                                                      CUDA::DevicePointer<const void*> filterPtr,
+                                                      CUDA::DevicePointer<const void*> dInPtr,
+                                                      CUDA::DevicePointer<void*> dOutPtr,
+                                                      CUDA::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
             if (FindAlgoForConvDataType(dnnHandle, filterPtr, dInPtr, dOutPtr, workspace, CUDNN_DATA_HALF))
@@ -535,13 +532,12 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(
     throwIEException("cuDNN: Unsupported convolution");
 }
 
-bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(
-    const CUDA::DnnHandle& dnnHandle,
-    InferenceEngine::gpu::DevicePointer<const void*> filterPtr,
-    InferenceEngine::gpu::DevicePointer<const void*> dInPtr,
-    InferenceEngine::gpu::DevicePointer<void*> dOutPtr,
-    InferenceEngine::gpu::DeviceBuffer<std::byte> workspace,
-    cudnnDataType_t convDataType) {
+bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
+                                                                     CUDA::DevicePointer<const void*> filterPtr,
+                                                                     CUDA::DevicePointer<const void*> dInPtr,
+                                                                     CUDA::DevicePointer<void*> dOutPtr,
+                                                                     CUDA::DeviceBuffer<std::byte> workspace,
+                                                                     cudnnDataType_t convDataType) {
     cudnnStatus_t status = CUDNN_STATUS_NOT_SUPPORTED;
     conv_ = params_.MakeConvolutionDescriptor(convDataType);
     const int requestedAlgoCount = 1;

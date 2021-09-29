@@ -245,9 +245,8 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(const int numInfers,
     return fps;
 }
 
-std::vector<InferenceEngine::gpu::DevicePointer<void*>> ExecutableNetwork::getSharedWorkbuffers(
-    const IOperationExec& operation) {
-    std::vector<InferenceEngine::gpu::DevicePointer<void*>> result{};
+std::vector<CUDA::DevicePointer<void*>> ExecutableNetwork::getSharedWorkbuffers(const IOperationExec& operation) {
+    std::vector<CUDA::DevicePointer<void*>> result{};
     const auto& ids = operation.GetWorkbufferIds();
     for (const auto immutable_id : ids.immutableIds) {
         void* ptr = immutable_workbuffers_->deviceBufferPtr(immutable_id);

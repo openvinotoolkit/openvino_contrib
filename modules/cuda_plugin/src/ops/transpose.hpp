@@ -54,7 +54,7 @@ private:
 
     template <typename T>
     static std::vector<int> downloadPermutationVector(const InferenceRequestContext& context,
-                                                      InferenceEngine::gpu::DevicePointer<const void*>,
+                                                      CUDA::DevicePointer<const void*>,
                                                       unsigned numDims);
 
 private:

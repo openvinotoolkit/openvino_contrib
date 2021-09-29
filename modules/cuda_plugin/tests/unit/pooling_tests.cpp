@@ -129,8 +129,8 @@ struct PoolingTest : testing::Test {
   const size_t spatial_stride{2};
   CUDA::ThreadContext threadContext{{}};
   std::vector<CUDA::Allocation> allocs;
-  std::vector<DevicePointer<const void*>> inputs;
-  std::vector<DevicePointer<void*>> outputs;
+  std::vector<CUDA::DevicePointer<const void*>> inputs;
+  std::vector<CUDA::DevicePointer<void*>> outputs;
   Blob::Ptr blob;
   InferenceEngine::BlobMap blobs;
   InferenceEngine::BlobMap empty;
