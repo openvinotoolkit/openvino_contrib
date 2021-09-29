@@ -16,7 +16,7 @@ class ReluOp : public OperationCuDnn {
     static inline float zero = 0;
 
 public:
-    ReluOp(const CUDA::CreationContext& context,
+    ReluOp(const CreationContext& context,
            const std::shared_ptr<ngraph::Node>& node,
            IndexCollection&& inputIds,
            IndexCollection&& outputIds)

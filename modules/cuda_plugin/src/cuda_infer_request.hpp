@@ -44,8 +44,8 @@ public:
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular
     // executor
     void inferPreprocess();
-    void startPipeline(const CUDA::ThreadContext& threadContext);
-    void waitPipeline(const CUDA::ThreadContext& threadContext);
+    void startPipeline(const ThreadContext& threadContext);
+    void waitPipeline(const ThreadContext& threadContext);
     void inferPostprocess();
     /**
      * Cancel InferRequest

@@ -23,7 +23,7 @@
 
 namespace CUDAPlugin {
 
-SplitOp::SplitOp(const CUDA::CreationContext& context,
+SplitOp::SplitOp(const CreationContext& context,
                  const ngraph::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)

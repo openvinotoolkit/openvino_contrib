@@ -18,7 +18,7 @@ namespace CUDAPlugin {
 
 class SplitOp : public OperationBase {
 public:
-    SplitOp(const CUDA::CreationContext& context,
+    SplitOp(const CreationContext& context,
             const ngraph::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);

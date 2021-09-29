@@ -21,7 +21,6 @@
 #include "nodes/result_stub_node.hpp"
 #include "test_networks.hpp"
 
-using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
 
@@ -118,7 +117,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
     auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
 
     std::unordered_set<std::thread::id> streams;
-    std::unordered_set<const CUDA::ThreadContext*> threadContexts;
+    std::unordered_set<const ThreadContext*> threadContexts;
     unsigned numHandledJobs = 0;
     std::mutex mtx;
     std::condition_variable condVar;
@@ -156,7 +155,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Heavy_Success) {
     auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
 
     std::unordered_set<std::thread::id> streams;
-    std::unordered_set<const CUDA::ThreadContext*> threadContexts;
+    std::unordered_set<const ThreadContext*> threadContexts;
     unsigned numHandledJobs = 0;
     std::mutex mtx;
     std::condition_variable condVar;

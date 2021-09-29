@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include "blas.hpp"
-#include "dnn.hpp"
-#include "tensor.hpp"
+#include "cuda/blas.hpp"
+#include "cuda/dnn.hpp"
+#include "cuda/tensor.hpp"
 
-namespace CUDA {
+namespace CUDAPlugin {
 
 class ThreadContext {
   CUDA::Device device_;
@@ -26,4 +26,4 @@ class ThreadContext {
   const CUDA::CuTensorHandle& cuTensorHandle() const noexcept { return cuTensorHandle_; }
 };
 
-}  // namespace CUDA
+}  // namespace CUDAPlugin

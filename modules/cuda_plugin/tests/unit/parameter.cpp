@@ -12,7 +12,6 @@
 
 #include "nodes/parameter_stub_node.hpp"
 
-using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
 using devptr_t = CUDA::DevicePointer<void*>;
@@ -50,7 +49,7 @@ struct ParameterTest : testing::Test {
         auto outputIDs = std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0}};
         node->set_friendly_name(ParameterStubNode::type_info.name);
         ASSERT_TRUE(registry.hasOperation(node));
-        operation = registry.createOperation(CUDA::CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);
+        operation = registry.createOperation(CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);
         ASSERT_TRUE(operation);
         auto parameterOp = dynamic_cast<ParameterOp*>(operation.get());
         ASSERT_TRUE(parameterOp);
@@ -63,7 +62,7 @@ struct ParameterTest : testing::Test {
         blob = InferenceEngine::make_shared_blob<uint8_t>(desc);
         blob->allocate();
     }
-    CUDA::ThreadContext threadContext{{}};
+    ThreadContext threadContext{{}};
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     OperationBase::Ptr operation;
     IOperationExec::Inputs inputs;

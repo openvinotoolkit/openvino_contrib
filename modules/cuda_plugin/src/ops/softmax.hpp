@@ -16,23 +16,22 @@
 namespace CUDAPlugin {
 
 class SoftmaxOp : public OperationCuDnn {
- public:
-  using InferenceRequestContext = InferenceEngine::gpu::InferenceRequestContext;
-  using NodeOp = ngraph::op::v1::Softmax;
-  SoftmaxOp(const CUDA::CreationContext& context,
-            const NodeOp& node,
-            IndexCollection&& inputIds,
-            IndexCollection&& outputIds);
-  void Execute(const InferenceRequestContext& context,
-               Inputs inputTensors,
-               Outputs outputTensors,
-               const Workbuffers& workbuffers) const override;
+public:
+    using NodeOp = ngraph::op::v1::Softmax;
+    SoftmaxOp(const CreationContext& context,
+              const NodeOp& node,
+              IndexCollection&& inputIds,
+              IndexCollection&& outputIds);
+    void Execute(const InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
 
-  private:
-  void mapRankAxis(const ngraph::Shape& shape, int axis);
-  std::array<int, 4> shape_;
-  cudnnDataType_t type_;
-  CUDA::DnnTensorDescriptor tensor_descriptor_;
+private:
+    void mapRankAxis(const ngraph::Shape& shape, int axis);
+    std::array<int, 4> shape_;
+    cudnnDataType_t type_;
+    CUDA::DnnTensorDescriptor tensor_descriptor_;
 };
 
 } // namespace CUDAPlugin

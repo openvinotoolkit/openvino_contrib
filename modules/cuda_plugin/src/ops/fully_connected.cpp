@@ -17,14 +17,13 @@
 
 namespace CUDAPlugin {
 
-FullyConnectedOp::FullyConnectedOp(const CUDA::CreationContext& context,
+FullyConnectedOp::FullyConnectedOp(const CreationContext& context,
                                    const NodeOp& node,
                                    IndexCollection&& inputIds,
                                    IndexCollection&& outputIds)
-    : OperationCuBlas(context, node, std::move(inputIds), std::move(outputIds))
-    , matmul_op_{context, node,
-                 IndexCollection{input_ids_.begin(), input_ids_.end()-1},
-                 IndexCollection(output_ids_)} {
+    : OperationCuBlas(context, node, std::move(inputIds), std::move(outputIds)),
+      matmul_op_{
+          context, node, IndexCollection{input_ids_.begin(), input_ids_.end() - 1}, IndexCollection(output_ids_)} {
     bias_size_ = node.get_input_tensor(2).size();
     auto biasShape = node.get_input_shape(2);
     Expects(biasShape.size() > 0);
@@ -32,7 +31,7 @@ FullyConnectedOp::FullyConnectedOp(const CUDA::CreationContext& context,
     auto batchBiasCount = MatMulOp::GetMatrixNumBatches(biasShape);
     auto matMulBatchCount = matmul_op_.GetBatchCount();
     Expects(matmul_op_.GetBatchCount() >= batchBiasCount);
-    batch_bias_count_ = matMulBatchCount/batchBiasCount;
+    batch_bias_count_ = matMulBatchCount / batchBiasCount;
 }
 
 void FullyConnectedOp::Execute(const InferenceRequestContext& context,
@@ -46,10 +45,10 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context,
     auto bias = inputs[2];
     auto matrixC = outputs[0];
     for (int i = 0; i < batch_bias_count_; ++i) {
-      stream.transfer(matrixC + i * bias_size_, bias, bias_size_);
+        stream.transfer(matrixC + i * bias_size_, bias, bias_size_);
     }
-    matmul_op_.Execute(context, inputs.first(inputs.size()-1), outputs, workbuffers);
+    matmul_op_.Execute(context, inputs.first(inputs.size() - 1), outputs, workbuffers);
 }
 
 OPERATION_REGISTER(FullyConnectedOp, FullyConnected);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

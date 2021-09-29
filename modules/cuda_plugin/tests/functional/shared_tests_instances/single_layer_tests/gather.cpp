@@ -601,7 +601,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     constexpr int NUM_ATTEMPTS = 20;
     constexpr milliseconds WARMUP_TIME{2000.0};
 
-    CUDA::ThreadContext threadContext{{}};
+    CUDAPlugin::ThreadContext threadContext{{}};
     int out_size = 0;
     CUDAPlugin::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
@@ -618,7 +618,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
 
         out_size = ngraph::shape_size(node->get_output_shape(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDA::CreationContext{threadContext.device(), optimizeOption},
+        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
                                            node,
                                            std::array{CUDAPlugin::TensorID{0}},
                                            std::array{CUDAPlugin::TensorID{0}});
@@ -637,7 +637,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     InferenceEngine::BlobMap empty;
-    InferenceEngine::gpu::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;
