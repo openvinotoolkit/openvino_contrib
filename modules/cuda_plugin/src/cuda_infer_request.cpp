@@ -193,31 +193,26 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(const std::vector<std:
                                                           InferenceEngine::Layout layout) {
     Blob::Ptr blob;
     switch (precision) {
-    case Precision::FP16:
-        blob = InferenceEngine::make_shared_blob<std::uint16_t>({
-                Precision::FP16, shape, layout });
-        break;
-    case Precision::FP32:
-        blob = InferenceEngine::make_shared_blob<float>({
-                Precision::FP32, shape, layout });
-        break;
-    case Precision::I16:
-        blob = InferenceEngine::make_shared_blob<std::int16_t>({
-                Precision::I16, shape, layout });
-        break;
-    case Precision::I32:
-        blob = InferenceEngine::make_shared_blob<std::int32_t>({Precision::I32, shape, layout});
-        break;
-    case Precision::U8:
-        blob = InferenceEngine::make_shared_blob<uint8_t>({
-                Precision::U8, shape, layout });
-        break;
-    case Precision::BOOL:
-        blob = InferenceEngine::make_shared_blob<uint8_t>({Precision::BOOL, shape, layout});
-        break;
-    default:
-        throwIEException(fmt::format(
-            "Cuda Plugin: Unsupported Input/Output Precision {}", precision));
+        case Precision::FP16:
+            blob = InferenceEngine::make_shared_blob<std::uint16_t>({Precision::FP16, shape, layout});
+            break;
+        case Precision::FP32:
+            blob = InferenceEngine::make_shared_blob<float>({Precision::FP32, shape, layout});
+            break;
+        case Precision::I16:
+            blob = InferenceEngine::make_shared_blob<std::int16_t>({Precision::I16, shape, layout});
+            break;
+        case Precision::I32:
+            blob = InferenceEngine::make_shared_blob<std::int32_t>({Precision::I32, shape, layout});
+            break;
+        case Precision::U8:
+            blob = InferenceEngine::make_shared_blob<uint8_t>({Precision::U8, shape, layout});
+            break;
+        case Precision::BOOL:
+            blob = InferenceEngine::make_shared_blob<std::uint8_t>({Precision::BOOL, shape, layout});
+            break;
+        default:
+            throwIEException(fmt::format("Cuda Plugin: Unsupported Input/Output Precision {}", precision));
     }
     blob->allocate();
     return blob;
