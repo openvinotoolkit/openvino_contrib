@@ -82,6 +82,9 @@ class PyTorchLoader(Loader):
             inp.node_name = name
             graph.add_node(name, kind='op', op='Parameter', name=name, shape=shape)
 
+        for name, value in argv.freeze_placeholder_with_value.items():
+            inputs[name] = value
+
         model = argv.input_model
 
         for module in model.modules():

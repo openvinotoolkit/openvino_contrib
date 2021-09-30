@@ -78,7 +78,7 @@ RUN dpkg --add-architecture armhf && \
 RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
     tar -xf Python-3.7.9.tar.xz && \
     cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
-    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy cython
+    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython
 
 # Cross-compile Python3.7 for ARM
 RUN cd Python-3.7.9 && make distclean && \
@@ -102,7 +102,7 @@ RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.4.tar.gz && \
 RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
     sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
     sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
+    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
 
 RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
 RUN rm /usr/bin/lsb_release

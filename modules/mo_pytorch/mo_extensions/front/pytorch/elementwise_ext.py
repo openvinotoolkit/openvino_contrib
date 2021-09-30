@@ -17,9 +17,12 @@ import numpy as np
 
 from extensions.ops.elementwise import *
 from mo.front.extractor import FrontExtractorOp
-from mo.graph.graph import Node
+from mo.front.common.replacement import FrontReplacementOp
+from mo.graph.graph import Graph, Node
 from mo.ops.eltwise_n import EltwiseNAdd, EltwiseNMax
 from mo.ops.power import AttributedPower
+from extensions.ops.activation_ops import *
+from mo.ops.const import Const
 
 
 class AddFrontExtractor(FrontExtractorOp):
@@ -61,6 +64,14 @@ class DivFrontExtractor(FrontExtractorOp):
         Div.update_node_stat(node)
         return cls.enabled
 
+class AbsFrontExtractor(FrontExtractorOp):
+    op = 'Abs'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        Abs.update_node_stat(node)
+        return cls.enabled
 
 class PowFrontExtractor(FrontExtractorOp):
     op = 'Pow'
@@ -72,4 +83,46 @@ class PowFrontExtractor(FrontExtractorOp):
             'power': node.module.exponent,
         }
         AttributedPower.update_node_stat(node, attrs)
+        return cls.enabled
+
+
+# log2(x) = ln(x) / ln(2)
+class Log2Replacement(FrontReplacementOp):
+    op = 'Log2'
+    enabled = True
+
+    def replace_op(self, graph: Graph, node: Node):
+        log = Log(graph, dict(name=node.name + '/log')).create_node([node.in_node(0)])
+        scale = Const(graph, {'value': np.log(2)}).create_node()
+        div = Div(graph, dict(name=node.name + '/scale')).create_node([log, scale])
+        return [div.id]
+
+
+class LessFrontExtractor(FrontExtractorOp):
+    op = 'Less'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        Less.update_node_stat(node)
+        return cls.enabled
+
+
+class ZerosLike(FrontExtractorOp):
+    op = 'ZerosLike'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        AttributedPower.update_node_stat(node, {'scale': 0})
+        return cls.enabled
+
+
+class SoftPlusOp(FrontExtractorOp):
+    op = 'SoftPlus'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        SoftPlus.update_node_stat(node)
         return cls.enabled

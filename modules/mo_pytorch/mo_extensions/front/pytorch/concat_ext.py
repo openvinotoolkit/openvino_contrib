@@ -1,5 +1,5 @@
 """
- Copyright (C) 2018-2020 Intel Corporation
+ Copyright (C) 2018-2021 Intel Corporation
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -13,23 +13,23 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.extractor import FrontExtractorOp
-from mo.graph.graph import Node
-from mo.ops.strided_slice import StridedSlice
 
-class StridedSliceFrontExtractor(FrontExtractorOp):
-    op = 'StridedSlice'
+import numpy as np
+
+from mo.front.common.partial_infer.utils import int64_array
+from mo.front.extractor import FrontExtractorOp
+from mo.ops.concat import Concat
+from mo.utils.error import Error
+
+
+class ConcatExtractor(FrontExtractorOp):
+    op = 'Concat'
     enabled = True
 
     @classmethod
-    def extract(cls, node: Node):
+    def extract(cls, node):
         attrs = {
-            'begin_mask': node.module.begin_mask,
-            'end_mask': node.module.end_mask,
-            'shrink_axis_mask': node.module.shrink_axis_mask,
-            'new_axis_mask': [0],
-            'ellipsis_mask': node.module.ellipsis_mask,
+            'axis': node.module.dim,
         }
-
-        StridedSlice.update_node_stat(node, attrs)
+        Concat.update_node_stat(node, attrs)
         return cls.enabled

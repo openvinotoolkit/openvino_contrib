@@ -174,9 +174,9 @@ git clone https://github.com/intel-iot-devkit/sample-videos.git
 ```
 #### Model inference on ARM
 1. Copy OpenVINO™ and ARM plugin artifacts to ARM platform. If you build the plugin using approach #1, all artifacts are packed into `OV_ARM_package.tar.gz`.
-2. Go to `deployment_tools/inference_engine/demos/build/<platform_type>/Release` directory:
+2. Go to `deployment_tools/open_model_zoo/demos/Release` directory:
 ```
-cd <package_dir>/deployment_tools/inference_engine/demos/build/<platform_type>/Release
+cd <package_dir>/deployment_tools/open_model_zoo/demos/Release
 ``` 
 3. Set environment variables:
 ```
