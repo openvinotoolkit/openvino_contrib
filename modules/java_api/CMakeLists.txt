@@ -6,6 +6,7 @@ if (NOT CMAKE_CROSSCOMPILING)
     set(JAVA_AWT_LIBRARY NotNeeded)
     set(JAVA_JVM_LIBRARY NotNeeded)
     set(JAVA_AWT_INCLUDE_PATH NotNeeded)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
     find_package(JNI REQUIRED)
 endif()
 
