@@ -103,16 +103,8 @@ jobs:
     displayName: 'List install files'
 
   - script: |
-      rem Must be installed
-      mkdir native
-      copy $(BIN_DIR)\*.dll native
-      copy $(BIN_DIR)\cache.json native
-      copy $(BIN_DIR)\plugins.xml native
-      copy $(BIN_DIR)\*.mvcmd native
-      copy $(OPENVINO_REPO_DIR)\inference-engine\temp\tbb\bin\tbb.dll native
-      copy $(OPENVINO_REPO_DIR)\inference-engine\temp\tbb\bin\tbbmalloc.dll native
-      dir /b /a-d native >resources_list.txt
-      move resources_list.txt native
-      gradle clean build -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
+      call $(SETUPVARS)
+      gradle clean build --info
+      gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
     workingDirectory: $(REPO_DIR)\modules\java_api
     displayName: 'Java tests'
