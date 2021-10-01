@@ -19,7 +19,7 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-git diff --diff-filter=ACMR -U0 origin/develop | perl -ne '
+git diff --diff-filter=ACMR -U0 origin/develop... | perl -ne '
   if (m|^\+\+\+ b/(.*)|) {
     $newname = $1;
     if ($name =~ /^.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
