@@ -3,6 +3,11 @@
 project(inference_engine_java_api)
 
 if (NOT CMAKE_CROSSCOMPILING)
+    set(JAVA_AWT_LIBRARY NotNeeded)
+    set(JAVA_JVM_LIBRARY NotNeeded)
+    set(JAVA_INCLUDE_PATH2 NotNeeded)
+    set(JAVA_AWT_INCLUDE_PATH NotNeeded)
+    set(JAVA_HOME /usr/lib/jvm/default-java)
     find_package(JNI REQUIRED)
 endif()
 
