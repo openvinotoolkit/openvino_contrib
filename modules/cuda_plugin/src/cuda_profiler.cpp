@@ -64,7 +64,7 @@ void Profiler::ProcessEvents() {
     std::map<std::string, float> layer_timing{};
     for (auto& timing : perf_steps_) {
         timing.Measure();
-        static const auto perf = perf_counters_.find(timing.GetOpName());
+        const auto perf = perf_counters_.find(timing.GetOpName());
         if (perf != perf_counters_.cend()) {
             perf->second.realTime_uSec = timing.Duration() * ms2us / infer_count_;
             perf->second.status = InferenceEngine::InferenceEngineProfileInfo::EXECUTED;
