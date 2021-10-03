@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "convolution.hpp"
-
 #include <fmt/format.h>
 
 #include <gsl/gsl_assert>
@@ -19,53 +17,27 @@
 
 namespace CUDAPlugin {
 
-ConvolutionOp::ConvolutionOp(const CreationContext& context,
-                             const NodeOp& node,
-                             IndexCollection&& inputIds,
-                             IndexCollection&& outputIds)
-    : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)) {
-    CreateImpl(context, node);
-}
-
-void ConvolutionOp::Execute(const InferenceRequestContext& context,
-                            Inputs inputs,
-                            Outputs outputs,
-                            const Workbuffers& workbuffers) const {
-    impl_->Execute(context, inputs, outputs, workbuffers);
-}
-
-WorkbufferRequest ConvolutionOp::GetWorkBufferRequest() const { return impl_->GetWorkBufferRequest(); }
-
-const WorkbufferIds& ConvolutionOp::GetWorkbufferIds() const { return impl_->GetWorkbufferIds(); }
-
-IOperationExec::WorkbufferStatus ConvolutionOp::SetWorkbufferIds(WorkbufferIds&& workbufferIds) {
-    return impl_->SetWorkbufferIds(std::move(workbufferIds));
-}
-
-void ConvolutionOp::CreateImpl(const CreationContext& context, const NodeOp& node) {
-    const Convolution::Details::ConvolutionParams params{node};
-
+static OperationBase::Ptr convolutionFactory(const CreationContext& context,
+                                             const std::shared_ptr<ngraph::Node>& node,
+                                             OperationBase::IndexCollection&& inputIds,
+                                             OperationBase::IndexCollection&& outputIds) {
+    const Convolution::Details::ConvolutionParams params{downcast<const ngraph::op::v1::Convolution>(node)};
     std::stringstream exception_msg;
-
     try {
-        impl_ = std::make_unique<ConvolutionCuDnn>(context, params);
-        return;
+        return std::make_shared<ConvolutionCuDnn>(context, *node, move(inputIds), move(outputIds), params);
     } catch (const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what();
     }
-
-#undef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
 #ifdef ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
     try {
-        impl_ = std::make_unique<ConvolutionCuDnnBE>(params);
-        return;
+        return std::make_shared<ConvolutionCuDnnBE>(context, *node, move(inputIds), move(outputIds), params);
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create ConvolutionCuDnnBE impl: " << e.what();
     }
 #endif  // ENABLE_CUDNN_BACKEND_API_BASED_CONNVOLUTION
-
     throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
-OPERATION_REGISTER(ConvolutionOp, Convolution);
+OPERATION_REGISTER_FACTORY(Convolution, convolutionFactory)
+
 }  // namespace CUDAPlugin

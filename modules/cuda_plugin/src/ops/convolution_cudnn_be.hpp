@@ -20,21 +20,19 @@ namespace CUDAPlugin {
  * cuDNN Backend API was introduced in cuDNN version 8 and among other
  * features provides support for asymmetric padding.
  */
-class ConvolutionCuDnnBE : public IOperationExec {
+class ConvolutionCuDnnBE : public OperationCuDnn {
 public:
-    ConvolutionCuDnnBE(const Convolution::Details::ConvolutionParams& params);
+    ConvolutionCuDnnBE(const CreationContext& context,
+                       const ngraph::Node& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds,
+                       const Convolution::Details::ConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
-    void InitSharedImmutableWorkbuffers(const Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIds&  GetWorkbufferIds() const { return workbuffer_ids_; }
-    WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
-      workbuffer_ids_ = workbufferIds;
-      return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
-    }
 
 private:
     bool TryExecutePlan(const InferenceRequestContext& context,
@@ -48,8 +46,7 @@ private:
                              const ngraph::Shape& shape);
 
 private:
-    WorkbufferIds workbuffer_ids_;
-    mutable std::atomic<int64_t> exec_plan_index_hint_;
+    mutable std::atomic<int64_t> exec_plan_index_hint_ = 0;
     std::vector<CUDA::DnnBEExecutionPlanDescriptor> exec_plans_;
 };
 

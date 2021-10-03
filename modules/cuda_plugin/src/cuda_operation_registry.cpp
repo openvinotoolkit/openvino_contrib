@@ -14,10 +14,8 @@ OperationRegistry& OperationRegistry::getInstance() {
 }
 
 void OperationRegistry::registerOp(const std::string& opName, OperationBuilder&& builder) {
-    if (hasOperation(opName)) {
+    if (!registered_operations_.try_emplace(opName, move(builder)).second)
         throw std::runtime_error{"Operation " + opName + " is already registered !!"};
-    }
-    registered_operations_.emplace(opName, move(builder));
 }
 
 bool OperationRegistry::hasOperation(const std::shared_ptr<ngraph::Node>& node) {
