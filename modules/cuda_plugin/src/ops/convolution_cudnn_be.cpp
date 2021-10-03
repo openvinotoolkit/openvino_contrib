@@ -12,7 +12,6 @@
 
 #include "constant_factory.hpp"
 #include "converters.hpp"
-#include "convolution.hpp"
 
 namespace CUDAPlugin {
 
@@ -24,8 +23,12 @@ struct DnnTensorID {
     static constexpr int64_t output = 'y';
 };
 
-ConvolutionCuDnnBE::ConvolutionCuDnnBE(const Convolution::Details::ConvolutionParams& params)
-    : exec_plan_index_hint_{0} {
+ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
+                                       const ngraph::Node& node,
+                                       IndexCollection&& inputIds,
+                                       IndexCollection&& outputIds,
+                                       const Convolution::Details::ConvolutionParams& params)
+    : OperationCuDnn{context, node, move(inputIds), move(outputIds)} {
     const cudnnDataType_t tensor_element_type = convertDataType<cudnnDataType_t>(params.element_type_);
 
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should
@@ -132,9 +135,9 @@ bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
                                         const CUDA::DnnBEExecutionPlanDescriptor& plan) const {
     CUDA::DnnBEVariantPackDescriptor variantPack;
     std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
-    std::array<void*, 3> data_ptrs = {const_cast<void*>(inputs[ConvolutionOp::ArgIndices::input].get()),
-                                      const_cast<void*>(inputs[ConvolutionOp::ArgIndices::filter].get()),
-                                      outputs[ConvolutionOp::ArgIndices::output].get()};
+    std::array<void*, 3> data_ptrs = {const_cast<void*>(inputs[Convolution::Details::ConvArgIndices::input].get()),
+                                      const_cast<void*>(inputs[Convolution::Details::ConvArgIndices::filter].get()),
+                                      outputs[Convolution::Details::ConvArgIndices::output].get()};
     variantPack.setTensorPointers(uids, data_ptrs);
 
     variantPack.setWorkspase(workbuffer);
