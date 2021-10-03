@@ -27,16 +27,17 @@ template <typename T>
 inline constexpr auto hasNodeOp<T, std::void_t<typename T::NodeOp>> = true;
 
 template <typename TOperation>
-inline constexpr bool isConstructibleWithNodeOpRef = [] {
-    if constexpr (hasNodeOp<TOperation>) {
-        return std::is_constructible_v<TOperation,
-                                       const CreationContext&,
-                                       const typename TOperation::NodeOp&,
-                                       OperationBase::IndexCollection&&,
-                                       OperationBase::IndexCollection&&>;
-    }
-    return false;
-}();
+struct IsConstructibleWithNodeOpRef {
+    static constexpr bool value = std::is_constructible_v<TOperation,
+                                                          const CreationContext&,
+                                                          const typename TOperation::NodeOp&,
+                                                          OperationBase::IndexCollection&&,
+                                                          OperationBase::IndexCollection&&>;
+};
+
+template <typename TOperation>
+inline constexpr bool isConstructibleWithNodeOpRef =
+    std::conditional_t<hasNodeOp<TOperation>, IsConstructibleWithNodeOpRef<TOperation>, std::false_type>::value;
 
 }  // namespace details
 
@@ -94,6 +95,14 @@ class OperationRegistry final {
   std::unordered_map<std::string, OperationBuilder> registered_operations_;
 };
 
+template <>
+class OperationRegistry::Register<OperationBase> {
+public:
+    explicit Register(const std::string& opName, OperationBuilder&& builder) {
+        getInstance().registerOp(opName, move(builder));
+    }
+};
+
 }  // namespace CUDAPlugin
 
 /**
@@ -107,5 +116,13 @@ class OperationRegistry final {
  *           where NodeOp is a type's inner alias for a concrete OpenVINO Node class
  * @param name - a textual operator's name
  */
-#define OPERATION_REGISTER(type, name) \
-    [[maybe_unused]] ::CUDAPlugin::OperationRegistry::Register<type> op_register_##name{#name};
+#define OPERATION_REGISTER(type, name)                                                                              \
+    extern "C" {                                                                                                    \
+    [[maybe_unused]] const ::CUDAPlugin::OperationRegistry::Register<type> openvino_cuda_op_register_##name{#name}; \
+    }
+
+#define OPERATION_REGISTER_FACTORY(name, factory)                                                                     \
+    extern "C" {                                                                                                      \
+    [[maybe_unused]] const ::CUDAPlugin::OperationRegistry::Register<OperationBase> openvino_cuda_op_register_##name{ \
+        #name, factory};                                                                                              \
+    }
