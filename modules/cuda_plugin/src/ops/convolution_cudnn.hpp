@@ -15,24 +15,21 @@ namespace CUDAPlugin {
  * @brief Implements `ngraph::op::v1::Convolution` using cuDNN API
  * which doesn't support asymmetric padding.
  */
-class ConvolutionCuDnn : public IOperationExec {
+class ConvolutionCuDnn : public OperationCuDnn {
 public:
-    ConvolutionCuDnn(const CreationContext& context, const Convolution::Details::ConvolutionParams& params);
+    ConvolutionCuDnn(const CreationContext& context,
+                     const ngraph::Node& node,
+                     IndexCollection&& inputIds,
+                     IndexCollection&& outputIds,
+                     const Convolution::Details::ConvolutionParams& params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers&) const override;
-    void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIds& GetWorkbufferIds() const { return workbuffer_ids_; }
-    WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
-        workbuffer_ids_ = workbufferIds;
-        return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
-    }
 
 private:
-    WorkbufferIds workbuffer_ids_;
     Convolution::Details::ConvolutionDescriptorsCuDnn descs_;
 };
 
