@@ -80,16 +80,15 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
 
 ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CreationContext& context,
                                                          const ConvolutionParamsCuDnn& params)
-    : context_{context},
-      params_{params},
+    : params_{params},
       tensor_element_type_{params_.ElementType()},
       input_{params_.MakeInputDescriptor()},
       filter_{params_.MakeFilterDescriptor()},
       output_{params_.MakeOutputDescriptor()},
       conv_{},
       algo_perf_{} {
-    CUDA::DnnHandle dnnHandle{};
-    if (context_.optimizeOption()) {
+    auto& dnnHandle = context.dnnHandle();
+    if (context.optimizeOption()) {
         BenchmarkOptimalAlgo(dnnHandle, params_);
     } else {
         GetAlgo(dnnHandle);
@@ -307,16 +306,15 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
 
 ConvolutionBackpropDataDescriptorCuDnn::ConvolutionBackpropDataDescriptorCuDnn(
     const CreationContext& context, const ConvolutionBackpropDataParamsCuDnn& params)
-    : context_{context},
-      params_{params},
+    : params_{params},
       tensor_element_type_{params_.ElementType()},
       filter_desc_{params_.MakeFilterDescriptor()},
       doutput_desc_{params_.MakeDOutputDescriptor()},
       dinput_desc_{params_.MakeDInputDescriptor()},
       conv_{},
       algo_perf_{} {
-    CUDA::DnnHandle dnnHandle{};
-    if (context_.optimizeOption()) {
+    auto& dnnHandle = context.dnnHandle();
+    if (context.optimizeOption()) {
         BenchmarkOptimalAlgo(dnnHandle);
     } else {
         GetAlgo(dnnHandle);

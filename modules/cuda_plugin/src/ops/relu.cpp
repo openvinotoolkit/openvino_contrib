@@ -1,6 +1,7 @@
 // Copyright (C) 2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include <cuda/descriptor_utils.hpp>
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
 
@@ -10,7 +11,6 @@ namespace CUDAPlugin {
 namespace {
 
 class ReluOp : public ActivationForwardCuDnnOpBase {
-
 public:
     ReluOp(const CreationContext& context,
            const std::shared_ptr<ngraph::Node>& node,

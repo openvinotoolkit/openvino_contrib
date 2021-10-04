@@ -217,6 +217,84 @@ public:
     }
 };
 
+class DnnReduceTensorDescriptor : public Handle<cudnnReduceTensorDescriptor_t> {
+public:
+    DnnReduceTensorDescriptor()
+        : Handle<cudnnReduceTensorDescriptor_t>(cudnnCreateReduceTensorDescriptor, cudnnDestroyReduceTensorDescriptor) {
+    }
+    auto&& set(cudnnReduceTensorOp_t op,
+               cudnnDataType_t compType,
+               cudnnNanPropagation_t nanOpt,
+               cudnnReduceTensorIndices_t indices,
+               cudnnIndicesType_t indicesType) {
+        throwIfError(cudnnSetReduceTensorDescriptor(get(), op, compType, nanOpt, indices, indicesType));
+        return std::move(*this);
+    }
+};
+
+class DnnReduceAddDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceAddDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_ADD,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnScalingFactor {
+    union {
+        float f;
+        double d;
+    };
+    constexpr DnnScalingFactor(float f) noexcept : f{f} {}
+    constexpr DnnScalingFactor(double d) noexcept : d{d} {}
+
+public:
+    static constexpr DnnScalingFactor zero(cudnnDataType_t compType) noexcept {
+        if (compType == CUDNN_DATA_DOUBLE) return {0.};
+        return {0.f};
+    }
+    static constexpr DnnScalingFactor one(cudnnDataType_t compType) noexcept {
+        if (compType == CUDNN_DATA_DOUBLE) return {1.};
+        return {1.f};
+    }
+    constexpr const void* get() const noexcept { return this; }
+};
+
+class DnnScalingFactorZero : public DnnScalingFactor {
+public:
+    explicit constexpr DnnScalingFactorZero(cudnnDataType_t compType) noexcept : DnnScalingFactor{zero(compType)} {}
+};
+
+class DnnScalingFactorOne : public DnnScalingFactor {
+public:
+    explicit constexpr DnnScalingFactorOne(cudnnDataType_t compType) noexcept : DnnScalingFactor{one(compType)} {}
+};
+
+template <typename T>
+auto toNative(T&& a) noexcept(noexcept(std::forward<T>(a).get())) -> decltype(std::forward<T>(a).get()) {
+    return std::forward<T>(a).get();
+}
+
+template <typename T>
+auto toNative(T&& a) noexcept(noexcept(std::forward<T>(a).data())) -> decltype(std::forward<T>(a).data()) {
+    return std::forward<T>(a).data();
+}
+
+template <typename T>
+std::enable_if_t<std::is_scalar_v<std::decay_t<T>>, std::decay_t<T>> toNative(T t) noexcept {
+    return t;
+}
+
+template <typename R, typename... NativeArgs, typename... Args>
+auto createLast(R (*creator)(NativeArgs...), Args... args) {
+    std::remove_pointer_t<decltype((NativeArgs{}, ...))> t;
+    throwIfError(creator(args..., &t));
+    return t;
+}
+
 class DnnHandle : public Handle<cudnnHandle_t> {
 public:
     DnnHandle() : Handle(cudnnCreate, cudnnDestroy) {}
@@ -283,6 +361,47 @@ public:
                                      workSpace,
                                      reserveSpaceSize,
                                      reserveSpace));
+    }
+    size_t getReductionWorkspaceSize(const DnnReduceTensorDescriptor& reduceDesc,
+                                     const DnnTensorDescriptor& aDesc,
+                                     const DnnTensorDescriptor& cDesc) const {
+        return callLast(cudnnGetReductionWorkspaceSize, reduceDesc, aDesc, cDesc);
+    }
+    void reduceTensor(const DnnReduceTensorDescriptor& reduceTensorDesc,
+                      CUDA::DeviceBuffer<std::byte> workspace,
+                      const DnnScalingFactor& alpha,
+                      const DnnTensorDescriptor& aDesc,
+                      CUDA::DevicePointer<const void*> a,
+                      const DnnScalingFactor& beta,
+                      const DnnTensorDescriptor& cDesc,
+                      CUDA::DevicePointer<void*> c) const {
+#ifndef __NVCC__  // TODO: drop branch after splitting kernels
+        call(cudnnReduceTensor,
+             reduceTensorDesc,
+             nullptr,
+             0,
+             workspace.data(),
+             workspace.size_bytes(),
+             alpha,
+             aDesc,
+             a,
+             beta,
+             cDesc,
+             c);
+#else
+        throwIfError(cudnnReduceTensor(get(),
+                                       reduceTensorDesc.get(),
+                                       nullptr,
+                                       0,
+                                       workspace.data(),
+                                       workspace.size_bytes(),
+                                       alpha.get(),
+                                       aDesc.get(),
+                                       a.get(),
+                                       beta.get(),
+                                       cDesc.get(),
+                                       c.get()));
+#endif
     }
 };
 
