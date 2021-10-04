@@ -100,7 +100,6 @@ private:
     bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
 
 private:
-    CreationContext context_;
     ConvolutionParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
     CUDA::DnnTensorDescriptor input_;
@@ -144,7 +143,6 @@ private:
     bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
 
 private:
-    CreationContext context_;
     ConvolutionBackpropDataParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
     CUDA::DnnFilterDescriptor filter_desc_;

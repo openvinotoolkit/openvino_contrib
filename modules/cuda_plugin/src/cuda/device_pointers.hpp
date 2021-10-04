@@ -51,18 +51,22 @@ auto operator-(DevicePointer<T*> l, DevicePointer<T*> r) noexcept {
     return static_cast<const char*>(l.get()) - static_cast<const char*>(r);
 }
 
-template <typename T, std::size_t Extent = std::numeric_limits<std::size_t>::max()>
+template <typename T, std::size_t Extent = gsl::dynamic_extent>
 class DeviceBuffer : private gsl::span<T, Extent> {
 public:
     static_assert(!std::is_void<T>::value, "T should not be a void type");
+    DeviceBuffer() = default;
     explicit DeviceBuffer(gsl::span<T, Extent> o) noexcept : gsl::span<T, Extent>{o} {}
     DeviceBuffer(T* data, std::size_t size) noexcept : gsl::span<T, Extent>{data, size} {}
     using gsl::span<T, Extent>::data;
     using gsl::span<T, Extent>::size;
     using gsl::span<T, Extent>::size_bytes;
+    using gsl::span<T, Extent>::empty;
 
-    auto as_mutable() const noexcept {
-        return DeviceBuffer<std::remove_const_t<T>>{const_cast<std::remove_const_t<T>*>(this->data()), this->size()};
+    DeviceBuffer<std::remove_const_t<T>> as_mutable() const noexcept {
+        if (!empty()) return {};  // other constructor will terminate, because DevicePointer is not_null
+        using MT = std::remove_const_t<T>;
+        return {DevicePointer<MT*>{const_cast<MT*>(data())}, size()};
     }
 };
 
