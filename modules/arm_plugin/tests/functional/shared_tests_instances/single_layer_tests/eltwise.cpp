@@ -9,16 +9,16 @@
 using namespace LayerTestsDefinitions;
 
 namespace {
-std::vector<std::vector<std::vector<size_t>>> inShapes = {
-        {{2}},
-        {{2, 200}},
-        {{10, 200}},
-        {{1, 10, 100}},
-        {{4, 4, 16}},
-        {{1, 1, 1, 3}},
-        {{1, 2, 4}},
-        {{1, 4, 4}},
-        {{1, 4, 4, 1}},
+std::vector<std::pair<std::vector<ngraph::PartialShape>, std::vector<std::vector<ngraph::Shape>>>> inShapes = {
+        {{}, {{{2}}}},
+        {{}, {{{2, 200}}}},
+        {{}, {{{10, 200}}}},
+        {{}, {{{1, 10, 100}}}},
+        {{}, {{{4, 4, 16}}}},
+        {{}, {{{1, 1, 1, 3}}}},
+        {{}, {{{1, 2, 4}}}},
+        {{}, {{{1, 4, 4}}}},
+        {{}, {{{1, 4, 4, 1}}}},
 };
 
 std::vector<InferenceEngine::Precision> netPrecisions = {
