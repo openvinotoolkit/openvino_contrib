@@ -29,6 +29,8 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
+    INSTALL_DIR: $(WORK_DIR)/install_pkg
+    SETUPVARS: $(INSTALL_DIR)/setupvars.sh
 
   steps:
   - script: |
@@ -91,16 +93,19 @@ jobs:
     displayName: 'Build Mac'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List files'
+    displayName: 'List bin files'
+
+  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Install'
+
+  - script: ls -alR $(INSTALL_DIR)
+    displayName: 'List install files'
 
   - script: |
-      mkdir native
-      cp $(BIN_DIR)/lib/lib* native
-      cp $(BIN_DIR)/lib/plugins.xml native
-      cp $(BIN_DIR)/lib/*.mvcmd native
-      cp $(OPENVINO_REPO_DIR)/inference-engine/temp/tbb/lib/lib* native
-      cp $(OPENVINO_REPO_DIR)/inference-engine/temp/gna_*/linux/x64/lib* native
-      ls native > resources_list.txt && cat resources_list.txt && mv resources_list.txt native
-      gradle clean build -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
+      . $(SETUPVARS) gradle clean build --info
+      for d in CPU HETERO:CPU; do
+        gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
+      done
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
