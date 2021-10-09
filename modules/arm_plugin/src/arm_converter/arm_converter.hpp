@@ -410,7 +410,7 @@ struct Converter {
     using ConvertFn = std::function<Conversion::Ptr(const ngraph::Node&)>;
     template<typename NodeType>
     void Register() {
-        _conversions.emplace(NodeType::type_info, [this] (const ngraph::Node& node) {
+        _conversions.emplace(NodeType::get_type_info_static(), [this] (const ngraph::Node& node) {
             auto nodePtr = ngraph::as_type<const NodeType>(&node);
             IE_ASSERT(nodePtr != nullptr);
             return Convert(*nodePtr);
