@@ -7,7 +7,9 @@
 #include <cudnn_ops_infer.h>
 #include <gtest/gtest.h>
 
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <gsl/span>
 #include <ngraph/node.hpp>
 #include <ngraph/op/avg_pool.hpp>
@@ -87,7 +89,10 @@ struct PoolingTest : testing::Test {
     void test(gsl::span<const float> input, std::vector<size_t> in_shape, gsl::span<const float> output) {
         CUDA::Device device{};
         const bool optimizeOption = false;
-        InferenceRequestContext context{empty, empty, threadContext};
+        CancellationToken token{};
+        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        Profiler profiler{false, graph};
+        InferenceRequestContext context{empty, empty, threadContext, token, profiler};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;
@@ -129,7 +134,7 @@ TEST_F(MaxPoolRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ngraph::op::v1::MaxPool>()));
 }
 
-class MaxPoolTest : public PoolingTest<ngraph::op::v1::MaxPool> {};
+ class MaxPoolTest : public PoolingTest<ngraph::op::v1::MaxPool> {};
 
 TEST_F(MaxPoolTest, canExecuteOnFloat1DData) {
     // Input [4]
@@ -268,7 +273,7 @@ TEST_F(AvgPoolRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ngraph::op::v1::AvgPool>()));
 }
 
-class AvgPoolTest : public PoolingTest<ngraph::op::v1::AvgPool> {};
+ class AvgPoolTest : public PoolingTest<ngraph::op::v1::AvgPool> {};
 
 TEST_F(AvgPoolTest, canExecuteOnFloat1DData) {
     // Input [4]

@@ -5,7 +5,9 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <ngraph/node.hpp>
 #include <ops/parameter.hpp>
 #include <typeinfo>
@@ -14,7 +16,7 @@
 
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
-using devptr_t = CUDA::DevicePointer<void*>;
+using devptr_t = DevicePointer<void*>;
 
 /**
  * @brief Fill InferenceEngine blob with random values
@@ -32,13 +34,13 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
     }
 }
 
-class ParameterRegistryTest : public testing::Test {
+ class ParameterRegistryTest : public testing::Test {
     void SetUp() override {}
 
     void TearDown() override {}
 };
 
-struct ParameterTest : testing::Test {
+ struct ParameterTest : testing::Test {
     static constexpr size_t size = 16 * 1024;
     void SetUp() override {
         CUDA::Device device{};
@@ -72,12 +74,15 @@ struct ParameterTest : testing::Test {
     InferenceEngine::BlobMap empty;
 };
 
-TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
+ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ParameterStubNode>()));
 }
 
 TEST_F(ParameterTest, canExecuteSync) {
-    InferenceRequestContext context{blobs, empty, threadContext};
+    CancellationToken token{};
+    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    Profiler profiler{false, graph};
+    InferenceRequestContext context{blobs, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
@@ -88,7 +93,10 @@ TEST_F(ParameterTest, canExecuteSync) {
 }
 
 TEST_F(ParameterTest, canExecuteAsync) {
-    InferenceRequestContext context{blobs, empty, threadContext};
+    CancellationToken token{};
+    CUDAPlugin::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::Profiler profiler{false, graph};
+    InferenceRequestContext context{blobs, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);

@@ -9,11 +9,14 @@
 
 #include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
+#include "cuda_graph.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
-#include "memory_manager/cuda_memory_manager_pool.hpp"
+#include "memory_manager/cuda_memory_manager.hpp"
+#include "memory_manager/cuda_memory_pool.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
+#include "ops/subgraph.hpp"
 
 class ExecNetworkTest;
 
@@ -66,10 +69,8 @@ private:
     InferenceEngine::IInferRequestInternal::Ptr CreateBenchmarkInferRequestImpl(
         InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs);
     InferenceEngine::IInferRequestInternal::Ptr CreateBenchmarkInferRequest();
-    std::shared_ptr<MemoryManagerPool> CreateMemoryManagerPool(const OperationBuffersExtractor& extractor);
+    std::shared_ptr<MemoryPool> CreateMemoryPool();
     int GetCudaDeviceId() const noexcept;
-    void InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
-    std::vector<CUDA::DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
     void BenchmarkOptimalNumberOfRequests();
     unsigned int RunBenchmarkFor(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);
 
@@ -79,11 +80,10 @@ private:
     InferenceEngine::ITaskExecutor::Ptr cuda_stream_executor_;
     std::shared_ptr<Plugin> plugin_;
     std::shared_ptr<const ngraph::Function> function_;
-    std::vector<OperationBase::Ptr> exec_sequence_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;
-    std::shared_ptr<MemoryManagerPool> memory_manager_pool_;
-    std::shared_ptr<DeviceMemBlock> immutable_workbuffers_;
+    std::unique_ptr<CudaGraph> graph_;
+    std::shared_ptr<MemoryPool> memory_pool_;
 };
 
 }  // namespace CUDAPlugin
