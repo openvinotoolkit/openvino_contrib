@@ -4,6 +4,7 @@
 
 #include "single_layer_tests/lstm_cell.hpp"
 
+#include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
 #include <functional>
 #include <vector>
@@ -204,7 +205,10 @@ void testOneShape(const LSTMCellTestParams& params) {
     std::vector<DevPtr> outputs{ho_alloc, co_alloc};
 
     InferenceEngine::BlobMap empty;
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     std::vector<ElementType> x_host(x_size);
     std::vector<ElementType> hi_host(hi_size);
     std::vector<ElementType> ci_host(ci_size);

@@ -6,7 +6,9 @@
 
 #include <fmt/format.h>
 
+#include <cuda_graph.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
 
@@ -637,7 +639,10 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     InferenceEngine::BlobMap empty;
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;

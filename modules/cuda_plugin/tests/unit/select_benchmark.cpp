@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cuda_config.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
 #include <ngraph/op/constant.hpp>
@@ -88,7 +89,10 @@ void fillArrayWithRandomData(std::vector<T>& v) {
 TEST_F(SelectTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
 
     std::vector<uint8_t> conditions(bufferLength);
