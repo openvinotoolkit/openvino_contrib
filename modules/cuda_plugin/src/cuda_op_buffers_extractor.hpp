@@ -6,7 +6,10 @@
 
 #include <gsl/span>
 #include <memory>
+#include <memory_manager/cuda_device_mem_block.hpp>
+#include <memory_manager/model/cuda_immutable_memory_model_builder.hpp>
 #include <memory_manager/model/cuda_memory_model.hpp>
+#include <memory_manager/model/cuda_memory_model_builder.hpp>
 #include <ngraph/node.hpp>
 #include <string>
 #include <unordered_map>
@@ -31,9 +34,10 @@ class OperationBuffersExtractor {
      * c-tor
      * @param [in] ordered_nodes Subgraph to execute represenation.
      * Nodes are ordered in their execution order.
+     * @param [in] is_stable_params Makes input parameters alive for whole graph live time
      * @throws InferenceEngineException if the given subgraph is bad formed
      */
-    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes);
+    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params = false);
 
     /**
      * Provides input tensors ids of the given ngraph node
@@ -113,7 +117,31 @@ class OperationBuffersExtractor {
         return immutable_workbuffers_;
     }
 
-   private:
+    /**
+     * Initialize constant memory
+     * @param memory_block Memory block to initialize
+     */
+    void initConstantMemory(DeviceMemBlock::Ptr memory_block) const;
+
+    /**
+     * Create constant memory model
+     * @return MemoryModel for constants
+     */
+    MemoryModel::Ptr createConstantMemoryModel() const;
+
+    /**
+     * Create mutable memory model
+     * @return MemoryModel for mutable buffers
+     */
+    MemoryModel::Ptr createMutableMemoryModel() const;
+
+    /**
+     * Create immutable memory model
+     * @return MemoryModel for immutable buffers
+     */
+    MemoryModel::Ptr createImmutableMemoryModel() const;
+
+private:
     /**
      * Internal buffer representation
      */
@@ -240,12 +268,14 @@ class OperationBuffersExtractor {
      */
     static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
    private:
-    std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
-    std::unordered_map<BufferID, size_t> mutable_tensor_sizes_;
-    std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
-    std::unordered_map<BufferID, size_t> immutable_workbuffers_;
-    std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
-    unsigned next_buffer_id_{};
+       std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
+       std::unordered_map<BufferID, size_t> mutable_tensor_sizes_;
+       std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
+       std::unordered_map<BufferID, size_t> immutable_workbuffers_;
+       std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
+       unsigned next_buffer_id_{};
+       const bool is_stable_params_ = false;
+       const unsigned long num_ordered_nodes_ = 0;
 };
 
 } // namespace CUDAPlugin

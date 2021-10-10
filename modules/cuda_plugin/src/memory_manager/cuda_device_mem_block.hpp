@@ -18,29 +18,39 @@ namespace CUDAPlugin {
  */
 class DeviceMemBlock {
    public:
-    /**
-     * @throws InferenceEngineException if device memory block allocation
-     * failed.
-     */
-    DeviceMemBlock(MemoryModel::Ptr model);
+       using Ptr = std::shared_ptr<DeviceMemBlock>;
 
-    /**
-     * Provides buffer memory address if any.
-     *
-     * @param [in] id Buffer identifier.
-     * @returns device memory pointer if buffer is located within the blob
-     * or nullptr otherwise.
-     */
-    void* deviceBufferPtr(const BufferID& id);
+       /**
+        * @throws InferenceEngineException if device memory block allocation
+        * failed.
+        */
+       DeviceMemBlock(MemoryModel::Ptr model);
 
-    /**
-     * Provides tensor memory address if any.
-     *
-     * @param [in] id Tensor identifier.
-     * @returns device memory pointer if tensor is located within the blob
-     * or nullptr otherwise.
-     */
-    void* deviceTensorPtr(const TensorID& id);
+       /**
+        * Provides buffer memory address if any.
+        *
+        * @param [in] id Buffer identifier.
+        * @returns device memory pointer if buffer is located within the blob
+        * or nullptr otherwise.
+        */
+       void* deviceBufferPtr(const BufferID& id) const;
+
+       /**
+        * Provides tensor memory address if any.
+        *
+        * @param [in] id Tensor identifier.
+        * @returns device memory pointer if tensor is located within the blob
+        * or nullptr otherwise.
+        */
+       void* deviceTensorPtr(const TensorID& id) const;
+
+       CUDA::DeviceBuffer<uint8_t> view() const {
+           return {static_cast<uint8_t*>(device_mem_ptr_.get()), model_->deviceMemoryBlockSize()};
+       }
+
+       const std::vector<BufferID>& bufferIds() const { return model_->bufferIds(); }
+
+       MemoryModel::Ptr memoryModel() const { return model_; }
 
    private:
     MemoryModel::Ptr model_;

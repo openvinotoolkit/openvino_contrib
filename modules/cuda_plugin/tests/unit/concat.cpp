@@ -4,7 +4,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <ngraph/function.hpp>
 #include <ngraph/output_vector.hpp>
 #include <numeric>
@@ -14,8 +16,8 @@
 using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
-using devptr_t = CUDA::DevicePointer<void*>;
-using cdevptr_t = CUDA::DevicePointer<const void*>;
+using devptr_t = DevicePointer<void*>;
+using cdevptr_t = DevicePointer<const void*>;
 
 template <typename T, std::size_t Size>
 std::ostream& operator<<(std::ostream& out, gsl::span<T, Size> data) {
@@ -64,7 +66,10 @@ struct ConcatTest : testing::Test {
         ASSERT_TRUE(operation);
         auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
         ASSERT_TRUE(concatOp);
-        InferenceRequestContext context{empty, empty, threadContext};
+        CancellationToken token{};
+        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        Profiler profiler{false, graph};
+        InferenceRequestContext context{empty, empty, threadContext, token, profiler};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};

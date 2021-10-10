@@ -5,7 +5,9 @@
 #include <cuda_fp16.h>
 #include <fmt/format.h>
 
-#include "error.hpp"
+#include <error.hpp>
+#include <kernels/error.hpp>
+
 #include "kernels/select.hpp"
 
 namespace CUDAPlugin {

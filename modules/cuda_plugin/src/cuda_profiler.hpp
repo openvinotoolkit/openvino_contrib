@@ -5,9 +5,12 @@
 #pragma once
 
 #include <chrono>
+#include <map>
+#include <ops/tensor_iterator.hpp>
 #include <utils/perf_timing.hpp>
 #include <vector>
 
+#include "cuda_graph.hpp"
 #include "cuda_operation_base.hpp"
 
 namespace CUDAPlugin {
@@ -29,9 +32,13 @@ public:
     /**
      * Constructor of Profiler class
      * @param perfCount Option that indicates if performance counters are enabled
-     * @param execSequence Execution sequence to profile
      */
-    explicit Profiler(bool perfCount, const std::vector<OperationBase::Ptr>& execSequence);
+    explicit Profiler(bool perfCount, const SubGraph& graph);
+
+    /**
+     * Start time measurement of stage
+     */
+    void SetStream(const CUDA::Stream& stream) { active_stream_ = &stream; }
 
     /**
      * Start time measurement of stage
@@ -45,11 +52,10 @@ public:
     void StopStage(Stages stage) { durations_[stage] = Time::now() - start_; }
 
     /**
-     * Creates profiler sequence
-     * @param stream CUDA stream for on which operation should be executed
-     * @return ProfilerSequence
+     * Creates profiler sequence and increase infer request counter
+     * @return ProfilerSequence for single InferRequest
      */
-    Profiler::ProfilerSequence CreateExecSequence(const CUDA::Stream& stream);
+    Profiler::ProfilerSequence CreateExecSequence(const SubGraph* subGraphPtr);
 
     /**
      * Returns performance counters
@@ -63,14 +69,20 @@ public:
     void ProcessEvents();
 
 private:
+    void CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
+    void CollectSubGraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
+    void CollectNodeVisitor(const OperationBase::Ptr& execStep,
+                            std::vector<ProfileExecStep>& perfSteps,
+                            std::vector<OperationBase::Ptr>& allExecSequence);
+
     const CUDA::Stream* active_stream_ = nullptr;
-    bool perf_count_;
-    std::vector<ProfileExecStep> perf_steps_{};
+    const bool perf_count_;
+    std::vector<std::pair<const void*, std::vector<ProfileExecStep>>> subgraph_perf_steps_map_;
     PerformaceCounters perf_counters_{};
     utils::PerformaceTiming exec_timing_{};
     // for performance counters
     std::array<Duration, NumOfStages> durations_;
-    Time::time_point start_;
+    Time::time_point start_{};
     size_t infer_count_{};
 };
 
@@ -81,7 +93,7 @@ public:
      * @param profiler Profiler class
      * @param execStep Executable step
      */
-    ProfileExecStep(Profiler& profiler, OperationBase& execStep) : profiler_{profiler}, exec_step_{execStep} {}
+    ProfileExecStep(Profiler& profiler, const OperationBase& execStep) : profiler_{profiler}, exec_step_{execStep} {}
 
     /**
      * Execute method wrapper that wrap each element with time measurement
@@ -89,7 +101,7 @@ public:
      * @param args Additional arguments for Execute method of operation
      */
     template <typename... TArgs>
-    void Execute(TArgs&&... args) {
+    void Execute(TArgs&&... args) const {
         if (this->profiler_.perf_count_) {
             timing_.setStart(*this->profiler_.active_stream_);
             exec_step_.Execute(std::forward<TArgs>(args)...);
@@ -103,19 +115,19 @@ public:
      * Adapter method for pointer of operation
      * @return Reference to ProfileExecStep
      */
-    ProfileExecStep& operator*() { return *this; }
+    const ProfileExecStep& operator*() const { return *this; }
 
     /**
      * Adapter method for pointer of operation
      * @return Pointer to ProfileExecStep
      */
-    ProfileExecStep* operator->() { return this; }
+    const ProfileExecStep* operator->() const { return this; }
 
     /**
      * Implicitly casts ProfileExecStep to OperationBase
      * @return
      */
-    operator OperationBase&() const { return static_cast<OperationBase&>(exec_step_); }
+    operator const OperationBase&() const { return static_cast<const OperationBase&>(exec_step_); }
 
     /**
      * Measure time for this execution step
@@ -137,8 +149,8 @@ public:
 
 private:
     Profiler& profiler_;
-    OperationBase& exec_step_;
-    utils::PerformaceTiming timing_;
+    const OperationBase& exec_step_;
+    mutable utils::PerformaceTiming timing_;
 };
 
 class Profiler::ProfilerSequence {
@@ -148,43 +160,43 @@ public:
      * @param profiler Profiler class
      * @param stream CUDA stream
      */
-    ProfilerSequence(Profiler& profiler, const CUDA::Stream& stream) : profiler_{profiler}, stream_{stream} {
-        profiler_.exec_timing_.setStart(stream_);
+    ProfilerSequence(Profiler& profiler, size_t index) : profiler_{profiler}, index_{index} {
+        profiler_.exec_timing_.setStart(*profiler_.active_stream_);
     }
 
     /**
      * Destructor
      * Stops time measurement
      */
-    ~ProfilerSequence() { profiler_.exec_timing_.setStop(stream_); }
+    ~ProfilerSequence() { profiler_.exec_timing_.setStop(*profiler_.active_stream_); }
 
     /**
      * begin method for iterable class
      * @return Iterator
      */
-    auto begin() { return profiler_.perf_steps_.begin(); }
+    auto begin() const { return profiler_.subgraph_perf_steps_map_[index_].second.begin(); }
 
     /**
      * end method for iterable class
      * @return Iterator
      */
-    auto end() { return profiler_.perf_steps_.end(); }
+    auto end() const { return profiler_.subgraph_perf_steps_map_[index_].second.end(); }
 
     /**
      * begin method for iterable class
      * @return Constant iterator
      */
-    auto cbegin() { return profiler_.perf_steps_.cbegin(); }
+    auto cbegin() { return profiler_.subgraph_perf_steps_map_[index_].second.cbegin(); }
 
     /**
      * end method for iterable class
      * @return Constant iterator
      */
-    auto cend() { return profiler_.perf_steps_.cend(); }
+    auto cend() { return profiler_.subgraph_perf_steps_map_[index_].second.cend(); }
 
 private:
     Profiler& profiler_;
-    const CUDA::Stream& stream_;
+    size_t index_;
 };
 
 }  // namespace CUDAPlugin

@@ -40,38 +40,59 @@ public:
      * used to allocate a memory which is used by a single infer request at a time.
      * @param[in] immutableWorkbufferMemory Blob for immutable workbuffers
      */
-    MemoryManager(std::shared_ptr<DeviceMemBlock> immutableTensors,
+    MemoryManager(DeviceMemBlock::Ptr immutableTensors,
                   MemoryModel::Ptr mutableMemoryModel,
-                  std::shared_ptr<DeviceMemBlock> immutableWorkbufferMemory = nullptr);
+                  DeviceMemBlock::Ptr immutableWorkbufferMemory = nullptr);
 
     /**
      * Maps input tensor identifiers into device side tensor pointers.
      * @param[in] operation An operation which defines input tensors.
+     * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns An array of corresponding input tensor pointers.
      * @throws InferenceEngineException if any of tensor pointers is not found
      */
-    InputTensors inputTensorPointers(const IOperationMeta& operation);
+    InputTensors inputTensorPointers(const IOperationMeta& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
 
     /**
      * Maps output tensor identifiers into device side tensor pointers.
      * @param[in] operation An operation which defines output tensors.
+     * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns An array of corresponding output tensor pointers.
      * @throws InferenceEngineException if any of tensor pointers is not found
      */
-    OutputTensors outputTensorPointers(const IOperationMeta& operation);
+    OutputTensors outputTensorPointers(const IOperationMeta& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
 
     /**
      * Maps operation onto device side work work buffer pointers.
      * @param[in] operation An operation
+     * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns Work buffer pointers
      * @throws InferenceEngineException if any of tensor pointers is not found
      */
-    Workbuffers workBuffers(const IOperationExec& operation) const;
+    Workbuffers workBuffers(const IOperationExec& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
+
+    /**
+     * Returns immutable tensors
+     * @return DeviceMemBlock
+     */
+    [[nodiscard]] const DeviceMemBlock& immutableTensors() const { return *immutable_tensors_; }
+
+    /**
+     * Returns mutable tensors model
+     * @return MemoryModel
+     */
+    [[nodiscard]] MemoryModel::Ptr mutableTensorsMemoryModel() const { return mutable_tensors_model_; }
+
+    /**
+     * Returns immutable workbuffers
+     * @return DeviceMemBlock
+     */
+    [[nodiscard]] const DeviceMemBlock& immutableWorkbuffers() const { return *immutable_workbuffers_; }
 
 private:
-  std::shared_ptr<DeviceMemBlock> immutable_tensors_;
-  std::unique_ptr<DeviceMemBlock> mutable_tensors_;
-  std::shared_ptr<DeviceMemBlock> immutable_workbuffers_;
+    DeviceMemBlock::Ptr immutable_tensors_;
+    MemoryModel::Ptr mutable_tensors_model_;
+    DeviceMemBlock::Ptr immutable_workbuffers_;
 };
 
 }  // namespace CUDAPlugin

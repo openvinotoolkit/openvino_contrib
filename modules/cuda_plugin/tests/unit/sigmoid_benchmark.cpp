@@ -8,7 +8,9 @@
 #include <array>
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
 #include <ngraph/op/parameter.hpp>
@@ -49,7 +51,10 @@ struct SigmoidTest : testing::Test {
 TEST_F(SigmoidTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20;
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in;
     std::random_device r_device;

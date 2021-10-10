@@ -22,7 +22,7 @@
 #include "cuda_operation_base.hpp"
 #include "cuda_profiler.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
-#include "memory_manager/cuda_memory_manager_pool.hpp"
+#include "memory_manager/cuda_memory_pool.hpp"
 #include "utils/perf_timing.hpp"
 
 namespace CUDAPlugin {
@@ -84,10 +84,9 @@ private:
     InferenceEngine::BlobMap network_input_blobs_;
     InferenceEngine::BlobMap network_output_blobs_;
 
-    std::optional<MemoryManagerPool::Proxy> memory_manager_proxy_;
+    std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
     Profiler profiler_;
-    size_t infer_count_{};
 };
 // ! [infer_request:header]
 

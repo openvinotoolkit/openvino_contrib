@@ -4,11 +4,18 @@
 
 #pragma once
 
+#include <ie_blob.h>
+
+#include <memory_manager/cuda_device_mem_block.hpp>
+
+#include "cancellation_token.hpp"
 #include "cuda_thread_context.hpp"
 
 namespace CUDAPlugin {
 
 using Blob = InferenceEngine::Blob;
+
+class Profiler;
 
 class InferenceRequestContext {
 public:
@@ -20,8 +27,10 @@ public:
 
     InferenceRequestContext(const InferenceEngine::BlobMap& inputs,
                             const InferenceEngine::BlobMap& outputs,
-                            const ThreadContext& threadContext)
-        : threadContext{threadContext}, blob_inputs{inputs}, blob_outputs{outputs} {}
+                            const ThreadContext& threadContext,
+                            CancellationToken& token,
+                            Profiler& profiler)
+        : threadContext{threadContext}, token{token}, profiler{profiler}, blob_inputs{inputs}, blob_outputs{outputs} {}
     // don't allow storing references to temporary
     template <typename... Args>
     InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
@@ -54,9 +63,13 @@ public:
         return blob_outputs.find(input_name) != blob_outputs.end();
     }
     const ThreadContext& getThreadContext() const noexcept { return threadContext; }
+    [[nodiscard]] CUDAPlugin::CancellationToken& getCancellationToken() const noexcept { return token; }
+    [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
 
 private:
     const ThreadContext& threadContext;
+    CancellationToken& token;
+    Profiler& profiler;
     const InferenceEngine::BlobMap& blob_inputs;
     const InferenceEngine::BlobMap& blob_outputs;
 };

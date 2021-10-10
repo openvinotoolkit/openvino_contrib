@@ -61,10 +61,11 @@ SplitOp::SplitOp(const CreationContext& context,
     const size_t num_split_chunks =
         std::accumulate(data_shape.begin(), data_shape.end(), 1, std::multiplies<size_t>()) / split_step_size;
     Ensures(num_split_chunks != 0);
+    const size_t num_split_elements = split_step_size * num_split_chunks;
     const unsigned max_block_size = context.device().props().maxThreadsPerBlock;
-    const unsigned num_blocks = (num_split_chunks % max_block_size == 0) ? (num_split_chunks / max_block_size)
-                                                                         : (num_split_chunks / max_block_size + 1);
-    const unsigned threads_per_block = (num_blocks == 1) ? num_split_chunks : max_block_size;
+    const unsigned num_blocks = (num_split_elements % max_block_size == 0) ? (num_split_elements / max_block_size)
+                                                                           : (num_split_elements / max_block_size + 1);
+    const unsigned threads_per_block = (num_blocks == 1) ? num_split_elements : max_block_size;
 
     split_kernel_ = kernel::Split{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
                                   num_splits_,

@@ -6,8 +6,6 @@
 
 #include <details/ie_exception.hpp>
 
-#include "memory_manager/cuda_device_mem_block.hpp"
-
 namespace CUDAPlugin {
 
 void ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
@@ -18,14 +16,15 @@ void ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, s
 
 size_t ImmutableMemoryBlockBuilder::deviceMemoryBlockSize() const { return model_builder_.deviceMemoryBlockSize(); }
 
-std::shared_ptr<DeviceMemBlock> ImmutableMemoryBlockBuilder::build() {
-    auto memory_block = std::make_shared<DeviceMemBlock>(model_builder_.build());
+std::pair<DeviceMemBlock::Ptr, MemoryModel::Ptr> ImmutableMemoryBlockBuilder::build() {
+    auto memory_model = model_builder_.build();
+    auto memory_block = std::make_shared<DeviceMemBlock>(memory_model);
     for (const auto& allocation : allocations_) {
         void* device_ptr = memory_block->deviceBufferPtr(allocation.id);
         IE_ASSERT(device_ptr != nullptr);
         throwIfError(::cudaMemcpy(device_ptr, allocation.data, allocation.bsize, cudaMemcpyHostToDevice));
     }
-    return memory_block;
+    return {memory_block, memory_model};
 }
 
 }  // namespace CUDAPlugin

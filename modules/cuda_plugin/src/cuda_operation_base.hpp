@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "memory_manager/cuda_workbuffers.hpp"
+#include "cuda_inference_request_context.hpp"
 
 namespace ngraph {
 
@@ -24,6 +25,9 @@ class Node;
 }
 
 namespace CUDAPlugin {
+
+template <typename T>
+using DevicePointer = CUDA::DevicePointer<T>;
 
 class IOperationExec {
 public:
@@ -81,6 +85,8 @@ protected:
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds)
         : OperationBase(context, *node, move(inputIds), move(outputIds)) {}
+    OperationBase(const CreationContext& context, std::nullptr_t)
+        : node_name_{}, type_name_{}, input_ids_{}, output_ids_{} {}
 
 public:
     const std::string_view& GetCategory() const override { return Category::CUDA; }

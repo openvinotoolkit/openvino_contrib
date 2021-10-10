@@ -39,8 +39,8 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
                                    const std::shared_ptr<ExecutableNetwork>& executableNetwork)
     : IInferRequestInternal(networkInputs, networkOutputs),
       _executableNetwork(executableNetwork),
-      cancellation_token_{[this] { memory_manager_proxy_.reset(); }},
-      profiler_{_executableNetwork->cfg_.perfCount, _executableNetwork->exec_sequence_} {
+      cancellation_token_{[this] { memory_proxy_.reset(); }},
+      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_} {
     // TODO: allocate infer request device and host buffers if needed, fill
     // actual list of profiling tasks
 
@@ -113,23 +113,18 @@ void CudaInferRequest::inferPreprocess() {
 void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
     try {
         OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::StartPipeline])
-        infer_count_++;
         profiler_.StartStage();
-        memory_manager_proxy_ = _executableNetwork->memory_manager_pool_->WaitAndGet(cancellation_token_);
-        auto& manager = memory_manager_proxy_->Get();
-        InferenceRequestContext inferRequestContext{network_input_blobs_, network_output_blobs_, threadContext};
-        auto& stream = threadContext.stream();
-        for (auto& op : profiler_.CreateExecSequence(stream)) {
-            cancellation_token_.Check();
-            auto inputTensors = manager.inputTensorPointers(*op);
-            auto outputTensors = manager.outputTensorPointers(*op);
-            op->Execute(inferRequestContext, inputTensors, outputTensors, manager.workBuffers(*op));
-        }
+        memory_proxy_ = _executableNetwork->memory_pool_->WaitAndGet(cancellation_token_);
+        auto& memory = memory_proxy_->Get();
+        auto& graph = *_executableNetwork->graph_;
+        InferenceRequestContext inferRequestContext{
+            network_input_blobs_, network_output_blobs_, threadContext, cancellation_token_, profiler_};
+        graph.Run(inferRequestContext, memory);
         profiler_.StopStage(Profiler::StartPipeline);
     } catch (...) {
         // TODO:
         // Log error once logger is available
-        memory_manager_proxy_.reset();
+        memory_proxy_.reset();
         throw;
     }
 }
@@ -140,7 +135,7 @@ void CudaInferRequest::waitPipeline(const ThreadContext& threadContext) {
     profiler_.StartStage();
     // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
     threadContext.stream().synchronize();
-    memory_manager_proxy_.reset();
+    memory_proxy_.reset();
     profiler_.StopStage(Profiler::WaitPipeline);
 }
 
@@ -164,7 +159,7 @@ void CudaInferRequest::inferPostprocess() {
 
 void CudaInferRequest::Cancel() {
     cancellation_token_.Cancel();
-    _executableNetwork->memory_manager_pool_->Interrupt();
+    _executableNetwork->memory_pool_->Interrupt();
 }
 
 InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
@@ -366,6 +361,9 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
                     break;
                 case Precision::FP16:
                     convertPrecision<float, __half>(src, dst);
+                    break;
+                case Precision::I32:
+                    convertPrecision<float, std::int32_t>(src, dst);
                     break;
                 default: {
                     throwIEException(fmt::format("Unsupported precision conversion from {} to {}",

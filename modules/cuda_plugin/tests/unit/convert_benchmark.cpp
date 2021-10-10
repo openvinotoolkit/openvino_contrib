@@ -4,21 +4,21 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cuda_config.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
+#include <iomanip>
 #include <ngraph/node.hpp>
-#include <ngraph/op/parameter.hpp>
 #include <ngraph/op/convert.hpp>
-
+#include <ngraph/op/parameter.hpp>
 #include <ops/parameter.hpp>
 #include <random>
-#include <chrono>
-#include <iomanip>
 
 namespace {
 
 struct ConvertTest : testing::Test {
-    CUDA::ThreadContext threadContext { CUDA::Device {} };
+    CUDAPlugin::ThreadContext threadContext { CUDA::Device {} };
     const ngraph::Shape inputTensorShape {1, 1, 3, 1024, 1024};
     InferenceEngine::BlobMap empty;
 
@@ -32,8 +32,8 @@ struct ConvertTest : testing::Test {
         static constexpr bool optimizeOption = false;
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         return registry.createOperation(
-            CUDA::CreationContext {threadContext.device(), optimizeOption},
-                node, std::vector<CUDAPlugin::TensorID> {0u}, std::vector<CUDAPlugin::TensorID> {0u});
+            CUDAPlugin::CreationContext {threadContext.device(), optimizeOption},
+                node, std::vector<CUDAPlugin::TensorID> {CUDAPlugin::TensorID{0u}}, std::vector<CUDAPlugin::TensorID> {CUDAPlugin::TensorID{0u}});
     }
 };
 
@@ -42,8 +42,10 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     constexpr int kNumAttempts = 200;
 
     auto& stream = threadContext.stream();
-    InferenceEngine::gpu::InferenceRequestContext context { empty, empty,
-                threadContext };
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
 
     using Type_t = ngraph::element::Type_t;
     static constexpr auto supported_types = {
@@ -73,8 +75,8 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
             const auto ouputBufferSize = ngraph::shape_size(inputTensorShape) * output_type.size();
             const CUDA::Allocation inAlloc =  stream.malloc(inputBufferSize);
             const CUDA::Allocation outAlloc = stream.malloc(ouputBufferSize);
-            std::vector<InferenceEngine::gpu::DevicePointer<const void*>> inputs { inAlloc };
-            std::vector<InferenceEngine::gpu::DevicePointer<void*>> outputs { outAlloc };
+            std::vector<CUDA::DevicePointer<const void*>> inputs { inAlloc };
+            std::vector<CUDA::DevicePointer<void*>> outputs { outAlloc };
             std::vector<u_char> in(inputBufferSize);
             std::random_device r_device;
             std::mt19937 mersenne_engine {r_device()};
