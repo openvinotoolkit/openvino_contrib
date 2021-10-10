@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cuda_config.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
 #include <ngraph/op/constant.hpp>
@@ -77,7 +78,10 @@ struct StridedSliceTest : testing::Test {
 TEST_F(StridedSliceTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;
@@ -86,10 +90,8 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     auto gen = [&dist, &mersenne_engine]() { return 10.f * dist(mersenne_engine) / std::numeric_limits<int>::max(); };
     std::generate(in.begin(), in.end(), gen);
     stream.upload(inAlloc, in.data(), inputBufferSize);
-
     auto wb_request = operation->GetWorkBufferRequest();
     ASSERT_EQ(wb_request.immutable_sizes.size(), 5);
-
     CUDAPlugin::Workbuffers workbuffers;
     workbuffers.immutable_buffers = {srcShapeSizesAlloc, dstShapeSizesAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc};
     operation->InitSharedImmutableWorkbuffers(

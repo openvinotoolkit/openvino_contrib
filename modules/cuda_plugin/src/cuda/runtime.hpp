@@ -167,8 +167,8 @@ public:
     Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
     void* get() const noexcept { return p.get(); }
     template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
-    operator CUDA::DevicePointer<T*>() const noexcept {
-        return CUDA::DevicePointer<T*>{get()};
+    operator DevicePointer<T*>() const noexcept {
+        return DevicePointer<T*>{get()};
     }
 };
 
@@ -184,8 +184,8 @@ class DefaultAllocation {
   explicit DefaultAllocation(void* p) noexcept : p{p} {}
   void* get() const noexcept { return p.get(); }
   template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
-  operator CUDA::DevicePointer<T*>() const noexcept {
-      return CUDA::DevicePointer<T*>{get()};
+  operator DevicePointer<T*>() const noexcept {
+      return DevicePointer<T*>{get()};
   }
 };
 
@@ -261,7 +261,7 @@ class DefaultStream {
   auto malloc(std::size_t size) const {
     return DefaultAllocation{create<void*, cudaError_t>(cudaMalloc, size)};
   }
-  void upload(CUDA::DevicePointer<void*> dst, const void* src,
+  void upload(DevicePointer<void*> dst, const void* src,
               std::size_t count) const {
     uploadImpl(dst.get(), src, count);
   }
@@ -271,11 +271,7 @@ class DefaultStream {
   void download(void* dst, const Allocation& src, std::size_t count) const {
     downloadImpl(dst, src.get(), count);
   }
-  void download(void* dst, CUDA::DevicePointer<const void*> src,
-                std::size_t count) const {
-    downloadImpl(dst, src.get(), count);
-  }
-  void download(void* dst, CUDA::DevicePointer<void*> src,
+  void download(void* dst, DevicePointer<const void*> src,
                 std::size_t count) const {
     downloadImpl(dst, src.get(), count);
   }

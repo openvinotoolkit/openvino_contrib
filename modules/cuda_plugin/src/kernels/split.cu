@@ -21,12 +21,14 @@ template <typename T>
 static __global__ void split(
     const size_t numSplitChunks, const size_t splitStepSize, const size_t numSplits, const T *x, T **y) {
     const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numSplitChunks) {
-        const unsigned splitIdx = i % numSplits;
-        const unsigned splitStepIdx = i / numSplits;
-        auto src = &x[i * splitStepSize];
+    const unsigned chunkIdx = i / splitStepSize;
+    const unsigned chunkOffset = i % splitStepSize;
+    if (chunkIdx < numSplitChunks) {
+        const unsigned splitIdx = chunkIdx % numSplits;
+        const unsigned splitStepIdx = chunkIdx / numSplits;
+        auto src = &x[chunkIdx * splitStepSize];
         auto dest = &y[splitIdx][splitStepIdx * splitStepSize];
-        memcpy(dest, src, sizeof(T) * splitStepSize);
+        dest[chunkOffset] = src[chunkOffset];
     }
 }
 

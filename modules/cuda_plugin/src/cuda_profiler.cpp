@@ -33,13 +33,11 @@ constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long 
 
 }  // namespace
 
-Profiler::Profiler(bool perfCount, const std::vector<OperationBase::Ptr>& execSequence) : perf_count_{perfCount} {
-    perf_steps_.reserve(execSequence.size());
-    for (int i = 0; i < execSequence.size(); ++i) {
-        perf_steps_.emplace_back(*this, *execSequence[i]);
-    }
+Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCount} {
+    std::vector<OperationBase::Ptr> execSequence;
+    CollectSubGraphs(graph, execSequence);
 
-    if (perfCount) {
+    if (perf_count_) {
         for (int i = 0; i < execSequence.size(); ++i) {
             auto& op = *execSequence[i];
             const auto& name = op.GetName();
@@ -62,14 +60,17 @@ void Profiler::ProcessEvents() {
     if (infer_count_ == 0) return;
     constexpr float ms2us = 1000.0;
     std::map<std::string, float> layer_timing{};
-    for (auto& timing : perf_steps_) {
-        timing.Measure();
-        const auto perf = perf_counters_.find(timing.GetOpName());
-        if (perf != perf_counters_.cend()) {
-            perf->second.realTime_uSec = timing.Duration() * ms2us / infer_count_;
-            perf->second.status = InferenceEngine::InferenceEngineProfileInfo::EXECUTED;
-            if (perf->second.layer_type[0]) {
-                layer_timing[perf->second.layer_type] += timing.Duration();
+    for (auto& timing_map : subgraph_perf_steps_map_) {
+        auto& timings = timing_map.second;
+        for (auto& timing : timings) {
+            timing.Measure();
+            const auto perf = perf_counters_.find(timing.GetOpName());
+            if (perf != perf_counters_.cend()) {
+                perf->second.realTime_uSec = timing.Duration() * ms2us / infer_count_;
+                perf->second.status = InferenceEngine::InferenceEngineProfileInfo::EXECUTED;
+                if (perf->second.layer_type[0]) {
+                    layer_timing[perf->second.layer_type] += timing.Duration();
+                }
             }
         }
     }
@@ -96,10 +97,52 @@ void Profiler::ProcessEvents() {
     perf_counters_["5. output postprocessing"] = makeProfileInfo(0, durations_[Postprocess].count());
 }
 
-Profiler::ProfilerSequence Profiler::CreateExecSequence(const CUDA::Stream& stream) {
+Profiler::ProfilerSequence Profiler::CreateExecSequence(const SubGraph* subGraphPtr) {
+    Expects(active_stream_);
     ++infer_count_;
-    active_stream_ = &stream;
-    return ProfilerSequence{*this, *active_stream_};
+    auto foundPerfStepsIter = std::find_if(subgraph_perf_steps_map_.begin(),
+                                           subgraph_perf_steps_map_.end(),
+                                           [subGraphPtr](const auto& ps) { return ps.first == subGraphPtr; });
+    Expects(foundPerfStepsIter != subgraph_perf_steps_map_.end());
+    return ProfilerSequence{*this,
+                            static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
+}
+
+void Profiler::CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
+    std::vector<ProfileExecStep> perfSteps;
+    const auto& params = graph.getParams();
+    const auto& execSequence = graph.getExecSequence();
+    const auto& results = graph.getResults();
+    for (const auto& execStep : params) {
+        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+    }
+    for (const auto& execStep : execSequence) {
+        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+    }
+    for (const auto& execStep : results) {
+        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+    }
+    subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
+}
+
+void Profiler::CollectSubGraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
+    std::vector<ProfileExecStep> perfSteps;
+    const auto& execSequence = graph.getExecSequence();
+    for (const auto& execStep : execSequence) {
+        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+    }
+    subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
+}
+
+void Profiler::CollectNodeVisitor(const OperationBase::Ptr& execStep,
+                                  std::vector<ProfileExecStep>& perfSteps,
+                                  std::vector<OperationBase::Ptr>& allExecSequence) {
+    allExecSequence.push_back(execStep);
+    const auto& op = *execStep;
+    perfSteps.emplace_back(*this, op);
+    if (const auto tensorIteratorPtr = dynamic_cast<const TensorIteratorOp*>(&op)) {
+        CollectSubGraphs(*tensorIteratorPtr, allExecSequence);
+    }
 }
 
 }  // namespace CUDAPlugin

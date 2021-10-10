@@ -40,14 +40,14 @@ Concat::Concat(Type_t element_type,
                size_t chunk_size,
                size_t all_chunk_size,
                size_t num_blocks,
-               size_t threads_per_block)
+               size_t threadsPerBlock)
     : element_type_{element_type},
       num_inputs_{num_inputs},
       chunks_{std::move(chunks)},
       chunk_size_{chunk_size},
       all_chunk_size_{all_chunk_size},
       num_blocks_{num_blocks},
-      threads_per_block_{threads_per_block} {}
+      threads_per_block_{threadsPerBlock} {}
 
 void Concat::operator()(const cudaStream_t stream, const void* chunks, const void* const* src, void* dst) const {
     switch (element_type_) {

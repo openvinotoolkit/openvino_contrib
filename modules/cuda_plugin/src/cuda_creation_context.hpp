@@ -13,15 +13,13 @@
 namespace CUDAPlugin {
 
 class CreationContext {
-  CUDA::Device device_;
-  bool optimize_option_;
+    CUDA::Device device_;
+    bool optimize_option_;
 
- public:
-  explicit CreationContext(CUDA::Device d, bool optimizeOption)
-      : device_{d}
-      , optimize_option_{optimizeOption} {}
-  CUDA::Device device() const { return device_; }
-  bool optimizeOption() const noexcept { return optimize_option_; }
+public:
+    explicit CreationContext(CUDA::Device d, bool optimizeOption) : device_{d}, optimize_option_{optimizeOption} {}
+    CUDA::Device device() const { return device_; }
+    bool optimizeOption() const noexcept { return optimize_option_; }
 };
 
 }  // namespace CUDAPlugin

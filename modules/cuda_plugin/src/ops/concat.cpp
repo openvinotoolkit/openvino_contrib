@@ -54,10 +54,12 @@ ConcatOp::ConcatOp(const CreationContext& context,
             }
         }
     }
+
     const std::size_t allChunkSize = chunk_size * chunks.size();
     const unsigned maxBlockSize = context.device().props().maxThreadsPerBlock;
     const std::size_t numBlocks = (allChunkSize + maxBlockSize - 1) / maxBlockSize;
     const std::size_t threadsPerBlock = (numBlocks == 1) ? allChunkSize : maxBlockSize;
+
     concat_kernel_ = kernel::Concat{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
                                     num_inputs_,
                                     std::move(chunks),

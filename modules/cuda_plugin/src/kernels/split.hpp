@@ -11,11 +11,6 @@ namespace kernel {
 
 class Split {
 public:
-    struct Chunk {
-        size_t input;
-        size_t offset;
-    };
-
     Split(Type_t element_type,
           size_t num_splits,
           size_t num_split_chunks,
