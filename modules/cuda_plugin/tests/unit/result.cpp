@@ -5,7 +5,10 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <cuda_graph.hpp>
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
 #include <ops/result.hpp>
@@ -16,8 +19,8 @@
 
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
-using devptr_t = CUDA::DevicePointer<void*>;
-using cdevptr_t = CUDA::DevicePointer<const void*>;
+using devptr_t = DevicePointer<void*>;
+using cdevptr_t = DevicePointer<const void*>;
 
 /**
  * @brief Fill InferenceEngine blob with random values
@@ -95,7 +98,10 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 }
 
 TEST_F(ResultTest, canExecuteSync) {
-    InferenceRequestContext context{empty, blobs, threadContext};
+    CancellationToken token{};
+    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    Profiler profiler{false, graph};
+    InferenceRequestContext context{empty, blobs, threadContext, token, profiler};
     auto mem = blob->as<MemoryBlob>()->rmap();
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), mem, size);
@@ -107,7 +113,10 @@ TEST_F(ResultTest, canExecuteSync) {
 }
 
 TEST_F(ResultTest, canExecuteAsync) {
-    InferenceRequestContext context{empty, blobs, threadContext};
+    CancellationToken token{};
+    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    Profiler profiler{false, graph};
+    InferenceRequestContext context{empty, blobs, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     auto mem = blob->as<MemoryBlob>()->rmap();
     stream.upload(inputs[0].as_mutable(), mem, size);

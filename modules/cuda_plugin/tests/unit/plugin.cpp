@@ -24,8 +24,8 @@
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
 
-using devptr_t = CUDA::DevicePointer<void*>;
-using cdevptr_t = CUDA::DevicePointer<const void*>;
+using devptr_t = DevicePointer<void*>;
+using cdevptr_t = DevicePointer<const void*>;
 
 class PluginTest : public testing::Test {
     void SetUp() override { function_ = CreateMatMulTestNetwork(); }

@@ -10,7 +10,9 @@
 
 #include <ie_icore.hpp>
 #include <ie_plugin_config.hpp>
+#include <memory_manager/cuda_memory_manager.hpp>
 #include <ops/nop_op.hpp>
+#include <ops/subgraph.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
 
@@ -117,38 +119,14 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
         input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), function_->get_parameter_index(parameter));
     }
 
-    const auto& orderedNodes = function_->get_ordered_ops();
-
-    static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
-
-    OperationBuffersExtractor opBuffersExtractor{orderedNodes};
-    std::vector<OperationBase::Ptr> init_sequence{};
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     const std::string optimizeOptionString = cfg_.Get(CUDA_CONFIG_KEY(OPTIMIZE));
     const bool optimizeOption = optimizeOptionString == CUDA_CONFIG_VALUE(YES);
     const auto creationContext = CreationContext{device, optimizeOption};
-    for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
-        auto& node = orderedNodes[node_idx];
-        if (!OperationRegistry::getInstance().hasOperation(node)) {
-            throwIEException(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
-                                         node->get_name(),
-                                         node->description()));
-        }
-        auto inIds = opBuffersExtractor.inputTensorIds(*node);
-        auto outIds = opBuffersExtractor.outputTensorIds(*node);
-        auto operation =
-            OperationRegistry::getInstance().createOperation(creationContext, node, move(inIds), move(outIds));
-        if (InitNeeded == operation->SetWorkbufferIds(opBuffersExtractor.processWorkbufferRequest(
-                              node_idx, operation->GetWorkBufferRequest()))) {
-            init_sequence.push_back(operation);
-        }
-        if (!dynamic_cast<NopOp*>(operation.get())) {
-            exec_sequence_.push_back(operation);
-        }
-    }
 
-    memory_manager_pool_ = CreateMemoryManagerPool(opBuffersExtractor);
-    InitSharedImmutableWorkbuffers(init_sequence);
+    graph_ = std::make_unique<CudaGraph>(creationContext, function_);
+
+    memory_pool_ = CreateMemoryPool();
 }
 
 void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
@@ -168,7 +146,7 @@ void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
 
     CreateBenchmarkInferRequest()->Infer();
 
-    auto numMemManagers = memory_manager_pool_->Size();
+    auto numMemManagers = memory_pool_->Size();
     std::mutex mtx;
     std::condition_variable cond_var;
 
@@ -209,7 +187,7 @@ void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
     }
     fmt::print("Optimal number infer-requests = {}\n", optimalBenchmarkResult.numberOfInferRequests);
     if (optimalBenchmarkResult.numberOfInferRequests < numMemManagers) {
-        memory_manager_pool_->Resize(optimalBenchmarkResult.numberOfInferRequests);
+        memory_pool_->Resize(optimalBenchmarkResult.numberOfInferRequests);
         fmt::print(
             "Resize MemoryManagerPool from {} to {}\n", numMemManagers, optimalBenchmarkResult.numberOfInferRequests);
     }
@@ -243,24 +221,6 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(const int numInfers,
     const auto duration = Time::now() - start;
     const auto fps = numInfers * (std::chrono::seconds(1) / duration);
     return fps;
-}
-
-std::vector<CUDA::DevicePointer<void*>> ExecutableNetwork::getSharedWorkbuffers(const IOperationExec& operation) {
-    std::vector<CUDA::DevicePointer<void*>> result{};
-    const auto& ids = operation.GetWorkbufferIds();
-    for (const auto immutable_id : ids.immutableIds) {
-        void* ptr = immutable_workbuffers_->deviceBufferPtr(immutable_id);
-        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
-        result.emplace_back(ptr);
-    }
-    return result;
-}
-
-void ExecutableNetwork::InitSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence) {
-    for (auto op : init_sequence) {
-        op->InitSharedImmutableWorkbuffers(getSharedWorkbuffers(*op));
-    }
-    immutable_workbuffers_.reset();
 }
 
 void ExecutableNetwork::InitExecutor() {
@@ -304,43 +264,14 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
     }
 }
 
-std::shared_ptr<MemoryManagerPool> ExecutableNetwork::CreateMemoryManagerPool(
-    const OperationBuffersExtractor& opBuffersExtractor) {
-    ImmutableMemoryBlockBuilder constants_block_builder;
-    MemoryModelBuilder mutable_model_builder;
-    ImmutableMemoryModelBuilder immutable_workbuffer_model_builder;
-
-    // Process nGraph and add allocations
-    for (auto id : opBuffersExtractor.immutableBuffersIds()) {
-        auto span = opBuffersExtractor.immutableBuffer(id);
-        constants_block_builder.addAllocation(id, span.data(), span.size());
-    }
-    for (auto id : opBuffersExtractor.mutableBuffersIds())
-        mutable_model_builder.addAllocation(id,
-                                            opBuffersExtractor.mutableBufferLifespanStart(id),
-                                            opBuffersExtractor.mutableBufferLifespanEnd(id),
-                                            opBuffersExtractor.mutableBufferSize(id));
-    const auto& immutable_workbufer_sizes = opBuffersExtractor.immutableWorkbufferSizes();
-    for (const auto& index : immutable_workbufer_sizes) {
-        immutable_workbuffer_model_builder.addAllocation(index.first, index.second);
-    }
-
-    // Build memory model for mutable memory block
-    auto memory_model = mutable_model_builder.build();
-
-    auto immutable_workbuffer_model = immutable_workbuffer_model_builder.build();
-    const auto constBlobSize = constants_block_builder.deviceMemoryBlockSize();
+std::shared_ptr<MemoryPool> ExecutableNetwork::CreateMemoryPool() {
+    const auto& memoryManager = graph_->memoryManager();
+    const auto constBlobSize = memoryManager.immutableTensors().memoryModel()->deviceMemoryBlockSize();
+    const auto immutableWorkBuffersSize = memoryManager.immutableWorkbuffers().memoryModel()->deviceMemoryBlockSize();
+    const auto& memory_model = memoryManager.mutableTensorsMemoryModel();
     const auto memoryBlobSize = memory_model->deviceMemoryBlockSize();
-    const auto immutableWorkBuffersSize = immutable_workbuffer_model->deviceMemoryBlockSize();
-
     const auto numStreams = GetOptimalNumberOfStreams(constBlobSize + immutableWorkBuffersSize, memoryBlobSize);
-
-    // Build shared constants memory block
-    auto shared_constants_blob = constants_block_builder.build();
-
-    immutable_workbuffers_ = std::make_shared<DeviceMemBlock>(immutable_workbuffer_model);
-    // Later on, for each infer request
-    return std::make_shared<MemoryManagerPool>(numStreams, shared_constants_blob, memory_model, immutable_workbuffers_);
+    return std::make_shared<MemoryPool>(numStreams, memory_model);
 }
 
 int ExecutableNetwork::GetCudaDeviceId() const noexcept {
@@ -400,7 +331,7 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         auto networkName = function_->get_friendly_name();
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
     } else if (EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
-        const unsigned value = memory_manager_pool_->Size();
+        const unsigned value = memory_pool_->Size();
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else {
         throwIEException(fmt::format("Unsupported ExecutableNetwork metric: {}", name));

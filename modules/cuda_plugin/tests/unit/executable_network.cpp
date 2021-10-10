@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <memory>
-#include <typeinfo>
 #include <gtest/gtest.h>
 
-#include <ngraph/function.hpp>
-#include <ngraph/node.hpp>
-#include <cuda_plugin.hpp>
 #include <cuda/cuda_config.hpp>
 #include <cuda_executable_network.hpp>
-#include <ops/matmul.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_plugin.hpp>
 #include <functional_test_utils/include/functional_test_utils/precision_utils.hpp>
+#include <memory>
+#include <ngraph/function.hpp>
+#include <ngraph/node.hpp>
+#include <ops/matmul.hpp>
+#include <typeinfo>
 
 #include "test_networks.hpp"
 
@@ -25,15 +25,19 @@ class ExecNetworkTest : public testing::Test {
         super_function_ = CreateSuperOperationTestNetwork();
     }
 
-    void TearDown() override {
-    }
+    void TearDown() override {}
 
- public:
-    const auto& GetExecSequence(const std::shared_ptr<ExecutableNetwork>& execNetwork) {
-        return execNetwork->exec_sequence_;
+public:
+    auto GetExecSequence(const std::shared_ptr<ExecutableNetwork>& execNetwork) {
+        const auto& graph = *execNetwork->graph_;
+        std::vector<OperationBase::Ptr> execSequence{};
+        execSequence.insert(execSequence.end(), graph.params_.begin(), graph.params_.end());
+        execSequence.insert(execSequence.end(), graph.exec_sequence_.begin(), graph.exec_sequence_.end());
+        execSequence.insert(execSequence.end(), graph.results_.begin(), graph.results_.end());
+        return execSequence;
     }
     const auto& GetMemoryManagerPool(const std::shared_ptr<ExecutableNetwork>& execNetwork) {
-        return execNetwork->memory_manager_pool_;
+        return execNetwork->memory_pool_;
     }
 
     std::shared_ptr<ngraph::Function> function_;
@@ -66,10 +70,12 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_1_Success) {
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     constexpr auto total_streams = 1;
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
-    });
+    auto execNetwork =
+        plugin->LoadExeNetworkImpl(dummyCNNNetwork,
+                                   {
+                                       {CONFIG_KEY(DEVICE_ID), "0"},
+                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
+                                   });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
@@ -82,10 +88,12 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_Success) {
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
     constexpr auto total_streams = 8;
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
-    });
+    auto execNetwork =
+        plugin->LoadExeNetworkImpl(dummyCNNNetwork,
+                                   {
+                                       {CONFIG_KEY(DEVICE_ID), "0"},
+                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
+                                   });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
@@ -97,10 +105,12 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_Auto_Success)
     auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {
-        {CONFIG_KEY(DEVICE_ID), "0"},
-        {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)},
-    });
+    auto execNetwork =
+        plugin->LoadExeNetworkImpl(dummyCNNNetwork,
+                                   {
+                                       {CONFIG_KEY(DEVICE_ID), "0"},
+                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)},
+                                   });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
     ASSERT_GT(memoryManagerPool->Size(), 1);

@@ -6,7 +6,9 @@
 #include <gtest/gtest.h>
 
 #include <cuda_config.hpp>
+#include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <ngraph/node.hpp>
 #include <ngraph/op/parameter.hpp>
 #include <ngraph/op/relu.hpp>
@@ -30,7 +32,7 @@ auto assertToThrow(F&& f,
         tassert_success = true;                \
     })
 
-struct ReluTest : testing::Test {
+ struct ReluTest : testing::Test {
     using TensorID = CUDAPlugin::TensorID;
     using ElementType = float;
     static constexpr int length = 5;
@@ -58,7 +60,10 @@ struct ReluTest : testing::Test {
 };
 
 TEST_F(ReluTest, canExecuteSync) {
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext};
+    CUDAPlugin::CancellationToken token{};
+    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+    CUDAPlugin::Profiler profiler{false, graph};
+    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

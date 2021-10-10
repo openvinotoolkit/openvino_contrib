@@ -8,20 +8,23 @@
 
 #include <error.hpp>
 #include <gsl/span_ext>
+#include <ngraph/op/transpose.hpp>
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
+#include <utility>
 
 #include "ngraph/op/constant.hpp"
 #include "ngraph/op/reshape.hpp"
 #include "ngraph/op/result.hpp"
 #include "ngraph/op/squeeze.hpp"
+#include "ngraph/op/tensor_iterator.hpp"
 #include "ngraph/op/unsqueeze.hpp"
 
 namespace CUDAPlugin {
 
-OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes) {
-    const auto num_ordered_nodes = ordered_nodes.size();
-    for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
+OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params)
+    : is_stable_params_{is_stable_params}, num_ordered_nodes_{ordered_nodes.size()} {
+    for (int node_idx = 0; node_idx < num_ordered_nodes_; node_idx++) {
         const auto& node = ordered_nodes[node_idx];
         if (IsParameterNode(*node))
             extractParameterTensors(node, node_idx);
@@ -36,7 +39,7 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
         else
             extractMutableTensors(node, node_idx);
     }
-    for (int node_idx = 0; node_idx < num_ordered_nodes; node_idx++) {
+    for (int node_idx = 0; node_idx < num_ordered_nodes_; node_idx++) {
         for (const auto& input : ordered_nodes[node_idx]->inputs()) {
             try {
                 const auto tensorName = GetTensorNameInternal(input);
@@ -179,7 +182,7 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
 
     unsigned totalSize = 0;
     for (const auto& t : mergedTensors) {
-        auto& tensor = tensor_names_[t.first];
+        auto& tensor = tensor_names_.at(t.first);
         tensor->SetParent(parentTensor, totalSize);
         totalSize += mutable_tensor_sizes_.at(tensor->GetId());
     }
@@ -218,7 +221,15 @@ void OperationBuffersExtractor::extractParameterTensors(const NodePtr& node, int
             tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
         }
     } else {
-        extractMutableTensors(node, node_idx);
+        const int lastNodeIdx = is_stable_params_ ? num_ordered_nodes_ : node_idx;
+        for (const auto& output : node->outputs()) {
+            auto tensorByteSize = GetTensorByteSize(output);
+            mutable_tensor_sizes_[next_buffer_id_] = tensorByteSize;
+            mutable_buffers_.emplace(
+                std::make_pair(next_buffer_id_, BufferDesc{node_idx, lastNodeIdx, tensorByteSize}));
+            tensor_names_.emplace(GetTensorNameInternal(output), std::make_shared<TensorID>(next_buffer_id_));
+            next_buffer_id_++;
+        }
     }
 }
 
@@ -251,12 +262,48 @@ WorkbufferIds OperationBuffersExtractor::processWorkbufferRequest(int node_idx, 
     }
     for(auto size : request.mutable_sizes) {
         // mutable workbuffers share the same memory space with mutable I/O buffers
-        mutable_buffers_.emplace(std::make_pair(
-            next_buffer_id_, BufferDesc{ node_idx, node_idx, size }));
+        mutable_buffers_.emplace(std::make_pair(next_buffer_id_, BufferDesc{node_idx, node_idx, size}));
         result.mutableIds.push_back(next_buffer_id_);
         next_buffer_id_++;
     }
     return result;
+}
+
+void OperationBuffersExtractor::initConstantMemory(DeviceMemBlock::Ptr memory_block) const {
+    for (const auto& buffer_id : memory_block->bufferIds()) {
+        auto span = immutableBuffer(buffer_id);
+        void* device_ptr = memory_block->deviceBufferPtr(buffer_id);
+        IE_ASSERT(device_ptr != nullptr);
+        throwIfError(::cudaMemcpy(device_ptr, span.data(), span.size_bytes(), cudaMemcpyHostToDevice));
+    }
+}
+
+MemoryModel::Ptr OperationBuffersExtractor::createConstantMemoryModel() const {
+    ImmutableMemoryModelBuilder constants_block_builder;
+    // Process nGraph and add allocations
+    for (auto id : immutableBuffersIds()) {
+        auto span = immutableBuffer(id);
+        constants_block_builder.addAllocation(id, span.size());
+    }
+    return constants_block_builder.build();
+}
+
+MemoryModel::Ptr OperationBuffersExtractor::createMutableMemoryModel() const {
+    MemoryModelBuilder mutable_model_builder;
+    for (auto id : mutableBuffersIds()) {
+        mutable_model_builder.addAllocation(
+            id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), mutableBufferSize(id));
+    }
+    return mutable_model_builder.build();
+}
+
+MemoryModel::Ptr OperationBuffersExtractor::createImmutableMemoryModel() const {
+    ImmutableMemoryModelBuilder immutable_workbuffer_model_builder;
+    const auto& immutable_workbufer_sizes = immutableWorkbufferSizes();
+    for (const auto& index : immutable_workbufer_sizes) {
+        immutable_workbuffer_model_builder.addAllocation(index.first, index.second);
+    }
+    return immutable_workbuffer_model_builder.build();
 }
 
 bool OperationBuffersExtractor::IsParameterNode(const ngraph::Node& node) {

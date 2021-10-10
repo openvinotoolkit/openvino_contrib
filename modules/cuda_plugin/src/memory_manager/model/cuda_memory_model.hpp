@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include <gsl/pointers>
 #include <memory>
 #include <memory_manager/tensor_types.hpp>
 #include <unordered_map>
+#include <cuda/device_pointers.hpp>
 
 namespace CUDAPlugin {
 
@@ -29,6 +31,9 @@ public:
      */
     size_t deviceMemoryBlockSize() const;
 
+    void* deviceBufferPtr(CUDA::DevicePointer<uint8_t*> devPtr, const BufferID& id);
+    void* deviceTensorPtr(CUDA::DevicePointer<uint8_t*> devPtr, const TensorID& id);
+
     /**
      * Provides buffer memory offset if any.
      *
@@ -38,8 +43,11 @@ public:
      */
     bool offsetForBuffer(BufferID id, ptrdiff_t& offset) const;
 
+    const std::vector<BufferID>& bufferIds() const { return buffer_ids_; }
+
 private:
     size_t bsize_;
+    std::vector<BufferID> buffer_ids_;
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 
