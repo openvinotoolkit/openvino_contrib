@@ -6,6 +6,7 @@
 // ^^ must come before ie_plugin_config.hpp, which is included by
 // hetero_plugin_config.hpp
 #include <fmt/format.h>
+#include <unistd.h>
 
 #include <cuda/props.hpp>
 #include <hetero/hetero_plugin_config.hpp>
@@ -89,8 +90,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
 
 InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(const Configuration& cfg) {
     // TODO: get available integer value instead of chain of conversions
-    auto param = cfg.Get(CONFIG_KEY(DEVICE_ID));
-    const std::string& deviceId = param;
+    std::string deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID));
     CUDA::Device device{std::stoi(deviceId)};
     const size_t numConcurrentStreams = maxConcurrentStreams(device);
     {

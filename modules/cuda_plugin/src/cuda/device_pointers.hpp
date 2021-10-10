@@ -54,8 +54,9 @@ auto operator-(DevicePointer<T*> l, DevicePointer<T*> r) noexcept {
 template <typename T, std::size_t Extent = std::numeric_limits<std::size_t>::max()>
 class DeviceBuffer : private gsl::span<T, Extent> {
 public:
+    static_assert(!std::is_void<T>::value, "T should not be a void type");
     explicit DeviceBuffer(gsl::span<T, Extent> o) noexcept : gsl::span<T, Extent>{o} {}
-    DeviceBuffer(T* pointer, std::size_t count) noexcept : gsl::span<T, Extent>{pointer, count} {}
+    DeviceBuffer(T* data, std::size_t size) noexcept : gsl::span<T, Extent>{data, size} {}
     using gsl::span<T, Extent>::data;
     using gsl::span<T, Extent>::size;
     using gsl::span<T, Extent>::size_bytes;
