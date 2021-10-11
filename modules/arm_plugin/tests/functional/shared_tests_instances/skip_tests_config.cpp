@@ -28,5 +28,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
         // Unexpected behavior
         R"(.*(Hetero|Multi).*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*)",
+        R"(.*ExclusiveAsyncRequest.*)" // Unsupported config test
     };
 }
