@@ -119,6 +119,10 @@ def convert(model, **args):
     for arg, value in args.items():
         parser.set_defaults(**{arg: str(value)})
 
+    # Replace original parser to ignore global sys.argv
+    origin_parse = parser.parse_args
+    parser.parse_args = lambda: origin_parse([])
+
     err = None
     try:
         err = main(parser, None, 'pytorch')
