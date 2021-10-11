@@ -139,6 +139,9 @@ class OpenVINOTensor(object):
     def clone(self):
         return self
 
+    def to(self, dtype):
+        return self
+
     def split(self, split_size, dim):
         num_splits = self.dynamic_shape[dim] // split_size
 
@@ -190,6 +193,12 @@ class OpenVINOTensor(object):
                     self.register_buffer('sub', value)
 
             return forward_hook(Sub(a), (self,))
+
+    def __rsub__(self, a):
+        a = a if isinstance(a, OpenVINOTensor) else OpenVINOTensor(torch.tensor(a))
+        class Sub(nn.Module):
+            pass
+        return forward_hook(Sub(), (a, self))
 
     def __radd__(self, a):
         if isinstance(a, OpenVINOTensor):

@@ -214,13 +214,16 @@ class TestModels(unittest.TestCase):
         model(dummy_inp)
 
         # Generate OpenVINO IR
-        mo_pytorch.convert(model, input_shape='[1, {}],[{}]'.format(seq_len, seq_len),
-                           input='input_ids{i64},position_ids{i64}', model_name='model')
+        mo_pytorch.convert(model, model_name='model',
+                           input='input_ids{i64},position_ids{i64},attention_mask{f32}',
+                           input_shape='[1, {}],[{}],[1, {}]'.format(seq_len, seq_len, seq_len))
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
         exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input_ids': input_ids, 'position_ids': np.arange(seq_len)})
+        out = exec_net.infer({'input_ids': input_ids,
+                              'position_ids': np.arange(seq_len),
+                              'attention_mask': np.ones((1, seq_len), np.float32)})
         out = next(iter(out.values()))
 
         ref = result[0].detach().numpy()
