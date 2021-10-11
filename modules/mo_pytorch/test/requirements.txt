@@ -1,7 +1,7 @@
-torch==1.7.0
-torchvision==0.8.1
-opencv-python==4.5.3.56
---find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.7/index.html
-detectron2==0.5
+torch==1.10.0
+torchvision==0.11.1
+opencv-python==4.5.4.60
+--find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.10/index.html
+detectron2==0.6
 pyyaml>=5.1
-transformers==4.5.1
+transformers==4.12.5
