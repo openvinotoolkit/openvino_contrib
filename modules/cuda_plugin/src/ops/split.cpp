@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "details/cuda_ie_api_import_fix.hpp"
-// ^^ must come before any other ie includes which use
-// INFERENCE_ENGINE_DEPRECATED
-#include "details/cuda_ngraph_import_fix.hpp"
-// ^^ must come before any other ngraph includes which use
-// NGRAPH_DEPRECATED
+#include "split.hpp"
+
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
@@ -19,7 +15,6 @@
 
 #include "converters.hpp"
 #include "cuda/runtime.hpp"
-#include "split.hpp"
 
 namespace CUDAPlugin {
 

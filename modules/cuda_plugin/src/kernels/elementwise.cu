@@ -5,7 +5,6 @@
 #include <cuda.h>
 #include <fmt/format.h>
 
-#include <error.hpp>
 #include <gsl/gsl_assert>
 
 #include "elementtypeswitch.hpp"
@@ -48,7 +47,7 @@ template <typename T>
 struct OpTypeSwitch {
     size_t max_threads_per_block_;
     using Op_t = Elementwise::Op_t;
-    static constexpr std::integer_sequence<Op_t, Op_t::add, Op_t::mul> op_type_identifiers{};
+    static constexpr std::integer_sequence< int, static_cast<int>(Op_t::add), static_cast<int>(Op_t::mul)> op_type_identifiers{};
 
     void operator()(Op_t op,
                     cudaStream_t stream,
@@ -69,7 +68,7 @@ struct OpTypeSwitch {
                          void* out) const noexcept {
         if (in0_num_elements == in1_num_elements) {
             size_t num_blocks{}, threads_per_block{};
-            std::tie(num_blocks, threads_per_block) =
+            std::tie(num_blocks, threads_per_block) = 
                 calculateElementwiseGrid(in0_num_elements, max_threads_per_block_);
             element_wise<T, OpImpl<T, OP>><<<num_blocks, threads_per_block, 0, stream>>>(
                 static_cast<const T*>(in0), static_cast<const T*>(in1), static_cast<T*>(out), in0_num_elements);
@@ -98,7 +97,7 @@ struct OpTypeSwitch {
         }
     }
 
-    constexpr void default_(Op_t t, cudaStream_t, const void*, size_t, const void*, size_t , void* ) const noexcept {
+    constexpr void default_(Op_t t, cudaStream_t, const void*, size_t, const void*, size_t, void*) const noexcept {
         throwIEException(fmt::format("Operation type = {} is not supported.", t));
     }
 };
@@ -118,7 +117,8 @@ struct ElementwiseTypeSwitch {
         OpTypeSwitch<T> switchObj{max_threads_per_block_};
         switchObj(op_type_, stream, in0, in0_num_elements, in1, in1_num_elements, out);
     }
-    void default_(Type_t t, cudaStream_t, const void*, size_t, const void*, size_t, void*) const noexcept {
+    template <typename T>
+    void default_(T t, cudaStream_t, const void*, size_t, const void*, size_t, void*) const noexcept {
         throwIEException(fmt::format("Element type = {} is not supported.", t));
     }
 };

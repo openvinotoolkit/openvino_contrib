@@ -4,6 +4,7 @@
 #
 
 set(TARGET_NAME CudaUnitTests)
+
 set(EXCLUDED_SOURCE_PATHS)
 if(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
 	set(EXCLUDED_SOURCE_PATHS
@@ -20,18 +21,18 @@ addIeTargetTest(
         CUDAPlugin_OBJ
         ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
-        unitTestUtils
+        IE::funcSharedTests
+        gmock
         ngraphFunctions
         ADD_CPPLINT
         LABELS
         CUDA
 )
-
 # unitTestUtils brings in USE_STATIC_IE element in INTERFACE_COMPILE_DEFINITIONS, which breaks
 # INFERENCE_ENGINE_API_CLASS() and friends since we really link to ie dlls.
 # there's no easy way to override it(something like "remove from definitions" property on client)
 if(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)
-   target_compile_options(${TARGET_NAME} PRIVATE -UUSE_STATIC_IE)
+  target_compile_options(${TARGET_NAME} PRIVATE -UUSE_STATIC_IE)
 else(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)
-   target_compile_options(${TARGET_NAME} PRIVATE /U USE_STATIC_IE)
+  target_compile_options(${TARGET_NAME} PRIVATE /U USE_STATIC_IE)
 endif(NOT CMAKE_CXX_COMPILER_ID STREQUAL MSVC)

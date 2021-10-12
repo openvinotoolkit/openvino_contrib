@@ -8,6 +8,11 @@
 
 #include <cuda_test_constants.hpp>
 
+// TODO remove when GTest ASSERT_NE(nullptr, ptr) macro will be fixed
+#if defined(_WIN32)
+#include "fix_win32_gtest_assert_ne_macro.hpp"
+#endif
+
 #include "behavior/core_integration.hpp"
 
 using namespace BehaviorTestsDefinitions;
