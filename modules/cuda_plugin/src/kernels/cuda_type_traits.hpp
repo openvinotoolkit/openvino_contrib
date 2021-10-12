@@ -17,7 +17,7 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-enum class Type_t {
+enum class Type_t : int {
     boolean,
 #if CUDA_VERSION >= 11000
     bf16,

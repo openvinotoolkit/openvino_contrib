@@ -7,6 +7,7 @@
 #include <cstddef>
 
 #include "eltwise.cuh"
+#include "error.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {

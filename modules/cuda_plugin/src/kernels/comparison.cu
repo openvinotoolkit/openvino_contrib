@@ -5,8 +5,6 @@
 #include <cuda.h>
 #include <fmt/format.h>
 
-#include <error.hpp>
-
 #include "comparison.hpp"
 
 namespace CUDAPlugin {

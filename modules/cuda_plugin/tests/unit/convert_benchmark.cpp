@@ -75,15 +75,15 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
             const auto ouputBufferSize = ngraph::shape_size(inputTensorShape) * output_type.size();
             const CUDA::Allocation inAlloc =  stream.malloc(inputBufferSize);
             const CUDA::Allocation outAlloc = stream.malloc(ouputBufferSize);
-            std::vector<CUDA::DevicePointer<const void*>> inputs { inAlloc };
-            std::vector<CUDA::DevicePointer<void*>> outputs { outAlloc };
-            std::vector<u_char> in(inputBufferSize);
+            std::vector<CUDA::DevicePointer<const void*>> inputs{inAlloc};
+            std::vector<CUDA::DevicePointer<void*>> outputs{outAlloc};
+            std::vector<uint8_t> in(inputBufferSize);
             std::random_device r_device;
             std::mt19937 mersenne_engine {r_device()};
-            std::uniform_int_distribution<u_char> dist {std::numeric_limits<u_char>::min(),
-                std::numeric_limits<u_char>::max()};
-            auto gen = [&dist, &mersenne_engine](){
-                return 10.f * dist(mersenne_engine) / std::numeric_limits<u_char>::max();
+            std::uniform_int_distribution<> dist{std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max()};
+            auto gen = [&dist, &mersenne_engine]() {
+                return 10.f * dist(mersenne_engine) / std::numeric_limits<uint8_t>::max();
             };
             std::generate(in.begin(), in.end(), gen);
             stream.upload(inAlloc, in.data(), inputBufferSize);

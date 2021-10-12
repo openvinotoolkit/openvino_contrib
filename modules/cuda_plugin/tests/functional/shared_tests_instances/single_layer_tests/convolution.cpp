@@ -2,43 +2,43 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
+#include "single_layer_tests/convolution.hpp"
 
 #include <cuda_test_constants.hpp>
+#include <vector>
 
-#include "finite_comparer.hpp"
 #include "common_test_utils/test_constants.hpp"
-#include "single_layer_tests/convolution.hpp"
+#include "finite_comparer.hpp"
 
 using namespace LayerTestsDefinitions;
 
 namespace LayerTestsDefinitions {
 
 class ConvolutionLayerThresholdTest : public FiniteComparer<ConvolutionLayerTest> {
- protected:
-  void SetUp() override {
-    ConvolutionLayerTest::SetUp();
+protected:
+    void SetUp() override {
+        ConvolutionLayerTest::SetUp();
 
-    auto params = this->GetParam();
-    auto netPrecision = std::get<1>(params);
-    if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-      this->threshold = 500;
-      this->infinity_value = std::numeric_limits<std::uint16_t>::max();
+        auto params = this->GetParam();
+        auto netPrecision = std::get<1>(params);
+        if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
+            this->threshold = 500;
+            this->infinity_value = std::numeric_limits<std::uint16_t>::max();
+        }
     }
-  }
 };
 
 TEST_P(ConvolutionLayerThresholdTest, CompareWithRefs) {
-  SKIP_IF_CURRENT_TEST_IS_DISABLED()
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
 
-  auto params = GetParam();
-  inPrc = std::get<2>(params);
-  outPrc = std::get<3>(params);
+    auto params = GetParam();
+    inPrc = std::get<2>(params);
+    outPrc = std::get<3>(params);
 
-  Run();
+    Run();
 }
 
-}
+}  // namespace LayerTestsDefinitions
 
 namespace {
 
@@ -57,93 +57,102 @@ const std::vector<std::vector<size_t>> strides1D = {{1}, {3}};
 const std::vector<std::vector<size_t>> dilations1D = {{1}, {3}};
 const std::vector<size_t> numOutChannels1D = {1, 5};
 
-const auto conv1DParams_ExplicitPaddingSymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
-    ::testing::Values(std::vector<ptrdiff_t>({0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0})),      // pads_end
-    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv1DParams_ExplicitPaddingSymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
-    ::testing::Values(std::vector<ptrdiff_t>({3})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({3})),      // pads_end
-    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv1DParams_ExplicitPaddingAsymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
-    ::testing::Values(std::vector<ptrdiff_t>({0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({3})),      // pads_end
-    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv1DParams_ExplicitPaddingAsymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
-    ::testing::Values(std::vector<ptrdiff_t>({3})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0})),      // pads_end
-    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv1DParams_AutoPadValid = ::testing::Combine(
-    ::testing::ValuesIn(kernels1D), ::testing::ValuesIn(strides1D),
-    ::testing::Values(std::vector<ptrdiff_t>({0})),
-    ::testing::Values(std::vector<ptrdiff_t>({0})),
-    ::testing::ValuesIn(dilations1D), ::testing::ValuesIn(numOutChannels1D),
-    ::testing::Values(ngraph::op::PadType::VALID));
+const auto conv1DParams_ExplicitPaddingSymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels1D),
+                       ::testing::ValuesIn(strides1D),
+                       ::testing::Values(std::vector<ptrdiff_t>({0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0})),  // pads_end
+                       ::testing::ValuesIn(dilations1D),
+                       ::testing::ValuesIn(numOutChannels1D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv1DParams_ExplicitPaddingSymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels1D),
+                       ::testing::ValuesIn(strides1D),
+                       ::testing::Values(std::vector<ptrdiff_t>({3})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({3})),  // pads_end
+                       ::testing::ValuesIn(dilations1D),
+                       ::testing::ValuesIn(numOutChannels1D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv1DParams_ExplicitPaddingAsymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels1D),
+                       ::testing::ValuesIn(strides1D),
+                       ::testing::Values(std::vector<ptrdiff_t>({0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({3})),  // pads_end
+                       ::testing::ValuesIn(dilations1D),
+                       ::testing::ValuesIn(numOutChannels1D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv1DParams_ExplicitPaddingAsymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels1D),
+                       ::testing::ValuesIn(strides1D),
+                       ::testing::Values(std::vector<ptrdiff_t>({3})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0})),  // pads_end
+                       ::testing::ValuesIn(dilations1D),
+                       ::testing::ValuesIn(numOutChannels1D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv1DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(kernels1D),
+                                                          ::testing::ValuesIn(strides1D),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0})),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0})),
+                                                          ::testing::ValuesIn(dilations1D),
+                                                          ::testing::ValuesIn(numOutChannels1D),
+                                                          ::testing::Values(ngraph::op::PadType::VALID));
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv1DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv1DParams_ExplicitPaddingSymmetric2, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv1DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv1DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingSymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv1DParams_ExplicitPaddingSymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingSymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv1DParams_ExplicitPaddingSymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution1D_AutoPadValid, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv1DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_AutoPadValid,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv1DParams_AutoPadValid,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 2D Convolution ============= */
 const std::vector<std::vector<size_t>> kernels = {{3, 3}, {3, 5}};
@@ -151,111 +160,118 @@ const std::vector<std::vector<size_t>> strides = {{1, 1}, {1, 3}};
 const std::vector<std::vector<size_t>> dilations = {{1, 1}, {3, 1}};
 const std::vector<size_t> numOutChannels = {1, 5};
 
-const auto conv2DParams_ExplicitPaddingSymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels), ::testing::ValuesIn(strides),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),      // pads_end
-    ::testing::ValuesIn(dilations), ::testing::ValuesIn(numOutChannels),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv2DParams_ExplicitPaddingSymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels), ::testing::ValuesIn(strides),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 3})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 3})),      // pads_end
-    ::testing::ValuesIn(dilations), ::testing::ValuesIn(numOutChannels),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv2DParams_ExplicitPaddingAsymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels), ::testing::ValuesIn(strides),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 3})),      // pads_end
-    ::testing::ValuesIn(dilations), ::testing::ValuesIn(numOutChannels),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv2DParams_ExplicitPaddingAsymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels), ::testing::ValuesIn(strides),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 3})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),      // pads_end
-    ::testing::ValuesIn(dilations), ::testing::ValuesIn(numOutChannels),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv2DParams_ExplicitPaddingSymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations),
+                       ::testing::ValuesIn(numOutChannels),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv2DParams_ExplicitPaddingSymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_end
+                       ::testing::ValuesIn(dilations),
+                       ::testing::ValuesIn(numOutChannels),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv2DParams_ExplicitPaddingAsymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_end
+                       ::testing::ValuesIn(dilations),
+                       ::testing::ValuesIn(numOutChannels),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv2DParams_ExplicitPaddingAsymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations),
+                       ::testing::ValuesIn(numOutChannels),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
 
-const auto conv2DParams_AutoPadValid = ::testing::Combine(
-    ::testing::ValuesIn(kernels), ::testing::ValuesIn(strides),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
-    ::testing::ValuesIn(dilations), ::testing::ValuesIn(numOutChannels),
-    ::testing::Values(ngraph::op::PadType::VALID));
+const auto conv2DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(kernels),
+                                                          ::testing::ValuesIn(strides),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
+                                                          ::testing::ValuesIn(dilations),
+                                                          ::testing::ValuesIn(numOutChannels),
+                                                          ::testing::Values(ngraph::op::PadType::VALID));
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_ExplicitPaddingSymmetric2,
-        ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric2_FP32,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_ExplicitPaddingSymmetric2,
-        ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2D_AutoPadValid, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv2DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AutoPadValid,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv2DParams_AutoPadValid,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
 /* ============= 3D Convolution ============= */
 const std::vector<std::vector<size_t>> kernels3d = {{3, 3, 3}, {3, 5, 3}};
@@ -263,96 +279,105 @@ const std::vector<std::vector<size_t>> strides3d = {{1, 1, 1}, {1, 2, 1}};
 const std::vector<std::vector<size_t>> dilations3d = {{1, 1, 1}, {1, 2, 1}};
 const std::vector<size_t> numOutChannels3D = {1, 5};
 
-const auto conv3DParams_ExplicitPaddingSymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),      // pads_end
-    ::testing::ValuesIn(dilations3d), ::testing::ValuesIn(numOutChannels3D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv3DParams_ExplicitPaddingSymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),      // pads_end
-    ::testing::ValuesIn(dilations3d), ::testing::ValuesIn(numOutChannels3D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv3DParams_ExplicitPaddingAsymmetric1 = ::testing::Combine(
-    ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),      // pads_end
-    ::testing::ValuesIn(dilations3d), ::testing::ValuesIn(numOutChannels3D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv3DParams_ExplicitPaddingAsymmetric2 = ::testing::Combine(
-    ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),      // pads_begin
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),      // pads_end
-    ::testing::ValuesIn(dilations3d), ::testing::ValuesIn(numOutChannels3D),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT));
-const auto conv3DParams_AutoPadValid = ::testing::Combine(
-    ::testing::ValuesIn(kernels3d), ::testing::ValuesIn(strides3d),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),
-    ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),
-    ::testing::ValuesIn(dilations3d), ::testing::ValuesIn(numOutChannels3D),
-    ::testing::Values(ngraph::op::PadType::VALID));
+const auto conv3DParams_ExplicitPaddingSymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels3d),
+                       ::testing::ValuesIn(strides3d),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations3d),
+                       ::testing::ValuesIn(numOutChannels3D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv3DParams_ExplicitPaddingSymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels3d),
+                       ::testing::ValuesIn(strides3d),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations3d),
+                       ::testing::ValuesIn(numOutChannels3D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv3DParams_ExplicitPaddingAsymmetric1 =
+    ::testing::Combine(::testing::ValuesIn(kernels3d),
+                       ::testing::ValuesIn(strides3d),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations3d),
+                       ::testing::ValuesIn(numOutChannels3D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv3DParams_ExplicitPaddingAsymmetric2 =
+    ::testing::Combine(::testing::ValuesIn(kernels3d),
+                       ::testing::ValuesIn(strides3d),
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 2, 0})),  // pads_begin
+                       ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),  // pads_end
+                       ::testing::ValuesIn(dilations3d),
+                       ::testing::ValuesIn(numOutChannels3D),
+                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+const auto conv3DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(kernels3d),
+                                                          ::testing::ValuesIn(strides3d),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),
+                                                          ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})),
+                                                          ::testing::ValuesIn(dilations3d),
+                                                          ::testing::ValuesIn(numOutChannels3D),
+                                                          ::testing::Values(ngraph::op::PadType::VALID));
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_ExplicitPaddingSymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv3DParams_ExplicitPaddingSymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingSymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv3DParams_ExplicitPaddingSymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_ExplicitPaddingSymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv3DParams_ExplicitPaddingSymmetric2, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingSymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv3DParams_ExplicitPaddingSymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv3DParams_ExplicitPaddingAsymmetric1, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric1,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric2, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv3DParams_ExplicitPaddingAsymmetric2, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric2,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric2,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution3D_AutoPadValid, ConvolutionLayerThresholdTest,
-    ::testing::Combine(
-        conv3DParams_AutoPadValid, ::testing::ValuesIn(netPrecisions),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    ConvolutionLayerThresholdTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AutoPadValid,
+                        ConvolutionLayerThresholdTest,
+                        ::testing::Combine(conv3DParams_AutoPadValid,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({1, 3, 10, 10, 10})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                        ConvolutionLayerThresholdTest::getTestCaseName);
 
 // =============================================================================
 // clang-format off
@@ -2428,7 +2453,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(512), // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32})), // Net precisions
+        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
@@ -2454,7 +2479,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ngraph::op::PadType::EXPLICIT)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32})), // Net precisions
+        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
@@ -5626,7 +5651,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>({1, 1})), // dilations
             ::testing::Values(256), // Num out channels
             ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32})), // Net precisions
+        ::testing::Values(InferenceEngine::Precision::FP32), // Net precisions
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout

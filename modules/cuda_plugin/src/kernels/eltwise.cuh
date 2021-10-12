@@ -5,7 +5,7 @@
 
 #include <cuda_runtime.h>
 
-#if not defined(__CUDACC__)
+#if !defined(__CUDACC__)
 #include <ngraph/shape.hpp>
 #endif
 
@@ -20,7 +20,7 @@ struct KernelExecAttrs {
     dim3 grid;
     dim3 block;
     unsigned elementsPerThread;
-#if not defined(__CUDACC__)
+#if !defined(__CUDACC__)
     KernelExecAttrs(const ngraph::Shape&, unsigned threadsPerBlock, unsigned elementsPerThread);
 #endif
 };

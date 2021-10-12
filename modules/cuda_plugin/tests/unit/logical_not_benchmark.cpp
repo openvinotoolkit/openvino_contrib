@@ -57,9 +57,9 @@ TEST_F(LogicalNotBenchmark, DISABLED_benchmark) {
     std::vector<ElementType> in(length);
     std::random_device r_device;
     std::mt19937 mersenne_engine{r_device()};
-    std::uniform_int_distribution<std::uint8_t> dist{std::numeric_limits<std::uint8_t>::min(),
-                                                     std::numeric_limits<std::uint8_t>::max()};
-    auto gen = [&dist, &mersenne_engine]() { return dist(mersenne_engine) / std::numeric_limits<std::uint8_t>::max(); };
+    std::uniform_int_distribution<> dist{std::numeric_limits<std::uint8_t>::min(),
+                                         std::numeric_limits<std::uint8_t>::max()};
+    auto gen = [&dist, &mersenne_engine]() { return dist(mersenne_engine); };
     std::generate(in.begin(), in.end(), gen);
     stream.upload(in_alloc, in.data(), size);
     CUDAPlugin::Workbuffers workbuffers{};
