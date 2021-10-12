@@ -10,6 +10,8 @@
 #include <ngraph/type/element_type.hpp>
 #include <set>
 
+#include "error.hpp"
+
 namespace CUDAPlugin {
 namespace kernel {
 class StridedSliceKernelOp {

@@ -23,7 +23,8 @@ public:
     int maxSeqLength() const;
     cudnnRNNDataLayout_t layout() const;
     void* paddingFill() const;
-    int nbDims() const;
+    static constexpr int nbDims() { return 3; }
+
     cudnnForwardMode_t dnnForwardMode() const;
 
     CUDA::DnnRnnDescriptor makeRNNDescriptor() const;
@@ -127,7 +128,8 @@ public:
     int maxSeqLength() const;
     cudnnRNNDataLayout_t layout() const;
     void* paddingFill() const;
-    int nbDims() const;
+    static constexpr int nbDims() { return 3; }
+
     cudnnForwardMode_t dnnForwardMode() const;
 
     CUDA::DnnRnnDescriptor makeRNNDescriptor() const;
