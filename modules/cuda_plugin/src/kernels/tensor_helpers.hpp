@@ -41,7 +41,7 @@ inline __host__ __device__ void shape_indices(const Shape<T, N>& shape,
 }
 
 template <typename T, unsigned N>
-inline __host__ __device__ size_t flat_address(const Shape<T, N>& shape, Shape<T, N> indexes) {
+inline __host__ __device__ size_t flat_address(const Shape<T, N>& shape, const Shape<T, N>& indexes) {
     size_t address = 0;
     const size_t shape_rank = rank(shape);
     size_t mul_shapes = 1;

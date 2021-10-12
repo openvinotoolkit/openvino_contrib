@@ -27,7 +27,7 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
                                                      bool is_stable_results)
     : is_stable_params_{is_stable_params},
       is_stable_results_{is_stable_results},
-      num_ordered_nodes_{ordered_nodes.size()} {
+      num_ordered_nodes_{static_cast<unsigned long>(ordered_nodes.size())} {
     for (int node_idx = 0; node_idx < num_ordered_nodes_; node_idx++) {
         const auto& node = ordered_nodes[node_idx];
         if (IsParameterNode(*node))
@@ -65,9 +65,8 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
     }
 }
 
-std::vector<TensorID>
-OperationBuffersExtractor::inputTensorIds(const ngraph::Node& node) const {
-    std::vector<TensorID> result {};
+std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ngraph::Node& node) const {
+    std::vector<TensorID> result{};
     for (const auto& input : node.inputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
         result.push_back(*tensorId);
@@ -75,11 +74,9 @@ OperationBuffersExtractor::inputTensorIds(const ngraph::Node& node) const {
     return result;
 }
 
-std::vector<TensorID>
-OperationBuffersExtractor::outputTensorIds(const ngraph::Node& node) const {
-    if (IsResultNode(node))
-        return { };
-    std::vector<TensorID> result {};
+std::vector<TensorID> OperationBuffersExtractor::outputTensorIds(const ngraph::Node& node) const {
+    if (IsResultNode(node)) return {};
+    std::vector<TensorID> result{};
     for (const auto& output : node.outputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(output));
         result.push_back(*tensorId);
@@ -91,8 +88,7 @@ int OperationBuffersExtractor::mutableBufferLifespanStart(BufferID buffer_id) co
     try {
         return mutable_buffers_.at(buffer_id).lifespan_start;
     } catch (std::out_of_range& e) {
-        throwIEException(
-            fmt::format("Buffer id {} is out of range.", buffer_id));
+        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -100,8 +96,7 @@ int OperationBuffersExtractor::mutableBufferLifespanEnd(BufferID buffer_id) cons
     try {
         return mutable_buffers_.at(buffer_id).lifespan_end;
     } catch (std::out_of_range& e) {
-        throwIEException(
-            fmt::format("Buffer id {} is out of range.", buffer_id));
+        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -109,24 +104,20 @@ std::size_t OperationBuffersExtractor::mutableBufferSize(BufferID buffer_id) con
     try {
         return mutable_buffers_.at(buffer_id).size;
     } catch (std::out_of_range& e) {
-        throwIEException(
-            fmt::format("Buffer id {} is out of range.", buffer_id));
+        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
-gsl::span<const OperationBuffersExtractor::Byte>
-OperationBuffersExtractor::immutableBuffer(BufferID buffer_id) const {
+gsl::span<const OperationBuffersExtractor::Byte> OperationBuffersExtractor::immutableBuffer(BufferID buffer_id) const {
     try {
         return immutable_buffers_.at(buffer_id);
     } catch (std::out_of_range& e) {
-        throwIEException(
-            fmt::format("Buffer id {} is out of range.", buffer_id));
+        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
-std::vector<BufferID>
-OperationBuffersExtractor::mutableBuffersIds() const {
-    std::vector<BufferID> result { };
+std::vector<BufferID> OperationBuffersExtractor::mutableBuffersIds() const {
+    std::vector<BufferID> result{};
     for (const auto& pair : mutable_buffers_) {
         result.push_back(pair.first);
     }
@@ -261,7 +252,7 @@ void OperationBuffersExtractor::extractResultTensors(const NodePtr& node) {
 
 void OperationBuffersExtractor::extractImmutableTensors(const NodePtr& node) {
     auto constant = std::dynamic_pointer_cast<ngraph::op::v0::Constant>(node);
-    const Byte * ptr = reinterpret_cast<const Byte*>(constant->get_data_ptr());
+    const Byte* ptr = reinterpret_cast<const Byte*>(constant->get_data_ptr());
     auto span = gsl::make_span(ptr, GetTensorByteSize(node->output(0)));
     auto tensor = std::make_shared<TensorID>(next_buffer_id_);
     immutable_buffers_.emplace(std::make_pair(tensor->GetId(), span));
@@ -270,13 +261,13 @@ void OperationBuffersExtractor::extractImmutableTensors(const NodePtr& node) {
 }
 
 WorkbufferIds OperationBuffersExtractor::processWorkbufferRequest(int node_idx, const WorkbufferRequest& request) {
-    WorkbufferIds result {};
-    for(auto size : request.immutable_sizes) {
+    WorkbufferIds result{};
+    for (auto size : request.immutable_sizes) {
         immutable_workbuffers_.emplace(next_buffer_id_, size);
         result.immutableIds.push_back(next_buffer_id_);
         next_buffer_id_++;
     }
-    for(auto size : request.mutable_sizes) {
+    for (auto size : request.mutable_sizes) {
         // mutable workbuffers share the same memory space with mutable I/O buffers
         mutable_buffers_.emplace(std::make_pair(next_buffer_id_, BufferDesc{node_idx, node_idx, size}));
         result.mutableIds.push_back(next_buffer_id_);
@@ -339,16 +330,17 @@ bool OperationBuffersExtractor::IsConcatOptimizedNode(const ngraph::Node& node) 
 }
 
 bool OperationBuffersExtractor::isReshapeOnlyNode(const ngraph::Node& node) {
-    return ngraph::is_type<const ngraph::op::v1::Reshape>(&node)
-        || ngraph::is_type<const ngraph::op::v0::Squeeze>(&node)
-        || ngraph::is_type<const ngraph::op::v0::Unsqueeze>(&node);
+    return ngraph::is_type<const ngraph::op::v1::Reshape>(&node) ||
+           ngraph::is_type<const ngraph::op::v0::Squeeze>(&node) ||
+           ngraph::is_type<const ngraph::op::v0::Unsqueeze>(&node);
 }
 
 void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input) {
     throwIEException(
         fmt::format("Buffer size of Input #{} of {} node and corresponding "
                     "output #{} of {} node are not equal.",
-                    input.get_index(), input.get_node()->get_name(),
+                    input.get_index(),
+                    input.get_node()->get_name(),
                     input.get_source_output().get_index(),
                     input.get_source_output().get_node()->get_name()));
 }
@@ -357,7 +349,8 @@ void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ngraph::Input<n
     throwIEException(
         fmt::format("Provided graph is bad formed. Input #{} of \"{}\" node "
                     "isn't connected to any output",
-                    input.get_index(), input.get_node()->get_name()));
+                    input.get_index(),
+                    input.get_node()->get_name()));
 }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -5,13 +5,14 @@
 #pragma once
 
 #include "cuda_type_traits.hpp"
+#include "error.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
 class Elementwise {
 public:
-    enum class Op_t { add, mul };
+    enum class Op_t : int { add, mul };
 
     Elementwise(Op_t op_type, Type_t element_type, size_t max_threads_per_block);
     Elementwise(Elementwise&&) = default;

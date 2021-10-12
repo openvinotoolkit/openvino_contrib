@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <optional>
-
 #include "shared_test_classes/base/layer_test_utils.hpp"
 
 namespace LayerTestsDefinitions {

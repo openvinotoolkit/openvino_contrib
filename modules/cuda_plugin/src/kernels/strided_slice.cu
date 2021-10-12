@@ -4,9 +4,7 @@
 
 #include <fmt/format.h>
 
-#include <error.hpp>
-
-#include "kernels/strided_slice.hpp"
+#include "strided_slice.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
@@ -164,9 +162,8 @@ void StridedSliceKernelOp::operator()(const cudaStream_t stream,
         case ngraph::element::Type_t::u8:
             return callKernels<uint8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         default:
-            CUDAPlugin::throwIEException(
-                fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
-                            ngraph::element::Type(element_type_).get_type_name()));
+            throwIEException(fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
+                                         ngraph::element::Type(element_type_).get_type_name()));
     }
 }
 

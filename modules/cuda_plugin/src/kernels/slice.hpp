@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <kernels/error.hpp>
-
 #include "cuda_type_traits.hpp"
 #include "error.hpp"
 #include "tensor_helpers.hpp"

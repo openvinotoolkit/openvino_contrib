@@ -5,7 +5,6 @@
 #include <fmt/format.h>
 
 #include <cassert>
-#include <error.hpp>
 
 #include "logical_not.cuh"
 
@@ -19,7 +18,8 @@ static inline __global__ void logical_not(const bool* input, bool* output, std::
     static_assert(Rank == 1, "Supported Rank is 1 !! For other ranks modify the code");
     auto idx = index<Rank>(&shape, LogicalNot::kElementsPerThread);
 
-    static_assert(LogicalNot::kElementsPerThread == sizeof(uint) * 2, "Elements per thread must be equal uint2 size");
+    static_assert(LogicalNot::kElementsPerThread == sizeof(unsigned int) * 2,
+                  "Elements per thread must be equal uint2 size");
 
     if (idx + LogicalNot::kElementsPerThread <= size) {
         uint2 inputPacked = *reinterpret_cast<const uint2*>(input + idx);

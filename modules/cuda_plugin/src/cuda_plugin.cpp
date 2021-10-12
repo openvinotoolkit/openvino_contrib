@@ -6,7 +6,6 @@
 // ^^ must come before ie_plugin_config.hpp, which is included by
 // hetero_plugin_config.hpp
 #include <fmt/format.h>
-#include <unistd.h>
 
 #include <cuda/props.hpp>
 #include <hetero/hetero_plugin_config.hpp>
