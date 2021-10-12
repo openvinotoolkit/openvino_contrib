@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "behavior/infer_request.hpp"
+// TODO remove when GTest ASSERT_NE(nullptr, ptr) macro will be fixed
+#if defined(_WIN32)
+#include "fix_win32_gtest_assert_ne_macro.hpp"
+#endif
 
 #include <fmt/format.h>
 
@@ -10,6 +13,8 @@
 #include <error.hpp>
 #include <inference_engine.hpp>
 #include <vector>
+
+#include "behavior/infer_request.hpp"
 using namespace InferenceEngine;
 
 /**

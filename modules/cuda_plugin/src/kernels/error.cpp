@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include <details/ie_exception.hpp>
 #include <exception>
 #include <kernels/error.hpp>
 
@@ -25,6 +26,11 @@ private:
     if (err != cudaSuccess) {
         throw Error(cudaGetErrorString(err), location);
     }
+}
+
+[[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
+                                              const std::experimental::source_location& location) {
+    throw Error(msg, location);
 }
 
 }  // namespace kernel

@@ -10,8 +10,6 @@
 #endif
 #include <cuda_fp16.h>
 
-#include <error.hpp>
-
 #include "gather.hpp"
 
 namespace CUDAPlugin {
@@ -65,15 +63,15 @@ static __global__ void chunks_gather(unsigned data_length,
     const auto batch = blockIdx.x / indices_size;
     const auto chunk = (blockIdx.z * blockDim.x + threadIdx.x) * els_per_thread;
     gather<IsBenchmarkMode>(data_length,
-           index_range,
-           els_per_thread,
-           indices_size,
-           indices_index,
-           dict,
-           chunk,
-           src_dict + batch * dicts_batch_stride,
-           src_index + batch * indices_batch_stride,
-           dst_data + batch * out_batch_stride);
+                            index_range,
+                            els_per_thread,
+                            indices_size,
+                            indices_index,
+                            dict,
+                            chunk,
+                            src_dict + batch * dicts_batch_stride,
+                            src_index + batch * indices_batch_stride,
+                            dst_data + batch * out_batch_stride);
 }
 
 template <bool IsBenchmarkMode, typename DataType, typename IndexType>
@@ -96,15 +94,15 @@ static __global__ void dicts_gather(unsigned num_dicts,
     const auto indices_index = blockIdx.x % indices_size;
     const auto batch = blockIdx.x / indices_size;
     gather<IsBenchmarkMode>(data_length,
-           index_range,
-           els_per_thread,
-           indices_size,
-           indices_index,
-           dict,
-           chunk,
-           src_dict + batch * dicts_batch_stride,
-           src_index + batch * indices_batch_stride,
-           dst_data + batch * out_batch_stride);
+                            index_range,
+                            els_per_thread,
+                            indices_size,
+                            indices_index,
+                            dict,
+                            chunk,
+                            src_dict + batch * dicts_batch_stride,
+                            src_index + batch * indices_batch_stride,
+                            dst_data + batch * out_batch_stride);
 }
 
 Gather::Gather(Type_t element_type,
@@ -140,7 +138,11 @@ Gather::Gather(Type_t element_type,
       els_per_thread_chunks_(els_per_thread_chunks),
       els_per_thread_dicts_(els_per_thread_dicts) {}
 
-void Gather::operator()(const cudaStream_t stream, bool is_benchmark_mode, const void* src_dict, const void* src_index, void* dst_data) const {
+void Gather::operator()(const cudaStream_t stream,
+                        bool is_benchmark_mode,
+                        const void* src_dict,
+                        const void* src_index,
+                        void* dst_data) const {
     switch (indices_type_) {
         case Type_t::i64:
             return CallByDataType<int64_t>(stream, is_benchmark_mode, src_dict, src_index, dst_data);
@@ -194,7 +196,11 @@ void Gather::CallByDataType(const cudaStream_t stream,
 }
 
 template <typename DataType, typename IndexType>
-void Gather::Call(const cudaStream_t stream, bool is_benchmark_mode, const void* src_dict, const void* src_index, void* dst_data) const {
+void Gather::Call(const cudaStream_t stream,
+                  bool is_benchmark_mode,
+                  const void* src_dict,
+                  const void* src_index,
+                  void* dst_data) const {
     dim3 grid{grid_dim_x_, grid_dim_y_, blocks_per_grid_};
 
     const auto src_dict_typed = static_cast<const DataType*>(src_dict);

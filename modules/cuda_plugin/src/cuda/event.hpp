@@ -7,8 +7,7 @@
 #include "runtime.hpp"
 
 namespace CUDA {
-
-class Event : public UniqueBase<static_cast<__host__ cudaError_t CUDARTAPI (*)(cudaEvent_t* event)>(cudaEventCreate),
+class Event : public UniqueBase<static_cast<__host__ cudaError_t (*)(cudaEvent_t* event)>(cudaEventCreate),
                                 cudaEventDestroy,
                                 cudaEvent_t> {
 public:

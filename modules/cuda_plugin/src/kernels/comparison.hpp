@@ -5,6 +5,7 @@
 #pragma once
 
 #include "cuda_type_traits.hpp"
+#include "error.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
