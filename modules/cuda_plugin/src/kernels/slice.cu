@@ -9,7 +9,6 @@
 #include <cuda_fp16.h>
 #include <fmt/format.h>
 
-#include <error.hpp>
 #include <gsl/gsl_assert>
 
 #include "slice.hpp"

@@ -62,8 +62,6 @@ cudnnRNNDataLayout_t LSTMCellParamsCuDnn::layout() const { return CUDNN_RNN_DATA
 // Paddings not used for single forward cell
 void* LSTMCellParamsCuDnn::paddingFill() const { return nullptr; }
 
-int LSTMCellParamsCuDnn::nbDims() const { return 3; }
-
 cudnnForwardMode_t LSTMCellParamsCuDnn::dnnForwardMode() const { return CUDNN_FWD_MODE_INFERENCE; }
 
 CUDA::DnnRnnDescriptor LSTMCellParamsCuDnn::makeRNNDescriptor() const {
@@ -401,8 +399,6 @@ cudnnRNNDataLayout_t GRUCellParamsCuDnn::layout() const { return CUDNN_RNN_DATA_
 
 // Paddings not used for single forward cell
 void* GRUCellParamsCuDnn::paddingFill() const { return nullptr; }
-
-int GRUCellParamsCuDnn::nbDims() const { return 3; }
 
 cudnnForwardMode_t GRUCellParamsCuDnn::dnnForwardMode() const { return CUDNN_FWD_MODE_INFERENCE; }
 

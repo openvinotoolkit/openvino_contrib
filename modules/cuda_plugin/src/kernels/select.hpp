@@ -6,6 +6,7 @@
 
 #include <cuda_runtime.h>
 
+#include "error.hpp"
 #include "ngraph/type/element_type.hpp"
 
 namespace CUDAPlugin {

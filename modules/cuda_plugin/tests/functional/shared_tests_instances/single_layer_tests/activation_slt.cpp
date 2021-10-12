@@ -26,10 +26,9 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1000, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1000, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
-
 
 // Attrs:  {}
 // In:     (1, 1024, 14, 14)
@@ -40,12 +39,13 @@ INSTANTIATE_TEST_CASE_P(
     ActivationLayerTest,
     ::testing::Combine(
         ::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{ngraph::helpers::Relu, 0}),
-        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
+        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>(
+            {InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16})),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1024, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1024, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -64,7 +64,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 100, 171}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 100, 171}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -83,7 +83,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 112, 112}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 112, 112}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -102,7 +102,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 16, 16}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 16, 16}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -121,7 +121,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -140,7 +140,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 18, 18, 18}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 18, 18, 18}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -159,7 +159,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 28, 28}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 28, 28}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -178,7 +178,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -197,7 +197,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 56, 56}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 56, 56}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -216,7 +216,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 128, 128}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 128, 128}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -235,7 +235,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 144, 144, 144}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 144, 144, 144}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -254,7 +254,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 56, 56}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 56, 56}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -273,7 +273,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 160, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 160, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -292,7 +292,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -311,7 +311,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -330,7 +330,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 200, 342}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 200, 342}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -349,7 +349,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 35, 35}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 35, 35}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -368,7 +368,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -387,7 +387,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -406,7 +406,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 2048, 7, 7}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 2048, 7, 7}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -425,7 +425,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -444,7 +444,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 35, 35}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 35, 35}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -463,7 +463,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -482,7 +482,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -501,7 +501,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -520,7 +520,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -539,7 +539,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 28, 28}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 28, 28}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -558,7 +558,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 56, 56}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 56, 56}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -577,7 +577,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -596,7 +596,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 9, 9, 9}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 9, 9, 9}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -615,7 +615,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 100, 171}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 100, 171}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -634,7 +634,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 147, 147}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 147, 147}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -653,7 +653,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 149, 149}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 149, 149}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -672,7 +672,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 224, 224}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 224, 224}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -691,7 +691,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 28, 28}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 28, 28}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -710,7 +710,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 64, 64}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 64, 64}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -729,7 +729,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 72, 72, 72}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 72, 72, 72}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -748,7 +748,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -767,7 +767,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -786,7 +786,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 17, 17}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 17, 17}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -805,7 +805,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -824,7 +824,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 4096}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 4096}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -843,7 +843,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 448, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 448, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -862,7 +862,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 48, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 48, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -881,7 +881,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 1000}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 1000}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -900,7 +900,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -919,7 +919,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 28, 28}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 28, 28}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -938,7 +938,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 7, 7}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 7, 7}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -957,7 +957,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 8, 8}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 8, 8}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -976,7 +976,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 100, 171}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 100, 171}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -995,7 +995,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 112, 112}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 112, 112}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1014,7 +1014,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 113, 113}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 113, 113}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1033,7 +1033,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1052,7 +1052,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 147, 147}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 147, 147}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1071,7 +1071,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 200, 342}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 200, 342}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1090,7 +1090,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 224, 224}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 224, 224}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1109,7 +1109,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 32, 32}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 32, 32}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1128,7 +1128,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 35, 35}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 35, 35}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1147,7 +1147,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 36, 36, 36}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 36, 36, 36}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1166,7 +1166,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 400, 683}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 400, 683}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1185,7 +1185,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1204,7 +1204,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 56, 56}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 56, 56}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1223,7 +1223,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 73, 73}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 73, 73}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1242,7 +1242,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 100, 171}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 100, 171}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1261,7 +1261,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 35, 35}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 35, 35}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1280,7 +1280,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 50, 86}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 50, 86}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1299,7 +1299,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 71, 71}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 71, 71}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1318,7 +1318,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 73, 73}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 73, 73}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1337,7 +1337,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1356,7 +1356,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 7, 7}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 7, 7}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1375,7 +1375,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 160, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 160, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1394,7 +1394,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1413,7 +1413,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 7, 7}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 7, 7}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1432,7 +1432,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 224, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 224, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1451,7 +1451,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 15, 15}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 15, 15}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1470,7 +1470,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1489,7 +1489,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 7, 7}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 7, 7}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1508,7 +1508,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 320, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 320, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1527,7 +1527,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 352, 4, 4}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 352, 4, 4}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1546,7 +1546,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1024}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1024}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1565,7 +1565,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 6272}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 6272}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1584,7 +1584,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 64, 14, 14}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 64, 14, 14}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1610,7 +1610,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 128, 128}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 128, 128}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1629,7 +1629,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 144, 144, 144}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 144, 144, 144}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1648,7 +1648,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 1917, 91}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 1917, 91}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1667,7 +1667,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1152, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1152, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1686,7 +1686,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 144, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 144, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1705,7 +1705,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1724,7 +1724,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1920, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1920, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1743,7 +1743,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 240, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 240, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1762,7 +1762,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 20, 20, 85}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 20, 20, 85}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1781,7 +1781,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 40, 40, 85}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 40, 40, 85}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1800,7 +1800,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 80, 80, 85}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 80, 80, 85}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1819,7 +1819,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1838,7 +1838,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 480, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 480, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1857,7 +1857,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 672, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 672, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1876,7 +1876,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 76725, 90}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 76725, 90}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1895,7 +1895,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 1, 1}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 1, 1}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1914,7 +1914,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 90, 15, 15}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 90, 15, 15}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1933,7 +1933,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
-        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1, 28, 28}, 0}),
+        ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1, 28, 28}, {}}),
         ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
     ActivationLayerTest::getTestCaseName);
 
@@ -1972,6 +1972,5 @@ INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Tanh,
                         ActivationLayerTest,
                         basicTanhCases,
                         ActivationLayerTest::getTestCaseName);
-
 }  // namespace
 }  // namespace LayerTestsDefinitions

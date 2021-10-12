@@ -12,14 +12,14 @@ namespace kernel {
 
 template <Type_t... Types>
 struct ElementTypesSwitch {
-    static constexpr std::integer_sequence<Type_t, Types...> indices{};
+    static constexpr std::integer_sequence<int, static_cast<int>(Types)...> indices{};
     template <Type_t I, typename Switch, typename... Args>
     constexpr decltype(auto) case_(Switch&& switch_, Args&&... args) const noexcept(
         noexcept(std::forward<Switch>(switch_).template case_<cuda_type_traits_t<I>>(std::forward<Args>(args)...))) {
         return std::forward<Switch>(switch_).template case_<cuda_type_traits_t<I>>(std::forward<Args>(args)...);
     }
-    template <typename Switch, typename... Args>
-    constexpr decltype(auto) default_(Type_t t, Switch&& switch_, Args&&... args) const
+    template <typename Switch, typename... Args, typename TypeT>
+    constexpr decltype(auto) default_(TypeT t, Switch&& switch_, Args&&... args) const
         noexcept(noexcept(std::forward<Switch>(switch_).default_(t, std::forward<Args>(args)...))) {
         return std::forward<Switch>(switch_).default_(t, std::forward<Args>(args)...);
     }

@@ -12,18 +12,15 @@ namespace CUDAPlugin {
 namespace kernel {
 
 #if CUDA_VERSION >= 11000
-template <typename TOutput,
-          typename TInput,
-          typename std::enable_if<std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
-                                  std::is_same<TOutput, __half>::value ||
-                                  std::is_same<TOutput, __nv_bfloat16>::value>::type* = nullptr>
+template <typename TOutput, typename TInput>
+__global__
+    typename std::enable_if<std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
+                            std::is_same<TOutput, __half>::value || std::is_same<TOutput, __nv_bfloat16>::value>::type
 #else
-template <typename TOutput,
-          typename TInput,
-          typename std::enable_if<std::is_same<TInput, __half>::value || std::is_same<TOutput, __half>::value>::type* =
-              nullptr>
+template <typename TOutput, typename TInput>
+__global__ typename std::enable_if<std::is_same<TInput, __half>::value || std::is_same<TOutput, __half>::value>::type
 #endif
-__global__ void convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
+    convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
     const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < inputSize) {
         // workaround for "error: more than one conversion function from "const __half" to "..." applies"
@@ -33,18 +30,16 @@ __global__ void convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
 }
 
 #if CUDA_VERSION >= 11000
-template <typename TOutput,
-          typename TInput,
-          typename std::enable_if<!(std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
-                                    std::is_same<TOutput, __half>::value ||
-                                    std::is_same<TOutput, __nv_bfloat16>::value)>::type* = nullptr>
+template <typename TOutput, typename TInput>
+__global__
+    typename std::enable_if<!(std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
+                              std::is_same<TOutput, __half>::value ||
+                              std::is_same<TOutput, __nv_bfloat16>::value)>::type
 #else
-template <typename TOutput,
-          typename TInput,
-          typename std::enable_if<!(std::is_same<TInput, __half>::value ||
-                                    std::is_same<TOutput, __half>::value)>::type* = nullptr>
+template <typename TOutput, typename TInput>
+__global__ typename std::enable_if<!(std::is_same<TInput, __half>::value || std::is_same<TOutput, __half>::value)>::type
 #endif
-__global__ void convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
+    convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
     const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < inputSize) {
         out[i] = static_cast<TOutput>(in[i]);
