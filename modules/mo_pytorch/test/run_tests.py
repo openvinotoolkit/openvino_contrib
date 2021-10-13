@@ -84,7 +84,9 @@ class TestModels(unittest.TestCase):
         model(rand_inp)
 
         # Convert to OpenVINO IR
-        mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
+        mo_pytorch.convert(model, input_shape=inp_size,
+                           model_name='model',
+                           data_type='FP16')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
@@ -135,7 +137,9 @@ class TestModels(unittest.TestCase):
                 cv.rectangle(img, (int(xmin), int(ymin)), (int(xmax), int(ymax)), color=(0, 180, 255), thickness=3)
 
         # Convert model to OpenVINO IR
-        mo_pytorch.convert(model, input_shape=[1, 3, height, width], model_name='model')
+        mo_pytorch.convert(model, input_shape=[1, 3, height, width],
+                           model_name='model',
+                           data_type='FP16')
 
         # Get OpenVINO prediction
         net = self.ie.read_network('model.xml')
@@ -186,7 +190,9 @@ class TestModels(unittest.TestCase):
             pt_model(dummy_inp)
 
         # Generate OpenVINO IR
-        mo_pytorch.convert(pt_model, input_shape=list(inp.shape), model_name='model')
+        mo_pytorch.convert(pt_model, input_shape=list(inp.shape),
+                           model_name='model',
+                           data_type='FP16')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
@@ -216,7 +222,8 @@ class TestModels(unittest.TestCase):
         # Generate OpenVINO IR
         mo_pytorch.convert(model, model_name='model',
                            input='input_ids{i64},position_ids{i64},attention_mask{f32}',
-                           input_shape='[1, {}],[{}],[1, {}]'.format(seq_len, seq_len, seq_len))
+                           input_shape='[1, {}],[{}],[1, {}]'.format(seq_len, seq_len, seq_len),
+                           data_type='FP16')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml', 'model.bin')
@@ -276,7 +283,8 @@ class TestModels(unittest.TestCase):
         # Generate OpenVINO IR
         mo_pytorch.convert(model, input_shape='[1, 3, 56, 112],[1, 1, 25, 25],[1, 1, 1, 1],[1]',
                            input='x{f32},k{f32},sigma{f32},sf{f32}->4',
-                           model_name='model')
+                           model_name='model',
+                           data_type='FP16')
 
         # Run model with OpenVINO and compare outputs
         net = self.ie.read_network('model.xml')
