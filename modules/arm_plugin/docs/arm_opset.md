@@ -12,8 +12,6 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Abs](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Abs_1.md)                                                                                              | Supported     |
 | [Acos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acos_1.md)                                                                                            | Supported**   |
 | [Acosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Acosh_3.md)                                                                                          | Supported**   |
-| [AdaptiveAvgPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/AdaptiveAvgPool_8.md)                                                                                          | Supported**   |
-| [AdaptiveMaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/AdaptiveMaxPool_8.md)                                                                                          | Supported**   |
 | [Add](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Add_1.md)                                                                                              | Supported     |
 | [Asin](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asin_1.md)                                                                                            | Supported**   |
 | [Asinh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Asinh_3.md)                                                                                          | Supported**   |
