@@ -14,31 +14,7 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-#define CUDAPLUGIN_LIST_TYPE_T_VALUES \
-    X(undefined)                      \
-    X(dynamic)                        \
-    X(boolean)                        \
-    X(bf16)                           \
-    X(f16)                            \
-    X(f32)                            \
-    X(f64)                            \
-    X(i4)                             \
-    X(i8)                             \
-    X(i16)                            \
-    X(i32)                            \
-    X(i64)                            \
-    X(u1)                             \
-    X(u4)                             \
-    X(u8)                             \
-    X(u16)                            \
-    X(u32)                            \
-    X(u64)
-
-enum class Type_t {
-#define X(val) val,
-    CUDAPLUGIN_LIST_TYPE_T_VALUES
-#undef X
-};
+enum class Type_t { boolean, bf16, f16, f32, f64, i4, i8, i16, i32, i64, u1, u4, u8, u16, u32, u64 };
 
 template <Type_t>
 struct cuda_type_traits {};
