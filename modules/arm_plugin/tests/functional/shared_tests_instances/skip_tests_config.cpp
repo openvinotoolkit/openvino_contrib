@@ -36,5 +36,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*)",
         R"(.*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*)",
         R"(.*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*)",
+        R"(.*ExclusiveAsyncRequest.*)" // Unsupported config test
     };
 }
