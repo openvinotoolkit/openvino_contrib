@@ -121,12 +121,6 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
     const void* alpha2 = &NumericConst<constants::one>(out.type_);
     const void* beta = &NumericConst<constants::zero>(out.type_);
 
-    if (op_type_ == CUDNN_OP_TENSOR_MAX) {
-        alpha1 = &NumericStrictConst<constants::one>(out.type_);
-        alpha2 = &NumericStrictConst<constants::one>(out.type_);
-        beta = &NumericStrictConst<constants::zero>(out.type_);
-    }
-
     context.getThreadContext().dnnHandle().opTensor(op_desc_,
                                                     alpha1,
                                                     dest_input.desc_,
