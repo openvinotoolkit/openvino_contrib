@@ -178,20 +178,4 @@ inline const constants::AnyNumeric& NumericConst(cudnnDataType_t computeType) {
         }
     }
 }
-
-// NOTE: It might be removed in the next versions of CUDA environment
-template <template <typename T> class C>
-inline const constants::AnyNumeric& NumericStrictConst(cudnnDataType_t computeType) {
-    switch (computeType) {
-        case CUDNN_DATA_DOUBLE: {
-            return C<double>::value;
-        }
-        case CUDNN_DATA_HALF: {
-            return C<half>::value;
-        }
-        default: {
-            return C<float>::value;
-        }
-    }
-}
 }  // namespace CUDAPlugin
