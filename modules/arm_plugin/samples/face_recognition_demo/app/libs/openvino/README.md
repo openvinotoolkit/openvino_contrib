@@ -1,0 +1,1 @@
+# OpenVINO Java libraries

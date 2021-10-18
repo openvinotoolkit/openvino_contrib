@@ -1,31 +1,28 @@
 package com.openvino_demo.face_recognition_demo;
 
-import androidx.annotation.NonNull;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.widget.Toast;
 
 import org.intel.openvino.*;
 import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
-import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
-import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
+
 public class MainActivity extends CameraActivity implements CvCameraViewListener2 {
     private void copyFiles() {
         String[] fileNames = {MODEL_BIN, MODEL_XML, PLUGINS_XML};
@@ -52,6 +49,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             }
         }
     }
+
     private void processNetwork() {
         // Set up camera listener.
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.CameraView);
@@ -72,6 +70,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         Map<String, Data> outputsInfo = net.getOutputsInfo();
         outputName = new ArrayList<>(outputsInfo.keySet()).get(0);
     }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -80,18 +79,17 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             System.loadLibrary(OPENCV_LIBRARY_NAME);
             System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
-            Log.e(
-                    "UnsatisfiedLinkError",
-                    "Failed to load native OpenVINO libraries\n" + e.toString());
+            Log.e("UnsatisfiedLinkError", "Failed to load native OpenVINO libraries\n" + e);
             System.exit(1);
         }
         modelDir = this.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath();
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-           requestPermissions(new String[]{Manifest.permission.CAMERA}, 0);
+            requestPermissions(new String[] {Manifest.permission.CAMERA}, 0);
         } else {
             processNetwork();
         }
     }
+
     @Override
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
@@ -102,15 +100,19 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         }
         processNetwork();
     }
+
     @Override
     public void onResume() {
         super.onResume();
         mOpenCvCameraView.enableView();
     }
+
     @Override
     public void onCameraViewStarted(int width, int height) {}
+
     @Override
     public void onCameraViewStopped() {}
+
     @Override
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
         Mat frame = inputFrame.rgba();
@@ -152,6 +154,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
                 6);
         return frame;
     }
+
     private CameraBridgeViewBase mOpenCvCameraView;
     private InferRequest inferRequest;
     private String inputName;

@@ -1,0 +1,1 @@
+# OpenCV Android SDK directory

@@ -18,7 +18,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "face_recognition_demo"
 include ':app'
-
-include ':opencv'
-project(':opencv').projectDir = new File("$System.env.OPENCV_SDK_PATH/sdk")
-
+include ':app:libs:opencv:sdk'
