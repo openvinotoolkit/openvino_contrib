@@ -5,6 +5,8 @@
 *.aab
 **/*.so
 **/*.jar
+**/*.xml
+**/*.bin
 
 # Files for the ART/Dalvik VM
 *.dex
