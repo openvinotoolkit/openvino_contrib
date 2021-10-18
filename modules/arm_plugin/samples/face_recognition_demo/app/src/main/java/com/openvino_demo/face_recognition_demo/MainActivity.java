@@ -7,6 +7,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
 import android.widget.Toast;
+
+import org.intel.openvino.*;
 import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
@@ -17,7 +19,6 @@ import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
-import org.intel.openvino.*;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -28,7 +29,7 @@ import java.util.Map;
 public class MainActivity extends CameraActivity implements CvCameraViewListener2 {
     private void copyFiles() {
         String[] fileNames = {MODEL_BIN, MODEL_XML, PLUGINS_XML};
-        for (String fileName: fileNames) {
+        for (String fileName : fileNames) {
             String outputFilePath = modelDir + "/" + fileName;
             File outputFile = new File(outputFilePath);
             if (!outputFile.exists()) {
@@ -75,23 +76,25 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        try{
+        try {
             System.loadLibrary(OPENCV_LIBRARY_NAME);
             System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
-            Log.e("UnsatisfiedLinkError",
+            Log.e(
+                    "UnsatisfiedLinkError",
                     "Failed to load native OpenVINO libraries\n" + e.toString());
             System.exit(1);
         }
         modelDir = this.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath();
-        if(checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, 0);
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+           requestPermissions(new String[]{Manifest.permission.CAMERA}, 0);
         } else {
             processNetwork();
         }
     }
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
             Log.e("PermissionError", "The application can't work without camera permissions");
@@ -130,12 +133,23 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
                 float ymin = scores[i * 7 + 4] * frameBGR.rows();
                 float xmax = scores[i * 7 + 5] * frameBGR.cols();
                 float ymax = scores[i * 7 + 6] * frameBGR.rows();
-                Imgproc.rectangle(frame, new Point(xmin, ymin), new Point(xmax, ymax), new Scalar(0, 0, 255), 6);
+                Imgproc.rectangle(
+                        frame,
+                        new Point(xmin, ymin),
+                        new Point(xmax, ymax),
+                        new Scalar(0, 0, 255),
+                        6);
                 confidentDetections++;
             }
         }
-        Imgproc.putText(frame, String.valueOf(confidentDetections), new Point(10, 40),
-                Imgproc.FONT_HERSHEY_COMPLEX, 1.8, new Scalar(0, 255, 0), 6);
+        Imgproc.putText(
+                frame,
+                String.valueOf(confidentDetections),
+                new Point(10, 40),
+                Imgproc.FONT_HERSHEY_COMPLEX,
+                1.8,
+                new Scalar(0, 255, 0),
+                6);
         return frame;
     }
     private CameraBridgeViewBase mOpenCvCameraView;
