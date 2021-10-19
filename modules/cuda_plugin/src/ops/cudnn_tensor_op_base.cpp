@@ -14,6 +14,32 @@
 namespace CUDAPlugin {
 namespace {
 
+bool argTypesSupported(cudnnDataType_t in0, cudnnDataType_t in1, cudnnDataType_t out) {
+    if (in0 != in1) return false;
+    switch (out) {
+        case CUDNN_DATA_FLOAT:
+            switch (in0) {
+                case CUDNN_DATA_FLOAT:
+                case CUDNN_DATA_INT8:
+                case CUDNN_DATA_HALF:
+                case CUDNN_DATA_BFLOAT16:
+                    return true;
+                default:
+                    return false;
+            }
+        case CUDNN_DATA_DOUBLE:
+            return (in0 == out);
+        case CUDNN_DATA_HALF:
+            return (in0 == out) || (in0 == CUDNN_DATA_FLOAT);
+        case CUDNN_DATA_INT8:
+            return (in0 == out) || (in0 == CUDNN_DATA_FLOAT);
+        case CUDNN_DATA_BFLOAT16:
+            return (in0 == out) || (in0 == CUDNN_DATA_FLOAT);
+        default:
+            return false;
+    }
+}
+
 template <typename T, std::size_t N>
 std::array<T, N> toArray(const ngraph::Shape& shape) {
     std::array<T, N> a;
@@ -50,6 +76,12 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
       op_type_(opType) {
     Expects(node->get_input_size() == 2);
     Expects(node->get_output_size() == 1);
+    if (!argTypesSupported(in0.type_, in1.type_, out.type_)) {
+        // See https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor for
+        // supported argument types.
+        throwIEException(
+            fmt::format("MultiplyCuDnn: unsupported argument types: ({},{}) -> {}", in0.type_, in1.type_, out.type_));
+    }
     const auto& in_partial_shape0 = node->get_input_partial_shape(0);
     const auto& in_partial_shape1 = node->get_input_partial_shape(1);
     const auto& out_partial_shape = node->get_output_partial_shape(0);
