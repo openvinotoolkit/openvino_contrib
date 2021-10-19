@@ -27,7 +27,7 @@ export OPENCV_SDK_PATH=<path to opencv android sdk> // e.g. ~/android_ov/opencv-
 export OMZ_NETWORKS_PATH=<path to models (.xml + .bin) from Open Model ZOO for use in demo> // e.g. ~/android_ov/open_model_zoo/tools/downloader/intel/face-detection-adas-0001/FP32/
 ```
 
-## 4. Build demo
+## 4. Build the demo
 ```
 gradle assembleDebug
 ```
