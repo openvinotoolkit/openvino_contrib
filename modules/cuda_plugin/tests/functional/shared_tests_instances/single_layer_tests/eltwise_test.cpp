@@ -111,4 +111,21 @@ INSTANTIATE_TEST_CASE_P(Add, EltwiseLayerTest,
                             ::testing::Values(additional_config)),
                         EltwiseLayerTest::getTestCaseName);
 
-} // namespace
+// Tacotron2 int
+const std::vector<std::vector<std::vector<size_t>>> tacotron2_int_shapes = {{{1}, {1}}};
+
+INSTANTIATE_TEST_CASE_P(tacotron2_int_Multiply,
+                        EltwiseLayerTest,
+                        ::testing::Combine(::testing::ValuesIn(tacotron2_int_shapes),
+                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                                           ::testing::Values(InferenceEngine::Precision::I32),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
+                        EltwiseLayerTest::getTestCaseName);
+
+}  // namespace
