@@ -8,7 +8,7 @@ Build OpenVINO™ with Java bindings and ARM plugin for ARM Android platform usi
 
 ## 2. Install requirements  
 
-Please install gradle for build project on console:
+Install gradle build tool to build the project using console:
 ```
 sudo apt update
 sudo apt install snapd
