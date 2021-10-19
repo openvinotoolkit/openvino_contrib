@@ -18,7 +18,7 @@ sudo snap install gradle --classic
 *Demo could be built on Linux-based systems.*
 
 ## 3. Setup environment
-Please setup next environment variables on console:
+Define the following environment variables:
 ```
 export OPENVINO_ARM_LIBRARY_PATH=<path to openvino arm-plugin *.so libraries> // e.g. ~/android_ov/openvino/bin/aarch64/Release/lib/
 export ANDROID_NDK_LIBRARY_PATH=<path to android-ndk *.so libraries> // e.g. ~/android_ov/android-ndk-r20/
