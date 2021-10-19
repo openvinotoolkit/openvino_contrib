@@ -76,7 +76,9 @@ static inline __global__ void pad_const_mode(const T* src,
     }
 }
 
-ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs, ngraph::element::Type_t dtype, std::size_t outputRank)
+ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
+                           ngraph::element::Type_t dtype,
+                           std::size_t outputRank)
     : kernel_exec_attrs_{std::move(kernelExecAttrs)}, dtype_{dtype}, output_rank_{outputRank} {}
 
 void ConstModePad::operator()(cudaStream_t stream,
