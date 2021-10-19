@@ -1,6 +1,6 @@
 # OpenVINO™ ARM-plugin Face Recognition Demo
 
-This demo shows Face Recognition task OpenVINO™ ARM-plugin working on android smartphones*.
+This demo recognizes faces on camera frames using OpenVINO™ ARM-plugin on Android smartphones*.
 
 ## 1. Build OpenVINO™ ARM-plugin for Android
 
