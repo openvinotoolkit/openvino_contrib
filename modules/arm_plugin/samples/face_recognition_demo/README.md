@@ -4,7 +4,7 @@ This demo recognizes faces on camera frames using OpenVINO™ ARM-plugin on Andr
 
 ## 1. Build OpenVINO™ ARM-plugin for Android
 
-The build OpenVINO™ ARM-plugin for Android instruction can be find in this [link](https://opencv.org/face-recognition-on-android-using-openvino-toolkit-with-arm-plugin/).
+Build OpenVINO™ with Java bindings and ARM plugin for ARM Android platform using the following [instruction](https://opencv.org/face-recognition-on-android-using-openvino-toolkit-with-arm-plugin/).
 
 ## 2. Install requirements  
 
