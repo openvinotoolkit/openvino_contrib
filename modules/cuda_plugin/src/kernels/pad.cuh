@@ -13,7 +13,9 @@ namespace kernel {
 
 class ConstModePad {
 public:
-    explicit ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs, ngraph::element::Type_t dtype, std::size_t outputRank);
+    explicit ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
+                          ngraph::element::Type_t dtype,
+                          std::size_t outputRank);
     void operator()(cudaStream_t stream,
                     const void* src,
                     void* dst,
