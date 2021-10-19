@@ -15,7 +15,7 @@ sudo apt install snapd
 sudo snap install gradle --classic
 ```
 
-*Demo could build on linux based systems.*
+*Demo could be built on Linux-based systems.*
 
 ## 3. Setup environment
 Please setup next environment variables on console:
