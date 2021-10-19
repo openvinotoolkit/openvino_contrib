@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace CUDAPlugin {
 
 /**
