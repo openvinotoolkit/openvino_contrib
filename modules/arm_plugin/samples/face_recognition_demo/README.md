@@ -32,7 +32,7 @@ export OMZ_NETWORKS_PATH=<path to models (.xml + .bin) from Open Model ZOO for u
 gradle assembleDebug
 ```
 
-## 5. Send demo apk on smartphone
+## 5. Send the demo apk to ARM Android smartphone
 ```
 gradle installDebug
 ```
