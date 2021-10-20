@@ -28,5 +28,14 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
         // Unexpected behavior
         R"(.*(Hetero|Multi).*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*)",
+        // Not implemented
+        R"(.*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*)",
+        R"(.*Behavior.*ExecutableNetworkBaseTest.*CanCreateTwoExeNetworksAndCheckFunction.*)",
+        R"(.*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution).*)",
+        R"(.*Behavior.*ExecutableNetworkBaseTest.*canExport.*)",
+        R"(.*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*)",
+        R"(.*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*)",
+        R"(.*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*)",
+        R"(.*ExclusiveAsyncRequest.*)" // Unsupported config test
     };
 }
