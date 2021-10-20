@@ -26,8 +26,6 @@ const std::vector<size_t> axis2D = {0, 1};
 
 const auto params2D = testing::Combine(
         testing::ValuesIn(netPrecisions),
-        testing::Values(ov::element::undefined),
-        testing::Values(ov::element::undefined),
         testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes2D)),
         testing::ValuesIn(axis2D),
         testing::Values(CommonTestUtils::DEVICE_CPU),
@@ -51,8 +49,6 @@ const std::vector<size_t> axis4D = {0, 1, 2, 3};
 
 const auto params4D = testing::Combine(
         testing::ValuesIn(netPrecisions),
-        testing::Values(ov::element::undefined),
-        testing::Values(ov::element::undefined),
         testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes4D)),
         testing::ValuesIn(axis4D),
         testing::Values(CommonTestUtils::DEVICE_CPU),
