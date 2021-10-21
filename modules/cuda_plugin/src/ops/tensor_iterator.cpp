@@ -16,6 +16,8 @@
 
 #include "converters.hpp"
 #include "cuda_operation_registry.hpp"
+#include "parameter.hpp"
+#include "result.hpp"
 
 namespace CUDAPlugin {
 

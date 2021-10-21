@@ -308,6 +308,20 @@ pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
     register_matcher(m, callback);
 }
 
+NGRAPH_RTTI_DEFINITION(ngraph::pass::SinkTanhToFusedConvolution, ngraph::pass::SinkTanhToFusedConvolution::Name, 0);
+
+pass::SinkTanhToFusedConvolution::SinkTanhToFusedConvolution() {
+    auto fused_convolution = ngraph::pattern::wrap_type<FusedConv>(pattern::consumers_count(1));
+    auto activation = ngraph::pattern::wrap_type<opset1::Tanh>({fused_convolution});
+
+    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+        return sink_activation_to_fused_convolution(m, ActivationMode::TANH);
+    };
+
+    auto m = std::make_shared<ngraph::pattern::Matcher>(activation, pass::SinkTanhToFusedConvolution::Name);
+    register_matcher(m, callback);
+}
+
 NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBiasAddActivation, "CudaFuseConvBiasAddActivation", 0);
 
 ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
@@ -315,6 +329,8 @@ ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
     add_matcher<FuseConvolutionWithBiasaddAdd>();
     add_matcher<SinkReluToFusedConvolution>();
     add_matcher<SinkSigmoidToFusedConvolution>();
+    // TODO: Uncomment when performance for FusedConvolution+BiasAdd+Tanh would be satisfied
+    // add_matcher<SinkTanhToFusedConvolution>();
 }
 
 NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBackpropDataAdd, ngraph::pass::CudaFuseConvBackpropDataAdd::Name, 0);

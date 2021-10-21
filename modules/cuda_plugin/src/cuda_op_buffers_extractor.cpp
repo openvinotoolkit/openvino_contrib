@@ -22,8 +22,12 @@
 
 namespace CUDAPlugin {
 
-OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params)
-    : is_stable_params_{is_stable_params}, num_ordered_nodes_{ordered_nodes.size()} {
+OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes,
+                                                     bool is_stable_params,
+                                                     bool is_stable_results)
+    : is_stable_params_{is_stable_params},
+      is_stable_results_{is_stable_results},
+      num_ordered_nodes_{ordered_nodes.size()} {
     for (int node_idx = 0; node_idx < num_ordered_nodes_; node_idx++) {
         const auto& node = ordered_nodes[node_idx];
         if (IsParameterNode(*node))
@@ -240,6 +244,17 @@ void OperationBuffersExtractor::extractResultTensors(const NodePtr& node) {
         for (auto& output : node->outputs()) {
             tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
         }
+    }
+    if (is_stable_results_) {
+        auto input = node->inputs().front().get_source_output();
+        const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
+        auto resultBuffer = std::find_if(mutable_buffers_.begin(), mutable_buffers_.end(), [&tensorId](const auto& mb) {
+            return mb.first == tensorId->GetId();
+        });
+        if (resultBuffer == mutable_buffers_.end()) {
+            throwIEException(fmt::format("Cannot find mutable buffer for Result with name {}", node->get_name()));
+        }
+        resultBuffer->second.lifespan_end = num_ordered_nodes_;
     }
 }
 

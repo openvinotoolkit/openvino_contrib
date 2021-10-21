@@ -24,6 +24,9 @@ public:
     static std::string GetOutputTensorName(const ngraph::Node& node);
 
 private:
+    static std::optional<std::string> GetFusedOutputTensorName(const ngraph::Node::RTMap& rtInfo,
+                                                               const std::string& resultName);
+
     std::string output_tensor_name_;
 };
 
