@@ -7,10 +7,15 @@
 #include <ngraph/pass/manager.hpp>
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/common_optimizations/conv_bias_fusion.hpp>
+#include <transformations/common_optimizations/nop_elimination.hpp>
 #include <transformations/convert_precision.hpp>
 #include <transformations/init_node_info.hpp>
+#include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
+#include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
+#include <transformations/op_conversions/convert_ti_to_sequences.hpp>
 #include <transformer/fuse_conv_biasadd_activation.hpp>
 
+#include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
@@ -23,7 +28,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
     const std::map<std::string, std::string> &) const {
   auto transformed_function = ngraph::clone_function(*function);
 
-  ngraph::pass::Manager manager;
+  auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
+  ngraph::pass::Manager manager{passConfig};
 
   [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
   [[maybe_unused]] const auto& originOpsSize = originOps.size();
@@ -41,6 +47,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(
   manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
   manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
   manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
+//  manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
   manager.register_pass<ngraph::pass::ConcatTransformation>();
 
   manager.run_passes(transformed_function);

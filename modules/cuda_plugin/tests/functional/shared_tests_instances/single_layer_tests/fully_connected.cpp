@@ -99,6 +99,124 @@ TEST_P(FullyConnectedLayerTest, CompareWithRefs) {
   Run();
 }
 
+struct FullyConnected2MatMulShapeRelatedParams {
+    std::pair<InferenceEngine::SizeVector, bool> matmul1_input1, matmul1_input2, matmul2_input1, matmul2_input2;
+};
+
+typedef std::tuple<FullyConnected2MatMulShapeRelatedParams,
+                   InferenceEngine::Precision,         // Network precision
+                   InferenceEngine::Precision,         // Input precision
+                   InferenceEngine::Precision,         // Output precision
+                   InferenceEngine::Layout,            // Input layout
+                   ngraph::helpers::InputLayerType,    // Secondary input type
+                   LayerTestsUtils::TargetDevice,      // Device name
+                   std::map<std::string, std::string>  // Additional network configuration
+                   >
+    FullyConnected2MatMulLayerTestParamsSet;
+
+class FullyConnectedLayer2MatMulTest : public testing::WithParamInterface<FullyConnected2MatMulLayerTestParamsSet>,
+                                       public FiniteLayerComparer {
+public:
+    static std::string getTestCaseName(const testing::TestParamInfo<FullyConnected2MatMulLayerTestParamsSet> &obj) {
+        InferenceEngine::Precision netPrecision;
+        InferenceEngine::Precision inPrc, outPrc;
+        InferenceEngine::Layout inLayout;
+        FullyConnected2MatMulShapeRelatedParams shapeRelatedParams;
+        ngraph::helpers::InputLayerType secondaryInputType;
+        std::string targetDevice;
+        std::map<std::string, std::string> additionalConfig;
+        std::tie(shapeRelatedParams,
+                 netPrecision,
+                 inPrc,
+                 outPrc,
+                 inLayout,
+                 secondaryInputType,
+                 targetDevice,
+                 additionalConfig) = obj.param;
+
+        std::ostringstream result;
+        result << "IS00=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul1_input1.first) << "_";
+        result << "IS01=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul1_input2.first) << "_";
+        result << "IS10=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul2_input1.first) << "_";
+        result << "IS11=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul2_input2.first) << "_";
+        result << "IS0 transpose_a=" << shapeRelatedParams.matmul1_input1.second << "_";
+        result << "IS0 transpose_b=" << shapeRelatedParams.matmul1_input2.second << "_";
+        result << "IS1 transpose_a=" << shapeRelatedParams.matmul2_input1.second << "_";
+        result << "IS1 transpose_b=" << shapeRelatedParams.matmul2_input2.second << "_";
+        result << "secondaryInputType=" << secondaryInputType << "_";
+        result << "netPRC=" << netPrecision.name() << "_";
+        result << "inPRC=" << inPrc.name() << "_";
+        result << "outPRC=" << outPrc.name() << "_";
+        result << "inL=" << inLayout << "_";
+        result << "trgDev=" << targetDevice;
+        result << "config=(";
+        for (const auto configEntry : additionalConfig) {
+            result << configEntry.first << ", " << configEntry.second << ":";
+        }
+        result << ")";
+        return result.str();
+    }
+
+protected:
+    void SetUp() override {
+        FullyConnected2MatMulShapeRelatedParams shapeRelatedParams;
+        ngraph::helpers::InputLayerType secondaryInputType;
+        auto netPrecision = InferenceEngine::Precision::UNSPECIFIED;
+        std::map<std::string, std::string> additionalConfig;
+        std::tie(shapeRelatedParams,
+                 netPrecision,
+                 inPrc,
+                 outPrc,
+                 inLayout,
+                 secondaryInputType,
+                 targetDevice,
+                 additionalConfig) = this->GetParam();
+
+        configuration.insert(additionalConfig.begin(), additionalConfig.end());
+
+        auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
+        auto params = ngraph::builder::makeParams(
+            ngPrc, {shapeRelatedParams.matmul1_input1.first, shapeRelatedParams.matmul2_input1.first});
+        auto matmul0SecondaryInput =
+            ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, shapeRelatedParams.matmul1_input2.first);
+        if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+            params.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(matmul0SecondaryInput));
+        }
+        auto matmul1SecondaryInput =
+            ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, shapeRelatedParams.matmul2_input2.first);
+        if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+            params.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(matmul1SecondaryInput));
+        }
+
+        auto paramOuts =
+            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ngraph::op::Parameter>(params));
+        auto matMul0 = std::dynamic_pointer_cast<ngraph::opset3::MatMul>(
+            ngraph::builder::makeMatMul(paramOuts[0],
+                                        matmul0SecondaryInput,
+                                        shapeRelatedParams.matmul1_input1.second,
+                                        shapeRelatedParams.matmul1_input2.second));
+        auto matMul1 = std::dynamic_pointer_cast<ngraph::opset3::MatMul>(
+            ngraph::builder::makeMatMul(paramOuts[1],
+                                        matmul1SecondaryInput,
+                                        shapeRelatedParams.matmul2_input1.second,
+                                        shapeRelatedParams.matmul2_input2.second));
+        auto Add = std::dynamic_pointer_cast<ngraph::opset3::Add>(
+            ngraph::builder::makeEltwise(matMul0, matMul1, ngraph::helpers::EltwiseTypes::ADD));
+        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
+        function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
+    }
+};
+
+TEST_P(FullyConnectedLayer2MatMulTest, CompareWithRefs) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
+
+    auto params = GetParam();
+    inPrc = std::get<2>(params);
+    outPrc = std::get<3>(params);
+
+    Run();
+}
+
 namespace {
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {
@@ -141,6 +259,11 @@ const std::vector<FullyConnectedShapeRelatedParams> vgg16ShapeRelatedParams = {
     { { {1, 4096}, false }, { {4096, 4096}, false }, {1, 4096} },
     { { {1, 4096}, false }, { {1000, 4096}, true }, {1, 1000} },
     { { {1, 4096}, false }, { {4096, 1000}, false }, {1, 1000} },
+};
+
+// NOTE: Tacatron2 shapes
+const std::vector<FullyConnected2MatMulShapeRelatedParams> tacatron2ShapeRelatedParams = {
+    {{{1, 1000, 32}, false}, {{128, 32}, true}, {{1, 1, 1024}, false}, {{128, 1024}, true}},
 };
 
 std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
@@ -186,5 +309,17 @@ INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP16, FullyConnectedLayerTest,
                             ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
-} // namespace
-} // namespace LayerTestsDefinitions
+INSTANTIATE_TEST_CASE_P(MatMul_Tacatron2,
+                        FullyConnectedLayer2MatMulTest,
+                        ::testing::Combine(::testing::ValuesIn(tacatron2ShapeRelatedParams),
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(secondaryInputTypes),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
+                        FullyConnectedLayer2MatMulTest::getTestCaseName);
+
+}  // namespace
+}  // namespace LayerTestsDefinitions

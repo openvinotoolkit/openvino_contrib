@@ -25,7 +25,7 @@ namespace CUDAPlugin {
  * Provides this information for a buffer by it's id.
  */
 class OperationBuffersExtractor {
-   public:
+public:
     using NodePtr = std::shared_ptr<ngraph::Node>;
     using Byte = char;
     static constexpr char kOutputNumberSeparator = '_';
@@ -34,10 +34,11 @@ class OperationBuffersExtractor {
      * c-tor
      * @param [in] ordered_nodes Subgraph to execute represenation.
      * Nodes are ordered in their execution order.
-     * @param [in] is_stable_params Makes input parameters alive for whole graph live time
+     * @param [in] is_stable_params Makes input parameters alive for whole graph's life time
+     * @param [in] is_stable_results Makes output results alive for till end of the graph's life time
      * @throws InferenceEngineException if the given subgraph is bad formed
      */
-    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params = false);
+    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params = false, bool is_stable_results = false);
 
     /**
      * Provides input tensors ids of the given ngraph node
@@ -113,9 +114,7 @@ class OperationBuffersExtractor {
     /**
      * @returns sizes of immutable workbuffers
      */
-    const std::unordered_map<BufferID, size_t>& immutableWorkbufferSizes() const {
-        return immutable_workbuffers_;
-    }
+    const std::unordered_map<BufferID, size_t>& immutableWorkbufferSizes() const { return immutable_workbuffers_; }
 
     /**
      * Initialize constant memory
@@ -146,11 +145,8 @@ private:
      * Internal buffer representation
      */
     struct BufferDesc {
-        BufferDesc(int lifespan_start, int lifespan_end, std::size_t size) :
-            lifespan_start {lifespan_start},
-            lifespan_end {lifespan_end},
-            size {size}
-        {}
+        BufferDesc(int lifespan_start, int lifespan_end, std::size_t size)
+            : lifespan_start{lifespan_start}, lifespan_end{lifespan_end}, size{size} {}
 
         int lifespan_start;
         int lifespan_end;
@@ -215,7 +211,7 @@ private:
      * @param [in] output Output to process
      * @returns internal tensor name
      */
-    template<class Node>
+    template <class Node>
     static inline std::string GetTensorNameInternal(const ngraph::Output<Node>& output) {
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
     }
@@ -225,7 +221,7 @@ private:
      * @param [in] input Input to process
      * @returns internal tensor name
      */
-    template<class Node>
+    template <class Node>
     static inline std::string GetTensorNameInternal(const ngraph::Input<Node>& input) {
         const auto output = input.get_source_output();
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
@@ -267,15 +263,17 @@ private:
      * Exception helper
      */
     static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
-   private:
-       std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
-       std::unordered_map<BufferID, size_t> mutable_tensor_sizes_;
-       std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
-       std::unordered_map<BufferID, size_t> immutable_workbuffers_;
-       std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
-       unsigned next_buffer_id_{};
-       const bool is_stable_params_ = false;
-       const unsigned long num_ordered_nodes_ = 0;
+
+private:
+    std::unordered_map<BufferID, BufferDesc> mutable_buffers_;
+    std::unordered_map<BufferID, size_t> mutable_tensor_sizes_;
+    std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
+    std::unordered_map<BufferID, size_t> immutable_workbuffers_;
+    std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
+    unsigned next_buffer_id_{};
+    const bool is_stable_params_ = false;
+    const bool is_stable_results_ = false;
+    const unsigned long num_ordered_nodes_ = 0;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
