@@ -37,6 +37,14 @@ public:
     SinkSigmoidToFusedConvolution();
 };
 
+class SinkTanhToFusedConvolution : public ngraph::pass::MatcherPass {
+public:
+    static constexpr auto Name = "SinkTanhToFusedConvolution";
+
+    NGRAPH_RTTI_DECLARATION;
+    SinkTanhToFusedConvolution();
+};
+
 class CudaFuseConvBiasAddActivation : public ngraph::pass::GraphRewrite {
 public:
     NGRAPH_RTTI_DECLARATION;
