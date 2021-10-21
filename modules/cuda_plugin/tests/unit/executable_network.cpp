@@ -31,9 +31,7 @@ public:
     auto GetExecSequence(const std::shared_ptr<ExecutableNetwork>& execNetwork) {
         const auto& graph = *execNetwork->graph_;
         std::vector<OperationBase::Ptr> execSequence{};
-        execSequence.insert(execSequence.end(), graph.params_.begin(), graph.params_.end());
         execSequence.insert(execSequence.end(), graph.exec_sequence_.begin(), graph.exec_sequence_.end());
-        execSequence.insert(execSequence.end(), graph.results_.begin(), graph.results_.end());
         return execSequence;
     }
     const auto& GetMemoryManagerPool(const std::shared_ptr<ExecutableNetwork>& execNetwork) {

@@ -32,7 +32,7 @@ public:
 
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
-    void initExecuteSequence(const CreationContext& context, bool isStableParams);
+    void initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults);
     static std::unique_ptr<MemoryManager> createMemoryManager(const OperationBuffersExtractor& opBuffersExtractor);
     std::vector<DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
 
@@ -72,10 +72,6 @@ protected:
 
 inline SubGraph::~SubGraph() {}
 
-inline const std::vector<OperationBase::Ptr>& SubGraph::getParams() const { return params_; }
-
 inline const std::vector<OperationBase::Ptr>& SubGraph::getExecSequence() const { return exec_sequence_; }
-
-inline const std::vector<OperationBase::Ptr>& SubGraph::getResults() const { return results_; }
 
 }  // namespace CUDAPlugin

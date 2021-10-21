@@ -4,6 +4,9 @@
 
 #include "cuda_profiler.hpp"
 
+#include <ops/parameter.hpp>
+#include <ops/result.hpp>
+
 namespace CUDAPlugin {
 
 namespace {
@@ -110,16 +113,8 @@ Profiler::ProfilerSequence Profiler::CreateExecSequence(const SubGraph* subGraph
 
 void Profiler::CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
     std::vector<ProfileExecStep> perfSteps;
-    const auto& params = graph.getParams();
     const auto& execSequence = graph.getExecSequence();
-    const auto& results = graph.getResults();
-    for (const auto& execStep : params) {
-        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
-    }
     for (const auto& execStep : execSequence) {
-        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
-    }
-    for (const auto& execStep : results) {
         CollectNodeVisitor(execStep, perfSteps, allExecSequence);
     }
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
@@ -129,7 +124,9 @@ void Profiler::CollectSubGraphs(const TensorIteratorOp& graph, std::vector<Opera
     std::vector<ProfileExecStep> perfSteps;
     const auto& execSequence = graph.getExecSequence();
     for (const auto& execStep : execSequence) {
-        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+        if (!dynamic_cast<ParameterOp*>(execStep.get()) && !dynamic_cast<ResultOp*>(execStep.get())) {
+            CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+        }
     }
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
 }
