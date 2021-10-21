@@ -36,6 +36,7 @@ private:
 
     Type_t element_type_{};
     Props props_{};
+    size_t size_{};
     size_t num_blocks_{};
     size_t threads_per_block_{};
     void* props_ptr_{};

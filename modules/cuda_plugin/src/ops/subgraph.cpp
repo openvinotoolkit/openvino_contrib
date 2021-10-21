@@ -25,16 +25,16 @@ SubGraph::SubGraph(const CreationContext& context,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(context, op, std::move(inputIds), std::move(outputIds)), function_{op.get_function()} {
-    const bool isStableParamsNeeded = nullptr != dynamic_cast<const ngraph::op::v0::TensorIterator*>(&op);
-    initExecuteSequence(context, isStableParamsNeeded);
+    const bool isStableParamsAndResultsNeeded = nullptr != dynamic_cast<const ngraph::op::v0::TensorIterator*>(&op);
+    initExecuteSequence(context, isStableParamsAndResultsNeeded, isStableParamsAndResultsNeeded);
 }
 
 SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ngraph::Function>& function)
     : OperationBase(context, nullptr), function_{function} {
-    initExecuteSequence(context, false);
+    initExecuteSequence(context, false, false);
 }
 
-void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams) {
+void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 
     if (!function_) {
@@ -43,7 +43,7 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
     const auto& orderedNodes = function_->get_ordered_ops();
 
     std::vector<Ptr> init_sequence{};
-    OperationBuffersExtractor opBuffersExtractor{orderedNodes, isStableParams};
+    OperationBuffersExtractor opBuffersExtractor{orderedNodes, isStableParams, isStableResults};
     const auto paramSize = function_->get_parameters().size();
     params_ = std::vector<OperationBase::Ptr>(paramSize);
     params_info_ = std::vector<OperationInfo>(paramSize);
@@ -82,9 +82,8 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
             results_info_[resultIdx].size_ = getTensorByteSize(*node);
             results_info_[resultIdx].type_ = node->get_element_type();
             results_info_[resultIdx].shape_ = node->get_shape();
-        } else {
-            exec_sequence_.push_back(operation);
         }
+        exec_sequence_.push_back(operation);
     }
     memory_manager_ = createMemoryManager(opBuffersExtractor);
     initSharedImmutableWorkbuffers(init_sequence);
