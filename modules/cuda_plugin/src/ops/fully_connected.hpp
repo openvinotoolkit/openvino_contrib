@@ -28,7 +28,7 @@ public:
 private:
     MatMulOp matmul_op_;
     size_t bias_size_ = 0;
-    int batch_bias_count_ = 0;
+    size_t batch_bias_count_ = 0;
 };
 
 }  // namespace CUDAPlugin
