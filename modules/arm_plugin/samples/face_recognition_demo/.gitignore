@@ -7,10 +7,8 @@
 **/*.jar
 **/*.xml
 **/*.bin
-app/libs/opencv/samples
-app/libs/opencv/sdk
-app/libs/opencv/LICENSE
-app/libs/opencv/*.android
+app/libs/*
+src/main/jniLibs
 # Files for the ART/Dalvik VM
 *.dex
 

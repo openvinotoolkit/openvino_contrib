@@ -1,1 +1,0 @@
-# Library dir for ARM 32 bit processors
