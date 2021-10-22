@@ -4,18 +4,18 @@
 
 #pragma once
 
-#include <vector>
-
 #include "cuda_type_traits.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
-class Greater {
+class Comparison {
 public:
-    Greater(Type_t element_type, size_t max_size, size_t numBlocks, size_t threadsPerBlock);
-    Greater(Greater&&) = default;
-    Greater& operator=(Greater&&) = default;
+    enum class Op_t { GREATER, LESS };
+
+    Comparison(Op_t op, Type_t element_type, size_t max_size, size_t num_blocks, size_t threads_per_block);
+    Comparison(Comparison&&) = default;
+    Comparison& operator=(Comparison&&) = default;
 
     void operator()(const cudaStream_t stream,
                     const void* left_src,
@@ -27,7 +27,8 @@ public:
 
 private:
     template <typename T>
-    void Call(const cudaStream_t stream,
+    void Call(Comparison::Op_t type,
+              const cudaStream_t stream,
               const void* left_src,
               const void* right_src,
               const size_t* left_brcst_offsets,
@@ -35,6 +36,15 @@ private:
               const size_t* output_sizes,
               void* dst) const;
 
+    template <typename T, Op_t OP>
+    void Call(const cudaStream_t stream,
+              const void* left_src,
+              const void* right_src,
+              const size_t* left_brcst_offsets,
+              const size_t* right_brcst_offsets,
+              const size_t* output_sizes,
+              void* dst) const;
+    Op_t op_type_{};
     Type_t element_type_{};
     size_t max_size_{};
     size_t num_blocks_{};

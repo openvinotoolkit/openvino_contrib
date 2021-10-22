@@ -42,6 +42,7 @@ std::vector<InferenceEngine::Precision> inputsPrecisions = {
 
 std::vector<ngraph::helpers::ComparisonTypes> comparisonOpTypes = {
     ngraph::helpers::ComparisonTypes::GREATER,
+    ngraph::helpers::ComparisonTypes::LESS,
 };
 
 std::vector<ngraph::helpers::InputLayerType> secondInputTypes = {
