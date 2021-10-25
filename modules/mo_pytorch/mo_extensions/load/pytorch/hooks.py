@@ -1,3 +1,4 @@
+from packaging import version
 import numpy as np
 import torch
 import torch.nn as nn
@@ -829,7 +830,7 @@ def function_hook(condition, x, y):
     return forward_hook(Select(), inputs)
 
 
-@implements(torch.rfft)
+@implements(torch.rfft if version.parse(torch.__version__) < version.parse('1.8.0') else None)
 def function_hook(x, *args, **kwargs):
 
     class RFFT(nn.Module):
@@ -844,7 +845,7 @@ def function_hook(x, *args, **kwargs):
     return forward_hook(RFFT(), (x,))
 
 
-@implements(torch.irfft)
+@implements(torch.irfft if version.parse(torch.__version__) < version.parse('1.8.0') else None)
 def function_hook(x, *args, **kwargs):
 
     class RFFT(nn.Module):
