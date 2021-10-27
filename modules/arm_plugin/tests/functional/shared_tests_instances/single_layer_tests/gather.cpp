@@ -151,53 +151,10 @@ const auto params_g7 = testing::Combine(
 
 INSTANTIATE_TEST_CASE_P(smoke_V7Gather4, Gather7LayerTest, params_g7, Gather7LayerTest::getTestCaseName);
 
-const std::vector<std::vector<size_t>> indicesShapes23 = {
-        std::vector<size_t>{2, 3, 2},
-        std::vector<size_t>{2, 3, 4},
-};
-
-const std::vector<std::tuple<int, int>> axis_batch41 = {
-        std::tuple<int, int>(3, 1),
-        std::tuple<int, int>(4, 1),
-};
-
-const std::vector<std::tuple<int, int>> axis_batch42 = {
-        std::tuple<int, int>(3, 2),
-        std::tuple<int, int>(4, 2),
-};
-
-const std::vector<std::vector<size_t>> inputShapesAxes4b1 = {
-        std::vector<size_t>{2, 6, 7, 8, 9},
-        std::vector<size_t>{2, 1, 7, 8, 9},
-        std::vector<size_t>{2, 1, 1, 8, 9},
-        std::vector<size_t>{2, 6, 1, 4, 9},
-        std::vector<size_t>{2, 6, 7, 4, 1},
-        std::vector<size_t>{2, 6, 1, 8, 9},
-        std::vector<size_t>{2, 1, 7, 1, 9},
-        std::vector<size_t>{2, 6, 1, 8, 4},
-        std::vector<size_t>{2, 6, 7, 4, 9},
-        std::vector<size_t>{2, 1, 7, 8, 4},
-        std::vector<size_t>{2, 6, 7, 8, 4},
-};
-
-const std::vector<std::vector<size_t>> inputShapesAxes4b2 = {
-        std::vector<size_t>{2, 3, 7, 8, 9},
-        std::vector<size_t>{2, 3, 7, 6, 9},
-        std::vector<size_t>{2, 3, 9, 8, 9},
-        std::vector<size_t>{2, 3, 9, 4, 9},
-        std::vector<size_t>{2, 3, 7, 4, 2},
-        std::vector<size_t>{2, 3, 5, 8, 9},
-        std::vector<size_t>{2, 3, 7, 2, 9},
-        std::vector<size_t>{2, 3, 9, 8, 4},
-        std::vector<size_t>{2, 3, 7, 4, 9},
-        std::vector<size_t>{2, 3, 7, 5, 4},
-        std::vector<size_t>{2, 3, 7, 8, 4},
-};
-
-const auto GatherAxes4i4b1 = testing::Combine(
-        testing::ValuesIn(inputShapesAxes4b1),
-        testing::ValuesIn(indicesShapes2),
-        testing::ValuesIn(axis_batch41),
+const auto gatherParamsVec1 = testing::Combine(
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{10, 30, 50, 1}})),
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{10, 16, 16}, {10, 7, 8}, {10, 5, 7}, {10, 5}})),
+        testing::ValuesIn(std::vector<std::tuple<int, int>>{std::tuple<int, int>{2, 1}}),
         testing::ValuesIn(netPrecisions),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -206,10 +163,12 @@ const auto GatherAxes4i4b1 = testing::Combine(
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-const auto GatherAxes4i8b1 = testing::Combine(
-        testing::ValuesIn(inputShapesAxes4b1),
-        testing::ValuesIn(indicesShapes2),
-        testing::ValuesIn(axis_batch41),
+INSTANTIATE_TEST_CASE_P(smoke_V8_Vec1, Gather8LayerTest, gatherParamsVec1, Gather8LayerTest::getTestCaseName);
+
+const auto gatherParamsVec2 = testing::Combine(
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{5, 4}, {11, 4}, {23, 4}, {35, 4}, {51, 4}, {71, 4}})),
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{1}})),
+        testing::ValuesIn(std::vector<std::tuple<int, int>>{std::tuple<int, int>{1, 0}}),
         testing::ValuesIn(netPrecisions),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -218,10 +177,12 @@ const auto GatherAxes4i8b1 = testing::Combine(
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-const auto GatherAxes4i8b2 = testing::Combine(
-        testing::ValuesIn(inputShapesAxes4b2),
-        testing::ValuesIn(indicesShapes23),
-        testing::ValuesIn(axis_batch42),
+INSTANTIATE_TEST_CASE_P(smoke_V8_Vec2, Gather8LayerTest, gatherParamsVec2, Gather8LayerTest::getTestCaseName);
+
+const auto gatherParamsVec3 = testing::Combine(
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{4, 4}})),
+        testing::ValuesIn(std::vector<std::vector<size_t>>({{5}, {11}, {21}, {35}, {55}, {70}})),
+        testing::ValuesIn(std::vector<std::tuple<int, int>>{std::tuple<int, int>{1, 0}}),
         testing::ValuesIn(netPrecisions),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -230,32 +191,6 @@ const auto GatherAxes4i8b2 = testing::Combine(
         testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_Gather7Axes4i4b1,
-        Gather8LayerTest,
-        GatherAxes4i4b1,
-        Gather8LayerTest::getTestCaseName
-);
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_Gather7Axes4i4b2,
-        Gather8LayerTest,
-        GatherAxes4i4b1,
-        Gather8LayerTest::getTestCaseName
-);
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_Gather7Axes4i8b1,
-        Gather8LayerTest,
-        GatherAxes4i8b1,
-        Gather8LayerTest::getTestCaseName
-);
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_Gather7Axes4i8b2,
-        Gather8LayerTest,
-        GatherAxes4i8b2,
-        Gather8LayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(smoke_V8_Vec3, Gather8LayerTest, gatherParamsVec3, Gather8LayerTest::getTestCaseName);
 
 }  // namespace
