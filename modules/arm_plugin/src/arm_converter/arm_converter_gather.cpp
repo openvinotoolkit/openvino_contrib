@@ -78,7 +78,6 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGather
     if (axis < 0) {
         axis += node.get_input_shape(0).size();
     }
-
     axis = AxisCast(axis, node.get_input_shape(0).size());
     return MakeConversion<arm_compute::NEGather>(node.input(0), node.input(1), node.output(0), axis);
 }
