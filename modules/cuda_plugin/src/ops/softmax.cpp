@@ -11,8 +11,8 @@
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -166,10 +166,10 @@ void SoftmaxOp::Execute(const InferenceRequestContext& context,
     throwIfError(cudnnSoftmaxForward(context.getThreadContext().dnnHandle().get(),
                                      cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
                                      cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,
-                                     &constants::one<float>::value,
+                                     &CUDA::constants::one<float>::value,
                                      tensor_descriptor_.get(),
                                      inputs[0].get(),
-                                     &constants::zero<float>::value,
+                                     &CUDA::constants::zero<float>::value,
                                      tensor_descriptor_.get(),
                                      outputs[0].get()));
 }

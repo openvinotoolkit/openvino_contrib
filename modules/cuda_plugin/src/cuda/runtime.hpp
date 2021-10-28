@@ -26,10 +26,32 @@ inline void logIfError(
 
 namespace CUDA {
 
+template <typename T>
+auto toNative(T&& a) noexcept(noexcept(std::forward<T>(a).get())) -> decltype(std::forward<T>(a).get()) {
+    return std::forward<T>(a).get();
+}
+
+template <typename T>
+auto toNative(T&& a) noexcept(noexcept(std::forward<T>(a).data())) -> decltype(std::forward<T>(a).data()) {
+    return std::forward<T>(a).data();
+}
+
+template <typename T>
+std::enable_if_t<std::is_scalar_v<std::decay_t<T>>, std::decay_t<T>> toNative(T t) noexcept {
+    return t;
+}
+
 template <typename T, typename R, typename... Args>
-T create(R (*creator)(T*, Args... args), Args... args) {
+T createFirstArg(R (*creator)(T*, Args... args), Args... args) {
     T t;
     throwIfError(creator(&t, args...));
+    return t;
+}
+
+template <typename R, typename... NativeArgs, typename... Args>
+auto createLastArg(R (*creator)(NativeArgs...), Args&&... args) {
+    std::remove_pointer_t<decltype((NativeArgs{}, ...))> t;
+    throwIfError(creator(toNative(std::forward<Args>(args))..., &t));
     return t;
 }
 
@@ -39,9 +61,9 @@ class Device {
 public:
     Device() : Device{currentId()} {}
     explicit Device(int id) noexcept : id{id} {}
-    static int currentId() { return create(cudaGetDevice); }
-    static int count() { return create(cudaGetDeviceCount); }
-    cudaDeviceProp props() const { return create(cudaGetDeviceProperties, id); }
+    static int currentId() { return createFirstArg(cudaGetDevice); }
+    static int count() { return createFirstArg(cudaGetDeviceCount); }
+    cudaDeviceProp props() const { return createFirstArg(cudaGetDeviceProperties, id); }
     const Device& setCurrent() const {
         throwIfError(cudaSetDevice(id));
         return *this;
@@ -135,7 +157,7 @@ public:
 protected:
     template <typename R, typename... Args>
     Handle(Construct<R, Args...> constructor, Destruct<R> destructor, Args... args) {
-        native_ = Native{create(constructor, args...)};
+        native_ = Native{createFirstArg(constructor, args...)};
         if (destructor) {
             destructor_ = [destructor](const Native& native) { logIfError(destructor(native)); };
         }
@@ -143,7 +165,7 @@ protected:
 
     template <typename R, typename... Args>
     Handle(Construct<R, Args...> constructor, std::nullptr_t, Args... args) {
-        native_ = Native{create(constructor, args...)};
+        native_ = Native{createFirstArg(constructor, args...)};
     }
 
 private:
@@ -245,7 +267,7 @@ private:
         throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToHost, get()));
     }
     void* mallocImpl(std::size_t size) const {
-        return create<void*, cudaError_t>(
+        return createFirstArg<void*, cudaError_t>(
 #if CUDART_VERSION >= 11020
             cudaMallocAsync, size, get()
 #else
@@ -274,7 +296,9 @@ public:
         return stream;
     }
 
-    auto malloc(std::size_t size) const { return DefaultAllocation{create<void*, cudaError_t>(cudaMalloc, size)}; }
+    auto malloc(std::size_t size) const {
+        return DefaultAllocation{createFirstArg<void*, cudaError_t>(cudaMalloc, size)};
+    }
     void upload(DevicePointer<void*> dst, const void* src, std::size_t count) const {
         uploadImpl(dst.get(), src, count);
     }
