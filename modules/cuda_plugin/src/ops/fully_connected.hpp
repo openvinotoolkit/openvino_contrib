@@ -8,7 +8,7 @@
 #include <cuda_operation_base.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 
-#include "constant_factory.hpp"
+#include "cuda/constant_factory.hpp"
 #include "matmul.hpp"
 
 namespace CUDAPlugin {

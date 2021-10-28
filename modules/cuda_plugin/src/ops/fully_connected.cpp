@@ -11,8 +11,8 @@
 #include <ngraph/op/matmul.hpp>
 #include <utility>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 #include "matmul.hpp"
 
 namespace CUDAPlugin {

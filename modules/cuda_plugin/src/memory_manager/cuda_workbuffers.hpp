@@ -24,15 +24,21 @@ struct WorkbufferRequest {
 struct Workbuffers {
     using immutable_buffer = CUDA::DevicePointer<const void*>;
     using mutable_buffer = CUDA::DevicePointer<void*>;
+
     std::vector<immutable_buffer> immutable_buffers;
     std::vector<mutable_buffer> mutable_buffers;
-#ifndef __NVCC__  // no std::byte in c++14. TODO: drop guard after splitting kernels
-    template <int N>
-    CUDA::DeviceBuffer<std::byte> mutableSpan(size_t workspaceSize) const {
+
+    template <std::size_t Index>
+    CUDA::DeviceBuffer<std::uint8_t> createMutableSpanFrom(size_t workspaceSize) const {
         if (!workspaceSize) return {};
-        return {mutable_buffers.at(N).cast<std::byte*>().get(), workspaceSize};
+        return {mutable_buffers.at(Index).cast<std::uint8_t*>().get(), workspaceSize};
     }
-#endif
+
+    template <std::size_t Index>
+    CUDA::DeviceBuffer<const std::uint8_t> createImmutableSpanFrom(size_t workspaceSize) const {
+        if (!workspaceSize) return {};
+        return {immutable_buffers.at(Index).cast<const std::uint8_t*>().get(), workspaceSize};
+    }
 };
 
 /**

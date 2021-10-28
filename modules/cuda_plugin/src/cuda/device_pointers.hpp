@@ -64,9 +64,8 @@ public:
     using gsl::span<T, Extent>::empty;
 
     DeviceBuffer<std::remove_const_t<T>> as_mutable() const noexcept {
-        if (!empty()) return {};  // other constructor will terminate, because DevicePointer is not_null
         using MT = std::remove_const_t<T>;
-        return {DevicePointer<MT*>{const_cast<MT*>(data())}, size()};
+        return {const_cast<MT*>(data()), size()};
     }
 };
 

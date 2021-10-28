@@ -6,9 +6,9 @@
 
 #include <fmt/format.h>
 
+#include <cuda/constant_factory.hpp>
 #include <cuda/descriptor_utils.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
 
 namespace CUDAPlugin {
@@ -44,10 +44,10 @@ void ActivationForwardCuDnnOpBase::Execute(const InferenceRequestContext& contex
                                            Outputs outputTensors,
                                            const Workbuffers&) const {
     context.getThreadContext().dnnHandle().activationForward(*op_desc_,
-                                                             &NumericConst<constants::one>(data_type_),
+                                                             &CUDA::NumericConst<CUDA::constants::one>(data_type_),
                                                              x_desc_,
                                                              inputTensors[0].get(),
-                                                             &NumericConst<constants::zero>(data_type_),
+                                                             &CUDA::NumericConst<CUDA::constants::zero>(data_type_),
                                                              y_desc_,
                                                              outputTensors[0].get());
 }

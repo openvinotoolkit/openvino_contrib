@@ -12,8 +12,8 @@
 #include <gsl/gsl_assert>
 #include <ngraph/op/constant.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 
 using namespace std::string_literals;
 
@@ -65,7 +65,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                  CUTENSOR_OP_IDENTITY);
 
     throwIfError(cutensorPermutation(&threadContext.cuTensorHandle().get(),
-                                     &NumericConst<constants::one>(inputElementsType_),
+                                     &CUDA::NumericConst<CUDA::constants::one>(inputElementsType_),
                                      inputTensors[0].get(),
                                      &inputDesc,
                                      inputMode_.data(),

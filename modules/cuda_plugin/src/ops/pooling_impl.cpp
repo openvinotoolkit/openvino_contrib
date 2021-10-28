@@ -10,8 +10,8 @@
 #include <gsl/gsl_assert>
 #include <ngraph/type/element_type.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -69,10 +69,10 @@ void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
                           void* output_tensor_device_ptr) const {
     throwIfError(cudnnPoolingForward(cudnn_context_handle.get(),       //
                                      pooling_descriptor_.get(),        //
-                                     &constants::one<float>::value,    //
+                                     &CUDA::constants::one<float>::value,    //
                                      input_tensor_descriptor_.get(),   //
                                      input_tensor_device_ptr,          //
-                                     &constants::zero<float>::value,   //
+                                     &CUDA::constants::zero<float>::value,   //
                                      output_tensor_descriptor_.get(),  //
                                      output_tensor_device_ptr));
 }
