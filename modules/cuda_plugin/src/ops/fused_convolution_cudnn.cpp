@@ -9,8 +9,8 @@
 #include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 #include "fused_convolution.hpp"
 
 namespace CUDAPlugin {
@@ -38,20 +38,20 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     const auto& dnnHandle = context.getThreadContext().dnnHandle();
 
-    const constants::AnyNumeric* alpha2 = nullptr;
+    const CUDA::constants::AnyNumeric* alpha2 = nullptr;
     cudnnTensorDescriptor_t zTensorDesc;
     const void* zTensorIn = nullptr;
     if (includesOnlyBiasAdd) {
-        alpha2 = &NumericConst<constants::zero>(conv_descs_.ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::zero>(conv_descs_.ElementType());
         zTensorDesc = conv_descs_.Output().get();
         zTensorIn = outputs[ArgIndices::output].get();
     } else {
-        alpha2 = &NumericConst<constants::one>(conv_descs_.ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_.ElementType());
         zTensorDesc = add_desc_.value().get();
         zTensorIn = inputs[ArgIndices::add].get();
     }
     throwIfError(::cudnnConvolutionBiasActivationForward(dnnHandle.get(),
-                                                         &NumericConst<constants::one>(conv_descs_.ElementType()),
+                                                         &CUDA::NumericConst<CUDA::constants::one>(conv_descs_.ElementType()),
                                                          conv_descs_.Input().get(),
                                                          inputs[ArgIndices::input].get(),
                                                          conv_descs_.Filter().get(),

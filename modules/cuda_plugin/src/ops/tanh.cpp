@@ -6,6 +6,9 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
 
+#include "converters.hpp"
+#include "cuda/constant_factory.hpp"
+
 namespace CUDAPlugin {
 
 TanhOp::TanhOp(const CreationContext& context,

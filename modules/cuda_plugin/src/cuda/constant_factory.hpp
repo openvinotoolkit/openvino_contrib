@@ -13,7 +13,7 @@
 
 #include <error.hpp>
 
-namespace CUDAPlugin {
+namespace CUDA {
 
 namespace constants {
 /**
@@ -40,74 +40,54 @@ union AnyNumeric {
     AnyNumeric(AnyNumeric&&) = delete;
     AnyNumeric& operator=(AnyNumeric&) = delete;
 
-    explicit constexpr AnyNumeric(std::int8_t c)
-        : i8{c} {
-    }
-    explicit constexpr AnyNumeric(std::uint8_t c)
-        : u8{c} {
-    }
-    explicit constexpr AnyNumeric(std::int16_t c)
-        : i16{c} {
-    }
-    explicit constexpr AnyNumeric(std::uint16_t c)
-        : u16{c} {
-    }
-    explicit constexpr AnyNumeric(std::int32_t c)
-        : i32{c} {
-    }
-    explicit constexpr AnyNumeric(std::uint32_t c)
-        : u32{c} {
-    }
-    explicit constexpr AnyNumeric(std::uint64_t c)
-        : u64{c} {
-    }
-    explicit constexpr AnyNumeric(std::int64_t c)
-        : i64{c} {
-    }
+    explicit constexpr AnyNumeric(std::int8_t c) : i8{c} {}
+    explicit constexpr AnyNumeric(std::uint8_t c) : u8{c} {}
+    explicit constexpr AnyNumeric(std::int16_t c) : i16{c} {}
+    explicit constexpr AnyNumeric(std::uint16_t c) : u16{c} {}
+    explicit constexpr AnyNumeric(std::int32_t c) : i32{c} {}
+    explicit constexpr AnyNumeric(std::uint32_t c) : u32{c} {}
+    explicit constexpr AnyNumeric(std::uint64_t c) : u64{c} {}
+    explicit constexpr AnyNumeric(std::int64_t c) : i64{c} {}
     explicit constexpr AnyNumeric(__half c) : h16{c} {}
-    explicit constexpr AnyNumeric(float c)
-        : f32{c} {
-    }
-    explicit constexpr AnyNumeric(double c)
-        : f64{c} {
-    }
+    explicit constexpr AnyNumeric(float c) : f32{c} {}
+    explicit constexpr AnyNumeric(double c) : f64{c} {}
 };
 
-template<class T>
+template <class T>
 struct one {
-    constexpr inline static AnyNumeric value { static_cast<T>(1) };
+    constexpr inline static AnyNumeric value{static_cast<T>(1)};
 };
 
-template<>
+template <>
 struct one<__half> {
-    const inline static AnyNumeric value { __float2half(1.0f) };
+    const inline static AnyNumeric value{__float2half(1.0f)};
 };
 
 #if __has_include(<cuda_bf16.h>)
-template<>
+template <>
 struct one<__nv_bfloat16> {
-    const inline static AnyNumeric value { __float2bfloat16(1.0f) };
+    const inline static AnyNumeric value{__float2bfloat16(1.0f)};
 };
 #endif
 
-template<class T>
+template <class T>
 struct zero {
-    constexpr inline static AnyNumeric value { static_cast<T>(0) };
+    constexpr inline static AnyNumeric value{static_cast<T>(0)};
 };
 
-template<>
+template <>
 struct zero<__half> {
-    const inline static AnyNumeric value { __float2half(0.0f) };
+    const inline static AnyNumeric value{__float2half(0.0f)};
 };
 
 #if __has_include(<cuda_bf16.h>)
-template<>
+template <>
 struct zero<__nv_bfloat16> {
-    const inline static AnyNumeric value { __float2bfloat16(0.0f) };
+    const inline static AnyNumeric value{__float2bfloat16(0.0f)};
 };
 #endif
 
-} // namespace constants
+}  // namespace constants
 
 /**
  * Function that returns reference to static constant
@@ -118,7 +98,7 @@ struct zero<__nv_bfloat16> {
  * @param computeType Type of constant that should returned
  * @return Reference to AnyNumeric, containing constant as dictated by computeType
  */
-template <template<typename T> class C>
+template <template <typename T> class C>
 inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
     switch (computeType) {
 #if __has_include(<cuda_bf16.h>)
@@ -160,15 +140,15 @@ inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
             return C<std::uint32_t>::value;
         }
         default:
-            throwIEException(
+            CUDAPlugin::throwIEException(
                 fmt::format("The ngraph element type {} is not supported by "
                             "the cuda library",
                             computeType));
     }
 }
 
-template <template<typename T> class C>
-inline const constants::AnyNumeric& NumericConst(cudnnDataType_t computeType) {
+template <template <typename T> class C>
+inline constexpr const constants::AnyNumeric& NumericConst(cudnnDataType_t computeType) {
     switch (computeType) {
         case CUDNN_DATA_DOUBLE: {
             return C<double>::value;
@@ -178,4 +158,4 @@ inline const constants::AnyNumeric& NumericConst(cudnnDataType_t computeType) {
         }
     }
 }
-}  // namespace CUDAPlugin
+}  // namespace CUDA

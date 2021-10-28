@@ -8,8 +8,8 @@
 #include <cuda_operation_registry.hpp>
 #include <ngraph/op/util/attr_types.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 namespace {
@@ -149,9 +149,9 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
     const auto& bias_input = bias_index_ == 0 ? in0 : in1;
     const auto& dest_input = bias_index_ == 0 ? in1 : in0;
 
-    const void* alpha1 = &NumericConst<constants::one>(out.type_);
-    const void* alpha2 = &NumericConst<constants::one>(out.type_);
-    const void* beta = &NumericConst<constants::zero>(out.type_);
+    const void* alpha1 = &CUDA::NumericConst<CUDA::constants::one>(out.type_);
+    const void* alpha2 = &CUDA::NumericConst<CUDA::constants::one>(out.type_);
+    const void* beta = &CUDA::NumericConst<CUDA::constants::zero>(out.type_);
 
     context.getThreadContext().dnnHandle().opTensor(op_desc_,
                                                     alpha1,
