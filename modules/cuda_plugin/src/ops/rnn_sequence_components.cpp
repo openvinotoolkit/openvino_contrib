@@ -1,6 +1,7 @@
 #include "rnn_sequence_components.hpp"
 
-#include "constant_factory.hpp"
+#include <cuda/constant_factory.hpp>
+
 #include "ngraph/shape.hpp"
 
 namespace CUDAPlugin::RNN::Details {
@@ -38,7 +39,7 @@ void TransposeTensorAdapterBase::execute(const InferenceRequestContext& context,
     initCuTensorDescriptor(context.getThreadContext().cuTensorHandle(), src_shape_, src_desc);
     initCuTensorDescriptor(context.getThreadContext().cuTensorHandle(), dst_shape_, dst_desc);
     throwIfError(::cutensorPermutation(&context.getThreadContext().cuTensorHandle().get(),
-                                       &NumericConst<constants::one>(element_type_),
+                                       &CUDA::NumericConst<CUDA::constants::one>(element_type_),
                                        src,
                                        &src_desc,
                                        src_mode_.data(),

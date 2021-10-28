@@ -9,7 +9,7 @@
 #include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
 
-#include "constant_factory.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -28,7 +28,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     Expects(outputs.size() == 1);
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     cudnnStatus_t status = ::cudnnConvolutionForward(context.getThreadContext().dnnHandle().get(),
-                                                     &NumericConst<constants::one>(descs_.ElementType()),
+                                                     &CUDA::NumericConst<CUDA::constants::one>(descs_.ElementType()),
                                                      descs_.Input().get(),
                                                      inputs[Convolution::Details::ConvArgIndices::input].get(),
                                                      descs_.Filter().get(),
@@ -37,7 +37,7 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                                      descs_.Algo().algo,
                                                      workbuffer,
                                                      descs_.Algo().memory,
-                                                     &NumericConst<constants::zero>(descs_.ElementType()),
+                                                     &CUDA::NumericConst<CUDA::constants::zero>(descs_.ElementType()),
                                                      descs_.Output().get(),
                                                      outputs[Convolution::Details::ConvArgIndices::output].get());
     throwIfError(status);

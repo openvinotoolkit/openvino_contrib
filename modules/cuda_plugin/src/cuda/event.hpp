@@ -15,7 +15,7 @@ public:
         throwIfError(cudaEventRecord(get(), stream.get()));
         return std::move(*this);
     }
-    float elapsedSince(const Event& start) const { return create(cudaEventElapsedTime, start.get(), get()); }
+    float elapsedSince(const Event& start) const { return createFirstArg(cudaEventElapsedTime, start.get(), get()); }
 };
 
 }  // namespace CUDA

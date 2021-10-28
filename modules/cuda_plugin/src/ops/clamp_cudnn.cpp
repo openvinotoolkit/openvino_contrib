@@ -18,7 +18,7 @@
 #include <cuda/runtime.hpp>
 #include <cuda_operation_registry.hpp>
 
-#include "constant_factory.hpp"
+#include <cuda/constant_factory.hpp>
 #include "converters.hpp"
 
 namespace CUDAPlugin {
@@ -67,8 +67,8 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
     const auto& ib = workbuffers.immutable_buffers;
     Expects(ib.size() == 2);
 
-    const void* alpha = &NumericConst<constants::one>(data_type_);
-    const void* beta = &NumericConst<constants::zero>(data_type_);
+    const void* alpha = &CUDA::NumericConst<CUDA::constants::one>(data_type_);
+    const void* beta = &CUDA::NumericConst<CUDA::constants::zero>(data_type_);
 
     // Res = min(max(X[i], Min[0]), Max[0]) ->
     // Temp = max(X[i], Min[0]);

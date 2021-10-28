@@ -9,7 +9,7 @@
 #include <ngraph/shape.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 
-#include "constant_factory.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -79,7 +79,7 @@ private:
     long long stride_b_ = 0;
     long long stride_c_ = 0;
     int batch_count_ = 0;
-    const constants::AnyNumeric* beta_ = nullptr;
+    const CUDA::constants::AnyNumeric* beta_ = nullptr;
     cublasOperation_t cublas_transpose_a_ = CUBLAS_OP_N;
     cublasOperation_t cublas_transpose_b_ = CUBLAS_OP_N;
 };
