@@ -338,6 +338,44 @@ public:
                                      reserveSpaceSize,
                                      reserveSpace));
     }
+
+    void rnnForward(const DnnRnnDescriptor& rnnDesc,
+                    cudnnForwardMode_t fwdMode,
+                    const int32_t devSeqLengths[],
+                    const DnnRnnDataDescriptor& xDesc,
+                    const void* x,
+                    const DnnRnnDataDescriptor& yDesc,
+                    void* y,
+                    const DnnTensorDescriptor& hDesc,
+                    const void* hx,
+                    void* hy,
+                    size_t weightSpaceSize,
+                    const void* weightSpace,
+                    size_t workSpaceSize,
+                    void* workSpace,
+                    size_t reserveSpaceSize,
+                    void* reserveSpace) const {
+        throwIfError(cudnnRNNForward(get(),
+                                     rnnDesc.get(),
+                                     fwdMode,
+                                     devSeqLengths,
+                                     xDesc.get(),
+                                     x,
+                                     yDesc.get(),
+                                     y,
+                                     hDesc.get(),
+                                     hx,
+                                     hy,
+                                     nullptr,
+                                     nullptr,
+                                     nullptr,
+                                     weightSpaceSize,
+                                     weightSpace,
+                                     workSpaceSize,
+                                     workSpace,
+                                     reserveSpaceSize,
+                                     reserveSpace));
+    }
 };
 
 }  // namespace CUDA
