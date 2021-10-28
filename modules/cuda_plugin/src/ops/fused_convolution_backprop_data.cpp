@@ -13,8 +13,8 @@
 #include <ngraph/op/constant.hpp>
 #include <ngraph/opsets/opset1.hpp>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 #include "fused_convolution.hpp"
 
 namespace CUDAPlugin {
@@ -67,7 +67,7 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
         stream.transfer(outputs[ArgIndices3Ins::dinput], workbuffers.immutable_buffers.at(0), conv_in_bytes_);
     }
     throwIfError(::cudnnConvolutionBackwardData(dnnHandle.get(),
-                                                &NumericConst<constants::one>(conv_descs_.ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_.ElementType()),
                                                 conv_descs_.Filter().get(),
                                                 inputs[ArgIndices3Ins::filter].get(),
                                                 conv_descs_.dOutput().get(),
@@ -76,7 +76,7 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
                                                 conv_descs_.Algo().algo,
                                                 workbuffer,
                                                 conv_descs_.Algo().memory,
-                                                &NumericConst<constants::one>(conv_descs_.ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_.ElementType()),
                                                 conv_descs_.dInput().get(),
                                                 outputs[ArgIndices3Ins::dinput].get()));
 }
