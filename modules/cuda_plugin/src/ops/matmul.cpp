@@ -13,8 +13,8 @@
 #include <transformer/nodes/fully_connected.hpp>
 #include <utility>
 
-#include "constant_factory.hpp"
 #include "converters.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -57,9 +57,9 @@ MatMulOp::MatMulOp(const CreationContext& context,
     cublas_transpose_a_ = transposeA ? CUBLAS_OP_T : CUBLAS_OP_N;
     cublas_transpose_b_ = transposeB ? CUBLAS_OP_T : CUBLAS_OP_N;
     if constexpr (std::is_same_v<TOperation, nodes::FullyConnected>) {
-        beta_ = &NumericConst<constants::one>(compute_type_);
+        beta_ = &CUDA::NumericConst<CUDA::constants::one>(compute_type_);
     } else {
-        beta_ = &NumericConst<constants::zero>(compute_type_);
+        beta_ = &CUDA::NumericConst<CUDA::constants::zero>(compute_type_);
     }
     Ensures(m_ != 0);
     Ensures(k_ != 0);
@@ -204,7 +204,7 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
      */
     throwIfError(cublasGemmStridedBatchedEx(
         cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_, n_, m_,
-        k_, &NumericConst<constants::one>(compute_type_), matrixB.get(),
+        k_, &CUDA::NumericConst<CUDA::constants::one>(compute_type_), matrixB.get(),
         data_type_, ld_b_, stride_b_, matrixA.get(), data_type_, ld_a_,
         stride_a_, beta_, matrixC.get(), data_type_, ld_c_, stride_c_,
         batch_count_, compute_type_, CUBLAS_GEMM_DEFAULT));

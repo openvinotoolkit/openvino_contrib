@@ -6,8 +6,8 @@
 
 #include <cuda_operation_registry.hpp>
 
-#include "constant_factory.hpp"
 #include "convolution_components.hpp"
+#include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
@@ -25,7 +25,7 @@ void ConvolutionBackpropDataOp::Execute(const InferenceRequestContext& context,
     Expects(outputs.size() == 1);
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     throwIfError(::cudnnConvolutionBackwardData(context.getThreadContext().dnnHandle().get(),
-                                                &NumericConst<constants::one>(descs_.ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::one>(descs_.ElementType()),
                                                 descs_.Filter().get(),
                                                 inputs[ConvolutionBackpropDataOp::ArgIndices::filter].get(),
                                                 descs_.dOutput().get(),
@@ -34,7 +34,7 @@ void ConvolutionBackpropDataOp::Execute(const InferenceRequestContext& context,
                                                 descs_.Algo().algo,
                                                 workbuffer,
                                                 descs_.Algo().memory,
-                                                &NumericConst<constants::zero>(descs_.ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::zero>(descs_.ElementType()),
                                                 descs_.dInput().get(),
                                                 outputs[ConvolutionBackpropDataOp::ArgIndices::dinput].get()));
 }

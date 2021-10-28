@@ -4,16 +4,16 @@
 
 #include "lstm_sequence_components.hpp"
 
+#include <cuda/constant_factory.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/op/constant.hpp>
 #include <typeinfo>
 
-#include "constant_factory.hpp"
+#include "cuda_op_buffers_extractor.hpp"
 #include "ngraph/op/reshape.hpp"
 #include "ngraph/op/squeeze.hpp"
 #include "ngraph/op/unsqueeze.hpp"
-#include "cuda_op_buffers_extractor.hpp"
 
 namespace CUDAPlugin::RNN::Details {
 
