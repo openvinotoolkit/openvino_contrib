@@ -14,6 +14,35 @@
 #include "cuda_thread_context.hpp"
 #include "gpu/gpu_context_api_cuda.hpp"
 
+namespace LayerTestsDefinitions {
+
+class CUDNNLSTMCellTest : public LSTMCellTest {
+public:
+    void SetUp() {
+        LSTMCellTest::SetUp();
+        constexpr float up_to = 5.0f;
+        constexpr float start_from = -5.0f;
+
+        const auto& ops = function->get_ordered_ops();
+        int seed = 1;
+        for (const auto& op : ops) {
+            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
+                const auto constant = ngraph::builder::makeConstant(
+                    op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed);
+                function->replace_node(op, constant);
+                ++seed;
+            }
+        }
+    }
+};
+
+TEST_P(CUDNNLSTMCellTest, CompareWithRefs) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
+    Run();
+};
+
+}  // namespace LayerTestsDefinitions
+
 using namespace LayerTestsDefinitions;
 
 namespace {
@@ -33,7 +62,7 @@ const std::vector<size_t> smoke_input_sizes_01{1, 2, 3, 30};
 const std::vector<size_t> smoke_hidden_sizes_01{2, 3, 10};
 
 INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_01,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::ValuesIn(smoke_batch),
                                            ::testing::ValuesIn(smoke_hidden_sizes_01),
@@ -42,13 +71,13 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_01,
                                            ::testing::ValuesIn(smoke_clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 const std::vector<size_t> smoke_input_sizes_02{2, 3, 30};
 size_t smoke_hidden_size_02 = 1;
 
 INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_02,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::ValuesIn(smoke_batch),
                                            ::testing::Values(smoke_hidden_size_02),
@@ -57,7 +86,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_02,
                                            ::testing::ValuesIn(smoke_clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Other shapes -------------
 struct LSTMCellTestParams {
@@ -71,7 +100,7 @@ struct LSTMCellTestParams {
 const LSTMCellTestParams tacotron2_dec_01{1, 768, 1024, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_01,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(tacotron2_dec_01.batch),
                                            ::testing::Values(tacotron2_dec_01.hidden_size),
@@ -80,12 +109,12 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_01,
                                            ::testing::Values(tacotron2_dec_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_dec_02{1, 1536, 1024, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_02,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(tacotron2_dec_02.batch),
                                            ::testing::Values(tacotron2_dec_02.hidden_size),
@@ -94,12 +123,12 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_02,
                                            ::testing::Values(tacotron2_dec_02.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_enc_01{1, 512, 256, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_enc_01,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(tacotron2_enc_01.batch),
                                            ::testing::Values(tacotron2_enc_01.hidden_size),
@@ -108,13 +137,13 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_enc_01,
                                            ::testing::Values(tacotron2_enc_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Big shapes -------------
 LSTMCellTestParams ov_doc_01{1, 16, 128, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_OV_Doc_01,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(ov_doc_01.batch),
                                            ::testing::Values(ov_doc_01.hidden_size),
@@ -123,12 +152,12 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_OV_Doc_01,
                                            ::testing::Values(ov_doc_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_01{10, 2048, 2048, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Big_01,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(big_01.batch),
                                            ::testing::Values(big_01.hidden_size),
@@ -137,12 +166,12 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_01,
                                            ::testing::Values(big_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_02{1, 8192, 4096, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Big_02,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(big_02.batch),
                                            ::testing::Values(big_02.hidden_size),
@@ -151,12 +180,12 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_02,
                                            ::testing::Values(big_02.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_03{3, 1781, 5003, 0.0f};
 
 INSTANTIATE_TEST_CASE_P(LSTMCell_Big_03,
-                        LSTMCellTest,
+                        CUDNNLSTMCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(big_03.batch),
                                            ::testing::Values(big_03.hidden_size),
@@ -165,7 +194,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_03,
                                            ::testing::Values(big_03.clip),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        LSTMCellTest::getTestCaseName);
+                        CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Benchmark -------------
 using ParamsVec = std::vector<std::reference_wrapper<const LSTMCellTestParams>>;

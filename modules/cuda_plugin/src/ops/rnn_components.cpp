@@ -29,7 +29,7 @@ LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
     : hidden_size_{cell.get_hidden_size()},
       activations_{cell.get_activations()},
       activations_alpha_{cell.get_activations_alpha()},
-      activations_beta_{cell.get_activations_alpha()},
+      activations_beta_{cell.get_activations_beta()},
       clip_{cell.get_clip()} {
     const auto input_count = cell.get_input_size();
     for (int i = 0; i < input_count; ++i) {
