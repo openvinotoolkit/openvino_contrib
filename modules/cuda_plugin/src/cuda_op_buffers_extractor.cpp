@@ -47,9 +47,10 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
         for (const auto& input : ordered_nodes[node_idx]->inputs()) {
             try {
                 const auto tensorName = GetTensorNameInternal(input);
-                const auto& tensorId = tensor_names_.at(tensorName);
-                if (!IsConstantNode(*input.get_source_output().get_node_shared_ptr())) {
-                    auto& mutableBuffer = mutable_buffers_.at(tensorId->GetBuffer().GetId());
+                const BufferID bufferId = tensor_names_.at(tensorName)->GetBuffer().GetId();
+                const bool isImmutableBuffer = immutable_buffers_.find(bufferId) != immutable_buffers_.end();
+                if (!isImmutableBuffer) {
+                    auto& mutableBuffer = mutable_buffers_.at(bufferId);
                     if (node_idx > mutableBuffer.lifespan_end) {
                         mutableBuffer.lifespan_end = node_idx;
                     }
