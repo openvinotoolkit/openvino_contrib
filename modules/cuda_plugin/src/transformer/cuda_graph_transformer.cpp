@@ -46,7 +46,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     if (!cfg.disabled_tensoriterator_transform) {
-        // manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
+        manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
     }
     manager.register_pass<ngraph::pass::ConcatTransformation>();
 
