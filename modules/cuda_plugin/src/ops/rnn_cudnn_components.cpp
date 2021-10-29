@@ -173,18 +173,26 @@ void LSTMCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
     const auto& stream = CUDA::DefaultStream::stream();
 
     for (int i = 0; i < lin_layer_count; ++i) {
-        stream.upload(DevPtr{w_dev_buffers_[i].data()}, w_host_addr, w_host_layer_size);
+        // OpenVINO: linear layer indices are FICO (forget, input, candidate, output)
+        //      https://docs.openvino.ai/2021.4/openvino_docs_ops_sequence_LSTMCell_1.html
+        // In cuDNN they are IFCO
+        //      https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnGetRNNWeightParams
+        //
+        // So we swap the first 2 buffers:
+        const int j = (i == 0) ? 1 : ((i == 1) ? 0 : i);
+
+        stream.upload(DevPtr{w_dev_buffers_[j].data()}, w_host_addr, w_host_layer_size);
         w_host_addr += w_host_layer_size;
 
-        stream.upload(DevPtr{b1_dev_buffers_[i].data()}, b1_host_addr, b1_host_layer_size);
-        b1_host_addr += b1_host_layer_size;
-
-        stream.upload(DevPtr{r_dev_buffers_[i].data()}, r_host_addr, r_host_layer_size);
+        stream.upload(DevPtr{r_dev_buffers_[j].data()}, r_host_addr, r_host_layer_size);
         r_host_addr += r_host_layer_size;
 
+        stream.upload(DevPtr{b1_dev_buffers_[j].data()}, b1_host_addr, b1_host_layer_size);
+        b1_host_addr += b1_host_layer_size;
+
         // The 2nd bias data isn't used in OpenVino
-        if (i < b2_dev_buffers_.size()) {
-            stream.memset(DevPtr{b2_dev_buffers_[i].data()}, 0, b2_dev_buffers_[i].size_bytes());
+        if (j < b2_dev_buffers_.size()) {
+            stream.memset(DevPtr{b2_dev_buffers_[j].data()}, 0, b2_dev_buffers_[j].size_bytes());
         }
     }
 }
