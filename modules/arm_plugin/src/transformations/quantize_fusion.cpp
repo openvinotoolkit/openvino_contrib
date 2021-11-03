@@ -130,36 +130,30 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
             if ((input_type.is_real() || input_type.is_quantized()) && output_type.is_quantized()) {
                 auto qInfo = makeQuantizationInfo(input_low, input_high, output_low, output_high);
 
-                if (qInfo.first.size() > 1) {
-                    auto axis  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{}, {1});
-                    auto split = std::make_shared<opset::Split>(fakeQuantize->input_value(0), axis, qInfo.first.size());
-                    ngraph::copy_runtime_info(fakeQuantize, split);
-                    split->set_friendly_name(fakeQuantize->get_friendly_name() + "_split");
-                    ngraph::NodeVector concat_inputs;
-                    for (std::size_t i = 0; i < qInfo.first.size(); ++i) {
-                        auto armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(
-                            Types{input_type}, Types{output_type}, split->output(i));
-                        armQuantize->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_" + std::to_string(i));
-                        ngraph::copy_runtime_info(fakeQuantize, armQuantize);
-                        armQuantize->get_rt_info().emplace("QuantizationInfo",
-                            arm_compute::QuantizationInfo{1.f/qInfo.first[i], static_cast<std::int32_t>(std::round(qInfo.second[i]))});
-                        concat_inputs.push_back(armQuantize);
-                    }
+                std::shared_ptr<ngraph::op::TypeRelaxed<opset::ArmQuantize>> armQuantize;
+                if (input_type.is_real()) {
+                    auto quantScale = opset::Constant::create<float>(input_type, ngraph::Shape{ qInfo.first.size(), 1, 1}, qInfo.first);
+                    auto quantMultiply = std::make_shared<opset::Multiply>(input, quantScale);
+                    quantMultiply->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_scale");
+                    ngraph::copy_runtime_info(fakeQuantize, quantMultiply);
 
-                    auto concat = std::make_shared<opset::Concat>(concat_inputs, 1);
-                    concat->set_friendly_name(fakeQuantize->get_friendly_name() + "_concat");
-                    ngraph::copy_runtime_info(fakeQuantize, concat);
-                    concat->get_rt_info().emplace("QuantizationInfo",
-                        arm_compute::QuantizationInfo{1, 0});
-                    ngraph::replace_node(fakeQuantize, concat);
+                    auto quantShift = opset::Constant::create<float>(input_type, ngraph::Shape{ qInfo.second.size(), 1, 1}, qInfo.second);
+                    auto quantAdd = std::make_shared<opset::Add>(quantMultiply, quantShift);
+                    quantAdd->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_shift");
+                    ngraph::copy_runtime_info(fakeQuantize, quantAdd);
+
+                    armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, quantAdd);
+                    ngraph::copy_runtime_info(fakeQuantize, armQuantize);
+                    armQuantize->get_rt_info()["QuantizationInfo"] = arm_compute::QuantizationInfo{1, 0};
                 } else {
-                    auto armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, input);
-                    armQuantize->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize");
+                    armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, input);
                     ngraph::copy_runtime_info(fakeQuantize, armQuantize);
                     armQuantize->get_rt_info()["QuantizationInfo"] =
                         arm_compute::QuantizationInfo{invQScale(qInfo.first), castZPoint(qInfo.second)};
-                    ngraph::replace_node(fakeQuantize, armQuantize);
                 }
+                armQuantize->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize");
+                ngraph::replace_node(fakeQuantize, armQuantize);
+
                 return true;
             }
             return false;
