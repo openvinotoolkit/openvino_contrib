@@ -52,6 +52,13 @@ ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsData
                                              networkOutputs,
                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
+InferenceEngine::IInferRequestInternal::Ptr
+ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+                                                     const std::vector<std::shared_ptr<const ov::Node>>& outputs) {
+    return std::make_shared<ArmInferRequest>(inputs,
+                                             outputs,
+                                             std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+}
 
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::string& name) const {
     return _cfg.Get(name);
