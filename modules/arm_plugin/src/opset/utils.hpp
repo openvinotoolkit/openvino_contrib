@@ -20,12 +20,6 @@ namespace ArmPlugin {
 namespace opset {
 float round(const float v);
 
-arm_compute::QuantizationInfo makeQuantizationInfo(
-                const ngraph::Output<ngraph::Node>& input_low,
-                const ngraph::Output<ngraph::Node>& input_high,
-                const ngraph::Output<ngraph::Node>& output_low,
-                const ngraph::Output<ngraph::Node>& output_high);
-
 arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node);
 
 }  // namespace opset

@@ -152,13 +152,6 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
     for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
         auto& layer = layers.at(node->get_instance_id());
-        if (ngraph::is_type<opset::ArmNoOp>(node.get())) {
-            IE_ASSERT(node->inputs().size() == 1);
-            for (auto&& output : node->outputs()) {
-                layer._outputs.at(output)._tensor->allocator()->import_memory(
-                    layer._inputs.at(node->input(0))->_tensor->buffer());
-            }
-        }
         auto execType = layer._execType;
         _layers.emplace_back(LayerInfo{
             std::move(layer),
