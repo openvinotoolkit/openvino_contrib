@@ -35,11 +35,8 @@ struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     using Ptr = std::shared_ptr<ArmInferRequest>;
 
     ArmInferRequest(const InferenceEngine::InputsDataMap&     networkInputs,
-                    const InferenceEngine::OutputsDataMap&    networkOutputs,
-                    const std::shared_ptr<ExecutableNetwork>& executableNetwork);
-    ArmInferRequest(const std::vector<std::shared_ptr<const ov::Node>>& networkInputs,
-                    const std::vector<std::shared_ptr<const ov::Node>>& networkOutputs,
-                    const std::shared_ptr<ExecutableNetwork>& executableNetwork);
+                      const InferenceEngine::OutputsDataMap&    networkOutputs,
+                      const std::shared_ptr<ExecutableNetwork>& executableNetwork);
     ~ArmInferRequest();
 
     void InferImpl() override;
@@ -72,11 +69,8 @@ struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     std::shared_ptr<arm_compute::ISimpleLifetimeManager>                        _lifetime;
     std::shared_ptr<arm_compute::PoolManager>                                   _pool;
     std::shared_ptr<arm_compute::MemoryManagerOnDemand>                         _memoryManager;
-    std::shared_ptr<arm_compute::MemoryGroup>                                   _memoryGroup;
+    arm_compute::MemoryGroup                                                    _memoryGroup;
     std::shared_ptr<arm_compute::MemoryGroupResourceScope>                      _memoryGroupScope;
-
-private:
-    void InitArmInferRequest(const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork);
 };
 // ! [infer_request:header]
 
