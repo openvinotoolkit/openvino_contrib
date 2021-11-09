@@ -13,25 +13,20 @@ namespace CUDAPlugin::RNN::Details {
 
 namespace {
 
-const ngraph::op::v4::LSTMCell& toLSTMCell(const ngraph::Node& node) {
+template <typename T>
+const T& toRNNCell(const ngraph::Node& node) {
+    static_assert(std::is_base_of_v<ngraph::op::util::RNNCellBase, T>,
+                  "T node should have base ngraph::op::util::RNNCellBase");
     try {
-        return dynamic_cast<const ngraph::op::v4::LSTMCell&>(node);
+        return dynamic_cast<const T&>(node);
     } catch (const std::bad_cast&) {
-        throwIEException("Couldn't convert ngraph::Node node to ngraph::op::v4::LSTMCell");
-    }
-}
-
-const ngraph::op::v3::GRUCell& toGRUCell(const ngraph::Node& node) {
-    try {
-        return dynamic_cast<const ngraph::op::v3::GRUCell&>(node);
-    } catch (const std::bad_cast&) {
-        throwIEException("Couldn't convert ngraph::Node node to ngraph::op::v3::GRUCell");
+        throwIEException("Couldn't convert ngraph::Node node to the derived T of base ngraph::op::util::RNNCellBase");
     }
 }
 
 }  // namespace
 
-LSTMCellParams::LSTMCellParams(const ngraph::Node& node) : LSTMCellParams(toLSTMCell(node)) {}
+LSTMCellParams::LSTMCellParams(const ngraph::Node& node) : LSTMCellParams(toRNNCell<ngraph::op::v4::LSTMCell>(node)) {}
 
 LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
     : hidden_size_{cell.get_hidden_size()},
@@ -118,10 +113,13 @@ LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
     b_host_buffers_ = {b_data_host, b_size_bytes};
 }
 
-GRUCellParams::GRUCellParams(const ngraph::Node& node) : GRUCellParams(toGRUCell(node)) {}
+GRUCellParams::GRUCellParams(const ngraph::Node& node) : GRUCellParams(toRNNCell<ngraph::op::v3::GRUCell>(node)) {}
 
 GRUCellParams::GRUCellParams(const ngraph::op::v3::GRUCell& cell)
     : hidden_size_{cell.get_hidden_size()},
+      activations_{cell.get_activations()},
+      activations_alpha_{cell.get_activations_alpha()},
+      activations_beta_{cell.get_activations_beta()},
       clip_{cell.get_clip()},
       linear_before_reset_{cell.get_linear_before_reset()} {
     const auto input_count = cell.get_input_size() - 1;
@@ -160,10 +158,11 @@ GRUCellParams::GRUCellParams(const ngraph::op::v3::GRUCell& cell)
 
     const auto b_shape = cell.get_input_shape(GRUCellArgIndices::biases);
     Expects(b_shape.size() == 1);
-    if (cell.get_linear_before_reset())
+    if (cell.get_linear_before_reset()) {
         Expects(b_shape[0] == (lin_layer_count + 1) * hidden_size_);
-    else
+    } else {
         Expects(b_shape[0] == lin_layer_count * hidden_size_);
+    }
     Expects(cell.get_input_element_type(GRUCellArgIndices::biases) == element_type_);
 
     const auto& ho_shape = cell.get_output_shape(GRUCellArgIndices::hidden_output);
