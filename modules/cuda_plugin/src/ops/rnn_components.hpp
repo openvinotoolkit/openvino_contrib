@@ -25,18 +25,6 @@ struct LSTMCellArgIndices {
 };
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v4::LSTMCell` node.
- */
-struct GRUCellArgIndices {
-    static constexpr size_t x = 0;
-    static constexpr size_t hidden_input = 1;
-    static constexpr size_t weights = 2;
-    static constexpr size_t recurrence_weights = 3;
-    static constexpr size_t biases = 4;
-    static constexpr size_t hidden_output = 0;
-};
-
-/**
  * @brief Unified LSTM Cell parameters as they are consumed by different
  * implementations.
  *
@@ -63,6 +51,18 @@ struct LSTMCellParams {
 };
 
 /**
+ * @brief Defines tensor indices for `ngraph::op::v4::LSTMCell` node.
+ */
+struct GRUCellArgIndices {
+    static constexpr size_t x = 0;
+    static constexpr size_t hidden_input = 1;
+    static constexpr size_t weights = 2;
+    static constexpr size_t recurrence_weights = 3;
+    static constexpr size_t biases = 4;
+    static constexpr size_t hidden_output = 0;
+};
+
+/**
  * @brief Unified GRU Cell parameters as they are consumed by different
  * implementations.
  *
@@ -75,6 +75,9 @@ struct GRUCellParams {
     static constexpr int lin_layer_count = 3;
 
     std::size_t hidden_size_;
+    std::vector<std::string> activations_;
+    std::vector<float> activations_alpha_;
+    std::vector<float> activations_beta_;
     float clip_;
     bool linear_before_reset_;
 
