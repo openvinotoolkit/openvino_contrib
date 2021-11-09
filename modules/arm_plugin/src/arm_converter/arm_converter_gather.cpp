@@ -56,7 +56,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::
                                     node.get_input_shape(1),
                                     node.get_output_shape(0),
                                     static_cast<size_t>(node.get_axis()),
-                                    static_cast<size_t>(0));
+                                    static_cast<size_t>(node.get_batch_dims()));
     };
     return CallSwitch(
             AP_WRAP(make, ngraph::runtime::reference::gather),

@@ -174,7 +174,6 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::IDFT>();
         Register<opset::FakeQuantize>();
         Register<opset::Split>();
-        Register<ngraph::op::v8::Gather>();
     }
     Register<opset::ArmNoOp>();
     Register<opset::Result>();
