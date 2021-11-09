@@ -6,60 +6,67 @@
 
 #include <cudnn.h>
 
+#include <functional>
 #include <ngraph/type/element_type.hpp>
+#include <optional>
 
 #include "runtime.hpp"
 
 inline std::string cudnnGetErrorString(cudnnConvolutionFwdAlgo_t algo) {
-  switch (algo) {
-    case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM: return "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM";
-    case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM: return "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM";
-    case CUDNN_CONVOLUTION_FWD_ALGO_GEMM: return "CUDNN_CONVOLUTION_FWD_ALGO_GEMM";
-    case CUDNN_CONVOLUTION_FWD_ALGO_DIRECT: return "CUDNN_CONVOLUTION_FWD_ALGO_DIRECT";
-    case CUDNN_CONVOLUTION_FWD_ALGO_FFT: return "CUDNN_CONVOLUTION_FWD_ALGO_FFT";
-    case CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING: return "CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING";
-    case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD: return "CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD";
-    case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED: return "CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED";
-    default: return "UNKNOWN CUDNN_CONVOLUTION_ALGO";
-  }
+    switch (algo) {
+        case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM";
+        case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM";
+        case CUDNN_CONVOLUTION_FWD_ALGO_GEMM:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_GEMM";
+        case CUDNN_CONVOLUTION_FWD_ALGO_DIRECT:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_DIRECT";
+        case CUDNN_CONVOLUTION_FWD_ALGO_FFT:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_FFT";
+        case CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING";
+        case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD";
+        case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED:
+            return "CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED";
+        default:
+            return "UNKNOWN CUDNN_CONVOLUTION_ALGO";
+    }
 }
 
-inline void throwIfError(cudnnStatus_t err,
-                         const std::experimental::source_location& location =
-                             std::experimental::source_location::current()) {
-    if (err != CUDNN_STATUS_SUCCESS)
-        CUDAPlugin::throwIEException(cudnnGetErrorString(err), location);
+inline void throwIfError(
+    cudnnStatus_t err,
+    const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (err != CUDNN_STATUS_SUCCESS) CUDAPlugin::throwIEException(cudnnGetErrorString(err), location);
 }
 
-inline void logIfError(cudnnStatus_t err,
-                       const std::experimental::source_location& location =
-                           std::experimental::source_location::current()) {
-  if (err != CUDNN_STATUS_SUCCESS)
-      CUDAPlugin::logError(cudnnGetErrorString(err), location);
+inline void logIfError(
+    cudnnStatus_t err,
+    const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (err != CUDNN_STATUS_SUCCESS) CUDAPlugin::logError(cudnnGetErrorString(err), location);
 }
 
 namespace CUDA {
 
-class DnnOpTensorDescriptor : public UniqueBase<cudnnCreateOpTensorDescriptor,
-                                                cudnnDestroyOpTensorDescriptor,
-                                                cudnnOpTensorDescriptor_t> {
- public:
-  DnnOpTensorDescriptor(cudnnOpTensorOp_t opTensorOp,
-                        cudnnDataType_t opTensorCompType,
-                        cudnnNanPropagation_t opTensorNanOpt) {
-    set(opTensorOp, opTensorCompType, opTensorNanOpt);
-  }
-  void set(cudnnOpTensorOp_t opTensorOp, cudnnDataType_t opTensorCompType,
-           cudnnNanPropagation_t opTensorNanOpt) {
-    throwIfError(cudnnSetOpTensorDescriptor(get(), opTensorOp, opTensorCompType,
-                                            opTensorNanOpt));
-  }
+class DnnOpTensorDescriptor
+    : public UniqueBase<cudnnCreateOpTensorDescriptor, cudnnDestroyOpTensorDescriptor, cudnnOpTensorDescriptor_t> {
+public:
+    DnnOpTensorDescriptor(cudnnOpTensorOp_t opTensorOp,
+                          cudnnDataType_t opTensorCompType,
+                          cudnnNanPropagation_t opTensorNanOpt) {
+        set(opTensorOp, opTensorCompType, opTensorNanOpt);
+    }
+    void set(cudnnOpTensorOp_t opTensorOp, cudnnDataType_t opTensorCompType, cudnnNanPropagation_t opTensorNanOpt) {
+        throwIfError(cudnnSetOpTensorDescriptor(get(), opTensorOp, opTensorCompType, opTensorNanOpt));
+    }
 };
 
 class DnnTensorDescriptor
-    : public UniqueBase<cudnnCreateTensorDescriptor,
-                        cudnnDestroyTensorDescriptor, cudnnTensorDescriptor_t> {
+    : public UniqueBase<cudnnCreateTensorDescriptor, cudnnDestroyTensorDescriptor, cudnnTensorDescriptor_t> {
 public:
+    using CRef = std::reference_wrapper<const DnnTensorDescriptor>;
+
     DnnTensorDescriptor() {}
 
     DnnTensorDescriptor(cudnnDataType_t dataType, int nbDims, const int dimA[], const int strideA[]) {
@@ -83,8 +90,7 @@ public:
         throwIfError(cudnnSetTensorNdDescriptorEx(get(), format, dataType, nbDims, dimA));
     }
 
-    void set(cudnnTensorFormat_t format, cudnnDataType_t dataType,
-             int n, int c, int h, int w) {
+    void set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
         throwIfError(cudnnSetTensor4dDescriptor(get(), format, dataType, n, c, h, w));
     }
 
@@ -99,36 +105,37 @@ public:
     }
 };
 
-class DnnActivationDescriptor
-    : public UniqueBase<cudnnCreateActivationDescriptor,
-                        cudnnDestroyActivationDescriptor,
-                        cudnnActivationDescriptor_t> {
- public:
-  DnnActivationDescriptor(cudnnActivationMode_t mode,
-                          cudnnNanPropagation_t reluNanOpt, double coef) {
-    set(mode, reluNanOpt, coef);
-  }
-  void set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt,
-           double coef) {
-    throwIfError(cudnnSetActivationDescriptor(get(), mode, reluNanOpt, coef));
-  }
+class DnnActivationDescriptor : public UniqueBase<cudnnCreateActivationDescriptor,
+                                                  cudnnDestroyActivationDescriptor,
+                                                  cudnnActivationDescriptor_t> {
+public:
+    DnnActivationDescriptor(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
+        set(mode, reluNanOpt, coef);
+    }
+    void set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
+        throwIfError(cudnnSetActivationDescriptor(get(), mode, reluNanOpt, coef));
+    }
 };
 
 class DnnPoolingDescriptor
-    : public UniqueBase<cudnnCreatePoolingDescriptor,
-                        cudnnDestroyPoolingDescriptor, cudnnPoolingDescriptor_t> {
- public:
-  DnnPoolingDescriptor(const cudnnPoolingMode_t mode,
-                       const cudnnNanPropagation_t nanPropagation, int nbDims,
-                       const int windowDimA[], const int paddingA[], const int strideA[]) {
-    set(mode, nanPropagation, nbDims, windowDimA, paddingA, strideA);
-  }
-  void set(const cudnnPoolingMode_t mode,
-           const cudnnNanPropagation_t nanPropagation, int nbDims,
-           const int windowDimA[], const int paddingA[], const int strideA[]) {
-    throwIfError(cudnnSetPoolingNdDescriptor(
-        get(), mode, nanPropagation, nbDims, windowDimA, paddingA, strideA));
-  }
+    : public UniqueBase<cudnnCreatePoolingDescriptor, cudnnDestroyPoolingDescriptor, cudnnPoolingDescriptor_t> {
+public:
+    DnnPoolingDescriptor(const cudnnPoolingMode_t mode,
+                         const cudnnNanPropagation_t nanPropagation,
+                         int nbDims,
+                         const int windowDimA[],
+                         const int paddingA[],
+                         const int strideA[]) {
+        set(mode, nanPropagation, nbDims, windowDimA, paddingA, strideA);
+    }
+    void set(const cudnnPoolingMode_t mode,
+             const cudnnNanPropagation_t nanPropagation,
+             int nbDims,
+             const int windowDimA[],
+             const int paddingA[],
+             const int strideA[]) {
+        throwIfError(cudnnSetPoolingNdDescriptor(get(), mode, nanPropagation, nbDims, windowDimA, paddingA, strideA));
+    }
 };
 
 class ReluDescriptor : public DnnActivationDescriptor {
@@ -147,17 +154,13 @@ public:
 };
 
 class DnnFilterDescriptor
-    : public UniqueBase<cudnnCreateFilterDescriptor,
-                        cudnnDestroyFilterDescriptor,
-                        cudnnFilterDescriptor_t> {
- public:
+    : public UniqueBase<cudnnCreateFilterDescriptor, cudnnDestroyFilterDescriptor, cudnnFilterDescriptor_t> {
+public:
     DnnFilterDescriptor() {}
-    DnnFilterDescriptor(cudnnDataType_t dataType, cudnnTensorFormat_t format,
-                        int nbDims, const int filterDimA[]) {
+    DnnFilterDescriptor(cudnnDataType_t dataType, cudnnTensorFormat_t format, int nbDims, const int filterDimA[]) {
         set(dataType, format, nbDims, filterDimA);
     }
-    void set(cudnnDataType_t dataType, cudnnTensorFormat_t format,
-             int nbDims, const int filterDimA[]) {
+    void set(cudnnDataType_t dataType, cudnnTensorFormat_t format, int nbDims, const int filterDimA[]) {
         throwIfError(cudnnSetFilterNdDescriptor(get(), dataType, format, nbDims, filterDimA));
     }
 };
@@ -192,15 +195,24 @@ class DnnConvolutionDescriptor : public UniqueBase<cudnnCreateConvolutionDescrip
                                                    cudnnConvolutionDescriptor_t> {
 public:
     DnnConvolutionDescriptor() {}
-    DnnConvolutionDescriptor(int arrayLength, const int padA[], const int filterStrideA[],
-             const int dilationA[], cudnnConvolutionMode_t mode, cudnnDataType_t dataType) {
+    DnnConvolutionDescriptor(int arrayLength,
+                             const int padA[],
+                             const int filterStrideA[],
+                             const int dilationA[],
+                             cudnnConvolutionMode_t mode,
+                             cudnnDataType_t dataType) {
         set(arrayLength, padA, filterStrideA, dilationA, mode, dataType);
     }
- public:
-    void set(int arrayLength, const int padA[], const int filterStrideA[],
-             const int dilationA[], cudnnConvolutionMode_t mode, cudnnDataType_t dataType) {
-        throwIfError(cudnnSetConvolutionNdDescriptor(get(), arrayLength, padA, filterStrideA,
-                                                     dilationA, mode, dataType));
+
+public:
+    void set(int arrayLength,
+             const int padA[],
+             const int filterStrideA[],
+             const int dilationA[],
+             cudnnConvolutionMode_t mode,
+             cudnnDataType_t dataType) {
+        throwIfError(
+            cudnnSetConvolutionNdDescriptor(get(), arrayLength, padA, filterStrideA, dilationA, mode, dataType));
     }
 };
 
@@ -308,7 +320,7 @@ public:
                     const DnnTensorDescriptor& hDesc,
                     const void* hx,
                     void* hy,
-                    const DnnTensorDescriptor& cDesc,
+                    std::optional<DnnTensorDescriptor::CRef> cDesc,
                     const void* cx,
                     void* cy,
                     size_t weightSpaceSize,
@@ -328,47 +340,9 @@ public:
                                      hDesc.get(),
                                      hx,
                                      hy,
-                                     cDesc.get(),
+                                     cDesc ? cDesc->get().get() : nullptr,
                                      cx,
                                      cy,
-                                     weightSpaceSize,
-                                     weightSpace,
-                                     workSpaceSize,
-                                     workSpace,
-                                     reserveSpaceSize,
-                                     reserveSpace));
-    }
-
-    void rnnForward(const DnnRnnDescriptor& rnnDesc,
-                    cudnnForwardMode_t fwdMode,
-                    const int32_t devSeqLengths[],
-                    const DnnRnnDataDescriptor& xDesc,
-                    const void* x,
-                    const DnnRnnDataDescriptor& yDesc,
-                    void* y,
-                    const DnnTensorDescriptor& hDesc,
-                    const void* hx,
-                    void* hy,
-                    size_t weightSpaceSize,
-                    const void* weightSpace,
-                    size_t workSpaceSize,
-                    void* workSpace,
-                    size_t reserveSpaceSize,
-                    void* reserveSpace) const {
-        throwIfError(cudnnRNNForward(get(),
-                                     rnnDesc.get(),
-                                     fwdMode,
-                                     devSeqLengths,
-                                     xDesc.get(),
-                                     x,
-                                     yDesc.get(),
-                                     y,
-                                     hDesc.get(),
-                                     hx,
-                                     hy,
-                                     nullptr,
-                                     nullptr,
-                                     nullptr,
                                      weightSpaceSize,
                                      weightSpace,
                                      workSpaceSize,
