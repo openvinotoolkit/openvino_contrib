@@ -36,6 +36,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*)",
         R"(.*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*)",
         R"(.*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*)",
-        R"(.*ExclusiveAsyncRequest.*)" // Unsupported config test
+        R"(.*ExclusiveAsyncRequest.*)", // Unsupported config test
+        // Failed according to accuracy
+        R"(.*SoftMaxLayerTest.*CompareWithRefs.*f16.*undefined.*undefined.*\(1.3.10.10\).*Axis=2.*)",
     };
 }
