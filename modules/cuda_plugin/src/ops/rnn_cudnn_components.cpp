@@ -223,7 +223,6 @@ bool LSTMCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
 
     const auto size = all_weights.size();
     uint8_t* addr_a = static_cast<uint8_t*>(all_weights[0].data());
-    size_t size_a;
     uint8_t* addr_b = static_cast<uint8_t*>(buffer.get());
 
     if (addr_a < addr_b) {
@@ -231,7 +230,7 @@ bool LSTMCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
     }
 
     addr_a = static_cast<uint8_t*>(all_weights[size - 1].data());
-    size_a = all_weights[size - 1].size_bytes();
+    size_t size_a = all_weights[size - 1].size_bytes();
     addr_b = static_cast<uint8_t*>(buffer.get());
 
     if (addr_a + size_a > addr_b + weightSpaceSize()) {
@@ -364,8 +363,26 @@ GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRU
       data_type_{convertDataType<cudnnDataType_t>(gru_cell_params_.element_type_)},
       element_size_{CUDAPlugin::elementSize(data_type_)},
       is_half_supported_(CUDA::isHalfSupported(context.device())) {
-    const auto supported_alphas = std::vector<float>{1.0f, 1.0f, 1.0f};
-    const auto supported_betas = std::vector<float>{0.0f, 0.0f, 0.0f};
+    const auto supported_activations = std::vector<std::string>{"sigmoid", "tanh"};
+    if (gru_cell_params_.activations_ != supported_activations) {
+        throwIEException(
+            "Currently GRUCell cuDNN implementation supports only default GRU activations of \"sigmoid\", \"tanh\"");
+    }
+
+    const auto supported_alphas = std::vector<float>{1.0f, 1.0f};
+    const auto supported_betas = std::vector<float>{0.0f, 0.0f};
+
+    const bool are_supported_alphas =
+        gru_cell_params_.activations_alpha_.size() == 0 || gru_cell_params_.activations_alpha_ == supported_alphas;
+
+    const bool are_supported_betas =
+        gru_cell_params_.activations_beta_.size() == 0 || gru_cell_params_.activations_beta_ == supported_betas;
+
+    if (!are_supported_alphas || !are_supported_betas) {
+        throwIEException(
+            "Currently GRUCell cuDNN implementation supports only default activation "
+            "alphas = {1.0f, 1.0f} and betas = {0.0f, 0.0f}");
+    }
 
     Expects(gru_cell_params_.element_type_.size() == elementSize());
     Expects(sizeof(int32_t) == sizeof(int));
@@ -481,7 +498,7 @@ void GRUCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
     const auto w_host_layer_size = params_.wHostBuffers().size_bytes() / lin_layer_count;
     const auto r_host_layer_size = params_.rHostBuffers().size_bytes() / lin_layer_count;
-    // TODO make it more generic
+    // TODO: make it more generic
     const size_t b1_host_layer_size = params_.hiddenSize() * params_.elementSize();
 
     const uint8_t* w_host_addr = params_.wHostBuffers().data();
@@ -490,10 +507,10 @@ void GRUCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
     const auto& stream = CUDA::DefaultStream::stream();
 
-    for (size_t i = 0, j = 0; i < lin_layer_count; ++i) {
+    for (size_t i = 0; i < lin_layer_count; ++i) {
         // openvino and CUDA use different order of bias weights
         // swap the first and second row
-        j = i == 0 ? 1 : i == 1 ? 0 : i;
+        const int j = (i == 0) ? 1 : ((i == 1) ? 0 : i);
 
         stream.upload(DevPtr{w_dev_buffers_[j].data()}, w_host_addr, w_host_layer_size);
         w_host_addr += w_host_layer_size;
@@ -504,7 +521,6 @@ void GRUCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
         stream.upload(DevPtr{b1_dev_buffers_[j].data()}, b1_host_addr, b1_host_layer_size);
         b1_host_addr += b1_host_layer_size;
 
-        // params_.linearBeforeReset();
         if (i < b2_dev_buffers_.size()) {
             if (params_.linearBeforeReset() && i == 2) {
                 // the tensor shape is [4 * hidden_size], get the fourth element from an array
@@ -545,7 +561,6 @@ bool GRUCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
 
     const auto size = all_weights.size();
     uint8_t* addr_a = static_cast<uint8_t*>(all_weights[0].data());
-    size_t size_a;
     uint8_t* addr_b = static_cast<uint8_t*>(buffer.get());
 
     if (addr_a < addr_b) {
@@ -553,7 +568,7 @@ bool GRUCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
     }
 
     addr_a = static_cast<uint8_t*>(all_weights[size - 1].data());
-    size_a = all_weights[size - 1].size_bytes();
+    size_t size_a = all_weights[size - 1].size_bytes();
     addr_b = static_cast<uint8_t*>(buffer.get());
 
     if (addr_a + size_a > addr_b + weightSpaceSize()) {
@@ -676,8 +691,7 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
 
     Ensures(weightBuffersFit(buffer));
     Ensures(w_total_bytes >= params_.wHostBuffers().size_bytes() &&
-            r_total_bytes >= params_.rHostBuffers().size_bytes());  // &&
-    // b1_total_bytes >= params_.bHostBuffers().size_bytes());
+            r_total_bytes >= params_.rHostBuffers().size_bytes());
     Ensures(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
 }
 
