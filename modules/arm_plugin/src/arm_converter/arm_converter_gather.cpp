@@ -46,24 +46,6 @@ template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v1::
         node.input(1), indexTypes);
 }
 
-template <> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::Gather& node) {
-    auto make = [&] (auto refFunction) {
-        return this->MakeConversion(refFunction,
-                                    node.input(0),
-                                    node.input(1),
-                                    node.output(0),
-                                    node.get_input_shape(0),
-                                    node.get_input_shape(1),
-                                    node.get_output_shape(0),
-                                    static_cast<size_t>(node.get_axis()),
-                                    static_cast<size_t>(node.get_batch_dims()));
-    };
-    return CallSwitch(
-            AP_WRAP(make, ngraph::runtime::reference::gather),
-            node.input(0), allTypes,
-            node.input(1), indexTypes);
-}
-
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGather& node) {
     auto axes = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
     if (!axes) {
