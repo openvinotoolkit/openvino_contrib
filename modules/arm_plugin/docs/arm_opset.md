@@ -60,7 +60,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                                                          | Not Supported |
 | [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                                                          | Supported     |
 | [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                                                                    | Supported**   |
-| [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_1.md)                                                                                          | Supported*    |
+| [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_8.md)                                                                                     | Supported*   |
 | [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                                                          | Supported**   |
 | [GatherND_5](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherND_5.md)                                                                                    | Supported**   |
 | [GatherTree](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherTree_1.md)                                                                                  | Supported**   |
@@ -184,7 +184,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 * `'ConvertLike'` layer is supported configuration like  `'Convert'`.
 * `'DepthToSpace'` layer is supported 4D tensors only and for `BLOCKS_FIRST` of `'mode'` attribute.
 * `'Equal'` doesn't support `broadcast` for inputs.
-* `'Gather'` layer is supported constant scalar or 1D indices axes only.
+* `'Gather'` layer is supported constant scalar or 1D indices axes only. Layer is supported as via arm_compute library for non negative indices and via reference implementation otherwise.
 * `'Interpolate'` layer is supported 4D tensors and zero value of `'pads_begin'` and `'pads_end'` attributes only.
 * `'Less'` doesn't support `broadcast` for inputs.
 * `'LessEqual'` doesn't support `broadcast` for inputs.

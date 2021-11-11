@@ -15,6 +15,7 @@
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
+#include "transformations/op_conversions/convert_gather_downgrade.hpp"
 #include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
@@ -276,6 +277,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<pass::ConvertAvgPool1D>();
         manager.register_pass<pass::BroadcastSelect>();
         manager.register_pass<pass::ConvertGather>();
+        manager.register_pass<ngraph::pass::ConvertGather8ToGather7>();
         manager.register_pass<pass::ConvertDFT>();
         manager.register_pass<pass::ConvertIDFT>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
