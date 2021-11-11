@@ -15,11 +15,7 @@ using namespace std;
 using namespace ngraph;
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(opset::MatMulBias, "MatMulBias", 0);
-
-opset::MatMulBias::~MatMulBias() {}
-
-opset::MatMulBias::MatMulBias(const ngraph::Output<ngraph::Node>& data,
+opset::ArmMatMulBias::ArmMatMulBias(const ngraph::Output<ngraph::Node>& data,
                               const ngraph::Output<ngraph::Node>& weights,
                               const ngraph::Output<ngraph::Node>& bias,
                               const bool& transpose_b)
@@ -28,7 +24,7 @@ opset::MatMulBias::MatMulBias(const ngraph::Output<ngraph::Node>& data,
     constructor_validate_and_infer_types();
 }
 
-shared_ptr<Node> opset::MatMulBias::clone_with_new_inputs(const ngraph::OutputVector& new_args) const {
+shared_ptr<Node> opset::ArmMatMulBias::clone_with_new_inputs(const ngraph::OutputVector& new_args) const {
     check_new_args_count(this, new_args);
-    return make_shared<MatMulBias>(new_args.at(0), new_args.at(1), new_args.at(2), m_transpose_b);
+    return make_shared<ArmMatMulBias>(new_args.at(0), new_args.at(1), new_args.at(2), m_transpose_b);
 }

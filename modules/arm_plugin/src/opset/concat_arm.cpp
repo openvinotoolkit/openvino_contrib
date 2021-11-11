@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmConcat::type_info;
-
-opset::ArmConcat::~ArmConcat() {}
-
 opset::ArmConcat::ArmConcat(const ngraph::OutputVector& args, int64_t axis)
     : Concat{args, axis} {
     constructor_validate_and_infer_types();

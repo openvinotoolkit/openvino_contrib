@@ -11,7 +11,7 @@
 ArmPlugin::pass::ConvertSplit::ConvertSplit() {
     register_matcher(std::make_shared<ngraph::pattern::Matcher>(ngraph::pattern::wrap_type<opset::Split>(), "ConvertSplit"),
         [](ngraph::pattern::Matcher& m) {
-            auto split = ngraph::as_type_ptr<opset::Split>(m.get_match_root());
+            auto split = std::dynamic_pointer_cast<opset::Split>(m.get_match_root());
             if (!split) {
                 return false;
             }

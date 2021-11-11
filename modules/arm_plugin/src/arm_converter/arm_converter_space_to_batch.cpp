@@ -7,16 +7,12 @@
 
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::SpaceToBatch& node) {
-    auto block_shape = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
-    auto pads_begin = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
-    auto pads_end   = std::dynamic_pointer_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
+    auto block_shape = safe_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto pads_begin = safe_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
+    auto pads_end   = safe_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
 
     if (node.get_input_shape(0).size() != 4) {
         IE_THROW() << "Unsupported SpaceToBatch with num dimensions != 4";
-    }
-
-    if (!block_shape || !pads_begin || !pads_end) {
-        IE_THROW() << "Unsupported SpaceToBatch op with inconstant shapes, pads_begin or pads_end";
     }
 
     auto begin  = pads_begin->cast_vector<int>();

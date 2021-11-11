@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmConvert::type_info;
-
-opset::ArmConvert::~ArmConvert() {}
-
 opset::ArmConvert::ArmConvert(const ngraph::Output<ngraph::Node>& data,
                               const ngraph::element::Type& destination_type)
     : Convert{data, destination_type} {

@@ -28,24 +28,45 @@ arm_compute::QuantizationInfo makeQuantizationInfo(
 
 arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node);
 
-
 }  // namespace opset
+
+struct SafeCast {
+    const char* file;
+    const int line;
+    template<typename T, typename Base>
+    const T* call(const Base* base) {
+        auto* dynamic_casted_ptr = dynamic_cast<const T*>(base);
+        OPENVINO_ASSERT(dynamic_casted_ptr != nullptr,
+            "In file: ", file, ":", line, "\n",
+            "Could not cast base pointer: ", base, "to type ", T::get_type_info_static());
+        return dynamic_casted_ptr;
+    }
+    template<typename T, typename Base>
+    const std::shared_ptr<T> call(const std::shared_ptr<Base>& base) {
+        auto dynamic_casted_ptr = std::dynamic_pointer_cast<T>(base);
+        OPENVINO_ASSERT(dynamic_casted_ptr != nullptr,
+            "In file: ", file, ":", line, "\n",
+            "Could not cast base pointer: ", base, "to type ", T::get_type_info_static());
+        return dynamic_casted_ptr;
+    }
+};
+
+#define safe_cast SafeCast{__FILE__, __LINE__}.call
+
 }  // namespace ArmPlugin
 
 namespace OV_NGRAPH_NAMESPACE {
 
 template <>
 struct NGRAPH_API VariantWrapper<arm_compute::QuantizationInfo> : public VariantImpl<arm_compute::QuantizationInfo> {
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("arm_compute::QuantizationInfo", "arm_plugin_util");
     VariantWrapper(const arm_compute::QuantizationInfo& value) : VariantImpl<arm_compute::QuantizationInfo>{value} {}
-    ~VariantWrapper() override;
 };
 
 template <>
 struct NGRAPH_API VariantWrapper<arm_compute::ActivationLayerInfo> : public VariantImpl<arm_compute::ActivationLayerInfo> {
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("arm_compute::ActivationLayerInfo", "arm_plugin_util");
     VariantWrapper(const arm_compute::ActivationLayerInfo& value) : VariantImpl<arm_compute::ActivationLayerInfo>{value} {}
-    ~VariantWrapper() override;
 };
 
 }  // namespace OV_NGRAPH_NAMESPACE

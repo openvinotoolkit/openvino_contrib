@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(opset::ArmConvolution, "ArmConvolution", 0);
-
-opset::ArmConvolution::~ArmConvolution() {}
-
 opset::ArmConvolution::ArmConvolution(const ngraph::Output<ngraph::Node>& data_batch,
                                       const ngraph::Output<ngraph::Node>& filters,
                                       const ngraph::Strides& strides,

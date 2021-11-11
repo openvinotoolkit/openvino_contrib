@@ -71,6 +71,7 @@
 #include "transformations/convert_reorg.hpp"
 #include "quantize_fusion.hpp"
 #include "store_result_name.hpp"
+#include "replace_power_by_mul.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -118,7 +119,7 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Funct
                     }
                     strm << "]";
                 };
-                const auto& quantizationInfo = std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                const auto& quantizationInfo = safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(itInfo->second)->get();
                 printVec("Scale", quantizationInfo.scale());
                 printVec("Offset", quantizationInfo.offset());
 
@@ -151,6 +152,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::RemoveFilteringBoxesBySize>(); // Resolves dynamism (replaces NonZero), CF needed
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::NopElimination>(); // may introduce fake dynamism
+    manager.register_pass<pass::ReplacePowerByMul>();
     manager.register_pass<ngraph::pass::AlgebraicSimplification>(); // may introduce fake dynamism
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::SoftPlusFusion>();

@@ -5,6 +5,7 @@
 #include "transformations/convert_batchnorm_v0_to_v5.hpp"
 #include "ngraph/op/batch_norm.hpp"
 #include "ngraph/rt_info.hpp"
+#include "opset/utils.hpp"
 
 using namespace ArmPlugin;
 

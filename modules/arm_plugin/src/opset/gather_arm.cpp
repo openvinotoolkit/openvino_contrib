@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmGather::type_info;
-
-opset::ArmGather::~ArmGather() {}
-
 opset::ArmGather::ArmGather(const ngraph::Output<ngraph::Node>& data,
                             const ngraph::Output<ngraph::Node>& indices,
                             const ngraph::Output<ngraph::Node>& axes)

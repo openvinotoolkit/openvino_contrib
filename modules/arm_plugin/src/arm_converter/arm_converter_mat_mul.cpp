@@ -14,7 +14,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& no
     }
     return MakeConversion<arm_compute::NEFullyConnectedLayer>(node.input(Features), node.input(Weights), nullptr, node.output(0));
 }
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMulBias& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulBias& node) {
     if (node.get_transpose_a()) {
         IE_THROW() << "Can not create MatMul layer with transpose first input";
     }

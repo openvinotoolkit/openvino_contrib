@@ -7,16 +7,12 @@
 
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::BatchToSpace& node) {
-    auto block_shape = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
-    auto crops_begin = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
-    auto crops_end   = std::dynamic_pointer_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
+    auto block_shape = safe_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto crops_begin = safe_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
+    auto crops_end   = safe_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
 
     if (node.get_input_shape(0).size() != 4) {
         IE_THROW() << "Unsupported BatchToSpace with num dimensions != 4";
-    }
-
-    if (!block_shape || !crops_begin || !crops_end) {
-        IE_THROW() << "Unsupported BatchToSpace op with inconstant block_shape, crops_begin or crops_end";
     }
 
     auto begin  = crops_begin->cast_vector<int>();

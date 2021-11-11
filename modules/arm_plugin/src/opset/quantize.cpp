@@ -9,11 +9,7 @@
 using namespace ArmPlugin;
 using namespace ngraph;
 
-NGRAPH_RTTI_DEFINITION(opset::ArmQuantize, "ArmQuantize", 0);
-
 opset::ArmQuantize::ArmQuantize(const ngraph::Output<ngraph::Node>& data) : Op{{data}} {}
-
-opset::ArmQuantize::~ArmQuantize() {}
 
 std::shared_ptr<Node> opset::ArmQuantize::clone_with_new_inputs(const OutputVector& new_args) const {
     check_new_args_count(this, new_args);
@@ -24,11 +20,7 @@ void opset::ArmQuantize::validate_and_infer_types() {
     set_output_type(0, get_input_element_type(0), get_input_partial_shape(0));
 }
 
-NGRAPH_RTTI_DEFINITION(opset::ArmDequantize, "ArmDequantize", 0);
-
 opset::ArmDequantize::ArmDequantize(const ngraph::Output<ngraph::Node>& data) : Op{{data}} {}
-
-opset::ArmDequantize::~ArmDequantize() {}
 
 std::shared_ptr<Node> opset::ArmDequantize::clone_with_new_inputs(const OutputVector& new_args) const {
     check_new_args_count(this, new_args);

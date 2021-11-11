@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmSplit::type_info;
-
-opset::ArmSplit::~ArmSplit() {}
-
 opset::ArmSplit::ArmSplit(const ngraph::Output<ngraph::Node>& data, const ngraph::Output<ngraph::Node>& axis, const size_t num_splits)
     : Split{data, axis, num_splits} {
     constructor_validate_and_infer_types();

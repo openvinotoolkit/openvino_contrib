@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmNormalizeL2::type_info;
-
-opset::ArmNormalizeL2::~ArmNormalizeL2() {}
-
 opset::ArmNormalizeL2::ArmNormalizeL2(const Output<Node>& data,
                                       const Output<Node>& axes,
                                       float eps,

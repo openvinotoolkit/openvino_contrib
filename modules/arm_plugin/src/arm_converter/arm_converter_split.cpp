@@ -28,7 +28,7 @@ static void wrap_split(T* in,
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Split& node) {
     auto make = [&] (auto refFunction) {
-        auto axis = static_cast<std::int64_t>(ngraph::as_type<ngraph::op::Constant>(node.input_value(1).get_node())->cast_vector<std::int32_t>()[0]);
+        auto axis = static_cast<std::int64_t>(safe_cast<opset::Constant>(node.input_value(1).get_node())->cast_vector<std::int32_t>()[0]);
         return this->MakeConversion(refFunction,
                                     node.input(0),
                                     node.outputs(),
@@ -45,7 +45,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Split& nod
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmSplit& node) {
     size_t numDimensions = node.get_output_shape(0).size();
-    int axis = ngraph::as_type<ngraph::op::Constant>(
+    int axis = safe_cast<opset::Constant>(
         node.input_value(1).get_node())->cast_vector<std::int32_t>()[0];
     if (axis < 0) {
         axis += numDimensions;
