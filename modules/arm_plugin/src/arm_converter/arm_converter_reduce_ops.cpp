@@ -7,11 +7,12 @@
 #include <arm_compute/runtime/NEON/functions/NEReduceMean.h>
 #include <ngraph/runtime/reference/logical_reduction.hpp>
 #include "arm_converter/arm_converter.hpp"
+#include "opset/utils.hpp"
 
 namespace ArmPlugin {
 template<typename Reduce>
 static auto ConvertReduce(const Reduce& node, const arm_compute::ReductionOperation& op, Converter* converter) {
-    auto axes = dynamic_cast<const opset::Constant&>(*(node.input_value(1).get_node())).cast_vector<int64_t>();
+    auto axes = safe_cast<opset::Constant>(node.input_value(1).get_node())->template cast_vector<std::int64_t>();
     if (axes.size() != 1) {
         IE_THROW() << "Arm Plugin: Multiple reduction axes aren't supported";
     }
@@ -37,7 +38,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceSum&
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceMean& node) {
     arm_compute::Coordinates axes;
-    auto reduction_axes = dynamic_cast<const opset::Constant&>(*(node.input_value(1).get_node())).cast_vector<int64_t>();
+    auto reduction_axes = safe_cast<opset::Constant>(node.input_value(1).get_node())->cast_vector<int64_t>();
     for (size_t i = 0; i < reduction_axes.size(); ++i) {
         auto pos = AxisCast(i, reduction_axes.size());
         axes.set(pos, reduction_axes[i]);

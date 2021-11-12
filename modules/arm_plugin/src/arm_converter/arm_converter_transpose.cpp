@@ -9,7 +9,7 @@
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmTranspose& node) {
     enum {Data, Order};
-    auto&& inputOrder = std::dynamic_pointer_cast<ngraph::op::Constant>(
+    auto inputOrder = safe_cast<ngraph::op::Constant>(
                     node.input_value(Order).get_node_shared_ptr())->cast_vector<size_t>();
 
     if (inputOrder.empty()) {

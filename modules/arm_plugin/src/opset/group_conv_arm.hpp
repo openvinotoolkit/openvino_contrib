@@ -14,9 +14,7 @@ namespace opset {
 
 class ArmGroupConvolution : public GroupConvolution {
 public:
-    NGRAPH_RTTI_DECLARATION;
-    ArmGroupConvolution() = default;
-    ~ArmGroupConvolution() override;
+    OPENVINO_OP("ArmGroupConvolution", "arm_opset", GroupConvolution);
 
     ArmGroupConvolution(const ngraph::Output<ngraph::Node>& data_batch,
                         const ngraph::Output<ngraph::Node>& filters,

@@ -13,17 +13,15 @@ namespace ArmPlugin {
 namespace opset {
 
 struct ArmQuantize : public ngraph::op::Op {
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ArmQuantize", "arm_opset");
     ArmQuantize(const ngraph::Output<ngraph::Node>& data);
-    ~ArmQuantize() override;
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
     void validate_and_infer_types() override;
 };
 
 struct ArmDequantize : public ngraph::op::Op {
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ArmDequantize", "arm_opset");
     ArmDequantize(const ngraph::Output<ngraph::Node>& data);
-    ~ArmDequantize() override;
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
     void validate_and_infer_types() override;
 };

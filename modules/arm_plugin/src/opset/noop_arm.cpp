@@ -8,8 +8,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(opset::ArmNoOp, "ArmNoOp", 0);
-
 opset::ArmNoOp::ArmNoOp(const Output<Node>& arg) : Op({arg}) {
     constructor_validate_and_infer_types();
 }

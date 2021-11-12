@@ -7,14 +7,8 @@
 
 namespace ArmPlugin {
 namespace pass {
-class ConvertMaxPool1D: public ngraph::pass::MatcherPass {
-public:
-    ConvertMaxPool1D();
-};
-
-class ConvertAvgPool1D: public ngraph::pass::MatcherPass {
-public:
-    ConvertAvgPool1D();
+struct ReplacePowerByMul: public ngraph::pass::MatcherPass {
+    ReplacePowerByMul();
 };
 }  // namespace pass
 }  // namespace ArmPlugin

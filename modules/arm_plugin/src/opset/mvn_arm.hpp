@@ -12,14 +12,9 @@ namespace opset {
 
 class ArmMVN : public ngraph::op::Op {
 public:
-    NGRAPH_RTTI_DECLARATION;
-    ArmMVN() = default;
-    ~ArmMVN() override;
-
+    OPENVINO_OP("ArmMVN", "arm_opset");
     ArmMVN(const ngraph::Output<ngraph::Node>& data, float eps);
-
     float get_eps() const { return m_eps; }
-
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
 private:
     float m_eps = 0.00001f;

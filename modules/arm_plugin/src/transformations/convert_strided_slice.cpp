@@ -27,9 +27,9 @@ ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
             IE_THROW() << "Unsupported ArmStridedSlice with " << dims << " dimensions.";
         }
 
-        auto&& begin_node  = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(1).get_node_shared_ptr());
-        auto&& end_node    = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(2).get_node_shared_ptr());
-        auto&& stride_node = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(3).get_node_shared_ptr());
+        auto begin_node  = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(1).get_node_shared_ptr());
+        auto end_node    = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(2).get_node_shared_ptr());
+        auto stride_node = std::dynamic_pointer_cast<ngraph::op::Constant>(slice->input_value(3).get_node_shared_ptr());
 
         if (!begin_node || !end_node || !stride_node) {
             return false;

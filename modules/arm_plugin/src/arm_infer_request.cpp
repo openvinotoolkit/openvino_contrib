@@ -115,7 +115,7 @@ ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&          
 
     for (auto&& node : _executableNetwork->_function->get_results()) {
         IE_ASSERT(node->inputs().size() == 1);
-        auto outputName = std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
+        auto outputName = safe_cast<ngraph::VariantWrapper<std::string>>(
             node->get_rt_info().at("ResultName"))->get();
         auto input = node->input(0);
         auto sourceOutput = input.get_source_output();

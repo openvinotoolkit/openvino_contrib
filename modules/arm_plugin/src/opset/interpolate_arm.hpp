@@ -12,10 +12,7 @@ namespace opset {
 
 class ArmInterpolate : public Interpolate {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmInterpolate", 0};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
-    ArmInterpolate() = default;
-    ~ArmInterpolate() override;
+    OPENVINO_OP("ArmInterpolate", "arm_opset", Interpolate);
 
     ArmInterpolate(const ngraph::Output<ngraph::Node>& image,
                    const ngraph::Output<ngraph::Node>& output_shape,

@@ -12,10 +12,7 @@ namespace opset {
 
 class ArmSplit : public Split {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmSplit", 0};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
-    ArmSplit() = default;
-    ~ArmSplit() override;
+    OPENVINO_OP("ArmSplit", "arm_opset", Split);
 
     ArmSplit(const ngraph::Output<ngraph::Node>& data, const ngraph::Output<ngraph::Node>& axis, const size_t num_splits);
 

@@ -12,15 +12,11 @@ namespace opset {
 
 class ArmFFT : public ngraph::op::Op {
 public:
+    OPENVINO_OP("ArmFFT", "arm_opset");
     enum class Axis {
         axisX,
         axisY
     };
-
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmFFT", 0};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
-    ArmFFT() = default;
-    ~ArmFFT() override;
 
     ArmFFT(const ngraph::Output<ngraph::Node>& data, Axis axis, bool inverse);
 

@@ -43,7 +43,7 @@ ArmPlugin::pass::MatMulBiasFusion::MatMulBiasFusion() {
             input_a->set_friendly_name(matmul->get_friendly_name() + "/transpose_a");
             new_ops.push_back(input_a);
         }
-        auto matmul_bias = std::make_shared<opset::MatMulBias>(input_a, input_b, bias, matmul->get_transpose_b());
+        auto matmul_bias = std::make_shared<opset::ArmMatMulBias>(input_a, input_b, bias, matmul->get_transpose_b());
         new_ops.push_back(matmul_bias);
 
         matmul_bias->set_friendly_name(matmul->get_friendly_name());

@@ -50,11 +50,11 @@ arm_compute::QuantizationInfo makeQuantizationInfo(
     };
     if (data_type == ngraph::element::Type_t::f16) {
         init([&](const ngraph::Output<ngraph::Node>& input) {
-            return ngraph::as_type<opset::Constant>(input.get_node())->cast_vector<ngraph::float16>();
+            return safe_cast<opset::Constant>(input.get_node())->cast_vector<ngraph::float16>();
         });
     } else if (data_type == ngraph::element::Type_t::f32) {
         init([&](const ngraph::Output<ngraph::Node>& input) {
-            return ngraph::as_type<opset::Constant>(input.get_node())->cast_vector<float>();
+            return safe_cast<opset::Constant>(input.get_node())->cast_vector<float>();
         });
     } else {
         IE_THROW() << "Arm Plugin: Unsupported Data type: " << data_type;
@@ -73,7 +73,7 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node) {
         return {arm_compute::ActivationLayerInfo::ActivationFunction::ABS};
     } else if (ngraph::is_type<opset::Elu>(node)) {
         return {arm_compute::ActivationLayerInfo::ActivationFunction::ELU,
-                static_cast<float>(ngraph::as_type<opset::Elu>(node)->get_alpha())};
+                static_cast<float>(safe_cast<opset::Elu>(node)->get_alpha())};
     } else if (ngraph::is_type<opset::Sqrt>(node)) {
         return {arm_compute::ActivationLayerInfo::ActivationFunction::SQRT};
     } else if (ngraph::is_type<opset::SoftPlus>(node)) {
@@ -81,11 +81,11 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node) {
     } else if (ngraph::is_type<opset::HSwish>(node)) {
         return {arm_compute::ActivationLayerInfo::ActivationFunction::HARD_SWISH};
     } else if (ngraph::is_type<opset::PRelu>(node)) {
-        auto prelu = ngraph::as_type<opset::PRelu>(node);
-        auto a = ngraph::as_type<opset::Constant>(prelu->input_value(1).get_node())->get_data_ptr<ngraph::element::f32>()[0];
+        auto prelu = safe_cast<opset::PRelu>(node);
+        auto a = safe_cast<opset::Constant>(prelu->input_value(1).get_node())->get_data_ptr<ngraph::element::f32>()[0];
         return {arm_compute::ActivationLayerInfo::ActivationFunction::LEAKY_RELU, a};
     } else if (ngraph::is_type<opset::Clamp>(node)) {
-        auto clamp = ngraph::as_type<opset::Clamp>(node);
+        auto clamp = safe_cast<opset::Clamp>(node);
         return {arm_compute::ActivationLayerInfo::ActivationFunction::LU_BOUNDED_RELU,
                 static_cast<float>(clamp->get_max()),
                 static_cast<float>(clamp->get_min())};
@@ -95,10 +95,3 @@ arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node) {
 }
 }  // namespace opset
 }  // namespace ArmPlugin
-
-namespace OV_NGRAPH_NAMESPACE {
-NGRAPH_RTTI_DEFINITION(VariantWrapper<arm_compute::QuantizationInfo>, "Variant::arm_compute::QuantizationInfo", 0);
-VariantWrapper<arm_compute::QuantizationInfo>::~VariantWrapper() {}
-NGRAPH_RTTI_DEFINITION(VariantWrapper<arm_compute::ActivationLayerInfo>, "Variant::arm_compute::ActivationLayerInfo", 0);
-VariantWrapper<arm_compute::ActivationLayerInfo>::~VariantWrapper() {}
-}  // namespace OV_NGRAPH_NAMESPACE

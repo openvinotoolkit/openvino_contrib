@@ -12,9 +12,8 @@ namespace opset {
 
 class ArmStridedSlice : public StridedSlice {
 public:
-    static constexpr ngraph::NodeTypeInfo type_info{"ArmStridedSlice", 0};
-    const ngraph::NodeTypeInfo& get_type_info() const override { return type_info; }
-    ArmStridedSlice() = default;
+    OPENVINO_OP("ArmStridedSlice", "arm_opset", StridedSlice);
+
     ~ArmStridedSlice() override;
 
     ArmStridedSlice(const ngraph::Output<ngraph::Node>& data,

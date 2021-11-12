@@ -7,8 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmStridedSlice::type_info;
-
 opset::ArmStridedSlice::~ArmStridedSlice() {}
 
 opset::ArmStridedSlice::ArmStridedSlice(const ngraph::Output<ngraph::Node>& data,

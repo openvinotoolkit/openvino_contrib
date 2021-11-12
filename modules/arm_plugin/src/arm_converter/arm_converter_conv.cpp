@@ -27,7 +27,7 @@ static auto ConvParameters(const Conv& node) {
 static arm_compute::ActivationLayerInfo GetActivationInfo(const ngraph::Node& node) {
     auto itInfo = node.get_rt_info().find("ActivationLayerInfo");
     if (itInfo != node.get_rt_info().end()) {
-        return std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::ActivationLayerInfo>>(itInfo->second)->get();
+        return safe_cast<ngraph::VariantWrapper<arm_compute::ActivationLayerInfo>>(itInfo->second)->get();
     } else {
         return {};
     }

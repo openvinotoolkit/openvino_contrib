@@ -14,10 +14,7 @@ namespace opset {
 
 class ArmConvolution : public Convolution {
 public:
-    NGRAPH_RTTI_DECLARATION;
-    ArmConvolution() = default;
-    ~ArmConvolution() override;
-
+    OPENVINO_OP("ArmConvolution", "arm_opset", Convolution);
     ArmConvolution(const ngraph::Output<ngraph::Node>& data_batch,
                    const ngraph::Output<ngraph::Node>& filters,
                    const ngraph::Strides& strides,

@@ -14,16 +14,14 @@
 namespace ArmPlugin {
 namespace opset {
 
-class MatMulBias : public MatMul {
+class ArmMatMulBias : public MatMul {
 public:
-    NGRAPH_RTTI_DECLARATION;
-    MatMulBias() = default;
-    ~MatMulBias() override;
+    OPENVINO_OP("ArmMatMulBias", "arm_opset", MatMul);
 
-    MatMulBias(const ngraph::Output<ngraph::Node>& data,
-               const ngraph::Output<ngraph::Node>& weights,
-               const ngraph::Output<ngraph::Node>& bias,
-               const bool& transpose_b = false);
+    ArmMatMulBias(const ngraph::Output<ngraph::Node>& data,
+                  const ngraph::Output<ngraph::Node>& weights,
+                  const ngraph::Output<ngraph::Node>& bias,
+                  const bool& transpose_b = false);
 
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
 
