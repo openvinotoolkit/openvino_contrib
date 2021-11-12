@@ -140,6 +140,20 @@ public:
      */
     MemoryModel::Ptr createImmutableMemoryModel() const;
 
+    /**
+     * Provides tensor size for the given output
+     * @param output Output to process
+     * @returns Tensor size in bytes for the given output
+     */
+    static std::size_t GetTensorByteSize(const ngraph::Output<ngraph::Node>& input);
+
+    /**
+     * Provides tensor size for the given input
+     * @param input Input to process
+     * @returns Tensor size in bytes for the given input
+     */
+    static std::size_t GetTensorByteSize(const ngraph::Input<ngraph::Node>& input);
+
 private:
     /**
      * Internal buffer representation
@@ -191,20 +205,6 @@ private:
      * @param node ngraph node from which tensors to be extracted
      */
     void extractImmutableTensors(const NodePtr& node);
-
-    /**
-     * Provides tensor size for the given output
-     * @param output Output to process
-     * @returns Tensor size in bytes for the given output
-     */
-    static std::size_t GetTensorByteSize(const ngraph::Output<ngraph::Node>& input);
-
-    /**
-     * Provides tensor size for the given input
-     * @param input Input to process
-     * @returns Tensor size in bytes for the given input
-     */
-    static std::size_t GetTensorByteSize(const ngraph::Input<ngraph::Node>& input);
 
     /**
      * Provides internal tensor name
