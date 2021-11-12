@@ -19,7 +19,8 @@ namespace CUDAPlugin {
 namespace kernel {
 
 template <typename T>
-static __global__ void insert_part(const Insert::Props* props, const size_t start, const size_t size, const T* x, T* y) {
+static __global__ void insert_part(
+    const Insert::Props* props, const size_t start, const size_t size, const T* x, T* y) {
     const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < size) {
         const size_t old_rank = rank(props->old_shape);
