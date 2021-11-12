@@ -33,7 +33,9 @@ struct ElementTypesSwitch {
 };
 
 using AllElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
+#if CUDA_VERSION >= 11000
                                                  Type_t::bf16,
+#endif
                                                  Type_t::f16,
                                                  Type_t::f32,
                                                  Type_t::f64,

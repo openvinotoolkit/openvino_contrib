@@ -4,9 +4,12 @@
 
 #pragma once
 
+#include <cuda.h>
 #include <cuda_runtime.h>
-#if defined __CUDACC__ && __has_include(<cuda_bf16.h>)
+#if defined __CUDACC__
+#if CUDA_VERSION >= 11000
 #include <cuda_bf16.h>
+#endif
 #include <cuda_fp16.h>
 #endif
 #include <cstdint>
@@ -14,7 +17,26 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-enum class Type_t { boolean, bf16, f16, f32, f64, i4, i8, i16, i32, i64, u1, u4, u8, u16, u32, u64 };
+enum class Type_t {
+    boolean,
+#if CUDA_VERSION >= 11000
+    bf16,
+#endif
+    f16,
+    f32,
+    f64,
+    i4,
+    i8,
+    i16,
+    i32,
+    i64,
+    u1,
+    u4,
+    u8,
+    u16,
+    u32,
+    u64
+};
 
 template <Type_t>
 struct cuda_type_traits {};
@@ -27,23 +49,19 @@ struct cuda_type_traits<Type_t::boolean> {
     using value_type = char;
 };
 
+#if defined __CUDACC__
+#if __has_include(<cuda_bf16.h>)
 template <>
 struct cuda_type_traits<Type_t::bf16> {
-#if defined __CUDACC__ && __has_include(<cuda_bf16.h>)
     using value_type = __nv_bfloat16;  // 8bit exponent, 7bit mantissa
-#else
-    using value_type = uint16_t;
-#endif
 };
+#endif
 
 template <>
 struct cuda_type_traits<Type_t::f16> {
-#if defined __CUDACC__ && __has_include(<cuda_bf16.h>)
     using value_type = __half;  // 1 sign bit, 5 exponent bits, and 10 mantissa bits.
-#else
-    using value_type = uint16_t;
-#endif
 };
+#endif
 
 template <>
 struct cuda_type_traits<Type_t::f32> {

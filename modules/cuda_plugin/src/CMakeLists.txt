@@ -9,7 +9,7 @@ set(SOURCE_MASKS *.cpp *.cu)
 set(HEADER_MASKS *.hpp *.cuh)
 if(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
     set(SOURCE_MASKS *.cpp split.cu concat.cu strided_slice.cu gather.cu select.cu
-        insert.cu slice.cu logical_not.cu elementwise.cu comparison.cu)
+        insert.cu slice.cu logical_not.cu elementwise.cu comparison.cu convert.cu)
     set(HEADER_MASKS *.hpp)
 endif(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)
 
