@@ -26,7 +26,7 @@ public:
 
 private:
     static convert_t getConvertKernel(Type_t output_type, Type_t input_type);
-    convert_t convert_kernel_;
+    std::optional<kernel::Convert> convert_kernel_;
     unsigned size_;
     unsigned num_blocks_;
     unsigned threads_per_block_;
