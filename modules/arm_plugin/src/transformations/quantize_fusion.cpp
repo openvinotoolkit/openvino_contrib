@@ -95,8 +95,7 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
     register_matcher(
         std::make_shared<ngraph::pattern::Matcher>(fakeQuantize, "ConvertQuantize"),
         [](ngraph::pattern::Matcher& m) {
-            auto fakeQuantize = std::dynamic_pointer_cast<opset::FakeQuantize>(m.get_match_root());
-            IE_ASSERT(fakeQuantize != nullptr);
+            auto fakeQuantize = safe_cast<opset::FakeQuantize>(m.get_match_root());
             auto input_type = fakeQuantize->input(0).get_element_type();
             auto output_type = fakeQuantize->output(0).get_element_type();
             auto input = fakeQuantize->input_value(0);
@@ -177,7 +176,7 @@ ArmPlugin::pass::NodeQuantizeFusion::NodeQuantizeFusion() {
         [=](ngraph::pattern::Matcher& m) {
             auto pattern_map = m.get_pattern_value_map();
             auto node = pattern_map[node_pattern].get_node_shared_ptr();
-            auto fakeQuantize = ngraph::as_type_ptr<opset::FakeQuantize>(pattern_map[fq_pattern].get_node_shared_ptr());
+            auto fakeQuantize = safe_cast<opset::FakeQuantize>(pattern_map[fq_pattern].get_node_shared_ptr());
             auto itActivation = pattern_map.find(activation_pattern);
             auto realType = node->get_output_element_type(0);
             auto quantizedType = fakeQuantize->get_output_element_type(0);
@@ -294,8 +293,8 @@ DequantizeNodeFusionBase(bool mulOnly, const std::string& name) {
                 std::vector<std::int32_t> offsets;
                 std::vector<float> scales;
                 if ((itMulSub != pattern_map.end()) || (itMulAdd != pattern_map.end())) {
-                    scales = getFloatVector(*ngraph::as_type<opset::Constant>(pattern_map[scale_pattern].get_node()));
-                    auto floatOffsets = getFloatVector(*ngraph::as_type<opset::Constant>(pattern_map[
+                    scales = getFloatVector(*safe_cast<opset::Constant>(pattern_map[scale_pattern].get_node()));
+                    auto floatOffsets = getFloatVector(*safe_cast<opset::Constant>(pattern_map[
                         (itMulSub != pattern_map.end()) ? mul_sub_offset_pattern : mul_add_offset_pattern
                     ].get_node()));
                     offsets.resize(scales.size());
@@ -303,10 +302,10 @@ DequantizeNodeFusionBase(bool mulOnly, const std::string& name) {
                         offsets[i] = -std::round(floatOffsets[i]/scales[i]);
                     }
                 } else if (itSub != pattern_map.end()) {
-                    offsets = getIntVector(*ngraph::as_type<opset::Constant>(pattern_map[sub_offset_pattern].get_node()));
+                    offsets = getIntVector(*safe_cast<opset::Constant>(pattern_map[sub_offset_pattern].get_node()));
                     scales.resize(offsets.size(), 1.0);
                 } else if (itMul != pattern_map.end()) {
-                    scales = getFloatVector(*ngraph::as_type<opset::Constant>(pattern_map[scale_pattern].get_node()));
+                    scales = getFloatVector(*safe_cast<opset::Constant>(pattern_map[scale_pattern].get_node()));
                     offsets.resize(scales.size(), 0);
                 }
 
@@ -480,7 +479,7 @@ ArmPlugin::pass::MovePerChenelQuantizationInfoToWeights::MovePerChenelQuantizati
         auto weights = node->input_value(1).get_node();
         auto itInfo = node->get_rt_info().find("QuantizationInfo");
         if (itInfo != node->get_rt_info().end()) {
-            auto quantizationInfo = std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+            auto quantizationInfo = safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(itInfo->second)->get();
             auto scales = quantizationInfo.scale();
             auto offsets = quantizationInfo.offset();
             if (scales.size() > 1) {

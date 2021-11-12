@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmInterpolate::type_info;
-
-opset::ArmInterpolate::~ArmInterpolate() {}
-
 opset::ArmInterpolate::ArmInterpolate(const ngraph::Output<ngraph::Node>& image,
                                       const ngraph::Output<ngraph::Node>& output_shape,
                                       const ngraph::Output<ngraph::Node>& scales,

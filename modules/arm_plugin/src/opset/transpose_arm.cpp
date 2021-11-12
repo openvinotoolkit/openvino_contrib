@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmTranspose::type_info;
-
-opset::ArmTranspose::~ArmTranspose() {}
-
 opset::ArmTranspose::ArmTranspose(const ngraph::Output<ngraph::Node>& arg, const ngraph::Output<ngraph::Node>& input_order)
     : Transpose{arg, input_order} {
     constructor_validate_and_infer_types();

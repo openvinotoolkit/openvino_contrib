@@ -82,11 +82,11 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::StridedSl
 }
 
 template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmStridedSlice& node) {
-    auto&& begin  = std::dynamic_pointer_cast<ngraph::op::Constant>(
+    auto begin  = safe_cast<ngraph::op::Constant>(
                         node.input_value(1).get_node_shared_ptr())->cast_vector<int>();
-    auto&& end    = std::dynamic_pointer_cast<ngraph::op::Constant>(
+    auto end    = safe_cast<ngraph::op::Constant>(
                         node.input_value(2).get_node_shared_ptr())->cast_vector<int>();
-    auto&& stride = std::dynamic_pointer_cast<ngraph::op::Constant>(
+    auto stride = safe_cast<ngraph::op::Constant>(
                         node.input_value(3).get_node_shared_ptr())->cast_vector<int>();
 
     arm_compute::Coordinates starts, finishes, deltas;

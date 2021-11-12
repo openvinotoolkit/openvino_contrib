@@ -45,20 +45,14 @@ void wrap_fft<float>(const float* data,
 
 static void verify_fft_args(const ngraph::op::util::FFTBase& node, std::vector<int64_t>& axes_vals, ngraph::Shape& output_shape) {
     output_shape = node.get_input_shape(0);
-    auto axes = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
-    if (!axes) {
-        IE_THROW() << "Supported FFT op with constant axes only";
-    }
+    auto axes = safe_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
     axes_vals = axes->cast_vector<int64_t>();
 
     if (node.get_input_size() == 3) {
         if (node.get_input_shape(2).size() != node.get_input_shape(1).size()) {
             IE_THROW() << "Signal size input length should be equal to axis input length";
         }
-        auto signal_sizes = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
-        if (!signal_sizes) {
-            IE_THROW() << "Supported FFT op with constant signal sizes only";
-        }
+        auto signal_sizes = safe_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
         std::vector<int64_t> signal_size_vals = signal_sizes->cast_vector<int64_t>();
 
         std::int64_t input_rank = static_cast<std::int64_t>(output_shape.size());

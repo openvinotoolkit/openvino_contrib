@@ -74,7 +74,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::Floor>();
     Register<opset::Exp>();
     Register<opset::MatMul>();
-    Register<opset::MatMulBias>();
+    Register<opset::ArmMatMulBias>();
     Register<opset::Pad>();
     Register<opset::BatchNormInference>();
     Register<opset::HSwish>();
@@ -193,7 +193,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
             auto hasQuantizationInfo = (itInfo != rt_info.end());
             arm_compute::TensorInfo tensorInfo;
             if (quantizedOutput && hasQuantizationInfo) {
-                auto& quantizationInfo = std::dynamic_pointer_cast<ngraph::VariantImpl<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                auto& quantizationInfo = safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(itInfo->second)->get();
                 arm_compute::DataType dataType;
                 switch (outputDataType) {
                     case ngraph::element::Type_t::u8 : dataType = arm_compute::DataType::QASYMM8; break;
@@ -250,7 +250,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
     for (auto&& node : orderedOps) {
         const auto& nodeID = node->get_instance_id();
         if (ngraph::op::is_constant(node)) {
-            auto constNode = std::dynamic_pointer_cast<opset::Constant>(node);
+            auto constNode = safe_cast<opset::Constant>(node);
             _layers.at(nodeID)._outputs.begin()->second._tensor->allocator()->import_memory(const_cast<void*>(constNode->get_data_ptr()));
         } else if (!ngraph::op::is_parameter(node) && !ngraph::op::is_output(node) && !ngraph::is_type<opset::ArmNoOp>(node.get())) {
             auto conversion = _conversions.at(node->get_type_info())(*node);

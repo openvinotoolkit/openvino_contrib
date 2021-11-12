@@ -9,8 +9,7 @@
 namespace ArmPlugin {
 namespace opset {
 struct ArmNoOp : public ngraph::op::Op {
-    NGRAPH_RTTI_DECLARATION;
-    ArmNoOp() = default;
+    OPENVINO_OP("ArmNoOp", "arm_opset");
     ArmNoOp(const ngraph::Output<ngraph::Node>& arg);
     bool visit_attributes(ngraph::AttributeVisitor& visitor) override;
     void validate_and_infer_types() override;

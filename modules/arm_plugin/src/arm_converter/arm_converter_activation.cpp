@@ -107,12 +107,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::HardSigmoi
         return this->MakeConversion(refFunction, node.input(0), alpha, beta, node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
 
-    auto alpha_node = std::dynamic_pointer_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
-    auto beta_node  = std::dynamic_pointer_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
-
-    if (!alpha_node || !beta_node) {
-        IE_THROW() << "Unsupported HardSigmoid with inconstant alpha or beta";
-    }
+    auto alpha_node = safe_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto beta_node  = safe_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
 
     switch (node.get_input_element_type(0)) {
         case ngraph::element::Type_t::f16 : {

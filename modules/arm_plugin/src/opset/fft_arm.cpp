@@ -7,10 +7,6 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-constexpr NodeTypeInfo opset::ArmFFT::type_info;
-
-opset::ArmFFT::~ArmFFT() {}
-
 opset::ArmFFT::ArmFFT(const ngraph::Output<ngraph::Node>& data, ArmFFT::Axis axis, bool inverse)
     : Op({data}), m_axis(axis == opset::ArmFFT::Axis::axisY ? 1u : 0u), m_inverse(inverse) {
     constructor_validate_and_infer_types();
