@@ -5,7 +5,6 @@
 #include "bidirectional_lstm_sequence_composition.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
-#include <exec_graph_info.hpp>
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
 #include <ngraph/op/concat.hpp>
@@ -21,6 +20,7 @@
 #include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
 #include <transformations/op_conversions/convert_ti_to_sequences.hpp>
 #include <transformer/nodes/concat_optimized.hpp>
+#include <transformer/nodes/lstm_sequence_optimized.hpp>
 
 #include "cuda_rt_info.hpp"
 
@@ -29,23 +29,62 @@ namespace ngraph::pass {
 NGRAPH_RTTI_DEFINITION(ngraph::pass::Convert2LSTMSequenceToBidirectionalLSTMSequence,
                        "Convert2LSTMSequenceToBidirectionalLSTMSequence",
                        0);
+NGRAPH_RTTI_DEFINITION(ngraph::pass::ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized,
+                       "ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized",
+                       0);
 namespace {
 
-Node* findConcat(const Output<Node>& node) {
+Node* findConcat(const Output<Node>& node, ngraph::op::v1::Transpose*& transpose) {
     for (const auto& in : node.get_target_inputs()) {
+        if (auto tranNode = dynamic_cast<ngraph::op::v1::Transpose*>(in.get_node())) {
+            if (!transpose) {
+                transpose = tranNode;
+            }
+        }
         if (dynamic_cast<ngraph::op::Concat*>(in.get_node())) {
             return in.get_node();
         } else if (dynamic_cast<CUDAPlugin::nodes::ConcatOptimized*>(in.get_node())) {
             return in.get_node();
         }
         for (const auto& out : in.get_node()->outputs()) {
-            auto foundNode = findConcat(out);
+            auto foundNode = findConcat(out, transpose);
             if (foundNode) {
                 return foundNode;
             }
         }
     }
     return nullptr;
+}
+
+void getLastTransposeOrReshape(Node& node, Node*& foundNode) {
+    if (node.outputs().size() == 1) {
+        if (dynamic_cast<ngraph::op::v1::Transpose*>(&node)) {
+            foundNode = &node;
+        } else if (dynamic_cast<ngraph::op::v1::Reshape*>(&node)) {
+            foundNode = &node;
+        }
+
+        for (const auto& in : node.get_output_target_inputs(0)) {
+            if (dynamic_cast<ngraph::op::v1::Transpose*>(in.get_node())) {
+                foundNode = in.get_node();
+            } else if (dynamic_cast<ngraph::op::v1::Reshape*>(in.get_node())) {
+                foundNode = in.get_node();
+            }
+            getLastTransposeOrReshape(*in.get_node(), foundNode);
+        }
+    }
+}
+
+auto transposePerm(const Node* tran) {
+    if (tran) {
+        std::vector<int64_t> perm;
+        auto perm_const = dynamic_cast<ngraph::op::v0::Constant*>(tran->get_input_source_output(1).get_node());
+        const int64_t* ptr = reinterpret_cast<const int64_t*>(perm_const->get_data_ptr());
+        auto span = gsl::make_span(
+            ptr, CUDAPlugin::OperationBuffersExtractor::GetTensorByteSize(perm_const->output(0)) / sizeof(int64_t));
+        return std::vector<int64_t>{span.begin(), span.end()};
+    }
+    return std::vector<int64_t>{};
 }
 
 }  // namespace
@@ -93,10 +132,16 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
         return false;
     }
 
-    auto y_replacement = findConcat(lstm_sequence_forward->output(0));
-    auto ho_replacement = findConcat(lstm_sequence_forward->output(1));
-    auto co_replacement = findConcat(lstm_sequence_forward->output(2));
+    ngraph::op::v1::Transpose* y_transpose = nullptr;
+    ngraph::op::v1::Transpose* ho_transpose = nullptr;
+    ngraph::op::v1::Transpose* co_transpose = nullptr;
+    auto y_replacement = findConcat(lstm_sequence_forward->output(0), y_transpose);
+    auto ho_replacement = findConcat(lstm_sequence_forward->output(1), ho_transpose);
+    auto co_replacement = findConcat(lstm_sequence_forward->output(2), co_transpose);
     if (!y_replacement || !ho_replacement || !co_replacement) {
+        return false;
+    }
+    if (y_transpose && transposePerm(y_transpose) != std::vector<int64_t>{2, 1, 0, 3}) {
         return false;
     }
 
@@ -149,6 +194,154 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
     ngraph::replace_node(lstm_sequence_forward->shared_from_this(), lstm_sequence_bidirectional);
     ngraph::replace_node(lstm_sequence_reverse->shared_from_this(), lstm_sequence_bidirectional);
 
+    if (y_transpose) {
+        std::vector<int64_t> transpose_y_perm = {2, 1, 0, 3};
+        std::vector<int64_t> transpose_ho_co_perm = {1, 0, 2};
+        auto transpose_y_const =
+            std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{4}, transpose_y_perm);
+        auto transpose_ho_co_const =
+            std::make_shared<ngraph::op::Constant>(ngraph::element::i64, ngraph::Shape{3}, transpose_ho_co_perm);
+        auto transpose_y = std::make_shared<ngraph::op::v1::Transpose>(y, transpose_y_const);
+        auto transpose_ho = std::make_shared<ngraph::op::v1::Transpose>(ho, transpose_ho_co_const);
+        auto transpose_co = std::make_shared<ngraph::op::v1::Transpose>(co, transpose_ho_co_const);
+        transpose_y->set_friendly_name(y_replacement->get_friendly_name());
+        transpose_ho->set_friendly_name(ho_replacement->get_friendly_name());
+        transpose_co->set_friendly_name(co_replacement->get_friendly_name());
+        ngraph::copy_runtime_info(y_replacement->shared_from_this(), transpose_y);
+        ngraph::copy_runtime_info(ho_replacement->shared_from_this(), transpose_ho);
+        ngraph::copy_runtime_info(co_replacement->shared_from_this(), transpose_co);
+        ngraph::replace_node(y_replacement->shared_from_this(), transpose_y);
+        ngraph::replace_node(ho_replacement->shared_from_this(), transpose_ho);
+        ngraph::replace_node(co_replacement->shared_from_this(), transpose_co);
+    } else {
+        std::string original_names_mapping = "FUSED:";
+        auto lstmSequenceOutputReplacer = [&original_names_mapping](const auto& replacement, const auto& new_node) {
+            for (auto& out : replacement->outputs()) {
+                for (const auto& in : out.get_target_inputs()) {
+                    const auto& in_node = in.get_node();
+                    if (dynamic_cast<ngraph::op::Result*>(in_node)) {
+                        original_names_mapping +=
+                            in.get_node()->get_friendly_name() + "=" + out.get_node()->get_friendly_name() + ";";
+                    }
+                }
+                out.replace(new_node);
+            }
+        };
+
+        lstmSequenceOutputReplacer(y_replacement, y);
+        lstmSequenceOutputReplacer(ho_replacement, ho);
+        lstmSequenceOutputReplacer(co_replacement, co);
+
+        auto& rt_info = lstm_sequence_bidirectional->get_rt_info();
+        rt_info[CUDAPlugin::RtInfo::CUDA_FUSED_NAMES_MAPPING] =
+            std::make_shared<ngraph::VariantWrapper<std::string>>(original_names_mapping);
+    }
+
+    return true;
+}
+
+bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
+    // Original OpenVINO:
+    //   in              - [batch_size, seq_length, input_size]
+    //   out             - [batch_size, num_directions, seq_length, hidden_size]
+    //   cell/hidden in  - [batch_size, num_directions, hidden_size]
+    //   cell/hidden out - [batch_size, num_directions, hidden_size]
+    //
+    // cuDNN Optimized 0:
+    //   in              - [batch_size, seq_length, input_size]
+    //   out             - [batch_size, seq_length, num_directions, hidden_size]
+    //   cell/hidden in  - [batch_size, num_directions, hidden_size]
+    //   cell/hidden out - [num_directions, batch_size, hidden_size]
+    //
+    // cuDNN Optimized 1:
+    //   in              - [seq_length, batch_size, input_size]
+    //   out             - [seq_length, batch_size, num_directions, hidden_size]
+    //   cell/hidden in  - [batch_size, num_directions, hidden_size]
+    //   cell/hidden out - [num_directions, batch_size, hidden_size]
+
+    using MajorFormat = CUDAPlugin::nodes::LSTMSequenceOptimized::MajorFormat;
+
+    auto lstm_sequence_bidirectional = std::dynamic_pointer_cast<ngraph::op::v5::LSTMSequence>(m.get_match_root());
+    if (!lstm_sequence_bidirectional ||
+        lstm_sequence_bidirectional->get_direction() != ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL) {
+        return false;
+    }
+
+    Node* y_replacement = nullptr;
+    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(0).begin()->get_node(),
+                              y_replacement);
+    Node* ho_replacement = nullptr;
+    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(1).begin()->get_node(),
+                              ho_replacement);
+    Node* co_replacement = nullptr;
+    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(2).begin()->get_node(),
+                              co_replacement);
+    if (!y_replacement || !ho_replacement || !co_replacement) {
+        return false;
+    }
+
+    const auto y_shape = lstm_sequence_bidirectional->output(0).get_shape();
+    const auto y_replacement_shape = y_replacement->output(0).get_shape();
+    if (y_replacement_shape.size() < 3) {
+        return false;
+    }
+    std::optional<MajorFormat> major_format;
+    std::shared_ptr<ngraph::op::v1::Transpose> x_transpose;
+    if (y_replacement_shape[0] == y_shape[0] && y_replacement_shape[1] == y_shape[2]) {
+        major_format = MajorFormat::BatchMajor;
+    } else if (y_replacement_shape[0] == y_shape[2] && y_replacement_shape[1] == y_shape[0]) {
+        const auto x_node = lstm_sequence_bidirectional->get_input_source_output(0).get_node();
+        if (auto x_tran = dynamic_cast<ngraph::op::v1::Transpose*>(x_node)) {
+            if (transposePerm(x_transpose.get()) == std::vector<int64_t>{1, 0, 2}) {
+                x_transpose = std::dynamic_pointer_cast<ngraph::op::v1::Transpose>(x_tran->shared_from_this());
+                major_format = MajorFormat::SequenceMajor;
+            }
+        }
+    }
+    if (!major_format) {
+        return false;
+    }
+
+    auto new_lstm_sequence_bidirectional = std::make_shared<CUDAPlugin::nodes::LSTMSequenceOptimized>(
+        x_transpose ? x_transpose : lstm_sequence_bidirectional->get_input_source_output(0),
+        lstm_sequence_bidirectional->get_input_source_output(1),
+        lstm_sequence_bidirectional->get_input_source_output(2),
+        lstm_sequence_bidirectional->get_input_source_output(3),
+        lstm_sequence_bidirectional->get_input_source_output(4),
+        lstm_sequence_bidirectional->get_input_source_output(5),
+        lstm_sequence_bidirectional->get_input_source_output(6),
+        lstm_sequence_bidirectional->get_hidden_size(),
+        ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL,
+        major_format.value(),
+        lstm_sequence_bidirectional->get_activations_alpha(),
+        lstm_sequence_bidirectional->get_activations_beta(),
+        lstm_sequence_bidirectional->get_activations(),
+        lstm_sequence_bidirectional->get_clip());
+    new_lstm_sequence_bidirectional->validate_and_infer_types();
+
+    std::shared_ptr<ngraph::op::v1::Reshape> reshape;
+    if (y_replacement_shape.size() == 3) {
+        const auto& out = new_lstm_sequence_bidirectional->output(0);
+        const auto& out_shape = out.get_shape();
+        std::vector<int32_t> reshape_pattern_values = {static_cast<int32_t>(out_shape[0]),
+                                                       static_cast<int32_t>(out_shape[1]),
+                                                       static_cast<int32_t>(out_shape[2] * out_shape[3])};
+        auto reshape_pattern =
+            std::make_shared<ngraph::op::v0::Constant>(ngraph::element::i32, ngraph::Shape{3}, reshape_pattern_values);
+        reshape = std::make_shared<ngraph::op::v1::Reshape>(out, reshape_pattern, true);
+    }
+
+    auto y = new_lstm_sequence_bidirectional->output(0);
+    auto ho = new_lstm_sequence_bidirectional->output(1);
+    auto co = new_lstm_sequence_bidirectional->output(2);
+
+    if (x_transpose) {
+        ngraph::copy_runtime_info(x_transpose->shared_from_this(), new_lstm_sequence_bidirectional);
+        ngraph::replace_node(x_transpose->shared_from_this(), new_lstm_sequence_bidirectional);
+    }
+    ngraph::copy_runtime_info(lstm_sequence_bidirectional->shared_from_this(), new_lstm_sequence_bidirectional);
+    ngraph::replace_node(lstm_sequence_bidirectional->shared_from_this(), new_lstm_sequence_bidirectional);
+
     std::string original_names_mapping = "FUSED:";
     auto lstmSequenceOutputReplacer = [&original_names_mapping](const auto& replacement, const auto& new_node) {
         for (auto& out : replacement->outputs()) {
@@ -163,11 +356,17 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
         }
     };
 
-    lstmSequenceOutputReplacer(y_replacement, y);
+    if (reshape) {
+        reshape->set_friendly_name(y_replacement->get_friendly_name());
+        ngraph::copy_runtime_info(y_replacement->shared_from_this(), reshape);
+        ngraph::replace_node(y_replacement->shared_from_this(), reshape);
+    } else {
+        lstmSequenceOutputReplacer(y_replacement, y);
+    }
     lstmSequenceOutputReplacer(ho_replacement, ho);
     lstmSequenceOutputReplacer(co_replacement, co);
 
-    auto& rt_info = lstm_sequence_bidirectional->get_rt_info();
+    auto& rt_info = new_lstm_sequence_bidirectional->get_rt_info();
     rt_info[CUDAPlugin::RtInfo::CUDA_FUSED_NAMES_MAPPING] =
         std::make_shared<ngraph::VariantWrapper<std::string>>(original_names_mapping);
 
@@ -181,7 +380,20 @@ Convert2LSTMSequenceToBidirectionalLSTMSequence::Convert2LSTMSequenceToBidirecti
         return bidirectional_lstm_sequence_composition(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(transpose, "BidirectionalLSTMSequenceDecomposition");
+    auto m = std::make_shared<ngraph::pattern::Matcher>(transpose, "Convert2LSTMSequenceToBidirectionalLSTMSequence");
+    this->register_matcher(m, callback);
+}
+
+ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized::
+    ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized() {
+    auto transpose = ngraph::pattern::wrap_type<ngraph::op::v5::LSTMSequence>();
+
+    ngraph::matcher_pass_callback callback = [](pattern::Matcher& m) {
+        return bidirectional_lstm_sequence_cudnn_optimized(m);
+    };
+
+    auto m = std::make_shared<ngraph::pattern::Matcher>(
+        transpose, "ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized");
     this->register_matcher(m, callback);
 }
 
@@ -205,6 +417,8 @@ bool BidirectionalSequenceComposition::run_on_function(std::shared_ptr<ngraph::F
     manager.register_pass<ngraph::pass::ConvertTensorIteratorToLSTMSequence>();
     manager.register_pass<ngraph::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
+    manager.register_pass<ngraph::pass::CommonOptimizations>();
+    manager.register_pass<ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized>();
     manager.register_pass<ngraph::pass::CommonOptimizations>();
 
     manager.run_passes(f);

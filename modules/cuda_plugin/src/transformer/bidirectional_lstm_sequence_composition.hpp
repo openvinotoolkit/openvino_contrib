@@ -15,6 +15,12 @@ public:
     Convert2LSTMSequenceToBidirectionalLSTMSequence();
 };
 
+class ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized();
+};
+
 class BidirectionalSequenceComposition : public ngraph::pass::FunctionPass {
 public:
     NGRAPH_RTTI_DECLARATION;
