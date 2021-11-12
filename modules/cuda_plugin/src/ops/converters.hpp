@@ -15,12 +15,12 @@
 
 namespace CUDAPlugin {
 
- /**
-  * Converts OpenVINO data type to T
-  * @tparam T Data type to convert
-  * @param type OpenVINO data type
-  * @return Converted T data type
-  */
+/**
+ * Converts OpenVINO data type to T
+ * @tparam T Data type to convert
+ * @param type OpenVINO data type
+ * @return Converted T data type
+ */
 template <typename T>
 T convertDataType(ngraph::element::Type type);
 
@@ -31,8 +31,9 @@ template <>
 inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::element::Type type) {
     using ngraph::element::Type_t;
     switch (static_cast<Type_t>(type)) {
-#if CUDART_VERSION >= 11020
-        case Type_t::bf16: return CUDA_R_16BF;
+#if CUDART_VERSION >= 11000
+        case Type_t::bf16:
+            return CUDA_R_16BF;
         case Type_t::i16:
             return CUDA_R_16I;
         case Type_t::u16:
@@ -100,7 +101,7 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
     using nType_t = ngraph::element::Type_t;
     using kType_t = kernel::Type_t;
     switch (static_cast<nType_t>(type)) {
-#if CUDART_VERSION >= 11020
+#if CUDART_VERSION >= 11000
         case nType_t::bf16:
             return kType_t::bf16;
         case nType_t::i16:
@@ -171,12 +172,18 @@ inline constexpr std::size_t elementSize(cudnnDataType_t type) {
  */
 inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::ActivationMode& mode) {
     switch (mode) {
-        case nodes::ActivationMode::SIGMOID: return CUDNN_ACTIVATION_SIGMOID;
-        case nodes::ActivationMode::RELU: return CUDNN_ACTIVATION_RELU;
-        case nodes::ActivationMode::TANH: return CUDNN_ACTIVATION_TANH;
-        case nodes::ActivationMode::CLIPPED_RELU: return CUDNN_ACTIVATION_CLIPPED_RELU;
-        case nodes::ActivationMode::ELU: return CUDNN_ACTIVATION_ELU;
-        case nodes::ActivationMode::NO_ACTIVATION: return CUDNN_ACTIVATION_IDENTITY;
+        case nodes::ActivationMode::SIGMOID:
+            return CUDNN_ACTIVATION_SIGMOID;
+        case nodes::ActivationMode::RELU:
+            return CUDNN_ACTIVATION_RELU;
+        case nodes::ActivationMode::TANH:
+            return CUDNN_ACTIVATION_TANH;
+        case nodes::ActivationMode::CLIPPED_RELU:
+            return CUDNN_ACTIVATION_CLIPPED_RELU;
+        case nodes::ActivationMode::ELU:
+            return CUDNN_ACTIVATION_ELU;
+        case nodes::ActivationMode::NO_ACTIVATION:
+            return CUDNN_ACTIVATION_IDENTITY;
         default:
             throwIEException(fmt::format("Unsupported activation: {}", mode));
     }
