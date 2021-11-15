@@ -35,22 +35,34 @@ using fsec = std::chrono::duration<float>;
 ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&                networkInputs,
                                  const InferenceEngine::OutputsDataMap&               networkOutputs,
                                  const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork) :
-    IInferRequestInternal(networkInputs, networkOutputs),
-    _executableNetwork(executableNetwork),
+    IInferRequestInternal(networkInputs, networkOutputs) {
+    InitArmInferRequest(executableNetwork);
+}
+
+ArmInferRequest::ArmInferRequest(const std::vector<std::shared_ptr<const ov::Node>>& networkInputs,
+                                 const std::vector<std::shared_ptr<const ov::Node>>& networkOutputs,
+                                 const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork) :
+    IInferRequestInternal(networkInputs, networkOutputs) {
+    InitArmInferRequest(executableNetwork);
+}
+
+void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork) {
+    _executableNetwork = executableNetwork;
 #if 1
-    _lifetime{std::make_shared<arm_compute::OffsetLifetimeManager>()},
+    _lifetime = std::make_shared<arm_compute::OffsetLifetimeManager>();
 #else
-    _lifetime{std::make_shared<arm_compute::BlobLifetimeManager>()},
+    _lifetime = std::make_shared<arm_compute::BlobLifetimeManager>();
 #endif
-    _pool{std::make_shared<arm_compute::PoolManager>()},
-    _memoryManager{std::make_shared<arm_compute::MemoryManagerOnDemand>(_lifetime, _pool)},
-    _memoryGroup{_memoryManager} {
+    _pool = std::make_shared<arm_compute::PoolManager>();
+    _memoryManager = std::make_shared<arm_compute::MemoryManagerOnDemand>(_lifetime, _pool);
+    _memoryGroup = std::make_shared<arm_compute::MemoryGroup>(_memoryManager);
+
     auto requestID = std::to_string(_executableNetwork->_requestId.fetch_add(1));
     Layer::Map layers;
     IE_ASSERT(_executableNetwork->_executor != nullptr);
     _executableNetwork->_executor->runAndWait({
         [&] {
-            layers = Converter{_executableNetwork->_function}.Configure(_memoryManager, _memoryGroup);
+            layers = Converter{_executableNetwork->_function}.Configure(_memoryManager, *_memoryGroup);
         }
     });
     auto allocateMemory = [] (const auto& blobName, const auto& blobDataMap, auto& blobs, auto tensor, auto output) {
@@ -138,7 +150,7 @@ ArmInferRequest::ArmInferRequest(const InferenceEngine::InputsDataMap&          
     }
     IE_ASSERT(!_outputInfo.empty());
     _memoryManager->populate(_allocator, 1);
-    _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(_memoryGroup);
+    _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
     for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
         auto& layer = layers.at(node->get_instance_id());
         if (ngraph::is_type<opset::ArmNoOp>(node.get())) {
