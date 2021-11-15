@@ -74,11 +74,11 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.3-openvino master
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2021.4 releases/2021/4
-checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git 2021.4 releases/2021/4
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.3-openvino-2021.4.1 master
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2021.4.1 releases/2021/4
+checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git 2021.4.1 releases/2021/4.1
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git 2021.4 release
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git 2021.4.1 release
 fi
 
 #cleanup package destination folder
