@@ -82,7 +82,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmQuantiz
         return CallSwitch(
             AP_WRAP(make, quantize),
             node.get_input_element_type(0), floatTypes,
-            node.get_output_element_type(0), intTypes);
+            node.get_output_element_type(0), std::tuple<std::int8_t, std::uint8_t>{});
     } else {
         return MakeConversion<NEQuantizationLayerQI>(node.input(0), node.output(0), qInfo);
     }
