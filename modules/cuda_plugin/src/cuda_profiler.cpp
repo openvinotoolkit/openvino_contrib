@@ -60,7 +60,7 @@ Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCoun
 }
 
 void Profiler::ProcessEvents() {
-    if (infer_count_ == 0) return;
+    if (!perf_count_ || infer_count_ == 0) return;
     constexpr float ms2us = 1000.0;
     std::map<std::string, float> layer_timing{};
     for (auto& timing_map : subgraph_perf_steps_map_) {
