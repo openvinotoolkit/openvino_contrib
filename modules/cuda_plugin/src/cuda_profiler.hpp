@@ -161,14 +161,20 @@ public:
      * @param stream CUDA stream
      */
     ProfilerSequence(Profiler& profiler, size_t index) : profiler_{profiler}, index_{index} {
-        profiler_.exec_timing_.setStart(*profiler_.active_stream_);
+        if (profiler_.perf_count_) {
+            profiler_.exec_timing_.setStart(*profiler_.active_stream_);
+        }
     }
 
     /**
      * Destructor
      * Stops time measurement
      */
-    ~ProfilerSequence() { profiler_.exec_timing_.setStop(*profiler_.active_stream_); }
+    ~ProfilerSequence() {
+        if (profiler_.perf_count_) {
+            profiler_.exec_timing_.setStop(*profiler_.active_stream_);
+        }
+    }
 
     /**
      * begin method for iterable class
@@ -196,7 +202,7 @@ public:
 
 private:
     Profiler& profiler_;
-    size_t index_;
+    const size_t index_;
 };
 
 }  // namespace CUDAPlugin
