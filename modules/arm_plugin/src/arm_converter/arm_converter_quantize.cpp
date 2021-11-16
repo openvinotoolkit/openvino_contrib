@@ -46,46 +46,13 @@ protected:
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEQuantizationLayer> _quant;
 };
-template <typename T, typename Q>
-void quantize(const T* input_data,
-              Q* output_data,
-              const ngraph::Shape& input_data_shape,
-              float scale,
-              std::int32_t offset) {
-    for (size_t i = 0; i < ov::shape_size(input_data_shape); ++i) {
-        float output = input_data[i] / scale + offset;
-        output -= std::remainder(output, 1.0f);
-        if (output < std::numeric_limits<Q>::lowest()) {
-            output_data[i] = std::numeric_limits<Q>::lowest();
-        } else if (output > std::numeric_limits<Q>::max()) {
-            output_data[i] = std::numeric_limits<Q>::max();
-        } else {
-            output_data[i] = static_cast<Q>(output);
-        }
-    }
-}
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmQuantize& node) {
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     if (qInfoIt == node.get_rt_info().end()) {
         IE_THROW() << "No quantization info available for ArmQuantize";
     }
     auto qInfo = qInfoIt->second.as<arm_compute::QuantizationInfo>();
-    if (node.get_input_element_type(0).is_real()) {
-        auto make = [&] (auto refFunction) {
-            return this->MakeConversion(refFunction,
-                                        node.input(0),
-                                        node.output(0),
-                                        node.get_input_shape(0),
-                                        qInfo.scale()[0],
-                                        qInfo.offset()[0]);
-        };
-        return CallSwitch(
-            AP_WRAP(make, quantize),
-            node.get_input_element_type(0), floatTypes,
-            node.get_output_element_type(0), std::tuple<std::int8_t, std::uint8_t>{});
-    } else {
-        return MakeConversion<NEQuantizationLayerQI>(node.input(0), node.output(0), qInfo);
-    }
+    return MakeConversion<NEQuantizationLayerQI>(node.input(0), node.output(0), qInfo);
 }
 
 struct NEDequantizationLayerQI final: public arm_compute::IFunction {

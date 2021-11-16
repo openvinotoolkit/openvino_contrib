@@ -38,7 +38,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceSum&
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceMean& node) {
     arm_compute::Coordinates axes;
-    auto reduction_axes = safe_cast<opset::Constant>(node.input_value(1).get_node())->cast_vector<int64_t>();
+    auto reduction_axes = safe_cast<opset::Constant>(node.input_value(1).get_node())->cast_vector<std::int64_t>();
     for (size_t i = 0; i < reduction_axes.size(); ++i) {
         auto pos = AxisCast(i, reduction_axes.size());
         axes.set(pos, reduction_axes[i]);
