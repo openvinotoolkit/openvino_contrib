@@ -47,8 +47,8 @@ static inline __device__ void gather(unsigned data_length,
 
 template <typename DataType, typename IndexType>
 static __global__ void chunks_gather(unsigned data_length,
+                                     unsigned indices_size,
                                      size_t index_range,
-                                     unsigned num_dicts,
                                      unsigned dicts_batch_stride,
                                      unsigned indices_batch_stride,
                                      unsigned out_batch_stride,
@@ -56,10 +56,9 @@ static __global__ void chunks_gather(unsigned data_length,
                                      const DataType* src_dict,
                                      const IndexType* src_index,
                                      DataType* dst_data) {
-    const auto indices_size = gridDim.y;
-    const auto indices_index = blockIdx.y;
-    const auto dict = blockIdx.x % num_dicts;
-    const auto batch = blockIdx.x / num_dicts;
+    const auto dict = blockIdx.y;
+    const auto indices_index = blockIdx.x % indices_size;
+    const auto batch = blockIdx.x / indices_size;
     const auto chunk = (blockIdx.z * blockDim.x + threadIdx.x) * els_per_thread;
     gather(data_length,
            index_range,
@@ -74,9 +73,9 @@ static __global__ void chunks_gather(unsigned data_length,
 }
 
 template <typename DataType, typename IndexType>
-static __global__ void dicts_gather(unsigned data_length,
+static __global__ void dicts_gather(unsigned num_dicts,
+                                    unsigned indices_size,
                                     size_t index_range,
-                                    unsigned num_dicts,
                                     unsigned dicts_batch_stride,
                                     unsigned indices_batch_stride,
                                     unsigned out_batch_stride,
@@ -84,14 +83,14 @@ static __global__ void dicts_gather(unsigned data_length,
                                     const DataType* src_dict,
                                     const IndexType* src_index,
                                     DataType* dst_data) {
-    const auto indices_size = gridDim.y;
-    const auto indices_index = blockIdx.y;
+    const auto data_length = gridDim.y;
+    const auto chunk = blockIdx.y * els_per_thread;
     const auto dict = blockIdx.z * blockDim.x + threadIdx.x;
     if (dict >= num_dicts) {
         return;
     }
-    const auto chunk = blockIdx.x % data_length * els_per_thread;
-    const auto batch = blockIdx.x / data_length;
+    const auto indices_index = blockIdx.x % indices_size;
+    const auto batch = blockIdx.x / indices_size;
     gather(data_length,
            index_range,
            els_per_thread,
@@ -114,6 +113,7 @@ Gather::Gather(Type_t element_type,
                unsigned blocks_per_grid,
                unsigned threads_per_block,
                unsigned grid_dim_x,
+               unsigned grid_dim_y,
                unsigned dicts_batch_stride,
                unsigned indices_batch_stride,
                unsigned out_batch_stride,
@@ -129,6 +129,7 @@ Gather::Gather(Type_t element_type,
       blocks_per_grid_(blocks_per_grid),
       threads_per_block_(threads_per_block),
       grid_dim_x_(grid_dim_x),
+      grid_dim_y_(grid_dim_y),
       dicts_batch_stride_(dicts_batch_stride),
       indices_batch_stride_(indices_batch_stride),
       out_batch_stride_(out_batch_stride),
@@ -189,7 +190,7 @@ void Gather::CallByDataType(const cudaStream_t stream,
 
 template <typename DataType, typename IndexType>
 void Gather::Call(const cudaStream_t stream, const void* src_dict, const void* src_index, void* dst_data) const {
-    dim3 grid{grid_dim_x_, indices_size_, blocks_per_grid_};
+    dim3 grid{grid_dim_x_, grid_dim_y_, blocks_per_grid_};
 
     const auto src_dict_typed = static_cast<const DataType*>(src_dict);
     const auto src_index_typed = static_cast<const IndexType*>(src_index);
@@ -197,8 +198,8 @@ void Gather::Call(const cudaStream_t stream, const void* src_dict, const void* s
 
     if (gather_chunks_) {
         kernel::chunks_gather<<<grid, threads_per_block_, 0, stream>>>(data_length_,
+                                                                       indices_size_,
                                                                        index_range_,
-                                                                       num_dicts_,
                                                                        dicts_batch_stride_,
                                                                        indices_batch_stride_,
                                                                        out_batch_stride_,
@@ -207,13 +208,13 @@ void Gather::Call(const cudaStream_t stream, const void* src_dict, const void* s
                                                                        src_index_typed,
                                                                        dst_data_typed);
     } else {
-        kernel::dicts_gather<<<grid, threads_per_block_, 0, stream>>>(data_length_,
+        kernel::dicts_gather<<<grid, threads_per_block_, 0, stream>>>(num_dicts_,
+                                                                      indices_size_,
                                                                       index_range_,
-                                                                      num_dicts_,
                                                                       dicts_batch_stride_,
                                                                       indices_batch_stride_,
-                                                                      els_per_thread_dicts_,
                                                                       out_batch_stride_,
+                                                                      els_per_thread_dicts_,
                                                                       src_dict_typed,
                                                                       src_index_typed,
                                                                       dst_data_typed);
