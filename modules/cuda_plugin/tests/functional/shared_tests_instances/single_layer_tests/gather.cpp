@@ -11,6 +11,7 @@
 #include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
+#include "ops/gather.hpp"
 
 namespace LayerTestsDefinitions {
 
@@ -371,6 +372,37 @@ INSTANTIATE_TEST_CASE_P(Gather_v7_Tacotron2_shapes_enc,
                                            ::testing::Values(tacotron2_enc_params_v1_v7.device_)),
                         Gather7LayerTest::getTestCaseName);
 
+const GatherTestParams tacotron2_enc_params_big_v1_v7 = {{148, 512}, {100, 1000}};
+
+INSTANTIATE_TEST_CASE_P(Gather_v1_Tacotron2_shapes_enc_big,
+                        CudaGatherLayerTest,
+                        ::testing::Combine(::testing::Values(generate_indices<int>(tacotron2_enc_params_big_v1_v7)),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.indices_shape_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.axis_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.params_shape_),
+                                           ::testing::ValuesIn(tacotron2_enc_params_big_v1_v7.net_precisions_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.input_precision_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.output_precision_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.input_layout_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.output_layout_),
+                                           ::testing::Values(tacotron2_enc_params_big_v1_v7.device_)),
+                        CudaGatherLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    Gather_v7_Tacotron2_shapes_enc_big,
+    Gather7LayerTest,
+    ::testing::Combine(::testing::Values(tacotron2_enc_params_big_v1_v7.params_shape_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.indices_shape_),
+                       ::testing::Values(std::make_tuple(tacotron2_enc_params_big_v1_v7.axis_,
+                                                         tacotron2_enc_params_big_v1_v7.batch_dims_)),
+                       ::testing::ValuesIn(tacotron2_enc_params_big_v1_v7.net_precisions_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.input_precision_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.output_precision_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.input_layout_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.output_layout_),
+                       ::testing::Values(tacotron2_enc_params_big_v1_v7.device_)),
+    Gather7LayerTest::getTestCaseName);
+
 // ------------- LPCNet shapes -------------
 const GatherTestParams lpcnet_enc_params_v1_v7 = {{256, 64}, {64, 64, 1}};
 
@@ -567,6 +599,7 @@ const ParamsVec all_params_v1 = {smoke_01_params_v1_v7,
                                  smoke_04_params_v1_v7,
                                  smoke_07_ov_params_v1_v7,
                                  tacotron2_enc_params_v1_v7,
+                                 tacotron2_enc_params_big_v1_v7,
                                  lpcnet_enc_params_v1_v7,
                                  lpcnet_dec_params_v1_v7,
                                  ov_params_v1,
@@ -585,6 +618,7 @@ const ParamsVec all_params_v7 = {smoke_01_params_v1_v7,
                                  smoke_10_ov_params_v7,
                                  smoke_11_ov_params_v7,
                                  tacotron2_enc_params_v1_v7,
+                                 tacotron2_enc_params_big_v1_v7,
                                  lpcnet_enc_params_v1_v7,
                                  lpcnet_dec_params_v1_v7,
                                  ov_params_v7,
