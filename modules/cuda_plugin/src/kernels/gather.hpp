@@ -23,6 +23,7 @@ public:
            unsigned blocks_per_grid,
            unsigned threads_per_block,
            unsigned grid_dim_x,
+           unsigned grid_dim_y,
            unsigned dicts_batch_stride,
            unsigned indices_batch_stride,
            unsigned out_batch_stride,
@@ -48,6 +49,7 @@ private:
     unsigned blocks_per_grid_;
     unsigned threads_per_block_;
     unsigned grid_dim_x_;
+    unsigned grid_dim_y_;
     unsigned dicts_batch_stride_;
     unsigned indices_batch_stride_;
     unsigned out_batch_stride_;
