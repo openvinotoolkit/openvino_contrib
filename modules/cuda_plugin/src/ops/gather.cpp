@@ -125,25 +125,24 @@ GatherOp::GatherOp(const CreationContext& context,
     unsigned blocks_per_grid{};
     unsigned threads_per_block{};
     unsigned grid_dim_x{};
+    unsigned grid_dim_y{};
 
     if (gather_chunks) {
         blocks_per_grid =
             num_chunks % max_block_size == 0 ? num_chunks / max_block_size : num_chunks / max_block_size + 1;
         threads_per_block = blocks_per_grid == 1 ? num_chunks : max_block_size;
-        grid_dim_x = num_dicts * batch_count;
-
-        Expects(grid_dim_x <= max_grid_size[0]);
-        Expects(indices_size <= max_grid_size[1]);
-        Expects(blocks_per_grid <= max_grid_size[2]);
+        grid_dim_x = indices_size * batch_count;
+        grid_dim_y = num_dicts;
     } else {
         blocks_per_grid = num_dicts % max_block_size == 0 ? num_dicts / max_block_size : num_dicts / max_block_size + 1;
         threads_per_block = blocks_per_grid == 1 ? num_dicts : max_block_size;
-        grid_dim_x = data_length * batch_count;
-
-        Expects(grid_dim_x <= max_grid_size[0]);
-        Expects(indices_size <= max_grid_size[1]);
-        Expects(blocks_per_grid <= max_grid_size[2]);
+        grid_dim_x = indices_size * batch_count;
+        grid_dim_y = data_length;
     }
+
+    Expects(grid_dim_x <= max_grid_size[0]);
+    Expects(grid_dim_y <= max_grid_size[1]);
+    Expects(blocks_per_grid <= max_grid_size[2]);
 
     gather_kernel_ = kernel::Gather{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
                                     convertDataType<CUDAPlugin::kernel::Type_t>(indices_type),
@@ -155,6 +154,7 @@ GatherOp::GatherOp(const CreationContext& context,
                                     blocks_per_grid,
                                     threads_per_block,
                                     grid_dim_x,
+                                    grid_dim_y,
                                     dicts_batch_stride,
                                     indices_batch_stride,
                                     out_batch_stride,
