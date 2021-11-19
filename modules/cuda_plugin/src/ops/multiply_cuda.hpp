@@ -23,6 +23,8 @@ public:
                  const Workbuffers& workbuffers) const override;
 
 private:
+    size_t in0_num_elements_;
+    size_t in1_num_elements_;
     std::optional<kernel::Elementwise> kernel_;
 };
 
