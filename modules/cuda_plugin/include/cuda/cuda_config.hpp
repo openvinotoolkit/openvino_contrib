@@ -60,5 +60,10 @@ DECLARE_CUDA_CONFIG_KEY(THROUGHPUT_STREAMS);
  */
 DECLARE_CUDA_CONFIG_KEY(OPTIMIZE);
 
+/**
+ * @brief Defines possibility to disable TensorIterator transformation for test purposes.
+ */
+DECLARE_CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM);
+
 }  // namespace CUDAConfigParams
 }  // namespace InferenceEngine

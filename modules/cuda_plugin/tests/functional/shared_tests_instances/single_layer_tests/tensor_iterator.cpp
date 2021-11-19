@@ -16,6 +16,27 @@
 
 using namespace LayerTestsDefinitions;
 
+namespace LayerTestsDefinitions {
+
+class TensorIteratorDisabledTransformationsTest : public TensorIteratorTest {
+protected:
+    void SetUp() override {
+        TensorIteratorTest::SetUp();
+
+        configuration[CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)] = CUDA_CONFIG_VALUE(YES);
+    }
+};
+
+TEST_P(TensorIteratorDisabledTransformationsTest, CompareWithRefs) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
+
+    auto params = GetParam();
+
+    Run();
+}
+
+}  // namespace LayerTestsDefinitions
+
 namespace {
 std::vector<bool> should_decompose = {false};
 std::vector<size_t> smoke_seq_lengths_clip_non_zero{20};
@@ -33,7 +54,7 @@ std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precis
 
 INSTANTIATE_TEST_CASE_P(
     smoke_TensorIteratorNoClip,
-    TensorIteratorTest,
+    TensorIteratorDisabledTransformationsTest,
     ::testing::Combine(::testing::ValuesIn(should_decompose),
                        ::testing::ValuesIn(smoke_seq_lengths_clip_non_zero),
                        ::testing::ValuesIn(batch),
@@ -45,12 +66,12 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    TensorIteratorTest::getTestCaseName);
+    TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 std::vector<size_t> seq_lengths_clip_non_zero{1000};
 INSTANTIATE_TEST_CASE_P(
     TensorIteratorNoClip,
-    TensorIteratorTest,
+    TensorIteratorDisabledTransformationsTest,
     ::testing::Combine(::testing::ValuesIn(should_decompose),
                        ::testing::ValuesIn(seq_lengths_clip_non_zero),
                        ::testing::ValuesIn(batch),
@@ -62,12 +83,12 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    TensorIteratorTest::getTestCaseName);
+    TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 // ------------- Benchmark -------------
 namespace benchmark {
 
-struct TensorIteratorBenchmarkTest : BenchmarkLayerTest<TensorIteratorTest> {};
+struct TensorIteratorBenchmarkTest : BenchmarkLayerTest<TensorIteratorDisabledTransformationsTest> {};
 
 TEST_P(TensorIteratorBenchmarkTest, DISABLED_benchmark) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
@@ -103,7 +124,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-    TensorIteratorTest::getTestCaseName);
+    TensorIteratorBenchmarkTest::getTestCaseName);
 
 }  // namespace benchmark
 
