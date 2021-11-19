@@ -31,9 +31,10 @@ struct Configuration {
 
     // Plugin configuration parameters
 
-    int deviceId                = 0;
-    bool perfCount              = false;
-    bool optimization           = false;
+    int deviceId = 0;
+    bool perfCount = false;
+    bool optimization = false;
+    bool disabled_tensoriterator_transform = false;
     std::string cuda_throughput_streams_ = std::to_string(1);
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
 };
