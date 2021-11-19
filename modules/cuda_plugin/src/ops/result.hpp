@@ -21,13 +21,14 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
-    static std::string GetOutputTensorName(const ngraph::Node& node);
+    static std::vector<std::string> GetOutputTensorName(const ngraph::op::Result& node);
 
 private:
+    static std::optional<std::size_t> GetOutputTensorSubIndex(const ngraph::Output<ngraph::Node>& node);
     static std::optional<std::string> GetFusedOutputTensorName(const ngraph::Node::RTMap& rtInfo,
                                                                const std::string& resultName);
 
-    std::string output_tensor_name_;
+    std::vector<std::string> output_tensor_names_;
 };
 
 }  // namespace CUDAPlugin
