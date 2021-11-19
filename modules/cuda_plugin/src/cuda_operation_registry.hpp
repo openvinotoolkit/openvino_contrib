@@ -5,6 +5,8 @@
 #pragma once
 
 #include <functional>
+#include <typeindex>
+#include <typeinfo>
 #include <unordered_map>
 
 #include "cuda_operation_base.hpp"
@@ -70,12 +72,15 @@ class OperationRegistry final {
                     }
                 }
             });
+        getInstance().registerOpType<TOperation>(opName);
     }
   };
 
   static OperationRegistry& getInstance();
 
   bool hasOperation(const std::shared_ptr<ngraph::Node>& node);
+
+  std::optional<std::type_index> getOperationType(const std::shared_ptr<ngraph::Node>& node) const;
 
   OperationBase::Ptr createOperation(const CreationContext& context,
                                      const std::shared_ptr<ngraph::Node>& node,
@@ -89,10 +94,18 @@ class OperationRegistry final {
 
  private:
   void registerOp(const std::string& opName, OperationBuilder&& builder);
+  template <typename TOperation>
+  void registerOpType(const std::string& opName) {
+      if (!registered_type_operations_.try_emplace(opName, std::type_index(typeid(TOperation))).second) {
+          throw std::runtime_error{"Operation " + opName + " is already registered !!"};
+      }
+  }
 
   bool hasOperation(const std::string& name);
 
+  std::unordered_map<std::type_index, std::unordered_set<std::string>> type_registered_operations_;
   std::unordered_map<std::string, OperationBuilder> registered_operations_;
+  std::unordered_map<std::string, std::type_index> registered_type_operations_;
 };
 
 template <>

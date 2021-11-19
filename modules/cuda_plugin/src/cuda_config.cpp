@@ -53,6 +53,14 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
               throwIEException(fmt::format(
                   "optimize option value {} is not supported", value));
           }
+        } else if (CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM) == key) {
+            if (value == CUDA_CONFIG_VALUE(YES)) {
+                disabled_tensoriterator_transform = true;
+            } else if (value == CUDA_CONFIG_VALUE(NO)) {
+                disabled_tensoriterator_transform = false;
+            } else {
+                throwIEException(fmt::format("disabled_transformations option value {} is not supported", value));
+            }
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             perfCount = (CONFIG_VALUE(YES) == value);
         } else if (throwOnUnsupported) {
@@ -68,6 +76,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
       return {std::string{perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)}};
     } else if (name == CUDA_CONFIG_KEY(OPTIMIZE)) {
       return {std::string(optimization ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
+    } else if (name == CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
+        return {std::string(disabled_tensoriterator_transform ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
     } else if (name == CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
         return {cuda_throughput_streams_};
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
