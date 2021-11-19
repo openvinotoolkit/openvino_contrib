@@ -94,7 +94,7 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     try {
         GraphTransformer transformer;
         auto original_function = cnn_network_.getFunction();
-        auto transformed_function = transformer.transform(CUDA::Device{cfg_.deviceId}, original_function, ConfigMap{});
+        auto transformed_function = transformer.transform(CUDA::Device{cfg_.deviceId}, original_function, cfg_);
         CompileNetwork(transformed_function);
         InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
@@ -113,7 +113,10 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
-        output_index_.emplace(ResultOp::GetOutputTensorName(*result), function_->get_result_index(result));
+        for (const auto& outputName : ResultOp::GetOutputTensorName(*result)) {
+            const auto& result_index = function_->get_result_index(result);
+            output_index_.emplace(outputName, result_index);
+        }
     }
     for (auto&& parameter : function_->get_parameters()) {
         input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), function_->get_parameter_index(parameter));

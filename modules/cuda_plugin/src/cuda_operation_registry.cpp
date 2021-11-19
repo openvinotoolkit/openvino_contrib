@@ -22,6 +22,13 @@ bool OperationRegistry::hasOperation(const std::shared_ptr<ngraph::Node>& node) 
     return hasOperation(node->get_type_info().name);
 }
 
+std::optional<std::type_index> OperationRegistry::getOperationType(const std::shared_ptr<ngraph::Node>& node) const {
+    if (registered_type_operations_.count(node->get_type_info().name) > 0) {
+        return registered_type_operations_.at(node->get_type_info().name);
+    }
+    return std::nullopt;
+}
+
 bool OperationRegistry::hasOperation(const std::string& name) {
     return registered_operations_.end() != registered_operations_.find(name);
 }

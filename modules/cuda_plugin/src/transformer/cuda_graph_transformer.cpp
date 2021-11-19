@@ -24,7 +24,7 @@ using namespace CUDAPlugin;
 
 std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device& device,
                                                               const std::shared_ptr<const ngraph::Function>& function,
-                                                              const std::map<std::string, std::string>&) const {
+                                                              const Configuration& cfg) const {
     auto transformed_function = ngraph::clone_function(*function);
 
     auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
@@ -45,7 +45,9 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
-    // manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
+    if (!cfg.disabled_tensoriterator_transform) {
+        // manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
+    }
     manager.register_pass<ngraph::pass::ConcatTransformation>();
 
     manager.run_passes(transformed_function);
