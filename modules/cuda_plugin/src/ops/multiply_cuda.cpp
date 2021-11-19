@@ -26,19 +26,19 @@ MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
     if (!types_expected) {
         throwIEException("MultiplyCuda: element types combination are not supported");
     }
-    const auto& data_shape = multiplyOp->get_input_shape(0);
-    const bool shapes_expected =
-        (data_shape == multiplyOp->get_input_shape(1)) && (data_shape == multiplyOp->get_output_shape(0));
-    if (!shapes_expected) {
-        throwIEException("MultiplyCuda: shapes combination are not supported");
+    in0_num_elements_ = ngraph::shape_size(multiplyOp->get_input_shape(0));
+    in1_num_elements_ = ngraph::shape_size(multiplyOp->get_input_shape(1));
+    const size_t out_num_elements = ngraph::shape_size(multiplyOp->get_output_shape(0));
+    Expects(out_num_elements == std::max(in0_num_elements_, in1_num_elements_));
+    if (in0_num_elements_ < in1_num_elements_) {
+        Expects((in1_num_elements_ % in0_num_elements_) == 0);
+    } else if (in1_num_elements_ < in0_num_elements_) {
+        Expects((in0_num_elements_ % in1_num_elements_) == 0);
     }
 
-    const size_t num_elements = std::accumulate(data_shape.begin(), data_shape.end(), 1, std::multiplies<size_t>());
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
-
     kernel_ = kernel::Elementwise{kernel::Elementwise::Op_t::mul,
                                   convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
-                                  num_elements,
                                   max_threads_per_block};
 }
 
@@ -49,11 +49,12 @@ void MultiplyCudaOp::Execute(const InferenceRequestContext& context,
     Expects(kernel_);
     Expects(inputTensors.size() == 2);
     Expects(outputTensors.size() == 1);
-    Expects(workbuffers.mutable_buffers.empty());
     auto& stream = context.getThreadContext().stream();
     (*kernel_)(stream.get(),
                static_cast<const void*>(inputTensors[0].get()),
+               in0_num_elements_,
                static_cast<const void*>(inputTensors[1].get()),
+               in1_num_elements_,
                static_cast<void*>(outputTensors[0].get()));
 }
 
