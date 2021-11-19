@@ -112,7 +112,13 @@ INSTANTIATE_TEST_CASE_P(Add, EltwiseLayerTest,
                         EltwiseLayerTest::getTestCaseName);
 
 // Tacotron2 int
-const std::vector<std::vector<std::vector<size_t>>> tacotron2_int_shapes = {{{1}, {1}}};
+const std::vector<std::vector<std::vector<size_t>>> tacotron2_int_shapes = {
+    {{1}, {1}},
+    {{2}, {1}},
+    {{1}, {2}},
+    {{10}, {1}},
+    {{1}, {10}},
+};
 
 INSTANTIATE_TEST_CASE_P(tacotron2_int_Multiply,
                         EltwiseLayerTest,
