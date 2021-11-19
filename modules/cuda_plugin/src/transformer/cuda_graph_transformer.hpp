@@ -7,6 +7,8 @@
 #include <cuda/runtime.hpp>
 #include <ngraph/function.hpp>
 
+#include "cuda_config.hpp"
+
 namespace CUDAPlugin {
 
 class GraphTransformer {
@@ -27,7 +29,7 @@ class GraphTransformer {
   std::shared_ptr<ngraph::Function> transform(
       const CUDA::Device& device,
       const std::shared_ptr<const ngraph::Function>& function,
-      const std::map<std::string, std::string>& config) const;
+      const Configuration& config) const;
 };
 
 }  // namespace CUDAPlugin
