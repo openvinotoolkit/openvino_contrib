@@ -11,10 +11,10 @@ std::vector<std::string> disabledTestPatterns() {
     return {
         ".*reusableCPUStreamsExecutor.*",  //  TEST DO not support hetero case when all plugins use executors cache
         ".*ExecGraphTests.*", // Not implemented
-        R"(.*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*)", // Failed
+        ".*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*", // Failed
         ".*PreprocessTest.*", // Does not cover all needed cases
         ".*GRUCellTest.*decomposition0.*",  // GruCell should be decomposed
-        R"(.*ConstantResultSubgraphTest.*inPrc=(I8|U64|I64|BOOL).*)", // Unsupported precisions
+        ".*ConstantResultSubgraphTest.*inPrc=(I8|U64|I64|BOOL).*", // Unsupported precisions
         ".*TensorIteratorTest.*unrolling=0.*",  // Skip due to unsupported LSTM, RNN and GRU sequenses
         ".*CPUconfigItem=CPU_BIND_THREAD_YES.*", // unsupported configuration option
         ".*(GRU|LSTM|RNN)SequenceTest.*mode=CONVERT_TO_TI.*", // Nodes from sequence are not supported by plugin (TensorIterator.0)
@@ -25,19 +25,23 @@ std::vector<std::string> disabledTestPatterns() {
         ".*IEClassImportExportTestP.*",
         ".*Multi_BehaviorTests/InferRequestTests.canRun3SyncRequestsConsistentlyFromThreads.*", // Sporadic hangs,
         // CVS-58963: Not implemented yet
-        R"(.*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*)",
+        ".*InferRequestIOBBlobTest.*OutOfFirstOutIsInputForSecondNetwork.*",
         // Unexpected behavior
-        R"(.*(Hetero|Multi).*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*)",
+        ".*(Hetero|Multi).*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*",
         // Not implemented
-        R"(.*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*)",
-        R"(.*Behavior.*ExecutableNetworkBaseTest.*CanCreateTwoExeNetworksAndCheckFunction.*)",
-        R"(.*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution).*)",
-        R"(.*Behavior.*ExecutableNetworkBaseTest.*canExport.*)",
-        R"(.*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*)",
-        R"(.*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*)",
-        R"(.*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*)",
-        R"(.*ExclusiveAsyncRequest.*)", // Unsupported config test
+        ".*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*",
+        ".*Behavior.*ExecutableNetworkBaseTest.*CanCreateTwoExeNetworksAndCheckFunction.*",
+        ".*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution).*",
+        ".*Behavior.*ExecutableNetworkBaseTest.*canExport.*",
+        ".*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*",
+        ".*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*",
+        ".*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*",
+        ".*ExclusiveAsyncRequest.*", // Unsupported config test
         // Failed according to accuracy
         R"(.*SoftMaxLayerTest.*CompareWithRefs.*f16.*undefined.*undefined.*\(1.3.10.10\).*Axis=2.*)",
+        ".*ExecutableNetwork.*CanSetConfig.*", // Wont be supported
+        ".*checkGetExecGraphInfoIsNotNullptr.*(AUTO|HETERO|MULTI).*", // Dose not supported in OpenVINO
+        ".*OVInferenceChaining.*Dynamic.*", // Dynamic shape is not supported
+        ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
     };
 }
