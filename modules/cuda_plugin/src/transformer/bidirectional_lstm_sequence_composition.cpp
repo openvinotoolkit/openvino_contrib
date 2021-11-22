@@ -402,12 +402,13 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::BidirectionalSequenceComposition, "Bidirect
 BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_ptr<PassConfig> pass_config)
     : pass_config_(std::move(pass_config)) {
     pass_config_->disable<ngraph::pass::BidirectionalLSTMSequenceDecomposition>();
+    pass_config_->disable<ngraph::pass::BidirectionalGRUSequenceDecomposition>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<ngraph::pass::BidirectionalGRUSequenceDecomposition>();
     // pass_config_->disable<ngraph::pass::BidirectionalRNNSequenceDecomposition>();
+
     pass_config_->disable<ngraph::pass::ConvertLSTMSequenceToTensorIterator>();
+    pass_config_->disable<ngraph::pass::ConvertGRUSequenceToTensorIterator>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<ngraph::pass::ConvertGRUSequenceToTensorIterator>();
     // pass_config_->disable<ngraph::pass::ConvertRNNSequenceToTensorIterator>();
 }
 
@@ -415,6 +416,7 @@ bool BidirectionalSequenceComposition::run_on_function(std::shared_ptr<ngraph::F
     ngraph::pass::Manager manager{pass_config_};
 
     manager.register_pass<ngraph::pass::ConvertTensorIteratorToLSTMSequence>();
+    manager.register_pass<ngraph::pass::ConvertTensorIteratorToGRUSequence>();
     manager.register_pass<ngraph::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
     manager.register_pass<ngraph::pass::CommonOptimizations>();
