@@ -154,6 +154,13 @@ public:
      */
     static std::size_t GetTensorByteSize(const ngraph::Input<ngraph::Node>& input);
 
+    /**
+     * Checks whether the given node changes tensor shape only and
+     * doesn't change tensor data itself. For such nodes, input and output
+     * data tensors will reuse the same buffer allocation.
+     */
+    static bool isReshapeOnlyNode(const ngraph::Node& node);
+
 private:
     /**
      * Internal buffer representation
@@ -246,13 +253,6 @@ private:
      * Checks whether the given node is a ConcatOptimized node (concat optimized)
      */
     static bool IsConcatOptimizedNode(const ngraph::Node& node);
-
-    /**
-     * Checks whether the given node changes tensor shape only and
-     * doesn't change tensor data itself. For such nodes, input and output
-     * data tensors will reuse the same buffer allocation.
-     */
-    static bool isReshapeOnlyNode(const ngraph::Node& node);
 
     /**
      * Exception helper
