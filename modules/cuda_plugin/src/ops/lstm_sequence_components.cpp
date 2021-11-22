@@ -13,22 +13,17 @@
 #include "ngraph/op/reshape.hpp"
 #include "ngraph/op/squeeze.hpp"
 #include "ngraph/op/unsqueeze.hpp"
+#include "cuda_op_buffers_extractor.hpp"
 
 namespace CUDAPlugin::RNN::Details {
 
 namespace {
 
-bool isReshapeOnlyNode(const ngraph::Node* node) {
-    return ngraph::is_type<const ngraph::op::v1::Reshape>(node) ||
-           ngraph::is_type<const ngraph::op::v0::Squeeze>(node) ||
-           ngraph::is_type<const ngraph::op::v0::Unsqueeze>(node);
-}
-
 gsl::span<const uint8_t> findInputConstantBuffer(const ngraph::Node& inNode, int inputIdx) {
     const ngraph::Node* node = inNode.get_input_node_ptr(inputIdx);
     const ngraph::op::v0::Constant* constant = dynamic_cast<const ngraph::op::v0::Constant*>(node);
     while (!constant) {
-        Expects(isReshapeOnlyNode(node));
+        Expects(OperationBuffersExtractor::isReshapeOnlyNode(*node));
         node = node->get_input_node_ptr(0);
         constant = dynamic_cast<const ngraph::op::v0::Constant*>(node);
     }
@@ -138,72 +133,6 @@ void LSTMSequenceParams::validate(const ngraph::op::v5::LSTMSequence& node) {
     Expects(w_host_buffers_.size_bytes() == ngraph::shape_size(w_shape) * element_type_size);
     Expects(r_host_buffers_.size_bytes() == ngraph::shape_size(r_shape) * element_type_size);
     Expects(b_host_buffers_.size_bytes() == ngraph::shape_size(b_shape) * element_type_size);
-}
-
-TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_type,
-                                                       size_t element_size,
-                                                       const std::vector<int64_t>& src_shape,
-                                                       const std::vector<int64_t>& dst_shape,
-                                                       const std::vector<int>& mode)
-    : element_type_{element_type},
-      element_size_{element_size},
-      src_shape_{src_shape},
-      dst_shape_{dst_shape},
-      src_mode_(mode.size()),
-      dst_mode_{mode} {
-    std::iota(src_mode_.begin(), src_mode_.end(), 0);
-    const auto num_elements = ngraph::shape_size(src_shape_);
-    Expects(num_elements > 0);
-    Expects(num_elements == ngraph::shape_size(dst_shape_));
-    Expects(src_shape_.size() == dst_shape_.size());
-    Expects(src_shape_.size() == src_mode_.size());
-    Expects(src_mode_.size() == dst_mode_.size());
-}
-
-void TransposeTensorAdapterBase::requestWorkbuffer(std::vector<size_t>& workbuffers_sizes) {
-    workbuffer_.addRequest(workbuffers_sizes, ngraph::shape_size(src_shape_) * element_size_);
-}
-
-void* TransposeTensorAdapterBase::dnnApiPtr(const std::vector<Workbuffers::mutable_buffer>& mutable_buffers) const {
-    return workbuffer_.requiredPtr(mutable_buffers);
-}
-
-void TransposeTensorAdapterBase::execute(const InferenceRequestContext& context, const void* src, void* dst) const {
-    cutensorTensorDescriptor_t src_desc{}, dst_desc{};
-    initCuTensorDescriptor(context.getThreadContext().cuTensorHandle(), src_shape_, src_desc);
-    initCuTensorDescriptor(context.getThreadContext().cuTensorHandle(), dst_shape_, dst_desc);
-    throwIfError(::cutensorPermutation(&context.getThreadContext().cuTensorHandle().get(),
-                                       &NumericConst<constants::one>(element_type_),
-                                       src,
-                                       &src_desc,
-                                       src_mode_.data(),
-                                       dst,
-                                       &dst_desc,
-                                       dst_mode_.data(),
-                                       element_type_,
-                                       context.getThreadContext().stream().get()));
-}
-
-void TransposeTensorAdapterBase::initCuTensorDescriptor(const CUDA::CuTensorHandle& handle,
-                                                        const std::vector<int64_t>& shape,
-                                                        cutensorTensorDescriptor_t& desc) const {
-    std::vector<int64_t> strides;
-    strides.reserve(shape.size());
-    for (size_t i = 0; i < shape.size(); i++) strides.push_back(ngraph::row_major_stride(shape, i));
-    throwIfError(::cutensorInitTensorDescriptor(
-        &handle.get(), &desc, shape.size(), shape.data(), strides.data(), element_type_, CUTENSOR_OP_IDENTITY));
-}
-
-void TransposeInputTensorAdapter::execute(const InferenceRequestContext& context,
-                                          CUDA::DevicePointer<const void*> input,
-                                          const std::vector<Workbuffers::mutable_buffer>& dst) const {
-    TransposeTensorAdapterBase::execute(context, input.get(), workbuffer_.requiredPtr(dst));
-}
-
-void TransposeOutputTensorAdapter::execute(const InferenceRequestContext& context,
-                                           const std::vector<Workbuffers::mutable_buffer>& src,
-                                           CUDA::DevicePointer<void*> output) const {
-    TransposeTensorAdapterBase::execute(context, workbuffer_.requiredPtr(src), output.get());
 }
 
 }  // namespace CUDAPlugin::RNN::Details
