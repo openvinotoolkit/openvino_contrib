@@ -3,6 +3,7 @@
 
 
 #include "opset/opset.hpp"
+#include "output_names.hpp"
 #include "store_result_name.hpp"
 
 bool ArmPlugin::pass::StoreResultName::run_on_function(std::shared_ptr<ngraph::Function> f) {
@@ -10,10 +11,7 @@ bool ArmPlugin::pass::StoreResultName::run_on_function(std::shared_ptr<ngraph::F
         IE_ASSERT(node->inputs().size() == 1);
         auto input = node->input(0);
         auto sourceOutput = input.get_source_output();
-        auto outputName = sourceOutput.get_node()->get_friendly_name();
-        if (sourceOutput.get_node()->get_output_size() > 1) {
-            outputName += '.' + std::to_string(sourceOutput.get_index());
-        }
+        const auto outputName = create_ie_output_name(sourceOutput);
         node->get_rt_info().emplace("ResultName", std::make_shared<ngraph::VariantWrapper<std::string>>(outputName));
     }
     return false;
