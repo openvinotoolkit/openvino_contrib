@@ -21,3 +21,7 @@ std::string create_ie_output_name(const ngraph::Output<const ngraph::Node>& outp
     }
     return out_name;
 }
+
+std::string create_ie_output_name(const ngraph::Output<ngraph::Node>& output) {
+    return create_ie_output_name(ov::Output<const ngraph::Node>(output.get_node(), output.get_index()));
+}
