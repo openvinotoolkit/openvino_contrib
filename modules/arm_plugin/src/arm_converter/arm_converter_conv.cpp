@@ -76,7 +76,7 @@ public:
                            const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp)), biases,
+        return arm_compute::NEConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp), biases,
                                                          &arm_compute::TensorInfo(*output).set_quantization_info(qi),
                                                          conv_info, weights_info, dilation, act_info);
     }
@@ -118,11 +118,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolu
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
 
     if (node.get_input_size() == 3) {
-        return MakeConversion<arm_compute::NEConvolutionLayerQI>(
+        return MakeConversion<NEConvolutionLayerQI>(
             node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
             conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), wInfo, qInfo);
     } else {
-        return MakeConversion<arm_compute::NEConvolutionLayerQI>(
+        return MakeConversion<NEConvolutionLayerQI>(
             node.input(Features), node.input(Weights), nullptr, node.output(0),
             conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), wInfo, qInfo);
     }
@@ -171,7 +171,7 @@ public:
                            const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp)), biases,
+        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp), biases,
                                                                   &arm_compute::TensorInfo(*output).set_quantization_info(qi),
                                                                   conv_info, depth_multiplier, act_info, dilation);
     }
@@ -220,11 +220,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
 
     if (node.get_input_size() == 3) {
-        return MakeConversion<arm_compute::NEDepthwiseConvolutionLayerQI>(
+        return MakeConversion<NEDepthwiseConvolutionLayerQI>(
             node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
             conv_info, 1u, GetActivationInfo(node), dilation, wInfo, qInfo);
     } else {
-        return MakeConversion<arm_compute::NEDepthwiseConvolutionLayerQI>(
+        return MakeConversion<NEDepthwiseConvolutionLayerQI>(
             node.input(Features), node.input(Weights), nullptr, node.output(0),
             conv_info, 1u, GetActivationInfo(node), dilation, wInfo, qInfo);
     }
