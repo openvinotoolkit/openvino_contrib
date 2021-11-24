@@ -313,14 +313,14 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     if (quantized) {
         Dump(f, "before_arm");
         ngraph::pass::Manager manager;
-//        manager.register_pass<pass::NodeQuantizeFusion>();
+        manager.register_pass<pass::ConvolutionQuantizeFusion>();
+//        manager.register_pass<pass::MeanQuantizeFusion>();
 //        manager.register_pass<pass::DequantizeNodeFusion>();
         manager.register_pass<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertQuantize>();
 //        manager.register_pass<pass::ConvertBiasToI32>();
 //        manager.register_pass<ngraph::pass::ConstantFolding>();
-//        manager.register_pass<pass::MovePerChenelQuantizationInfoToWeights>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<PropogateQuantizationInfo>();
         manager.run_passes(f);
