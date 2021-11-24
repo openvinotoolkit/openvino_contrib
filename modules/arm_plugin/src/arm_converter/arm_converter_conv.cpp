@@ -76,8 +76,8 @@ public:
                            const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp), biases,
-                                                         &arm_compute::TensorInfo(*output).set_quantization_info(qi),
+        return arm_compute::NEConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
+                                                         qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output,
                                                          conv_info, weights_info, dilation, act_info);
     }
     void run() override {
@@ -171,8 +171,8 @@ public:
                            const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp), biases,
-                                                                  &arm_compute::TensorInfo(*output).set_quantization_info(qi),
+        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
+                                                                  qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output,
                                                                   conv_info, depth_multiplier, act_info, dilation);
     }
     void run() override {

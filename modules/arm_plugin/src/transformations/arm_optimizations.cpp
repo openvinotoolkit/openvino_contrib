@@ -314,7 +314,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         Dump(f, "before_arm");
         ngraph::pass::Manager manager;
         manager.register_pass<pass::ConvolutionQuantizeFusion>();
-//        manager.register_pass<pass::MeanQuantizeFusion>();
+        manager.register_pass<pass::MeanQuantizeFusion>();
 //        manager.register_pass<pass::DequantizeNodeFusion>();
         manager.register_pass<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();

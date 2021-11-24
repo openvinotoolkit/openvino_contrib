@@ -47,8 +47,8 @@ public:
                            const arm_compute::ITensorInfo *output, const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEFullyConnectedLayer::validate(input, &arm_compute::TensorInfo(*weights).set_quantization_info(wp), biases,
-                                                            &arm_compute::TensorInfo(*output).set_quantization_info(qi));
+        return arm_compute::NEFullyConnectedLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
+                                                            qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_fconn.get(), "Kernel didn't configured");
