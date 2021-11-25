@@ -169,7 +169,11 @@ void GatherOp::Execute(const InferenceRequestContext& context,
     Expects(inputs.size() == 3);
     Expects(outputs.size() == 1);
 
-    (*gather_kernel_)(context.getThreadContext().stream().get(), inputs[0].get(), inputs[1].get(), outputs[0].get());
+    (*gather_kernel_)(context.getThreadContext().stream().get(),
+                      context.isBenchmarkMode(),
+                      inputs[0].get(),
+                      inputs[1].get(),
+                      outputs[0].get());
 }
 
 OPERATION_REGISTER(GatherOp, Gather);

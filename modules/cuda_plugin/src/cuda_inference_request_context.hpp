@@ -29,8 +29,14 @@ public:
                             const InferenceEngine::BlobMap& outputs,
                             const ThreadContext& threadContext,
                             CancellationToken& token,
-                            Profiler& profiler)
-        : threadContext{threadContext}, token{token}, profiler{profiler}, blob_inputs{inputs}, blob_outputs{outputs} {}
+                            Profiler& profiler,
+                            bool isBenchmarkMode = false)
+        : threadContext{threadContext},
+          token{token},
+          profiler{profiler},
+          blob_inputs{inputs},
+          blob_outputs{outputs},
+          is_benchmark_mode_{isBenchmarkMode} {}
     // don't allow storing references to temporary
     template <typename... Args>
     InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
@@ -65,6 +71,7 @@ public:
     const ThreadContext& getThreadContext() const noexcept { return threadContext; }
     [[nodiscard]] CUDAPlugin::CancellationToken& getCancellationToken() const noexcept { return token; }
     [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
+    [[nodiscard]] bool isBenchmarkMode() const noexcept { return is_benchmark_mode_; }
 
 private:
     const ThreadContext& threadContext;
@@ -72,6 +79,7 @@ private:
     Profiler& profiler;
     const InferenceEngine::BlobMap& blob_inputs;
     const InferenceEngine::BlobMap& blob_outputs;
+    bool is_benchmark_mode_;
 };
 
 }  // namespace CUDAPlugin

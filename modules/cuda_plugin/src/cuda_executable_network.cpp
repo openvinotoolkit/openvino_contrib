@@ -285,7 +285,7 @@ int ExecutableNetwork::GetCudaDeviceId() const noexcept {
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkInferRequestImpl(
     InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) {
     return std::make_shared<CudaInferRequest>(
-        networkInputs, networkOutputs, std::shared_ptr<ExecutableNetwork>(this, [](ExecutableNetwork*) {}));
+        networkInputs, networkOutputs, std::shared_ptr<ExecutableNetwork>(this, [](ExecutableNetwork*) {}), true);
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkInferRequest() {
