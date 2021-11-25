@@ -49,6 +49,13 @@ struct SafeCast {
             "Could not cast base pointer: ", base, "to type ", T::get_type_info_static());
         return dynamic_casted_ptr;
     }
+    template<typename T>
+    const std::shared_ptr<T> call(const ov::Any& any) {
+        OPENVINO_ASSERT(any.is<std::shared_ptr<T>>(),
+            "In file: ", file, ":", line, "\n",
+            "Could not cast any to type ", T::get_type_info_static());
+        return any.as<std::shared_ptr<T>>();
+    }
 };
 
 #define safe_cast SafeCast{__FILE__, __LINE__}.call
