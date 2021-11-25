@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <shared_test_classes/single_layer/convert.hpp>
 #include <cuda_test_constants.hpp>
+#include <shared_test_classes/single_layer/convert.hpp>
 
 using namespace LayerTestsDefinitions;
 using namespace InferenceEngine;
 
-namespace CUDALayerTestsDefinitions  {
+namespace CUDALayerTestsDefinitions {
 
 class ConvertCUDALayerTest : public ConvertLayerTest {};
 
@@ -28,38 +28,39 @@ const std::vector<std::vector<size_t>> inShape = {{1, 2, 3, 4}};
 // List of precisions natively supported by CUDA.
 // CUDA device supports only U8, FP16 and FP32 output precision
 const std::vector<Precision> out_precisions = {
-        Precision::U8,
-        Precision::FP16,
-        Precision::FP32,
+    Precision::U8,
+    Precision::FP16,
+    Precision::FP32,
 };
 
-// Supported formats are: FP32, FP16, I16 and U8
+// Supported formats are: BOOL, FP32, FP16, I16 and U8
 const std::vector<Precision> in_precisions = {
-        Precision::U8,
-        Precision::I16,
+    Precision::BOOL,
+    Precision::U8,
+    Precision::I16,
     // TODO: Uncomment when we find way to omit conversion from FP16 -> FP32 in tests
-//        Precision::FP16,
-        Precision::FP32,
+    //        Precision::FP16,
+    Precision::FP32,
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_F32, ConvertCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::Values(Precision::FP32),
-                                ::testing::ValuesIn(out_precisions),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_F32,
+                        ConvertCUDALayerTest,
+                        ::testing::Combine(::testing::Values(inShape),
+                                           ::testing::Values(Precision::FP32),
+                                           ::testing::ValuesIn(out_precisions),
+                                           ::testing::Values(Layout::ANY),
+                                           ::testing::Values(Layout::ANY),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvertLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_F32, ConvertCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::ValuesIn(in_precisions),
-                                ::testing::Values(Precision::FP32),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_F32,
+                        ConvertCUDALayerTest,
+                        ::testing::Combine(::testing::Values(inShape),
+                                           ::testing::ValuesIn(in_precisions),
+                                           ::testing::Values(Precision::FP32),
+                                           ::testing::Values(Layout::ANY),
+                                           ::testing::Values(Layout::ANY),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvertLayerTest::getTestCaseName);
 
 /* TODO Uncomment when BF16 support is implemented
@@ -83,5 +84,5 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConvertCUDALayerTest,
                                 ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvertLayerTest::getTestCaseName);
 */
-} // namespace
-} // namespace CUDALayerTestsDefinitions
+}  // namespace
+}  // namespace CUDALayerTestsDefinitions
