@@ -2,10 +2,12 @@ from fnmatch import fnmatch
 
 from .detectron2.retinanet import RetinaNet
 from .usrnet.usrnet import USRNet
+from .mask_rcnn.mask_rcnn import MaskRCNN
 
 classes = [
     RetinaNet(),
     USRNet(),
+    MaskRCNN(),
 ]
 
 def register_model_hook(model):

@@ -35,6 +35,11 @@ class DetectionOutputExtractor(FrontExtractorOp):
             'top_k': node.module.top_k,
             'keep_top_k': node.module.keep_top_k,
             'code_type': node.module.code_type,
+            'share_location': 0,
+            'num_classes': 1,
+            'normalized': 1,
+            'background_label_id': 2,
+            'clip_before_nms': 1,
         }
         DetectionOutput.update_node_stat(node, attrs)
         return cls.enabled

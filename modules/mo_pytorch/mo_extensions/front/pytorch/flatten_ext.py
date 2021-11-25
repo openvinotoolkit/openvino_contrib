@@ -30,6 +30,7 @@ class FlattenExtractor(FrontExtractorOp):
     def extract(cls, node):
         attrs = {
             'axis': node.module.axis,
+            'end_axis': node.module.end_axis,
         }
         Flatten.update_node_stat(node, attrs)
         return cls.enabled

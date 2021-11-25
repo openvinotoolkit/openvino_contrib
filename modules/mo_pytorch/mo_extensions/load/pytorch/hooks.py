@@ -12,6 +12,9 @@ def forward_hook(self, inputs, output=None):
     if isinstance(output, OpenVINOTensor) and output.node_name:
         return output
 
+    if self.__class__.__name__ in ['LastLevelMaxPool', 'AnchorGenerator']:
+        return output
+
     # Get source graph from one of the dynamic inputs
     for inp in inputs:
         graph = inp.graph
@@ -353,6 +356,25 @@ class OpenVINOTensor(object):
                 return target_shape
 
         return forward_hook(Reshape(shape), (self,))
+
+
+    def flatten(self, start=0, end=-1):
+        class Flatten(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.axis = start
+                self.end_axis = end
+
+        return forward_hook(Flatten(), (self,))
+
+
+    def softmax(self, dim):
+        class Softmax(nn.Module):
+            def __init__(self, dim):
+                super().__init__()
+                self.dim = dim
+
+        return forward_hook(Softmax(dim), (self,))
 
 
     def reshape(self, *shape):
