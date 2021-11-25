@@ -176,6 +176,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
         Register<opset::Split>();
         Register<ngraph::op::v8::AdaptiveAvgPool>();
         Register<ngraph::op::v8::AdaptiveMaxPool>();
+        Register<ngraph::op::v8::NV12toBGR>();
+        Register<ngraph::op::v8::NV12toRGB>();
     }
     Register<opset::ArmNoOp>();
     Register<opset::Result>();
