@@ -36,7 +36,8 @@ public:
 
     CudaInferRequest(const InferenceEngine::InputsDataMap& networkInputs,
                      const InferenceEngine::OutputsDataMap& networkOutputs,
-                     const std::shared_ptr<ExecutableNetwork>& executableNetwork);
+                     const std::shared_ptr<ExecutableNetwork>& executableNetwork,
+                     bool isBenchmarkMode = false);
 
     Profiler::PerformaceCounters GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
@@ -87,6 +88,7 @@ private:
     std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
     Profiler profiler_;
+    bool is_benchmark_mode_;
 };
 // ! [infer_request:header]
 

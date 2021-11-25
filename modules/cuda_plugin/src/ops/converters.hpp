@@ -101,6 +101,8 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
     using nType_t = ngraph::element::Type_t;
     using kType_t = kernel::Type_t;
     switch (static_cast<nType_t>(type)) {
+        case nType_t::boolean:
+            return kType_t::boolean;
 #if CUDART_VERSION >= 11000
         case nType_t::bf16:
             return kType_t::bf16;
@@ -119,6 +121,12 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
             return kType_t::f32;
         case nType_t::f64:
             return kType_t::f64;
+        case nType_t::u1:
+            return kType_t::u1;
+        case nType_t::i4:
+            return kType_t::i4;
+        case nType_t::u4:
+            return kType_t::u4;
         case nType_t::i8:
             return kType_t::i8;
         case nType_t::u8:
