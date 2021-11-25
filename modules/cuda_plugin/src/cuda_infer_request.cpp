@@ -36,11 +36,13 @@ using Time = std::chrono::steady_clock;
 
 CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& networkInputs,
                                    const InferenceEngine::OutputsDataMap& networkOutputs,
-                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork)
+                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork,
+                                   bool isBenchmarkMode)
     : IInferRequestInternal(networkInputs, networkOutputs),
       _executableNetwork(executableNetwork),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_} {
+      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_},
+      is_benchmark_mode_{isBenchmarkMode} {
     // TODO: allocate infer request device and host buffers if needed, fill
     // actual list of profiling tasks
 
@@ -118,7 +120,7 @@ void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
         auto& memory = memory_proxy_->Get();
         auto& graph = *_executableNetwork->graph_;
         InferenceRequestContext inferRequestContext{
-            network_input_blobs_, network_output_blobs_, threadContext, cancellation_token_, profiler_};
+            network_input_blobs_, network_output_blobs_, threadContext, cancellation_token_, profiler_, is_benchmark_mode_};
         graph.Run(inferRequestContext, memory);
         profiler_.StopStage(Profiler::StartPipeline);
     } catch (...) {
