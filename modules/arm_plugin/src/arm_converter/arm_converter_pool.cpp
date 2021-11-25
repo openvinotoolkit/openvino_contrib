@@ -57,11 +57,11 @@ public:
         _pool = std::make_unique<arm_compute::NEPoolingLayer>(_memory_manager);
         _pool->configure(input, _qi ? &_outputqi : _output, pool_info);
     }
-    static Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *output, const arm_compute::PoolingLayerInfo &pool_info,
-                           const arm_compute::QuantizationInfo *qi) {
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *output,
+                                        const arm_compute::PoolingLayerInfo &pool_info, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEPoolingLayer::validate(input, qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output, pool_info);
+        return arm_compute::NEPoolingLayer::validate(input, qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output, pool_info);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_pool.get(), "Kernel didn't configured");
@@ -76,7 +76,7 @@ public:
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
     const arm_compute::QuantizationInfo *_qi;
-    const arm_compute::ITensor *_output;
+    arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;
 };
@@ -86,7 +86,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& n
     pool_info.pool_type       = arm_compute::PoolingType::AVG;
     pool_info.exclude_padding = node.get_exclude_pad();
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
     return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, qInfo);
 }

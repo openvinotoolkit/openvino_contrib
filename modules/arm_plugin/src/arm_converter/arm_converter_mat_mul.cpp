@@ -26,10 +26,10 @@ public:
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == QASYMM8 ||
-                                 _weights->info()->data_type() == QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(QSYMM8_PER_CHANNEL) : *(_weights->info()));
+            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
+            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
             _weightsqi.info()->set_quantization_info(*wp);
         }
 
@@ -43,12 +43,13 @@ public:
         _fconn = std::make_unique<arm_compute::NEFullyConnectedLayer>(_memory_manager);
         _fconn->configure(input, _wp ? &_weightsqi : _weights, biases, _qi ? &_outputqi : _output);
     }
-    static Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights, const arm_compute::ITensorInfo *biases,
-                           const arm_compute::ITensorInfo *output, const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights,
+                                        const arm_compute::ITensorInfo *biases, const arm_compute::ITensorInfo *output,
+                                        const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEFullyConnectedLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
-                                                            qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output);
+        return arm_compute::NEFullyConnectedLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(*wp) : weights, biases,
+                                                            qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_fconn.get(), "Kernel didn't configured");
@@ -67,11 +68,11 @@ public:
 
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
-    const arm_compute::ITensor *_weights;
     const arm_compute::QuantizationInfo *_wp;
+    const arm_compute::ITensor *_weights;
     arm_compute::Tensor _weightsqi;
     const arm_compute::QuantizationInfo *_qi;
-    const arm_compute::ITensor *_output;
+    arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEFullyConnectedLayer> _fconn;
 };
@@ -80,10 +81,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& no
         IE_THROW() << "Can not create MatMul layer with transpose first input";
     }
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
     return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), nullptr, node.output(0), wInfo, qInfo);
 }
@@ -92,10 +93,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulB
         IE_THROW() << "Can not create MatMul layer with transpose first input";
     }
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
     return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0), wInfo, qInfo);
 }

@@ -46,17 +46,16 @@ public:
                    const arm_compute::PadStrideInfo &conv_info, const arm_compute::WeightsInfo &weights_info, const arm_compute::Size2D &dilation,
                    const arm_compute::ActivationLayerInfo &act_info, const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_ERROR_ON_NULLPTR(input, weights, output);
-        ARM_COMPUTE_UNUSED(num_groups);
         ARM_COMPUTE_ERROR_THROW_ON(NEConvolutionLayerQI::validate(input->info(), weights->info(), ((biases != nullptr) ? biases->info() : nullptr),
                                                                   output->info(), conv_info, weights_info, dilation, act_info, wp, qi));
 
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == QASYMM8 ||
-                                 _weights->info()->data_type() == QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(QSYMM8_PER_CHANNEL) : *(_weights->info()));
+            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
+            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
             _weightsqi.info()->set_quantization_info(*wp);
         }
 
@@ -70,14 +69,15 @@ public:
         _conv = std::make_unique<arm_compute::NEConvolutionLayer>(_memory_manager);
         _conv->configure(input, _wp ? &_weightsqi : _weights, biases, _qi ? &_outputqi : _output, conv_info, weights_info, dilation, act_info);
     }
-    static Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights, const arm_compute::ITensorInfo *biases,
-                           const arm_compute::ITensorInfo *output, const arm_compute::PadStrideInfo &conv_info, const arm_compute::WeightsInfo &weights_info,
-                           const arm_compute::Size2D &dilation, const arm_compute::ActivationLayerInfo &act_info,
-                           const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights,
+                                        const arm_compute::ITensorInfo *biases, const arm_compute::ITensorInfo *output,
+                                        const arm_compute::PadStrideInfo &conv_info, const arm_compute::WeightsInfo &weights_info,
+                                        const arm_compute::Size2D &dilation, const arm_compute::ActivationLayerInfo &act_info,
+                                        const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
-                                                         qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output,
+        return arm_compute::NEConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(*wp) : weights, biases,
+                                                         qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output,
                                                          conv_info, weights_info, dilation, act_info);
     }
     void run() override {
@@ -97,11 +97,11 @@ public:
 
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
-    const arm_compute::ITensor *_weights;
     const arm_compute::QuantizationInfo *_wp;
+    const arm_compute::ITensor *_weights;
     arm_compute::Tensor _weightsqi;
     const arm_compute::QuantizationInfo *_qi;
-    const arm_compute::ITensor *_output;
+    arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEConvolutionLayer> _conv;
 };
@@ -111,10 +111,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolu
     std::tie(conv_info, dilation) = ConvParameters(node);
 
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
 
     if (node.get_input_size() == 3) {
@@ -141,17 +141,16 @@ public:
                    const arm_compute::PadStrideInfo &conv_info, unsigned int depth_multiplier, const arm_compute::ActivationLayerInfo &act_info,
                    const arm_compute::Size2D &dilation, const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_ERROR_ON_NULLPTR(input, weights, output);
-        ARM_COMPUTE_UNUSED(num_groups);
         ARM_COMPUTE_ERROR_THROW_ON(NEDepthwiseConvolutionLayerQI::validate(input->info(), weights->info(), ((biases != nullptr) ? biases->info() : nullptr),
                                                                            output->info(), conv_info, depth_multiplier, act_info, dilation, wp, qi));
 
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == QASYMM8 ||
-                                 _weights->info()->data_type() == QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(QSYMM8_PER_CHANNEL) : *(_weights->info()));
+            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
+            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
             _weightsqi.info()->set_quantization_info(*wp);
         }
 
@@ -165,14 +164,15 @@ public:
         _conv = std::make_unique<arm_compute::NEDepthwiseConvolutionLayer>(_memory_manager);
         _conv->configure(input, _wp ? &_weightsqi : _weights, biases, _qi ? &_outputqi : _output, conv_info, depth_multiplier, act_info, dilation);
     }
-    static Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights, const arm_compute::ITensorInfo *biases,
-                           const arm_compute::ITensorInfo *output, const arm_compute::PadStrideInfo &conv_info, unsigned int depth_multiplier,
-                           const arm_compute::ActivationLayerInfo &act_info, const arm_compute::Size2D &dilation,
-                           const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights,
+                                        const arm_compute::ITensorInfo *biases, const arm_compute::ITensorInfo *output,
+                                        const arm_compute::PadStrideInfo &conv_info, unsigned int depth_multiplier,
+                                        const arm_compute::ActivationLayerInfo &act_info, const arm_compute::Size2D &dilation,
+                                        const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(wp) : weights, biases,
-                                                                  qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output,
+        return arm_compute::NEDepthwiseConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(*wp) : weights, biases,
+                                                                  qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output,
                                                                   conv_info, depth_multiplier, act_info, dilation);
     }
     void run() override {
@@ -192,11 +192,11 @@ public:
 
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
-    const arm_compute::ITensor *_weights;
     const arm_compute::QuantizationInfo *_wp;
+    const arm_compute::ITensor *_weights;
     arm_compute::Tensor _weightsqi;
     const arm_compute::QuantizationInfo *_qi;
-    const arm_compute::ITensor *_output;
+    arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEDepthwiseConvolutionLayer> _conv;
 };
@@ -213,10 +213,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
     }));
 
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
 
     if (node.get_input_size() == 3) {

@@ -58,12 +58,12 @@ public:
         _rmean = std::make_unique<arm_compute::NEReduceMean>(_memory_manager);
         _rmean->configure(input, reduction_axis, keep_dims, _qi ? &_outputqi : _output);
     }
-    static Status validate(const arm_compute::ITensorInfo *input, const arm_compute::Coordinates &reduction_axis, bool keep_dims,
-                           const arm_compute::ITensorInfo *output, const arm_compute::QuantizationInfo *qi) {
+    static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::Coordinates &reduction_axis, bool keep_dims,
+                                        const arm_compute::ITensorInfo *output, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(output);
         //At the moment quantization info isn't checked actually, but just in case
         return arm_compute::NEReduceMean::validate(input, reduction_axis, keep_dims,
-                                                   qi ? &arm_compute::TensorInfo(*output).set_quantization_info(qi) : output);
+                                                   qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_rmean.get(), "Kernel didn't configured");
@@ -78,7 +78,7 @@ public:
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
     const arm_compute::QuantizationInfo *_qi;
-    const arm_compute::ITensor *_output;
+    arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEReduceMean> _rmean;
 };
@@ -90,7 +90,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceMean
         axes.set(pos, reduction_axes[i]);
     }
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr
+    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
     return MakeConversion<NEReduceMeanQI>(node.input(0), axes, node.get_keep_dims(), node.output(0), qInfo);
 }
