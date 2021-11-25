@@ -89,14 +89,16 @@ std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ngraph::Outpu
 }
 
 std::vector<std::string> ResultOp::GetOutputTensorName(const ngraph::op::Result& node) {
+    std::vector<std::string> outputNames;
+
     auto previousOutput = node.get_input_source_output(0);
     auto resultName = node.get_friendly_name();
+
     const auto foundName = GetFusedOutputTensorName(previousOutput.get_node()->get_rt_info(), resultName);
     if (foundName) {
-        return {foundName.value()};
+        outputNames.push_back(foundName.value());
     }
 
-    std::vector<std::string> outputNames;
     outputNames.push_back(previousOutput.get_node()->get_friendly_name());
     const auto& fusedNames = ngraph::getFusedNamesVector(previousOutput.get_node()->shared_from_this());
     outputNames.insert(outputNames.end(), fusedNames.begin(), fusedNames.end());
