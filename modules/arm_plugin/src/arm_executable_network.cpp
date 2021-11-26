@@ -14,6 +14,7 @@
 #include <ie_ngraph_utils.hpp>
 #include <threading/ie_executor_manager.hpp>
 #include <ngraph/function.hpp>
+#include <ie_icore.hpp>
 
 #include "arm_plugin.hpp"
 #include "arm_executable_network.hpp"
@@ -50,6 +51,15 @@ ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(InferenceEngine::InputsData
                                                      InferenceEngine::OutputsDataMap networkOutputs) {
     return std::make_shared<ArmInferRequest>(networkInputs,
                                              networkOutputs,
+                                             std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+}
+InferenceEngine::IInferRequestInternal::Ptr
+ArmPlugin::ExecutableNetwork::CreateInferRequestImpl(const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+                                                     const std::vector<std::shared_ptr<const ov::Node>>& outputs) {
+    if (!this->_plugin || !this->_plugin->GetCore() || !this->_plugin->GetCore()->isNewAPI())
+        return nullptr;
+    return std::make_shared<ArmInferRequest>(inputs,
+                                             outputs,
                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 

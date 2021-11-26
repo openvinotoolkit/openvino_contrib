@@ -65,7 +65,7 @@ std::shared_ptr<ngraph::Function> Plugin::Transform(const std::shared_ptr<const 
 }
 
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
-                                                                           const ConfigMap& config) {
+                                                                            const ConfigMap& config) {
     auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
     InferenceEngine::OutputsDataMap networkOutputs = network.getOutputsInfo();
@@ -172,7 +172,9 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
             METRIC_KEY(SUPPORTED_METRICS),
             METRIC_KEY(SUPPORTED_CONFIG_KEYS),
             METRIC_KEY(FULL_DEVICE_NAME),
-            METRIC_KEY(OPTIMIZATION_CAPABILITIES) };
+            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
+            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS),
+            METRIC_KEY(RANGE_FOR_STREAMS)};
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
@@ -193,6 +195,11 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
     } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
         std::vector<std::string> capabilities = { METRIC_VALUE(FP32), METRIC_VALUE(FP16) };
         IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
+    } else if (METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) == name) {
+        IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(1u, 1u, 1u));
+    } else if (METRIC_KEY(RANGE_FOR_STREAMS) == name) {
+        IE_SET_METRIC_RETURN(RANGE_FOR_STREAMS,
+            std::make_tuple(1u, static_cast<uint32_t>(std::thread::hardware_concurrency())));
     } else  {
         IE_THROW() << "Unsupported device metric: " << name;
     }
