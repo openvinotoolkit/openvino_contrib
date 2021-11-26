@@ -33,6 +33,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
     IE::inference_engine_transformations
     IE::inference_engine_lp_transformations
     IE::ngraph_reference
+    IE::util
 )
 
 if(NOT DEFINED ENABLE_LTO)

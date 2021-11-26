@@ -111,7 +111,7 @@ jobs:
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
-  - script: ls -alR $(OPENVINO_REPO_DIR)/inference-engine/temp/
+  - script: ls -alR $(BUILD_DIR)/temp/
     displayName: 'List temp SDKs'
 
   - script: ninja
