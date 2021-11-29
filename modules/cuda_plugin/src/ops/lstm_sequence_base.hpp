@@ -34,13 +34,19 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
 
 protected:
+    void calcAdapterWorkbuffers();
+
+protected:
     const RNN::Details::LSTMSequenceParamsCuDnn params_;
     RNN::Details::LSTMSequenceDescriptorsCuDnn descs_;
 
+    std::vector<WorkbufferRequest::size_in_bytes_t> immut_sizes_;
+    std::vector<WorkbufferRequest::size_in_bytes_t> mut_sizes_;
+
     using WorkbufferDesc = RNN::Details::WorkbufferDesc;
-    mutable WorkbufferDesc ib_seq_lengths_;
-    mutable WorkbufferDesc ib_weight_space_;
-    mutable WorkbufferDesc mb_work_space_;
+    WorkbufferDesc ib_seq_lengths_;
+    WorkbufferDesc ib_weight_space_;
+    WorkbufferDesc mb_work_space_;
 
     using InputTensorAdapterPtr = std::unique_ptr<RNN::Details::TransposeInputTensorAdapter>;
     InputTensorAdapterPtr x_adapter;
