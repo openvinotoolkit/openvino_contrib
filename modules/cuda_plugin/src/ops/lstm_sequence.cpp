@@ -63,6 +63,7 @@ LSTMSequenceOp::LSTMSequenceOp(const CreationContext& context,
     Expects(cy_shape[2] == hidden_size);
 
     setupLayoutAdapters();
+    calcAdapterWorkbuffers();
 }
 
 LSTMSequenceOpBase::Config LSTMSequenceOp::config() {
