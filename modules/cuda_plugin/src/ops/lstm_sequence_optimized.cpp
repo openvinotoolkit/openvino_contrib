@@ -21,10 +21,10 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
         case NodeOp::BatchMajor:
             /*
                 For this optimization operator shapes are as following:
-                    in [X]          - [batch_size, seq_length, input_size]
-                    cell/hidden in  - [batch_size, num_directions, hidden_size]
-                    out [Y]         - [batch_size, seq_length, num_directions, hidden_size]
-                    cell/hidden out - [num_directions, batch_size, hidden_size] 
+                    in [X]          - [batch_size, seq_length, input_size]
+                    cell/hidden in  - [batch_size, num_directions, hidden_size]
+                    out [Y]         - [batch_size, seq_length, num_directions, hidden_size]
+                    cell/hidden out - [num_directions, batch_size, hidden_size]
             */
             validateBatchMajorArgShapes(node);
             setupBatchMajorLayoutAdapters();
@@ -32,9 +32,9 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
         case NodeOp::SequenceMajor:
             /*
                 For this optimization operator shapes are as following:
-                    in [X]          - [seq_length, batch_size, input_size]
-                    cell/hidden in  - [batch_size, num_directions, hidden_size]
-                    out [Y]         - [seq_length, batch_size, num_directions, hidden_size]
+                    in [X]          - [seq_length, batch_size, input_size]
+                    cell/hidden in  - [batch_size, num_directions, hidden_size]
+                    out [Y]         - [seq_length, batch_size, num_directions, hidden_size]
                     cell/hidden out - [num_directions, batch_size, hidden_size]
             */
             validateSequenceMajorArgShapes(node);
@@ -46,6 +46,7 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
         default:
             Expects(false);
     };
+    calcAdapterWorkbuffers();
 }
 
 LSTMSequenceOpBase::Config LSTMSequenceOptimizedOp::config(const NodeOp& node) {
