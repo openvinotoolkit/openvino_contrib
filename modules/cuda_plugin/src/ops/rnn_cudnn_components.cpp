@@ -9,6 +9,8 @@
 
 #include "converters.hpp"
 
+#define CUDNN_VERSION_MIN(major, minor, patch) (CUDNN_VERSION >= ((major)*1000 + (minor)*100 + (patch)))
+
 namespace CUDAPlugin::RNN::Details {
 
 LSTMCellParamsCuDnn::LSTMCellParamsCuDnn(const CreationContext& context, const LSTMCellParams& params)
@@ -405,7 +407,13 @@ int GRUCellParamsCuDnn::nbDims() const { return 3; }
 cudnnForwardMode_t GRUCellParamsCuDnn::dnnForwardMode() const { return CUDNN_FWD_MODE_INFERENCE; }
 
 CUDA::DnnRnnDescriptor GRUCellParamsCuDnn::makeRNNDescriptor() const {
+// now standard algo cause issue under cudnn 8.1.X version
+// see https://forums.developer.nvidia.com/t/cudnn-crash-in-v8-1-x/194346
+#if CUDNN_VERSION_MIN(8, 2, 0)
     const auto rnn_algo = CUDNN_RNN_ALGO_STANDARD;
+#else
+    const auto rnn_algo = CUDNN_RNN_ALGO_PERSIST_STATIC;
+#endif
     const auto rnn_mode = CUDNN_GRU;
     const auto bias_mode = gru_cell_params_.linear_before_reset_ ? CUDNN_RNN_DOUBLE_BIAS : CUDNN_RNN_SINGLE_INP_BIAS;
     const auto dir_mode = CUDNN_UNIDIRECTIONAL;
