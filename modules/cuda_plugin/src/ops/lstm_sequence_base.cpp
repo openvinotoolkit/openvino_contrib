@@ -18,7 +18,12 @@ LSTMSequenceOpBase::LSTMSequenceOpBase(const CreationContext& context,
                                        IndexCollection&& outputIds)
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       params_{params},
-      descs_{context, params_, config} {}
+      descs_{context, params_, config} {
+    ib_seq_lengths_.addRequest(immut_sizes_, descs_.seqLengthArraySizeBytes());
+    ib_weight_space_.addRequest(immut_sizes_, descs_.weightSpaceSize());
+
+    mb_work_space_.addRequest(mut_sizes_, descs_.workSpaceSize());
+}
 
 void LSTMSequenceOpBase::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
@@ -74,22 +79,15 @@ void LSTMSequenceOpBase::InitSharedImmutableWorkbuffers(const IOperationExec::Bu
     descs_.initWeightSpace(CUDA::DevicePointer<void*>{ib_weight_space_.requiredPtr(buffers)});
 }
 
-WorkbufferRequest LSTMSequenceOpBase::GetWorkBufferRequest() const {
-    std::vector<WorkbufferRequest::size_in_bytes_t> immut_sizes;
-    ib_seq_lengths_.addRequest(immut_sizes, descs_.seqLengthArraySizeBytes());
-    ib_weight_space_.addRequest(immut_sizes, descs_.weightSpaceSize());
+WorkbufferRequest LSTMSequenceOpBase::GetWorkBufferRequest() const { return {immut_sizes_, mut_sizes_}; }
 
-    std::vector<WorkbufferRequest::size_in_bytes_t> mut_sizes;
-    mb_work_space_.addRequest(mut_sizes, descs_.workSpaceSize());
-
-    if (x_adapter) x_adapter->requestWorkbuffer(mut_sizes);
-    if (hx_adapter) hx_adapter->requestWorkbuffer(mut_sizes);
-    if (cx_adapter) cx_adapter->requestWorkbuffer(mut_sizes);
-    if (y_adapter) y_adapter->requestWorkbuffer(mut_sizes);
-    if (hy_adapter) hy_adapter->requestWorkbuffer(mut_sizes);
-    if (cy_adapter) cy_adapter->requestWorkbuffer(mut_sizes);
-
-    return {std::move(immut_sizes), std::move(mut_sizes)};
+void LSTMSequenceOpBase::calcAdapterWorkbuffers() {
+    if (x_adapter) x_adapter->requestWorkbuffer(mut_sizes_);
+    if (hx_adapter) hx_adapter->requestWorkbuffer(mut_sizes_);
+    if (cx_adapter) cx_adapter->requestWorkbuffer(mut_sizes_);
+    if (y_adapter) y_adapter->requestWorkbuffer(mut_sizes_);
+    if (hy_adapter) hy_adapter->requestWorkbuffer(mut_sizes_);
+    if (cy_adapter) cy_adapter->requestWorkbuffer(mut_sizes_);
 }
 
 }  // namespace CUDAPlugin
