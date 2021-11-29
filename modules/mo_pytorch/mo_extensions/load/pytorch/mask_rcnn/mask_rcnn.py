@@ -23,6 +23,7 @@ def rpn_forward(self, images, features, targets=None):
             self.top_k = 25575
             self.keep_top_k = top_k
             self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
+            self.background_label_id = 100
 
         def infer_shapes(self, inputs):
             return [1, 1, self.keep_top_k, 7]
@@ -109,7 +110,7 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
                 self.spatial_scale = scales[i]
 
 
-        box_features = forward_hook(ROIAlign(), (features[str(i)], proposals, zeros))
+        box_features = forward_hook(ROIAlign(), (features[str(i)], proposals * 320, zeros))
 
         # Imitation of level-wise ROIAlign
         box_features = box_features * (levels == i).to(torch.float32)
@@ -125,21 +126,21 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
         def __init__(self):
             super().__init__()
             self.variance_encoded_in_target = True
-            self.nms_threshold = 0.7
-            self.confidence_threshold = -999
+            self.nms_threshold = 0.5
+            self.confidence_threshold = 0.05
             self.top_k = 6000
-            self.keep_top_k = 1000
+            self.keep_top_k = 100
             self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
+            self.background_label_id = 0
 
 
-    # anchors = anchors[0].reshape(1, 1, -1)
-    # anchors /= 320
     proposal = proposals.reshape(1, 1, -1)
+    box_regression = box_regression.reshape(1, -1, 4)
+    box_regression /= torch.tensor([10.0, 10.0, 5.0, 5.0])
     box_regression = box_regression.reshape(1, -1)
-    class_logits = class_logits.reshape(1, -1)
+    class_logits = class_logits.softmax(1).reshape(1, -1)
 
     detections = forward_hook(DetectionOutput(), (box_regression, class_logits, proposal))
-
 
     return detections
 
@@ -151,7 +152,6 @@ class MaskRCNN(object):
 
 
     def register_hook(self, model):
-        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
         model.rpn.forward = lambda *args: rpn_forward(model.rpn, *args)
         model.roi_heads.forward = lambda *args: roi_heads_forward(model.roi_heads, *args)
         # model.forward = self.hook(forward, model, model.forward)

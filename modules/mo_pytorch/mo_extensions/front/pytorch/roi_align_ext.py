@@ -18,28 +18,22 @@ import numpy as np
 
 from mo.front.common.partial_infer.utils import int64_array
 from mo.front.extractor import FrontExtractorOp
-from extensions.ops.DetectionOutput import DetectionOutput
+from extensions.ops.roialign import ROIAlign
 from mo.utils.error import Error
 
 
-class DetectionOutputExtractor(FrontExtractorOp):
-    op = 'DetectionOutput'
+class ROIAlignExtractor(FrontExtractorOp):
+    op = 'ROIAlign'
     enabled = True
 
     @classmethod
     def extract(cls, node):
         attrs = {
-            'variance_encoded_in_target': int(node.module.variance_encoded_in_target),
-            'nms_threshold': node.module.nms_threshold,
-            'confidence_threshold': node.module.confidence_threshold,
-            'top_k': node.module.top_k,
-            'keep_top_k': node.module.keep_top_k,
-            'code_type': node.module.code_type,
-            'share_location': 0,
-            # 'num_classes': node.module.num_classes,
-            'normalized': 1,
-            'background_label_id': node.module.background_label_id,
-            'clip_before_nms': 1,
+            'pooled_h': node.module.pooled_h,
+            'pooled_w': node.module.pooled_w,
+            'sampling_ratio': node.module.sampling_ratio,
+            'mode': node.module.mode,
+            'spatial_scale': node.module.spatial_scale,
         }
-        DetectionOutput.update_node_stat(node, attrs)
+        ROIAlign.update_node_stat(node, attrs)
         return cls.enabled
