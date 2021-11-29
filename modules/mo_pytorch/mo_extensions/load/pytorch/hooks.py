@@ -144,7 +144,20 @@ class OpenVINOTensor(object):
         return self
 
     def to(self, dtype):
-        return self
+        mapping = {
+            torch.int32: np.int32,
+            torch.int64: np.int64,
+            torch.float32: np.float32,
+        }
+        if not dtype in mapping:
+            raise Exception("Unexpected dst type:", dtype)
+
+        class Cast(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.dst_type = mapping[dtype]
+
+        return forward_hook(Cast(), (self,))
 
     def split(self, split_size, dim):
         num_splits = self.dynamic_shape[dim] // split_size
@@ -165,10 +178,7 @@ class OpenVINOTensor(object):
 
     # Overrides += over tensors
     def __iadd__(self, a):
-        class Add(nn.Module):
-            pass
-
-        return forward_hook(Add(), (self, a))
+        return self + a
 
     def __add__(self, a):
         if isinstance(a, OpenVINOTensor):
@@ -217,6 +227,13 @@ class OpenVINOTensor(object):
                     self.register_buffer('add', value)
 
             return forward_hook(Add(a), (self,))
+
+    def __eq__(self, a):
+        class Equal(nn.Module):
+            def __init__(self, value):
+                super().__init__()
+
+        return forward_hook(Equal(a), (self, OpenVINOTensor(torch.tensor(a))))
 
     def __getitem__(self, key):
         begin_id = []
@@ -358,12 +375,12 @@ class OpenVINOTensor(object):
         return forward_hook(Reshape(shape), (self,))
 
 
-    def flatten(self, start=0, end=-1):
+    def flatten(self, start_dim=0, end_dim=-1):
         class Flatten(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.axis = start
-                self.end_axis = end
+                self.axis = start_dim
+                self.end_axis = end_dim
 
         return forward_hook(Flatten(), (self,))
 
@@ -541,6 +558,32 @@ def function_hook(input, *args, **kwargs):
 
     return forward_hook(Pow(*args, **kwargs), (input,))
 
+@implements(torch.sqrt)
+def function_hook(input, *args, **kwargs):
+
+    class Sqrt(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    return forward_hook(Sqrt(*args, **kwargs), (input,))
+
+@implements(torch.floor)
+def function_hook(input, *args, **kwargs):
+
+    class Floor(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    return forward_hook(Floor(*args, **kwargs), (input,))
+
+@implements(torch.clamp)
+def function_hook(input, min, max):
+
+    class Clamp(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    return forward_hook(Clamp(), (input, OpenVINOTensor(torch.tensor(min)), OpenVINOTensor(torch.tensor(max))))
 
 @implements(torch.unsqueeze)
 def unsqueeze(input, dim):
@@ -1004,3 +1047,29 @@ def function_hook(input, *args, **kwargs):
 def function_hook(input, num_chunks, dim):
     split_size = input.dynamic_shape[dim] // num_chunks
     return input.split(split_size, dim)
+
+
+@implements(torch.topk)
+def function_hook(input, k):
+
+    class TopK(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def infer_shapes(self, inputs):
+            print(k)
+            return [[k], [k]]
+
+    outputs = (OpenVINOTensor(), OpenVINOTensor())
+    return forward_hook(TopK(), (input, OpenVINOTensor(torch.tensor(k))), outputs)
+
+
+@implements(torch.gather)
+def function_hook(input, dim, index):
+
+    class Gather(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    axes = OpenVINOTensor(torch.tensor(dim))
+    return forward_hook(Gather(), (input, index, axes))
