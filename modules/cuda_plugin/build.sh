@@ -8,6 +8,9 @@ BUILD_TYPE=${BUILD_TYPE:-Release}
 [[ -n "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME environment variable is expected"; exit 1; }
 [[ -n "${OPENVINO_CONTRIB}" ]] || { echo "OPENVINO_CONTRIB environment variable is expected"; exit 1; }
 [[ -n "${OPENVINO_BUILD_PATH}" ]] || { echo "OPENVINO_BUILD_PATH environment variable is expected"; exit 1; }
+[[ -d "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME=${OPENVINO_HOME} does not exist"; exit 1; }
+[[ -d "${OPENVINO_CONTRIB}" ]] || { echo "OPENVINO_CONTRIB=${OPENVINO_CONTRIB} does not exist"; exit 1; }
+[[ -d "${OPENVINO_CONTRIB}/modules/cuda_plugin" ]] || { echo "Path ${OPENVINO_CONTRIB}/modules/cuda_plugin does not exist"; exit 1; }
 [[ "$1" == "--setup" || "$1" == "--build" || "$1" == "--rebuild" ]] || {
   printf "One of the following command should be provided:\n\
   - --setup (allow configure cmake project)\n\
