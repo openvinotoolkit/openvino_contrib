@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from ..hooks import OpenVINOTensor, forward_hook
@@ -26,17 +27,19 @@ def rpn_forward(self, images, features, targets=None):
     objectness, pred_bbox_deltas = self.head(features)
     anchors = self.anchor_generator(images, features)
 
+    shapes = [np.prod(o.shape) for o in objectness]
+
     objectness, pred_bbox_deltas = concat_box_prediction_layers(objectness, pred_bbox_deltas)
     # end of copy
 
     anchors = anchors[0].reshape(1, -1, 4)
-    anchors /= 320
+    anchors /= 800
     pred_bbox_deltas = pred_bbox_deltas.reshape(1, -1, 4)
     objectness = objectness.reshape(1, -1).sigmoid()
 
     start_idx = 0
     all_proposals = []
-    for shape in [19200, 4800, 1200, 300, 75]:
+    for shape in shapes:
         end_idx = start_idx + shape
         scores = objectness[:, start_idx : end_idx]
         deltas = pred_bbox_deltas[:, start_idx : end_idx].reshape(1, -1)
@@ -61,7 +64,7 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals):
     zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
 
     # Proposals are in absolute coordinates
-    proposals = proposals * 320
+    proposals = proposals * 800
     levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
@@ -115,15 +118,16 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, 100)
     mask_features = self.mask_head(mask_features)
     mask_logits = self.mask_predictor(mask_features)
+    mask_probs = mask_logits.sigmoid()
 
-    return {'boxes': detections, 'masks': mask_logits}, {}
+    return {'boxes': detections, 'masks': mask_probs}, {}
 
 
 def model_forward(self, images, targets=None):
     from torchvision.models.detection.image_list import ImageList
     images = self.transform.normalize(images)
-    original_image_sizes = [(320, 320)]
-    images = ImageList(images, [[320, 320]])
+    original_image_sizes = [(800, 800)]
+    images = ImageList(images, [[800, 800]])
 
     features = self.backbone(images.tensors)
     proposals, proposal_losses = self.rpn(images, features, targets)
