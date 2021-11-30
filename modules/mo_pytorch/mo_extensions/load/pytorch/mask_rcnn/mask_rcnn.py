@@ -44,7 +44,7 @@ def rpn_forward(self, images, features, targets=None):
 
         det = DetectionOutput(top_k=min(shape, 1000),
                               nms_threshold=self.nms_thresh,
-                              confidence_threshold=-999,
+                              confidence_threshold=0.0,
                               background_label_id=2)
         proposals = forward_hook(det, (deltas, scores, OpenVINOTensor(priors)))
         all_proposals.append(proposals)
@@ -65,7 +65,7 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals):
     levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
-    for i in range(4):
+    for lvl, name in enumerate(cls.featmap_names):
         class ROIAlign(torch.nn.Module):
             def __init__(self):
                 super().__init__()
@@ -73,7 +73,7 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals):
                 self.pooled_w = cls.output_size[1]
                 self.sampling_ratio = 2
                 self.mode = 'avg'
-                self.spatial_scale = cls.scales[i]
+                self.spatial_scale = cls.scales[lvl]
 
             def infer_shapes(self, inputs):
                 feat_shape = inputs[0].dynamic_shape
@@ -81,11 +81,11 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals):
                 return [rois_shape[0], feat_shape[1], self.pooled_h, self.pooled_w]
 
 
-        box_features = forward_hook(ROIAlign(), (features[str(i)], proposals, zeros))
+        box_features = forward_hook(ROIAlign(), (features[name], proposals, zeros))
 
         # Imitation of level-wise ROIAlign
-        box_features = box_features * (levels == i).to(torch.float32)
-        if i > 0:
+        box_features = box_features * (levels == lvl).to(torch.float32)
+        if lvl > 0:
             final_box_features += box_features
         else:
             final_box_features = box_features
@@ -121,6 +121,7 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
 
 def model_forward(self, images, targets=None):
     from torchvision.models.detection.image_list import ImageList
+    images = self.transform.normalize(images)
     original_image_sizes = [(320, 320)]
     images = ImageList(images, [[320, 320]])
 

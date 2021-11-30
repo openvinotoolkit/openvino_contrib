@@ -1061,7 +1061,9 @@ def function_hook(input, k, dim=0):
             self.dim = dim
 
         def infer_shapes(self, inputs):
-            return [[k], [k]]
+            shape = inputs[0].dynamic_shape
+            out = shape[:dim] + [k] + shape[dim + 1:]
+            return out, out
 
     outputs = (OpenVINOTensor(), OpenVINOTensor())
     return forward_hook(TopK(), (input, OpenVINOTensor(torch.tensor(k))), outputs)

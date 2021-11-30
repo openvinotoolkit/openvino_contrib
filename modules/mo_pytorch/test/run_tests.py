@@ -288,5 +288,32 @@ class TestModels(unittest.TestCase):
         self.assertLessEqual(diff, 1e-4)
 
 
+    def test_mask_rcnn(self):
+        model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False)
+        model.transform.max_size = 320
+        model.eval()
+
+        inp = cv.resize(self.test_img, (320, 320))
+        inp = np.expand_dims(inp.astype(np.float32).transpose(2, 0, 1), axis=0)
+        inp /= 255
+        inp = torch.tensor(inp)
+
+        with torch.no_grad():
+            ref = model(inp)
+
+        mo_pytorch.convert(model, input_shape=[1, 3, 320, 320], model_name='model')
+
+        net = self.ie.load_network('model.xml', 'CPU')
+        out = net.infer({'input': inp})
+        out = out['DetectionOutput_647']
+
+        labels = out[0, 0, :, 1]
+        scores = out[0, 0, :, 2]
+        boxes = out[0, 0, :, 3:] * 320
+
+        # Test boxes
+        self.normAssertDetections(ref[0]['labels'], ref[0]['scores'], ref[0]['boxes'],
+                                  labels, scores, boxes)
+
 if __name__ == '__main__':
     unittest.main()
