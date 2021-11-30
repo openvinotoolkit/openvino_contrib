@@ -36,7 +36,6 @@ class DetectionOutputExtractor(FrontExtractorOp):
             'keep_top_k': node.module.keep_top_k,
             'code_type': node.module.code_type,
             'share_location': 0,
-            # 'num_classes': node.module.num_classes,
             'normalized': 1,
             'background_label_id': node.module.background_label_id,
             'clip_before_nms': 1,

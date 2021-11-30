@@ -92,25 +92,27 @@ def rpn_forward(self, images, features, targets=None):
     return [proposals, OpenVINOTensor()]
 
 
-def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
+def multi_scale_roi_align(cls, features, proposals, num_proposals, output_size):
     scales = [0.25, 0.125, 0.0625, 0.03125]
-    zeros = OpenVINOTensor(torch.zeros([1000], dtype=torch.int32))
+    zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
 
-    levels = self.box_roi_pool.map_levels([proposals * 320]).reshape(-1, 1, 1, 1)
+    # Proposals are in absolute coordinates
+    proposals = proposals * 320
+    levels = cls.box_roi_pool.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
     for i in range(4):
         class ROIAlign(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.pooled_h = 7
-                self.pooled_w = 7
+                self.pooled_h = output_size
+                self.pooled_w = output_size
                 self.sampling_ratio = 2
                 self.mode = 'avg'
                 self.spatial_scale = scales[i]
 
 
-        box_features = forward_hook(ROIAlign(), (features[str(i)], proposals * 320, zeros))
+        box_features = forward_hook(ROIAlign(), (features[str(i)], proposals, zeros))
 
         # Imitation of level-wise ROIAlign
         box_features = box_features * (levels == i).to(torch.float32)
@@ -119,7 +121,12 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
         else:
             final_box_features = box_features
 
-    box_features = self.box_head(final_box_features)
+    return final_box_features
+
+
+def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
+    box_features = multi_scale_roi_align(self, features, proposals, 1000, output_size=7)
+    box_features = self.box_head(box_features)
     class_logits, box_regression = self.box_predictor(box_features)
 
     class DetectionOutput(torch.nn.Module):
@@ -133,6 +140,8 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
             self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
             self.background_label_id = 0
 
+        def infer_shapes(self, inputs):
+            return [1, 1, self.keep_top_k, 7]
 
     proposal = proposals.reshape(1, 1, -1)
     box_regression = box_regression.reshape(1, -1, 4)
@@ -142,7 +151,13 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
 
     detections = forward_hook(DetectionOutput(), (box_regression, class_logits, proposal))
 
-    return detections
+    # Predict masks
+    # boxes = detections[0, 0, :, 3:]
+    # mask_features = multi_scale_roi_align(self, features, boxes, 100, output_size=14)
+    # mask_features = self.mask_head(mask_features)
+    # mask_logits = self.mask_predictor(mask_features)
+
+    return {'boxes': detections, 'masks': None}, None
 
 
 
@@ -154,7 +169,4 @@ class MaskRCNN(object):
     def register_hook(self, model):
         model.rpn.forward = lambda *args: rpn_forward(model.rpn, *args)
         model.roi_heads.forward = lambda *args: roi_heads_forward(model.roi_heads, *args)
-        # model.forward = self.hook(forward, model, model.forward)
-        # model.preprocess_image = self.hook(preprocess_image, model, model.preprocess_image)
-        # import detectron2
-        # detectron2.modeling.meta_arch.retinanet.detector_postprocess = detector_postprocess
+        model.transform.postprocess = lambda *args: args[0]
