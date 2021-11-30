@@ -4,26 +4,16 @@
 
 #pragma once
 
-#include <cuda_operation_base.hpp>
+#include "activation_forward_cudnn_base.hpp"
 
 namespace CUDAPlugin {
 
-class TanhOp : public OperationCuDnn {
+class TanhOp : public ActivationForwardCuDnnOpBase {
 public:
     TanhOp(const CreationContext& context,
            const std::shared_ptr<ngraph::Node>& node,
            IndexCollection&& inputIds,
            IndexCollection&& outputIds);
-    void Execute(const InferenceRequestContext& context,
-                 Inputs inputTensors,
-                 Outputs outputTensors,
-                 const Workbuffers&) const override;
-
-public:
-    CUDA::TanhDescriptor tanh_desc_;
-    CUDA::DnnTensorDescriptor x_desc_;
-    CUDA::DnnTensorDescriptor y_desc_;
-    cudnnDataType_t data_type_;
 };
 
 }  // namespace CUDAPlugin

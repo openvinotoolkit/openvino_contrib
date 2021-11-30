@@ -112,9 +112,31 @@ public:
     DnnActivationDescriptor(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
         set(mode, reluNanOpt, coef);
     }
+    virtual ~DnnActivationDescriptor() = default;
     void set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
         throwIfError(cudnnSetActivationDescriptor(get(), mode, reluNanOpt, coef));
     }
+};
+
+class SigmoidDescriptor : public DnnActivationDescriptor {
+public:
+    SigmoidDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN, 0} {}
+};
+
+class ReluDescriptor : public DnnActivationDescriptor {
+public:
+    ReluDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0} {}
+};
+
+class TanhDescriptor : public DnnActivationDescriptor {
+public:
+    TanhDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0} {}
+};
+
+class ClippedReluDescriptor : public DnnActivationDescriptor {
+public:
+    explicit ClippedReluDescriptor(double threshold)
+        : DnnActivationDescriptor{CUDNN_ACTIVATION_CLIPPED_RELU, CUDNN_PROPAGATE_NAN, threshold} {}
 };
 
 class DnnPoolingDescriptor
@@ -136,21 +158,6 @@ public:
              const int strideA[]) {
         throwIfError(cudnnSetPoolingNdDescriptor(get(), mode, nanPropagation, nbDims, windowDimA, paddingA, strideA));
     }
-};
-
-class ReluDescriptor : public DnnActivationDescriptor {
-public:
-    ReluDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0} {}
-};
-
-class SigmoidDescriptor : public DnnActivationDescriptor {
-public:
-    SigmoidDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN, 0} {}
-};
-
-class TanhDescriptor : public DnnActivationDescriptor {
-public:
-    TanhDescriptor() : DnnActivationDescriptor{CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0} {}
 };
 
 class DnnFilterDescriptor

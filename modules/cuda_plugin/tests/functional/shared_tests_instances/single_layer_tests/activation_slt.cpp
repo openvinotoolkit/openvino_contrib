@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda/device_pointers.hpp>
+#include <cuda_graph.hpp>
+#include <cuda_operation_base.hpp>
+#include <cuda_operation_registry.hpp>
+#include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
+#include <cuda_thread_context.hpp>
 #include <single_layer_tests/activation.hpp>
+
+#include "benchmark.hpp"
 
 namespace LayerTestsDefinitions {
 namespace {
@@ -1941,6 +1949,8 @@ INSTANTIATE_TEST_CASE_P(
 // clang-format on
 // =============================================================================
 
+// ------------- Tanh -------------
+
 std::initializer_list<std::initializer_list<std::size_t>> tanhShapes{
     {1, 100, 128},
     {1, 512, 1000},
@@ -1972,5 +1982,238 @@ INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Tanh,
                         ActivationLayerTest,
                         basicTanhCases,
                         ActivationLayerTest::getTestCaseName);
+
+// =============================================================================
+
+// ------------- Clamp -------------
+
+using ClampParams = std::pair<ngraph::helpers::ActivationTypes, std::vector<float>>;
+using ClampShape = std::pair<std::vector<size_t>, std::vector<size_t>>;
+using Precisions = std::initializer_list<InferenceEngine::Precision>;
+
+// ------------- Clamp Smoke -------------
+
+const std::initializer_list<ClampParams> clampParamsSmoke{{ngraph::helpers::Clamp, {0.0, 10.1}},
+                                                          {ngraph::helpers::Clamp, {0.0, 10.5}},
+                                                          {ngraph::helpers::Clamp, {0.0, 20.4}},
+                                                          {ngraph::helpers::Clamp, {0.0, 23.999}},
+                                                          {ngraph::helpers::Clamp, {0.0, 100.0}},
+                                                          {ngraph::helpers::Clamp, {-1.0, 0.0}},
+                                                          {ngraph::helpers::Clamp, {-20.1, -10.5}},
+                                                          {ngraph::helpers::Clamp, {-10.0, 10.0}},
+                                                          {ngraph::helpers::Clamp, {10.3, 20.4}},
+                                                          {ngraph::helpers::Clamp, {0.1, 10.1}},
+                                                          {ngraph::helpers::Clamp, {10.0, 100.0}},
+                                                          {ngraph::helpers::Clamp, {10.6, 20.6}}};
+
+const Precisions clampNetPrcSmoke{
+    InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16,
+    // TODO: uncomment next lines when these types are supported
+    // InferenceEngine::Precision::I64,
+    // InferenceEngine::Precision::I32
+};
+
+const std::initializer_list<ClampShape> clampInShapesSmoke{{{50}, {}}, {{10, 10}, {}}, {{1, 20, 20}, {}}};
+
+const auto clampCasesSmoke = ::testing::Combine(::testing::ValuesIn(clampParamsSmoke),
+                                                ::testing::ValuesIn(clampNetPrcSmoke),
+                                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                                ::testing::Values(InferenceEngine::Layout::ANY),
+                                                ::testing::Values(InferenceEngine::Layout::ANY),
+                                                ::testing::ValuesIn(clampInShapesSmoke),
+                                                ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Clamp,
+                        ActivationLayerTest,
+                        clampCasesSmoke,
+                        ActivationLayerTest::getTestCaseName);
+
+// ------------- Clamp SSD MobileNet V2 COCO-------------
+
+const ClampParams clampParamsSsdMobileNetv2Coco{ngraph::helpers::Clamp, {0.0, 6.0}};
+
+const Precisions clampNetPrcSsdMobileNetv2Coco{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16};
+
+const std::initializer_list<ClampShape> clampInShapesSsdMobileNetv2Coco{
+    {{1, 32, 150, 150}, {}}, {{1, 96, 150, 150}, {}}, {{1, 96, 75, 75}, {}},  {{1, 144, 75, 75}, {}},
+    {{1, 144, 38, 38}, {}},  {{1, 192, 38, 38}, {}},  {{1, 192, 19, 19}, {}}, {{1, 384, 19, 19}, {}},
+    {{1, 576, 19, 19}, {}},  {{1, 576, 10, 10}, {}},  {{1, 960, 10, 10}, {}}, {{1, 1280, 10, 10}, {}},
+    {{1, 256, 10, 10}, {}},  {{1, 256, 5, 5}, {}},    {{1, 512, 5, 5}, {}},   {{1, 128, 5, 5}, {}},
+    {{1, 128, 3, 3}, {}},    {{1, 256, 3, 3}, {}},    {{1, 128, 2, 2}, {}},   {{1, 256, 2, 2}, {}},
+    {{1, 64, 2, 2}, {}},     {{1, 64, 1, 1}, {}},     {{1, 128, 1, 1}, {}}};
+
+const auto clampCasesSsdMobileNetv2Coco = ::testing::Combine(::testing::Values(clampParamsSsdMobileNetv2Coco),
+                                                             ::testing::ValuesIn(clampNetPrcSsdMobileNetv2Coco),
+                                                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                                             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                                             ::testing::ValuesIn(clampInShapesSsdMobileNetv2Coco),
+                                                             ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(Clamp_SsdMobileNetv2Coco,
+                        ActivationLayerTest,
+                        clampCasesSsdMobileNetv2Coco,
+                        ActivationLayerTest::getTestCaseName);
+
+// ------------- Clamp Mask R-CNN Inception V2 COCO-------------
+
+const ClampParams clampParamsMaskRCnnInceptionv2Coco{ngraph::helpers::Clamp, {0.0, 6.0}};
+
+const Precisions clampNetPrcMaskRCnnInceptionv2Coco{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16};
+
+const ClampShape clampInShapesMaskRCnnInceptionv2Coco{{1, 512, 50, 86}, {}};
+
+const auto clampCasesMaskRCnnInceptionv2Coco =
+    ::testing::Combine(::testing::Values(clampParamsMaskRCnnInceptionv2Coco),
+                       ::testing::ValuesIn(clampNetPrcMaskRCnnInceptionv2Coco),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(clampInShapesMaskRCnnInceptionv2Coco),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(Clamp_MaskRCnnInceptionv2Coco,
+                        ActivationLayerTest,
+                        clampCasesMaskRCnnInceptionv2Coco,
+                        ActivationLayerTest::getTestCaseName);
+
+namespace benchmark {
+
+// ------------- Clamp Big shapes-------------
+
+const ClampParams clampParamsBig{ngraph::helpers::Clamp, {0.0, 10.0}};
+
+const Precisions clampNetPrcBig{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16};
+
+const ClampShape clampInShapeBig{{1024, 1024, 384, 2}, {}};
+
+const auto clampCasesBig = ::testing::Combine(::testing::Values(clampParamsBig),
+                                              ::testing::ValuesIn(clampNetPrcBig),
+                                              ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                              ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                              ::testing::Values(InferenceEngine::Layout::ANY),
+                                              ::testing::Values(InferenceEngine::Layout::ANY),
+                                              ::testing::Values(clampInShapeBig),
+                                              ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+struct ClampBenchmark : testing::Test {
+    template <typename T>
+    static void testOneShape(const ClampParams& params, const ClampShape& shape) {
+        using CDevPtr = CUDA::DevicePointer<const void*>;
+        using DevPtr = CUDA::DevicePointer<void*>;
+        using microseconds = std::chrono::duration<double, std::micro>;
+        using milliseconds = std::chrono::duration<double, std::milli>;
+
+        constexpr int NUM_ATTEMPTS = 1000;
+        constexpr milliseconds WARMUP_TIME{2000.0};
+
+        const auto& minMax = params.second;
+
+        CUDAPlugin::ThreadContext threadContext{{}};
+        CUDAPlugin::OperationBase::Ptr operation = [&] {
+            const bool optimizeOption = false;
+            auto param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::from<T>(),
+                                                                     ngraph::PartialShape{shape.first});
+            auto node = std::make_shared<ngraph::op::Clamp>(param->output(0), minMax[0], minMax[1]);
+
+            auto& registry = CUDAPlugin::OperationRegistry::getInstance();
+            auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+                                               node,
+                                               std::array{CUDAPlugin::TensorID{0}},
+                                               std::array{CUDAPlugin::TensorID{0}});
+            return op;
+        }();
+        const int tesnorSize = ngraph::shape_size(shape.first);
+        const auto tensorSizeBytes = tesnorSize * sizeof(T);
+        auto& stream = threadContext.stream();
+        CUDA::Allocation inAlloc = stream.malloc(tensorSizeBytes);
+        CUDA::Allocation outAlloc = stream.malloc(tensorSizeBytes);
+        std::vector<CDevPtr> inputs{inAlloc};
+        std::vector<DevPtr> outputs{outAlloc};
+
+        InferenceEngine::BlobMap empty;
+        CUDAPlugin::CancellationToken token{};
+        CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
+        CUDAPlugin::Profiler profiler{false, graph};
+        CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+
+        std::vector<T> inHost(tesnorSize);
+        std::random_device rDevice;
+        std::mt19937 mersenneEngine{rDevice()};
+        std::uniform_int_distribution<int> dist{std::numeric_limits<int>::min(), std::numeric_limits<int>::max()};
+        auto genDict = [&dist, &mersenneEngine]() {
+            return static_cast<T>(10.f * dist(mersenneEngine) / std::numeric_limits<int>::max());
+        };
+        std::generate(inHost.begin(), inHost.end(), genDict);
+        stream.upload(inAlloc, inHost.data(), tensorSizeBytes);
+
+        const auto minMaxSizeBytes = sizeof(T);
+        CUDA::Allocation maxAlloc = stream.malloc(minMaxSizeBytes);
+        CUDA::Allocation minAlloc = stream.malloc(minMaxSizeBytes);
+
+        CUDAPlugin::Workbuffers workbuffers{};
+        CUDAPlugin::WorkbufferRequest wbRequest{operation->GetWorkBufferRequest()};
+        if (!wbRequest.immutable_sizes.empty()) {
+            Ensures(wbRequest.immutable_sizes.size() == 2);
+            Ensures(wbRequest.immutable_sizes[0] == minMaxSizeBytes && wbRequest.immutable_sizes[1] == minMaxSizeBytes);
+
+            CUDAPlugin::IOperationExec::Buffers initBuffers{static_cast<DevPtr>(maxAlloc),
+                                                            static_cast<DevPtr>(minAlloc)};
+            operation->InitSharedImmutableWorkbuffers(initBuffers);
+
+            workbuffers.immutable_buffers.emplace_back(static_cast<CDevPtr>(maxAlloc));
+            workbuffers.immutable_buffers.emplace_back(static_cast<CDevPtr>(minAlloc));
+        }
+
+        // Warmup
+        auto warmCur = std::chrono::steady_clock::now();
+        const auto warmEnd = warmCur + WARMUP_TIME;
+        while (warmCur <= warmEnd) {
+            operation->Execute(context, inputs, outputs, workbuffers);
+            stream.synchronize();
+            warmCur = std::chrono::steady_clock::now();
+        }
+
+        // Benchmark
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < NUM_ATTEMPTS; ++i) {
+            operation->Execute(context, inputs, outputs, workbuffers);
+            stream.synchronize();
+        }
+        const auto end = std::chrono::steady_clock::now();
+        microseconds averageExecTime = (end - start) / NUM_ATTEMPTS;
+        std::cout << std::fixed << std::setfill('0') << "Clamp " << CommonTestUtils::vec2str(shape.first)
+                  << ", minMax = " << CommonTestUtils::vec2str(minMax) << ": " << averageExecTime.count() << " us\n";
+    }
+};
+
+TEST_F(ClampBenchmark, DISABLED_benchmark) {
+    std::cout << "---Clamp SSD MobileNet V2 COCO - float---\n";
+    for (const auto& sh : clampInShapesSsdMobileNetv2Coco) {
+        testOneShape<float>(clampParamsSsdMobileNetv2Coco, sh);
+    }
+    std::cout << "---Clamp SSD MobileNet V2 COCO - ngraph::float16---\n";
+    for (const auto& sh : clampInShapesSsdMobileNetv2Coco) {
+        testOneShape<ngraph::float16>(clampParamsSsdMobileNetv2Coco, sh);
+    }
+
+    std::cout << "---Clamp Mask R-CNN Inception V2 COCO - float---\n";
+    testOneShape<float>(clampParamsMaskRCnnInceptionv2Coco, clampInShapesMaskRCnnInceptionv2Coco);
+    std::cout << "---Clamp Mask R-CNN Inception V2 COCO - ngraph::float16---\n";
+    testOneShape<ngraph::float16>(clampParamsMaskRCnnInceptionv2Coco, clampInShapesMaskRCnnInceptionv2Coco);
+
+    std::cout << "---Clamp Big shapes - float---\n";
+    testOneShape<float>(clampParamsBig, clampInShapeBig);
+    std::cout << "---Clamp Big shapes - ngraph::float16---\n";
+    testOneShape<ngraph::float16>(clampParamsBig, clampInShapeBig);
+}
+
+}  // namespace benchmark
+
+// =============================================================================
+
 }  // namespace
 }  // namespace LayerTestsDefinitions
