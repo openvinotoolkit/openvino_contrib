@@ -111,6 +111,11 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals, output_size):
                 self.mode = 'avg'
                 self.spatial_scale = scales[i]
 
+            def infer_shapes(self, inputs):
+                feat_shape = inputs[0].dynamic_shape
+                rois_shape = inputs[1].dynamic_shape
+                return [rois_shape[0], feat_shape[1], self.pooled_h, self.pooled_w]
+
 
         box_features = forward_hook(ROIAlign(), (features[str(i)], proposals, zeros))
 
@@ -157,8 +162,21 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     mask_features = self.mask_head(mask_features)
     mask_logits = self.mask_predictor(mask_features)
 
-    return {'boxes': detections, 'masks': mask_logits}, None
+    return {'boxes': detections, 'masks': mask_logits}, {}
 
+
+def model_forward(self, images, targets=None):
+    from torchvision.models.detection.image_list import ImageList
+    original_image_sizes = [(320, 320)]
+    images = ImageList(images, [[320, 320]])
+
+    features = self.backbone(images.tensors)
+    proposals, proposal_losses = self.rpn(images, features, targets)
+    detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
+
+    # detections['boxes'].node_name = 'boxes'
+    # detections['masks'].node_name = 'masks'
+    return detections
 
 
 class MaskRCNN(object):
@@ -167,6 +185,6 @@ class MaskRCNN(object):
 
 
     def register_hook(self, model):
+        model.forward = lambda *args: model_forward(model, *args)
         model.rpn.forward = lambda *args: rpn_forward(model.rpn, *args)
         model.roi_heads.forward = lambda *args: roi_heads_forward(model.roi_heads, *args)
-        model.transform.postprocess = lambda *args: args[0]

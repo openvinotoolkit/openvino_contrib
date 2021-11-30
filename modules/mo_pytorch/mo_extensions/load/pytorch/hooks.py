@@ -382,6 +382,16 @@ class OpenVINOTensor(object):
                 self.axis = start_dim
                 self.end_axis = end_dim
 
+            def infer_shapes(self, inputs):
+                shape = inputs[0].dynamic_shape
+                end = self.end_axis if self.end_axis >= 0 else (len(shape) + self.end_axis + 1)
+
+                out = inputs[0].dynamic_shape[:self.axis]
+                out += [np.prod(inputs[0].dynamic_shape[self.axis : end])]
+                out += inputs[0].dynamic_shape[end:]
+                return out
+
+
         return forward_hook(Flatten(), (self,))
 
 
@@ -1057,7 +1067,6 @@ def function_hook(input, k):
             super().__init__()
 
         def infer_shapes(self, inputs):
-            print(k)
             return [[k], [k]]
 
     outputs = (OpenVINOTensor(), OpenVINOTensor())
@@ -1070,6 +1079,12 @@ def function_hook(input, dim, index):
     class Gather(nn.Module):
         def __init__(self):
             super().__init__()
+
+        def infer_shapes(self, inputs):
+            out = inputs[0].dynamic_shape[:dim]
+            out += inputs[1].dynamic_shape
+            out += inputs[0].dynamic_shape[dim + 1:]
+            return out
 
     axes = OpenVINOTensor(torch.tensor(dim))
     return forward_hook(Gather(), (input, index, axes))
