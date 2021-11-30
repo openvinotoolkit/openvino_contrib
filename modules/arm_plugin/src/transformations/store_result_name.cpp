@@ -14,7 +14,7 @@ bool ArmPlugin::pass::StoreResultName::run_on_function(std::shared_ptr<ngraph::F
         if (sourceOutput.get_node()->get_output_size() > 1) {
             outputName += '.' + std::to_string(sourceOutput.get_index());
         }
-        node->get_rt_info().emplace("ResultName", std::make_shared<ngraph::VariantWrapper<std::string>>(outputName));
+        node->get_rt_info().emplace("ResultName", outputName);
     }
     return false;
 }

@@ -195,7 +195,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
             auto hasQuantizationInfo = (itInfo != rt_info.end());
             arm_compute::TensorInfo tensorInfo;
             if (quantizedOutput && hasQuantizationInfo) {
-                auto& quantizationInfo = safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                auto& quantizationInfo = itInfo->second.as<arm_compute::QuantizationInfo>();
                 arm_compute::DataType dataType;
                 switch (outputDataType) {
                     case ngraph::element::Type_t::u8 : dataType = arm_compute::DataType::QASYMM8; break;

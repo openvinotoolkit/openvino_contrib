@@ -61,19 +61,3 @@ struct SafeCast {
 #define safe_cast SafeCast{__FILE__, __LINE__}.call
 
 }  // namespace ArmPlugin
-
-namespace OV_NGRAPH_NAMESPACE {
-
-template <>
-struct NGRAPH_API VariantWrapper<arm_compute::QuantizationInfo> : public VariantImpl<arm_compute::QuantizationInfo> {
-    OPENVINO_RTTI("arm_compute::QuantizationInfo", "arm_plugin_util");
-    VariantWrapper(const arm_compute::QuantizationInfo& value) : VariantImpl<arm_compute::QuantizationInfo>{value} {}
-};
-
-template <>
-struct NGRAPH_API VariantWrapper<arm_compute::ActivationLayerInfo> : public VariantImpl<arm_compute::ActivationLayerInfo> {
-    OPENVINO_RTTI("arm_compute::ActivationLayerInfo", "arm_plugin_util");
-    VariantWrapper(const arm_compute::ActivationLayerInfo& value) : VariantImpl<arm_compute::ActivationLayerInfo>{value} {}
-};
-
-}  // namespace OV_NGRAPH_NAMESPACE
