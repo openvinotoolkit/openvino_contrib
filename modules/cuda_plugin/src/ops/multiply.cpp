@@ -36,6 +36,6 @@ static OperationBase::Ptr multiplyFactory(const CreationContext& context,
     throwIEException(fmt::format("Multiply node is not supported:\n{}", exception_msg.str()));
 }
 
-OPERATION_REGISTER_FACTORY(Multiply, multiplyFactory)
+OPERATION_REGISTER_FACTORY(multiplyFactory, Multiply)
 
 }  // namespace CUDAPlugin

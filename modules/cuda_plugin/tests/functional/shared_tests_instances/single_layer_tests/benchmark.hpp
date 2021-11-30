@@ -48,31 +48,45 @@ class BenchmarkLayerTest : public BaseLayerTest, virtual public LayerTestsUtils:
                   "BaseLayerTest should inherit from LayerTestsUtils::LayerTestsCommon");
 
 public:
-    void Run(const std::string& name, const std::chrono::milliseconds warmupTime, const int numAttempts) {
-        // Warmup
-        auto warm_cur = std::chrono::steady_clock::now();
-        const auto warm_end = warm_cur + warmupTime;
-        while (warm_cur < warm_end) {
-            LayerTestsUtils::LayerTestsCommon::Run();
-            warm_cur = std::chrono::steady_clock::now();
-        }
-
-        // Benchmark
-        const auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < numAttempts; ++i) {
-            LayerTestsUtils::LayerTestsCommon::Run();
-        }
-        const auto end = std::chrono::steady_clock::now();
-
-        auto average_us_exec_time = std::chrono::duration_cast<std::chrono::microseconds>((end - start) / numAttempts);
-        auto average_ms_exec_time = std::chrono::duration_cast<std::chrono::milliseconds>(average_us_exec_time);
-        std::cout << std::fixed << std::setfill('0') << name << ": " << average_us_exec_time.count() << " us\n";
-        std::cout << std::fixed << std::setfill('0') << name << ": " << average_ms_exec_time.count() << " ms\n";
+    void Run(const std::string& name, const std::chrono::milliseconds warmupTime = 2000, const int numAttempts = 100) {
+        bench_name_ = name;
+        warmup_time_ = warmupTime;
+        num_attempts_ = numAttempts;
+        LayerTestsUtils::LayerTestsCommon::Run();
     }
 
     void Validate() override {
         // NOTE: Validation is ignored because we are interested in benchmarks results
     }
+
+protected:
+    void Infer() override {
+        // Warmup
+        auto warmCur = std::chrono::steady_clock::now();
+        const auto warmEnd = warmCur + warmup_time_;
+        while (warmCur < warmEnd) {
+            LayerTestsUtils::LayerTestsCommon::Infer();
+            warmCur = std::chrono::steady_clock::now();
+        }
+
+        // Benchmark
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < num_attempts_; ++i) {
+            LayerTestsUtils::LayerTestsCommon::Infer();
+        }
+        const auto end = std::chrono::steady_clock::now();
+
+        const auto averageMicroExecTime =
+            std::chrono::duration_cast<std::chrono::microseconds>((end - start) / num_attempts_);
+        const auto averageMilliExecTime = std::chrono::duration_cast<std::chrono::milliseconds>(averageMicroExecTime);
+        std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMicroExecTime.count() << " us\n";
+        std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMilliExecTime.count() << " ms\n";
+    }
+
+private:
+    std::string bench_name_;
+    std::chrono::milliseconds warmup_time_;
+    int num_attempts_;
 };
 
 }  // namespace LayerTestsDefinitions

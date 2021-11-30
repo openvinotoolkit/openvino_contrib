@@ -7,9 +7,13 @@
 #include <cudnn.h>
 #include <fmt/format.h>
 
+#include <cstdint>
 #include <error.hpp>
+#include <gsl/gsl_assert>
 #include <kernels/cuda_type_traits.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <string_view>
+#include <type_traits>
 
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
 
@@ -144,6 +148,84 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
 }
 
 /**
+ * @brief Retruns std::string representation of T type
+ */
+template <typename T>
+std::string_view toString(const T& type);
+
+/**
+ * @brief Retruns std::string representation of cudaDataType_t type
+ */
+template <>
+inline constexpr std::string_view toString<cudaDataType_t>(const cudaDataType_t& type) {
+    switch (type) {
+#if CUDART_VERSION >= 11000
+        case CUDA_R_16BF:
+            return "CUDA_R_16BF";
+        case CUDA_R_16I:
+            return "CUDA_R_16I";
+        case CUDA_R_16U:
+            return "CUDA_R_16U";
+        case CUDA_R_64I:
+            return "CUDA_R_64I";
+        case CUDA_R_64U:
+            return "CUDA_R_64U";
+#endif
+        case CUDA_R_16F:
+            return "CUDA_R_16F";
+        case CUDA_R_32F:
+            return "CUDA_R_32F";
+        case CUDA_R_64F:
+            return "CUDA_R_64F";
+        case CUDA_R_8I:
+            return "CUDA_R_8I";
+        case CUDA_R_8U:
+            return "CUDA_R_8U";
+        case CUDA_R_32I:
+            return "CUDA_R_32I";
+        case CUDA_R_32U:
+            return "CUDA_R_32U";
+        default:
+            throwIEException(
+                fmt::format("CUDAPlugin::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
+    }
+}
+
+/**
+ * @brief Retruns std::string representation of cudnnDataType_t type
+ */
+template <>
+inline constexpr std::string_view toString<cudnnDataType_t>(const cudnnDataType_t& type) {
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+            return "CUDNN_DATA_FLOAT";
+        case CUDNN_DATA_DOUBLE:
+            return "CUDNN_DATA_DOUBLE";
+        case CUDNN_DATA_HALF:
+            return "CUDNN_DATA_HALF";
+        case CUDNN_DATA_INT8:
+            return "CUDNN_DATA_INT8";
+        case CUDNN_DATA_INT32:
+            return "CUDNN_DATA_INT32";
+        case CUDNN_DATA_INT8x4:
+            return "CUDNN_DATA_INT8x4";
+        case CUDNN_DATA_UINT8:
+            return "CUDNN_DATA_UINT8";
+        case CUDNN_DATA_UINT8x4:
+            return "CUDNN_DATA_UINT8x4";
+        case CUDNN_DATA_INT8x32:
+            return "CUDNN_DATA_INT8x32";
+        case CUDNN_DATA_BFLOAT16:
+            return "CUDNN_DATA_BFLOAT16";
+        case CUDNN_DATA_INT64:
+            return "CUDNN_DATA_INT64";
+        default:
+            throwIEException(
+                fmt::format("CUDAPlugin::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
+    }
+}
+
+/**
  * @brief Retruns the size of cudnnDataType_t type value in bytes
  */
 inline constexpr std::size_t elementSize(cudnnDataType_t type) {
@@ -171,7 +253,7 @@ inline constexpr std::size_t elementSize(cudnnDataType_t type) {
         case CUDNN_DATA_INT64:
             return sizeof(std::int64_t);
         default:
-            throwIEException(fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", type));
+            throwIEException(fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", toString(type)));
     }
 }
 
@@ -195,6 +277,81 @@ inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::Activa
         default:
             throwIEException(fmt::format("Unsupported activation: {}", mode));
     }
+}
+
+/**
+ * @brief Auxilary structure for E type used in SwitchCase()
+ * should contain type alias and static constexpr shift member of unsigned type, see example below
+ */
+template <typename E>
+struct SwitchCaseTrait;
+
+/**
+ * @brief Auxilary structure for cudnnDataType_t used in SwitchCase()
+ */
+template <>
+struct SwitchCaseTrait<cudnnDataType_t> {
+    using type = uint32_t;
+    static constexpr std::size_t shift = 16;
+};
+
+/**
+ * @brief Packs two enum or integer values into one integer value allowing it to be used in switch() and case statements
+ * e.g. switch (switchCase(in0, out)) {
+ *          case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT):
+ * Before using this function SwitchCaseTrait<E> structure specification has to be defined for E type, see example adove
+ */
+template <typename E>
+inline constexpr typename SwitchCaseTrait<E>::type switchCase(E first, E second) {
+    using I = typename SwitchCaseTrait<E>::type;
+    static_assert(std::is_enum<E>() || std::is_integral<E>());
+    static_assert(std::is_integral<I>());
+    static_assert(std::is_unsigned<decltype(SwitchCaseTrait<E>::shift)>());
+    constexpr auto shift = SwitchCaseTrait<E>::shift;
+    const I firstI = static_cast<I>(first);
+    const I secondI = static_cast<I>(second);
+    const I result = (firstI << shift) + secondI;
+    Ensures(static_cast<E>(secondI) == second);
+    Ensures(static_cast<E>((result - secondI) >> shift) == first);
+    return result;
+}
+
+// TODO: use in CuDnnTensorOpBase
+/**
+ * @brief Gets opTensorCompType for opTensorDesc used in cudnnOpTensor()
+ * See https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor for more details.
+ */
+inline constexpr cudnnDataType_t getCuDnnOpTensorCompType(cudnnDataType_t in0,
+                                                          cudnnDataType_t in1,
+                                                          cudnnDataType_t out) {
+    auto throwException = [=] {
+        throwIEException(
+            fmt::format("CUDAPlugin::getCuDnnOpTensorType(): Unsupported data types: in0 = {}, in1 = {} out = {}",
+                        toString(in0),
+                        toString(in1),
+                        toString(out)));
+    };
+    if (in0 != in1) {
+        throwException();
+    }
+    switch (switchCase(in0, out)) {
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_INT8, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_HALF, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_BFLOAT16, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_HALF):
+        case switchCase(CUDNN_DATA_HALF, CUDNN_DATA_HALF):
+        case switchCase(CUDNN_DATA_INT8, CUDNN_DATA_INT8):
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_INT8):
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_BFLOAT16):
+        case switchCase(CUDNN_DATA_BFLOAT16, CUDNN_DATA_BFLOAT16):
+            return CUDNN_DATA_FLOAT;
+        case switchCase(CUDNN_DATA_DOUBLE, CUDNN_DATA_DOUBLE):
+            return CUDNN_DATA_DOUBLE;
+        default:
+            throwException();
+    }
+    return CUDNN_DATA_FLOAT;  // never reached
 }
 
 }  // namespace CUDAPlugin
