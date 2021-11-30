@@ -19,6 +19,7 @@
 #include "concat_transformation.hpp"
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
+#include "matmul_transformations.hpp"
 
 using namespace CUDAPlugin;
 
@@ -44,6 +45,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     }
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
+    manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     if (!cfg.disabled_tensoriterator_transform) {
         manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
