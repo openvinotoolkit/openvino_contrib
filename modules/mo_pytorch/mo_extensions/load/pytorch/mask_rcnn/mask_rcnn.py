@@ -2,6 +2,23 @@ import torch
 
 from ..hooks import OpenVINOTensor, forward_hook
 
+class DetectionOutput(torch.nn.Module):
+    def __init__(self, top_k, nms_threshold, confidence_threshold, background_label_id):
+        super().__init__()
+        self.variance_encoded_in_target = True
+        self.nms_threshold = nms_threshold
+        self.confidence_threshold = confidence_threshold
+        self.top_k = top_k
+        self.keep_top_k = top_k
+        self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
+        self.background_label_id = background_label_id
+        self.clip_before_nms = True
+        self.share_location = False
+
+    def infer_shapes(self, inputs):
+        return [1, 1, self.keep_top_k, 7]
+
+
 def rpn_forward(self, images, features, targets=None):
     from torchvision.models.detection.rpn import concat_box_prediction_layers
     # Copy of torchvision/models/detection/rpn.py
@@ -12,37 +29,6 @@ def rpn_forward(self, images, features, targets=None):
     objectness, pred_bbox_deltas = concat_box_prediction_layers(objectness, pred_bbox_deltas)
     # end of copy
 
-    # [19200, 4800, 1200, 300, 75]
-    # Create an alias
-    class DetectionOutput(torch.nn.Module):
-        def __init__(self, top_k):
-            super().__init__()
-            self.variance_encoded_in_target = True
-            self.nms_threshold = 0.7
-            self.confidence_threshold = -999
-            self.top_k = 25575
-            self.keep_top_k = top_k
-            self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
-            self.background_label_id = 100
-
-        def infer_shapes(self, inputs):
-            return [1, 1, self.keep_top_k, 7]
-
-
-    # outputs = [OpenVINOTensor(), OpenVINOTensor()]
-    # for out in outputs:
-    #     out.graph = objectness.graph
-
-    # torch.Size([1, 1, 76824])
-    # (1, 76824)
-    # (1, 1536480)
-    # print(anchors.shape)
-    # print(deltas.shape)
-    # print(logist.shape)
-    # anchors = anchors[0].reshape(1, 1, -1)
-    # anchors /= 320
-    # pred_bbox_deltas = pred_bbox_deltas.reshape(1, -1)
-    # objectness = objectness.reshape(1, -1)
     anchors = anchors[0].reshape(1, -1, 4)
     anchors /= 320
     pred_bbox_deltas = pred_bbox_deltas.reshape(1, -1, 4)
@@ -55,7 +41,12 @@ def rpn_forward(self, images, features, targets=None):
         scores = objectness[:, start_idx : end_idx]
         deltas = pred_bbox_deltas[:, start_idx : end_idx].reshape(1, -1)
         priors = anchors[:, start_idx : end_idx].reshape(1, 1, -1)
-        proposals = forward_hook(DetectionOutput(top_k=min(shape, 1000)), (deltas, scores, OpenVINOTensor(priors)))
+
+        det = DetectionOutput(top_k=min(shape, 1000),
+                              nms_threshold=self.nms_thresh,
+                              confidence_threshold=-999,
+                              background_label_id=2)
+        proposals = forward_hook(det, (deltas, scores, OpenVINOTensor(priors)))
         all_proposals.append(proposals)
         start_idx = end_idx
 
@@ -66,50 +57,23 @@ def rpn_forward(self, images, features, targets=None):
     return [all_proposals, OpenVINOTensor()]
 
 
-    # start_idx = 0
-    # all_indices = []
-    # for shape in [19200, 4800, 1200, 300, 75]:
-    #     end_idx = start_idx + shape
-    #     scores = objectness[0, start_idx : end_idx]
-    #     topk, indices = torch.topk(scores, min(shape, 1000))
-    #     indices += start_idx
-
-    #     all_indices.append(indices)
-    #     start_idx = end_idx
-
-    # all_indices_2 = torch.cat(all_indices)
-
-    # pred_bbox_deltas = torch.gather(pred_bbox_deltas.reshape(1, -1, 4), 1, all_indices_2).reshape(1, -1)
-    # objectness = torch.gather(objectness, 1, all_indices_2)
-
-    # anchors = OpenVINOTensor(anchors)
-    # anchors.graph = objectness.graph
-    # anchors = torch.gather(anchors.reshape(1, -1, 4), 1, all_indices_2).reshape(1, 1, -1)
-
-    proposals = forward_hook(DetectionOutput(1000), (pred_bbox_deltas, objectness, OpenVINOTensor(anchors)))
-    # proposals = proposals.reshape(-1, 7)[:, 3:]
-    proposals = proposals.reshape(-1, 7)
-    return [proposals, OpenVINOTensor()]
-
-
-def multi_scale_roi_align(cls, features, proposals, num_proposals, output_size):
-    scales = [0.25, 0.125, 0.0625, 0.03125]
+def multi_scale_roi_align(cls, features, proposals, num_proposals):
     zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
 
     # Proposals are in absolute coordinates
     proposals = proposals * 320
-    levels = cls.box_roi_pool.map_levels([proposals]).reshape(-1, 1, 1, 1)
+    levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
     for i in range(4):
         class ROIAlign(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.pooled_h = output_size
-                self.pooled_w = output_size
+                self.pooled_h = cls.output_size[0]
+                self.pooled_w = cls.output_size[1]
                 self.sampling_ratio = 2
                 self.mode = 'avg'
-                self.spatial_scale = scales[i]
+                self.spatial_scale = cls.scales[i]
 
             def infer_shapes(self, inputs):
                 feat_shape = inputs[0].dynamic_shape
@@ -130,35 +94,25 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals, output_size):
 
 
 def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
-    box_features = multi_scale_roi_align(self, features, proposals, 1000, output_size=7)
+    box_features = multi_scale_roi_align(self.box_roi_pool, features, proposals, 1000)
     box_features = self.box_head(box_features)
     class_logits, box_regression = self.box_predictor(box_features)
 
-    class DetectionOutput(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.variance_encoded_in_target = True
-            self.nms_threshold = 0.5
-            self.confidence_threshold = 0.05
-            self.top_k = 6000
-            self.keep_top_k = 100
-            self.code_type = 'caffe.PriorBoxParameter.CENTER_SIZE'
-            self.background_label_id = 0
-
-        def infer_shapes(self, inputs):
-            return [1, 1, self.keep_top_k, 7]
-
     proposal = proposals.reshape(1, 1, -1)
     box_regression = box_regression.reshape(1, -1, 4)
-    box_regression /= torch.tensor([10.0, 10.0, 5.0, 5.0])
+    box_regression /= self.box_coder.weights
     box_regression = box_regression.reshape(1, -1)
     class_logits = class_logits.softmax(1).reshape(1, -1)
 
-    detections = forward_hook(DetectionOutput(), (box_regression, class_logits, proposal))
+    det = DetectionOutput(top_k=100,
+                          nms_threshold=self.nms_thresh,
+                          confidence_threshold=self.score_thresh,
+                          background_label_id=0)
+    detections = forward_hook(det, (box_regression, class_logits, proposal))
 
     # Predict masks
     boxes = detections[0, 0, :, 3:]
-    mask_features = multi_scale_roi_align(self, features, boxes, 100, output_size=14)
+    mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, 100)
     mask_features = self.mask_head(mask_features)
     mask_logits = self.mask_predictor(mask_features)
 
@@ -173,9 +127,6 @@ def model_forward(self, images, targets=None):
     features = self.backbone(images.tensors)
     proposals, proposal_losses = self.rpn(images, features, targets)
     detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
-
-    # detections['boxes'].node_name = 'boxes'
-    # detections['masks'].node_name = 'masks'
     return detections
 
 

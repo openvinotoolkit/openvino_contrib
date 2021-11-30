@@ -375,24 +375,8 @@ class OpenVINOTensor(object):
         return forward_hook(Reshape(shape), (self,))
 
 
-    def flatten(self, start_dim=0, end_dim=-1):
-        class Flatten(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.axis = start_dim
-                self.end_axis = end_dim
-
-            def infer_shapes(self, inputs):
-                shape = inputs[0].dynamic_shape
-                end = self.end_axis if self.end_axis >= 0 else (len(shape) + self.end_axis + 1)
-
-                out = inputs[0].dynamic_shape[:self.axis]
-                out += [np.prod(inputs[0].dynamic_shape[self.axis : end])]
-                out += inputs[0].dynamic_shape[end:]
-                return out
-
-
-        return forward_hook(Flatten(), (self,))
+    def flatten(self, *args, **kwargs):
+        return torch.flatten(self, *args, **kwargs)
 
 
     def softmax(self, dim):
@@ -730,14 +714,23 @@ def function_hook(input, weight, bias, *args, **kwargs):
 
 
 @implements(torch.flatten)
-def function_hook(input, *args, **kwargs):
-
+def function_hook(input, start_dim, end_dim=-1):
     class Flatten(nn.Module):
-        def __init__(self, axis):
+        def __init__(self):
             super().__init__()
-            self.axis = axis
+            self.axis = start_dim
+            self.end_axis = end_dim
 
-    return forward_hook(Flatten(*args, **kwargs), (input,))
+        def infer_shapes(self, inputs):
+            shape = inputs[0].dynamic_shape
+            end = self.end_axis if self.end_axis >= 0 else (len(shape) + self.end_axis + 1)
+
+            out = inputs[0].dynamic_shape[:self.axis]
+            out += [np.prod(inputs[0].dynamic_shape[self.axis : end])]
+            out += inputs[0].dynamic_shape[end:]
+            return out
+
+    return forward_hook(Flatten(), (input,))
 
 
 @implements(F.instance_norm)
@@ -1060,11 +1053,12 @@ def function_hook(input, num_chunks, dim):
 
 
 @implements(torch.topk)
-def function_hook(input, k):
+def function_hook(input, k, dim=0):
 
     class TopK(nn.Module):
         def __init__(self):
             super().__init__()
+            self.dim = dim
 
         def infer_shapes(self, inputs):
             return [[k], [k]]
