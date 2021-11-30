@@ -152,12 +152,12 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     detections = forward_hook(DetectionOutput(), (box_regression, class_logits, proposal))
 
     # Predict masks
-    # boxes = detections[0, 0, :, 3:]
-    # mask_features = multi_scale_roi_align(self, features, boxes, 100, output_size=14)
-    # mask_features = self.mask_head(mask_features)
-    # mask_logits = self.mask_predictor(mask_features)
+    boxes = detections[0, 0, :, 3:]
+    mask_features = multi_scale_roi_align(self, features, boxes, 100, output_size=14)
+    mask_features = self.mask_head(mask_features)
+    mask_logits = self.mask_predictor(mask_features)
 
-    return {'boxes': detections, 'masks': None}, None
+    return {'boxes': detections, 'masks': mask_logits}, None
 
 
 
