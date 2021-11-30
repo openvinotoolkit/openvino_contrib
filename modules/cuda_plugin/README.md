@@ -53,14 +53,12 @@ mkdir build && cd build
 ```
 9. Build plugin
 
-    First of all build OpenVINO™ on tag _2021.3_ according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to tag _2021.4_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
 
-  First of all switch OpenVINO™ on tag _2021.3_
-
-  Then setup the following environment variables:
+  Setup the following environment variables:
   ```bash
   export OPENVINO_HOME=<OpenVINO source directory>
   export OPENVINO_CONTRIB=<OpenVINOContrib packages source directory>
@@ -99,17 +97,6 @@ su $USER # Relogin for current user
 3. Build docker container:
 ```bash
 CUDA_PACKAGES_PATH=<path to CUDA pakcages> ./docker.sh build
-```
-
-### Run built application in docker container
-In order to run application with the plugin, follow the steps:
-
-1. Build OpenVINO according the steps described in [## How to build](#how-to-build)
-2. Specify environment variable `export OPENVINO_HOME=<path to OpenVINO source directory>`
-3. Specify environment variable `export OPENVINO_MODELS_PATH=<path to OpenVINO models>`
-4. Run application in docker container (DON'T FORGET TO REPLACE `<path to model>` with real path to model):
-```bash
-BUILD_TYPE=Debug ./docker.sh run "${OPENVINO_MODELS_PATH}" "./benchmark_app -m <path to model> -d CUDA -input_type FP32 -nstreams 8 -niter 10000 -optimize"
 ```
 
 ### Build CUDAPlugin in docker container
