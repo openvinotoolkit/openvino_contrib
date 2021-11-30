@@ -120,7 +120,7 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Funct
                     }
                     strm << "]";
                 };
-                const auto& quantizationInfo = safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(itInfo->second)->get();
+                const auto& quantizationInfo = itInfo->second.as<arm_compute::QuantizationInfo>();
                 printVec("Scale", quantizationInfo.scale());
                 printVec("Offset", quantizationInfo.offset());
 
