@@ -11,6 +11,7 @@
 #include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
+
 #include "ops/gather.hpp"
 
 namespace LayerTestsDefinitions {
@@ -683,7 +684,8 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::mt19937 mersenne_engine{r_device()};
     std::uniform_int_distribution<int> dist{std::numeric_limits<int>::min(), std::numeric_limits<int>::max()};
     auto gen_dict = [&dist, &mersenne_engine]() {
-        return static_cast<IndicesType>(10.f * dist(mersenne_engine) / std::numeric_limits<int>::max());
+        return static_cast<IndicesType>(10.f * dist(mersenne_engine) /
+                                        static_cast<float>(std::numeric_limits<int>::max()));
     };
     std::generate(dict.begin(), dict.end(), gen_dict);
 

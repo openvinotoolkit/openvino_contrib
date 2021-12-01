@@ -22,7 +22,7 @@ public:
                  const Workbuffers&) const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
     WorkbufferRequest GetWorkBufferRequest() const override;
-    const WorkbufferIds& GetWorkbufferIds() const { return workbuffer_ids_; }
+    const WorkbufferIds& GetWorkbufferIds() const override { return workbuffer_ids_; }
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
         workbuffer_ids_ = workbufferIds;
         return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;

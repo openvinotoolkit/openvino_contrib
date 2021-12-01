@@ -245,7 +245,6 @@ void TensorIteratorOp::copyParam(const CUDA::Stream& stream,
         const auto& param = params_[paramIdx];
         auto outputTensors = memoryManager.outputTensorPointers(*param, mutableBuffer);
         const auto inputShape = inputs_info_[inputIdx].shape_;
-        const auto inputType = inputs_info_[inputIdx].type_;
 
         const auto& slice = kernelmap_inputs_.at(inputIdx);
         std::size_t start;
@@ -296,7 +295,6 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
         auto inputTensors = memoryManager.inputTensorPointers(*result, mutableBuffer);
         const auto portMap = portmap_outputs_.at(outputIdx);
         const auto outputShape = outputs_info_[outputIdx].shape_;
-        const auto outputType = outputs_info_[outputIdx].type_;
 
         const auto& insert = kernelmap_outputs_.at(outputIdx);
         std::size_t start;

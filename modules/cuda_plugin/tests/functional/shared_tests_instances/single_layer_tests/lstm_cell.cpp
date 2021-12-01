@@ -249,7 +249,8 @@ void testOneShape(const LSTMCellTestParams& params) {
     std::mt19937 mersenne_engine{r_device()};
     std::uniform_int_distribution<int> dist{std::numeric_limits<int>::min(), std::numeric_limits<int>::max()};
     auto generator = [&dist, &mersenne_engine] {
-        return static_cast<ElementType>(10.f * dist(mersenne_engine) / std::numeric_limits<int>::max());
+        return static_cast<ElementType>(10.f * dist(mersenne_engine) /
+                                        static_cast<float>(std::numeric_limits<int>::max()));
     };
 
     // All the weights and biases are initialized from u(-sqrt(k), sqrt(k)), where k = 1 / hidden_size
