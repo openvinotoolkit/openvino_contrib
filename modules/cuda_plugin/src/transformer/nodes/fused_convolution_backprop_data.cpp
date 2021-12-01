@@ -260,7 +260,6 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(
 
 void FusedConvBackpropData::validate_and_infer_types() {
     conv_validate_and_infer_types();
-    const auto& conv_out_shape = get_output_shape();
     const auto& element_type = get_output_element_type(0);
     //  Expects(conv_out_shape == add_shape_);
     Expects(element_type == add_type_);
