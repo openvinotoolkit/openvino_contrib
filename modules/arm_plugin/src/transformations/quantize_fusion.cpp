@@ -213,11 +213,9 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                              return offset == quantizationInfo.second.front();})) {
                 auto shape = ngraph::Shape{{quantizationInfo.second.size()}};
                 std::shared_ptr<ngraph::Node> bias;
-                bias = std::make_shared<opset::Convert>(
-                    std::make_shared<opset::Multiply>(
+                bias = std::make_shared<opset::Multiply>(
                         std::make_shared<opset::Constant>(ngraph::element::f32, shape, quantizationInfo.second),
-                        std::make_shared<opset::Constant>(ngraph::element::f32, shape, invQScale(quantizationInfo.first))),
-                    ngraph::element::i32);
+                        std::make_shared<opset::Constant>(ngraph::element::f32, shape, invQScale(quantizationInfo.first)));
                 if (node->inputs().size() > 2) {
                     bias = std::make_shared<opset::Add>(node->input_value(2), bias);
                     newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
