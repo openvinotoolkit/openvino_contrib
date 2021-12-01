@@ -2650,7 +2650,7 @@ struct ClampBenchmark : testing::Test {
         std::mt19937 mersenneEngine{rDevice()};
         std::uniform_int_distribution<int> dist{std::numeric_limits<int>::min(), std::numeric_limits<int>::max()};
         auto genDict = [&dist, &mersenneEngine]() {
-            return static_cast<T>(10.f * dist(mersenneEngine) / std::numeric_limits<int>::max());
+            return static_cast<T>(10.f * dist(mersenneEngine) / static_cast<float>(std::numeric_limits<int>::max()));
         };
         std::generate(inHost.begin(), inHost.end(), genDict);
         stream.upload(inAlloc, inHost.data(), tensorSizeBytes);

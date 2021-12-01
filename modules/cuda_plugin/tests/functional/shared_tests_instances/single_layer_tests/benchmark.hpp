@@ -48,7 +48,9 @@ class BenchmarkLayerTest : public BaseLayerTest, virtual public LayerTestsUtils:
                   "BaseLayerTest should inherit from LayerTestsUtils::LayerTestsCommon");
 
 public:
-    void Run(const std::string& name, const std::chrono::milliseconds warmupTime = 2000, const int numAttempts = 100) {
+    void Run(const std::string& name,
+             const std::chrono::milliseconds warmupTime = std::chrono::milliseconds(2000),
+             const int numAttempts = 100) {
         bench_name_ = name;
         warmup_time_ = warmupTime;
         num_attempts_ = numAttempts;
@@ -79,7 +81,7 @@ protected:
             accumulated_real_time_usec += perf_results.at(bench_name_).realTime_uSec;
         }
 
-        const auto averageMicroExecTime = std::chrono::microseconds(accumulated_real_time_usec/num_attempts_);
+        const auto averageMicroExecTime = std::chrono::microseconds(accumulated_real_time_usec / num_attempts_);
         const auto averageMilliExecTime = std::chrono::duration_cast<std::chrono::milliseconds>(averageMicroExecTime);
         std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMicroExecTime.count() << " us\n";
         std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMilliExecTime.count() << " ms\n";
