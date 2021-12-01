@@ -164,6 +164,12 @@ template<typename T>
 using NormalizedRandoms = RandomFunction<T, NormalLimits<T>>;
 
 /**
+ * @brief Generate positive random values in  range numeric_limits<T>::min..numeric_limits<T>::max
+ */
+template <typename T>
+using MaxMinTRandomFunction = RandomFunction<T>;
+
+/**
  * @brief Fill InferenceEngine blob with random values, returned by function
  */
 template<typename T>
@@ -181,7 +187,7 @@ void fillBlobRandom(Blob::Ptr& inputBlob, RandomFunctionType<T> function=&Random
 /**
  * @brief Fill InferRequest blobs with random values or image information
  */
-template<template<typename> class Randomize = RandomFunction>
+template<template<typename T> class Randomize = MaxMinTRandomFunction>
 void fillBlobs(InferenceEngine::InferRequest inferRequest,
                const InferenceEngine::ConstInputsDataMap& inputsInfo,
                const size_t& batchSize) {
