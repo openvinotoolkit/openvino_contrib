@@ -294,10 +294,11 @@ class TestModels(unittest.TestCase):
 
 
     def test_mask_rcnn(self):
-        # OpenVINO does not support dynamic shape inference yet so to improve efficiency,
-        # specify lower number of maximum detections by <box_detections_per_img>
+        # For better efficiency, you may reduce parameters <box_detections_per_img> (default 100)
+        # and <rpn_post_nms_top_n_test> (default 1000).
         model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False,
-                                                                 box_detections_per_img=10)
+                                                                 box_detections_per_img=10,
+                                                                 rpn_post_nms_top_n_test=100)
         model.eval()
 
         # Preprocess input image

@@ -46,7 +46,7 @@ def rpn_forward(self, images, features, targets=None):
         deltas = pred_bbox_deltas[:, start_idx : end_idx].reshape(1, -1)
         priors = anchors[:, start_idx : end_idx].reshape(1, 1, -1)
 
-        det = DetectionOutput(top_k=min(shape, self.pre_nms_top_n()),
+        det = DetectionOutput(top_k=min(shape, self.post_nms_top_n()),
                               nms_threshold=self.nms_thresh,
                               confidence_threshold=0.0,
                               background_label_id=2)
@@ -56,7 +56,7 @@ def rpn_forward(self, images, features, targets=None):
 
     all_proposals = torch.cat(all_proposals, dim=2)
 
-    _, ids = torch.topk(all_proposals[0, 0, :, 2], self.pre_nms_top_n())
+    _, ids = torch.topk(all_proposals[0, 0, :, 2], self.post_nms_top_n())
     all_proposals = torch.gather(all_proposals, 2, ids).reshape(-1, 7)[:, 3:]
     return [all_proposals, OpenVINOTensor()]
 
@@ -68,6 +68,11 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes):
     # Proposals are in absolute coordinates
     img_h, img_w = image_shapes[0]
     proposals = proposals * torch.tensor([img_h, img_w, img_h, img_w])
+
+    if cls.scales is None:
+        x_filtered = [features[k] for k in cls.featmap_names]
+        cls.setup_scales(x_filtered, image_shapes)
+
     levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
@@ -123,7 +128,7 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     mask_logits = self.mask_predictor(mask_features)
     mask_probs = mask_logits.sigmoid()
 
-    return {'boxes': detections, 'masks': mask_probs}, {}
+    return {'boxes': detections.clone(), 'masks': mask_probs}, {}
 
 
 def model_forward(self, images, targets=None):

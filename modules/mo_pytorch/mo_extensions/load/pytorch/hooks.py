@@ -141,7 +141,11 @@ class OpenVINOTensor(object):
         return self.shape if dim is None else self.dynamic_shape[dim]
 
     def clone(self):
-        return self
+        class Identity(nn.Module):
+            def __init__(self):
+                super().__init__()
+
+        return forward_hook(Identity(), (self,))
 
     def to(self, dtype):
         mapping = {

@@ -96,28 +96,8 @@ class PyTorchLoader(Loader):
 
         with torch.no_grad():
             if argv.input:
-                outs = model(**inputs)
+                model(**inputs)
             else:
-                outs = model(inputs['input'])
-
-        # Add output nodes
-        if not hasattr(outs, '__contains__'):  # if a single tensor
-            outs = [outs]
-        if isinstance(outs, dict):
-            outs = outs.values()
-
-        for i, out in enumerate(outs):
-            name = out.node_name
-            graph.add_node(f'output_{i}', kind='op', op='Identity')
-            edge_attrs = {
-                'out': 0,
-                'in': 0,
-                'name': name,
-                'fw_tensor_debug_info': [(name, name)],
-                'in_attrs': ['in', 'name'],
-                'out_attrs': ['out', 'name'],
-                'data_attrs': ['fw_tensor_debug_info']
-            }
-            graph.add_edge(name, f'output_{i}', **edge_attrs)
+                model(inputs['input'])
 
         extract_node_attrs(graph, lambda node: pytorch_op_extractor(node, check_for_duplicates(pytorch_op_extractors)))
