@@ -108,6 +108,7 @@ jobs:
         -DPYTHON_EXECUTABLE=/usr/bin/python3.8
         -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.8.so
         -DPYTHON_INCLUDE_DIR=/usr/include/python3.8
+        -DENABLE_WHEEL=ON
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
@@ -139,6 +140,7 @@ jobs:
     displayName: 'Java tests'
 
   - script: |
+      python3 -m pip install --no-deps $(INSTALL_DIR)/tools/*.whl
       python3 -m pip install -U setuptools==51.0.0
       python3 -m pip install -r requirements.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
