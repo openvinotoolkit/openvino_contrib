@@ -42,10 +42,6 @@ TEST_P(ConvolutionLayerThresholdTest, CompareWithRefs) {
 
 namespace {
 
-// NOTE: Default precision where difference between reference and actual
-//       are bigger than defined threshold
-const auto defaultPrecision = InferenceEngine::Precision::FP32;
-
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
