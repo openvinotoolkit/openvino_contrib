@@ -32,8 +32,9 @@ def rpn_forward(self, images, features, targets=None):
     objectness, pred_bbox_deltas = concat_box_prediction_layers(objectness, pred_bbox_deltas)
     # end of copy
 
+    img_h, img_w = images.tensors.shape[2:]
     anchors = anchors[0].reshape(1, -1, 4)
-    anchors /= 800
+    anchors /= torch.tensor([img_w, img_h, img_w, img_h])
     pred_bbox_deltas = pred_bbox_deltas.reshape(1, -1, 4)
     objectness = objectness.reshape(1, -1).sigmoid()
 
@@ -45,7 +46,7 @@ def rpn_forward(self, images, features, targets=None):
         deltas = pred_bbox_deltas[:, start_idx : end_idx].reshape(1, -1)
         priors = anchors[:, start_idx : end_idx].reshape(1, 1, -1)
 
-        det = DetectionOutput(top_k=min(shape, 1000),
+        det = DetectionOutput(top_k=min(shape, self.pre_nms_top_n()),
                               nms_threshold=self.nms_thresh,
                               confidence_threshold=0.0,
                               background_label_id=2)
@@ -55,16 +56,18 @@ def rpn_forward(self, images, features, targets=None):
 
     all_proposals = torch.cat(all_proposals, dim=2)
 
-    _, ids = torch.topk(all_proposals[0, 0, :, 2], 1000)
+    _, ids = torch.topk(all_proposals[0, 0, :, 2], self.pre_nms_top_n())
     all_proposals = torch.gather(all_proposals, 2, ids).reshape(-1, 7)[:, 3:]
     return [all_proposals, OpenVINOTensor()]
 
 
-def multi_scale_roi_align(cls, features, proposals, num_proposals):
+def multi_scale_roi_align(cls, features, proposals, image_shapes):
+    num_proposals = proposals.shape[0]
     zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
 
     # Proposals are in absolute coordinates
-    proposals = proposals * 800
+    img_h, img_w = image_shapes[0]
+    proposals = proposals * torch.tensor([img_h, img_w, img_h, img_w])
     levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
 
     final_box_features = None
@@ -97,7 +100,7 @@ def multi_scale_roi_align(cls, features, proposals, num_proposals):
 
 
 def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
-    box_features = multi_scale_roi_align(self.box_roi_pool, features, proposals, 1000)
+    box_features = multi_scale_roi_align(self.box_roi_pool, features, proposals, image_shapes)
     box_features = self.box_head(box_features)
     class_logits, box_regression = self.box_predictor(box_features)
 
@@ -107,7 +110,7 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     box_regression = box_regression.reshape(1, -1)
     class_logits = class_logits.softmax(1).reshape(1, -1)
 
-    det = DetectionOutput(top_k=100,
+    det = DetectionOutput(top_k=self.detections_per_img,
                           nms_threshold=self.nms_thresh,
                           confidence_threshold=self.score_thresh,
                           background_label_id=0)
@@ -115,7 +118,7 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
 
     # Predict masks
     boxes = detections[0, 0, :, 3:]
-    mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, 100)
+    mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, image_shapes)
     mask_features = self.mask_head(mask_features)
     mask_logits = self.mask_predictor(mask_features)
     mask_probs = mask_logits.sigmoid()
@@ -126,8 +129,9 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
 def model_forward(self, images, targets=None):
     from torchvision.models.detection.image_list import ImageList
     images = self.transform.normalize(images)
-    original_image_sizes = [(800, 800)]
-    images = ImageList(images, [[800, 800]])
+    img_h, img_w = images.shape[2:]
+    original_image_sizes = [(img_h, img_w)]
+    images = ImageList(images, [[img_h, img_w]])
 
     features = self.backbone(images.tensors)
     proposals, proposal_losses = self.rpn(images, features, targets)
