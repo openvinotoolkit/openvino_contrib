@@ -23,6 +23,7 @@ from mo.ops.eltwise_n import EltwiseNAdd, EltwiseNMax
 from mo.ops.power import AttributedPower
 from extensions.ops.activation_ops import *
 from mo.ops.const import Const
+from extensions.ops.Cast import Cast
 
 
 class AddFrontExtractor(FrontExtractorOp):
@@ -125,4 +126,50 @@ class SoftPlusOp(FrontExtractorOp):
     @classmethod
     def extract(cls, node):
         SoftPlus.update_node_stat(node)
+        return cls.enabled
+
+
+class SqrtFrontExtractor(FrontExtractorOp):
+    op = 'Sqrt'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        attrs = {
+            'power': 0.5,
+        }
+        AttributedPower.update_node_stat(node, attrs)
+        return cls.enabled
+
+
+class FloorOp(FrontExtractorOp):
+    op = 'Floor'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        Floor.update_node_stat(node)
+        return cls.enabled
+
+
+class EqualOp(FrontExtractorOp):
+    op = 'Equal'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node):
+        Equal.update_node_stat(node)
+        return cls.enabled
+
+
+class CastFrontExtractor(FrontExtractorOp):
+    op = 'Cast'
+    enabled = True
+
+    @classmethod
+    def extract(cls, node: Node):
+        attrs = {
+            'dst_type': node.module.dst_type,
+        }
+        Cast.update_node_stat(node, attrs)
         return cls.enabled

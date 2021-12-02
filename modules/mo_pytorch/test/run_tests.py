@@ -37,11 +37,13 @@ class TestModels(unittest.TestCase):
 
 
     # source: https://github.com/opencv/opencv/blob/master/modules/dnn/misc/python/test/test_dnn.py
+    # return indices of mathed detections
     def normAssertDetections(self, ref_class_ids, ref_scores, ref_boxes,
                              test_class_ids, test_scores, test_boxes,
                              conf_threshold=1e-5, scores_diff=1e-5, boxes_iou_diff=1e-4):
         matched_ref_boxes = [False] * len(ref_boxes)
         errMsg = ''
+        matches = []
         for i in range(len(test_boxes)):
             test_score = test_scores[i]
             if test_score < conf_threshold:
@@ -56,6 +58,8 @@ class TestModels(unittest.TestCase):
                     if abs(iou - 1.0) < boxes_iou_diff:
                         matched = True
                         matched_ref_boxes[j] = True
+                        matches.append((i, j))
+                        break
             if not matched:
                 errMsg += '\nUnmatched prediction: class %d score %f box %s' % (test_class_id, test_score, test_box)
 
@@ -64,6 +68,7 @@ class TestModels(unittest.TestCase):
                 errMsg += '\nUnmatched reference: class %d score %f box %s' % (ref_class_ids[i], ref_scores[i], ref_boxes[i])
         if errMsg:
             raise Exception(errMsg)
+        return matches
 
 
     def check_torchvision_model(self, model_func, size, threshold=1e-5):
@@ -286,6 +291,63 @@ class TestModels(unittest.TestCase):
 
         diff = np.max(np.abs(ref.detach().numpy() - out))
         self.assertLessEqual(diff, 1e-4)
+
+
+    def test_mask_rcnn(self):
+        # For better efficiency, you may reduce parameters <box_detections_per_img> (default 100)
+        # and <rpn_post_nms_top_n_test> (default 1000).
+        model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False,
+                                                                 box_detections_per_img=10,
+                                                                 rpn_post_nms_top_n_test=100)
+        model.eval()
+
+        # Preprocess input image
+        img_size = 800
+        inp = cv.resize(self.test_img, (img_size, img_size))
+        inp = np.expand_dims(inp.astype(np.float32).transpose(2, 0, 1), axis=0)
+        inp /= 255
+        inp = torch.tensor(inp)
+
+        # Run origin model
+        with torch.no_grad():
+            ref = model(inp)
+
+        # Convert model to IR
+        mo_pytorch.convert(model, input_shape=[1, 3, img_size, img_size], model_name='model')
+
+        # Do inference
+        net = self.ie.load_network('model.xml', 'CPU')
+        out = net.infer({'input': inp})
+
+        # Test boxes
+        detections = out['DetectionOutput_647']
+        labels = detections[0, 0, :, 1]
+        scores = detections[0, 0, :, 2]
+        boxes = detections[0, 0, :, 3:] * img_size
+
+        matches = self.normAssertDetections(ref[0]['labels'], ref[0]['scores'], ref[0]['boxes'],
+                                            labels, scores, boxes)
+
+        # Test masks
+        masks = out['Sigmoid_733']
+        for test_id, ref_id in matches:
+            ref_mask = ref[0]['masks'][ref_id].detach().numpy()
+            class_id = ref[0]['labels'][ref_id]
+            out_mask = masks[test_id, class_id]
+
+            # Resize mask to bounding box shape
+            l, t, r, b = [int(v) for v in detections[0, 0, test_id, 3:] * img_size]
+            w = r - l + 1
+            h = b - t + 1
+            out_mask = cv.resize(out_mask, (w, h))
+            out_mask = np.pad(out_mask, ((t, img_size - 1 - b), (l, img_size - 1 - r)))
+
+            prob_thresh = 0.5
+            ref_mask = ref_mask > prob_thresh
+            out_mask = out_mask > prob_thresh
+            inter = np.sum(np.logical_and(ref_mask, out_mask))
+            union = np.sum(np.logical_or(ref_mask, out_mask))
+            self.assertGreater(inter / union, 0.93)
 
 
 if __name__ == '__main__':

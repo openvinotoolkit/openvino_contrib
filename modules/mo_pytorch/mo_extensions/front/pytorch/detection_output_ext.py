@@ -28,13 +28,22 @@ class DetectionOutputExtractor(FrontExtractorOp):
 
     @classmethod
     def extract(cls, node):
-        attrs = {
-            'variance_encoded_in_target': int(node.module.variance_encoded_in_target),
-            'nms_threshold': node.module.nms_threshold,
-            'confidence_threshold': node.module.confidence_threshold,
-            'top_k': node.module.top_k,
-            'keep_top_k': node.module.keep_top_k,
-            'code_type': node.module.code_type,
-        }
+        attr_names = [
+            'variance_encoded_in_target',
+            'nms_threshold',
+            'confidence_threshold',
+            'top_k',
+            'keep_top_k',
+            'code_type',
+            'share_location',
+            'background_label_id',
+            'clip_before_nms',
+        ]
+
+        attrs = {}
+        for attr in attr_names:
+            if hasattr(node.module, attr):
+                attrs[attr] = getattr(node.module, attr)
+
         DetectionOutput.update_node_stat(node, attrs)
         return cls.enabled
