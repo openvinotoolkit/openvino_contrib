@@ -8,13 +8,6 @@ from mo.utils.error import Error
 
 # Callback which is executed after nn.Module forward
 def forward_hook(self, inputs, output=None):
-    # Skip if we already processed as functional hook
-    if isinstance(output, OpenVINOTensor) and output.node_name:
-        return output
-
-    if self.__class__.__name__ in ['LastLevelMaxPool', 'AnchorGenerator']:
-        return output
-
     # Get source graph from one of the dynamic inputs
     for inp in inputs:
         graph = inp.graph
@@ -483,7 +476,6 @@ def register_functional_hook(func):
         return output
 
 register_functional_hook(F.adaptive_avg_pool2d)
-register_functional_hook(F.linear)
 register_functional_hook(F.dropout)
 register_functional_hook(F.dropout3d)
 
@@ -855,6 +847,11 @@ def function_hook(bias, mat1, mat2):
             return inputs[0].dynamic_shape[:-1] + [self.state_dict()['weight'].shape[1]]
 
     return forward_hook(ADDMM(mat2, bias), (mat1,))
+
+
+@implements(F.linear)
+def function_hook(input, weight, bias=None):
+    return torch.addmm(bias, input, weight.t())
 
 
 @implements(torch.stack)

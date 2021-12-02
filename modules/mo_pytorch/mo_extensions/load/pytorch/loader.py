@@ -87,11 +87,6 @@ class PyTorchLoader(Loader):
 
         model = argv.input_model
 
-        for module in model.modules():
-            if len([m for m in module.modules()]) != 1:
-                continue
-            module.register_forward_hook(forward_hook)
-
         register_model_hook(model)
 
         with torch.no_grad():
