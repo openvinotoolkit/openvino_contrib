@@ -854,7 +854,19 @@ def function_hook(bias, mat1, mat2):
 
 @implements(F.linear)
 def function_hook(input, weight, bias=None):
-    return torch.addmm(bias, input, weight.t())
+    class Linear(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def infer_shapes(self, inputs):
+            return inputs[0].dynamic_shape[:-1] + [inputs[1].dynamic_shape[0]]
+
+    weight = OpenVINOTensor(weight)
+    if bias is not None:
+        bias = OpenVINOTensor(bias)
+        return forward_hook(Linear(), (input, weight, bias))
+    else:
+        return forward_hook(Linear(), (input, weight))
 
 
 @implements(torch.stack)
