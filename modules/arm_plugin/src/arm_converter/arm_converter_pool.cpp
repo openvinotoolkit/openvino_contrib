@@ -87,7 +87,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& n
     pool_info.exclude_padding = node.get_exclude_pad();
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
+                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
     return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, qInfo);
 }
 }  // namespace ArmPlugin

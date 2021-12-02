@@ -201,12 +201,6 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
                         case ngraph::element::Type_t::i8 : dataType = arm_compute::DataType::QASYMM8_SIGNED; break;
                         default: IE_THROW() << "Arm Plugin: Unsupported Data Type: " << outputDataType << " " << *node;
                     }
-                    auto& quantizationInfo = itInfo->second.as<arm_compute::QuantizationInfo>();
-                    auto allZeroPointsAreZero = std::all_of(
-                        std::begin(quantizationInfo.offset()), std::end(quantizationInfo.offset()), [] (auto v) {return v == 0;});
-                    if (allZeroPointsAreZero && (quantizationInfo.offset().size() > 1) && ngraph::is_type<opset::Constant>(node.get())) {
-                        dataType = arm_compute::DataType::QSYMM8_PER_CHANNEL;
-                    }
                     tensorInfo = {tensorShape, 1, dataType, arm_compute::QuantizationInfo{1, 0}};
                 } else {
                     tensorInfo = {tensorShape, 1, DataTypeCast(output.get_element_type())};

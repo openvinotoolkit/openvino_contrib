@@ -26,11 +26,8 @@ public:
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
-            _weightsqi.info()->set_quantization_info(*wp);
+            _weightsqi.allocator()->init(*(_weights->info()));
+            _weightsqi.info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp);
         }
 
         _output = output;
@@ -94,10 +91,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulB
     }
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
     arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
+                                           &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
+                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
     return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0), wInfo, qInfo);
 }
 }  //  namespace ArmPlugin

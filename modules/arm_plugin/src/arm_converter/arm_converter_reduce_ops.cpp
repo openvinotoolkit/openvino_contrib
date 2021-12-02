@@ -91,7 +91,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ReduceMean
     }
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
+                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
     return MakeConversion<NEReduceMeanQI>(node.input(0), axes, node.get_keep_dims(), node.output(0), qInfo);
 }
 

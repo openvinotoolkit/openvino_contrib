@@ -246,6 +246,8 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
             float qiScale = 1.f;
             if (!std::all_of(std::begin(quantizationInfo.first), std::end(quantizationInfo.first), [&] (auto scale) {
                              return scale == quantizationInfo.first.front();})) {
+                if (node->get_input_element_type(1) != ngraph::element::i8)
+                    return false;
                 newNode->get_rt_info()["WeightsPrescaleInfo"] =
                     arm_compute::QuantizationInfo{quantizationInfo.first, std::vector<std::int32_t>(quantizationInfo.first.size(), 0)};
             } else {

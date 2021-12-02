@@ -319,8 +319,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<pass::ConvertQuantize>();
-//        manager.register_pass<pass::ConvertBiasToI32>();
-//        manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.register_pass<pass::ConvertBiasToI32>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<PropogateQuantizationInfo>();
         manager.run_passes(f);

@@ -3,6 +3,8 @@
 //
 
 
+#include <src/core/NEON/kernels/NEConvertQuantizedSignednessKernel.h>
+#include <src/runtime/Utils.h>
 #include <arm_compute/runtime/NEON/functions/NEConvolutionLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h>
 #include "arm_converter/arm_converter.hpp"
@@ -36,7 +38,9 @@ static arm_compute::ActivationLayerInfo GetActivationInfo(const ngraph::Node& no
 struct NEConvolutionLayerQI final: public arm_compute::IFunction {
 public:
     NEConvolutionLayerQI(std::shared_ptr<arm_compute::IMemoryManager> memory_manager = nullptr):
-        _memory_manager(memory_manager), _conv(), _weights(nullptr), _wp(nullptr), _weightsqi(), _output(nullptr), _qi(nullptr), _outputqi() {}
+        _memory_manager(memory_manager), _memory_group{std::make_unique<arm_compute::MemoryGroup>(memory_manager)},
+        _i_sgn(nullptr), _i_sgn_res(), _w_sgn(nullptr), _w_sgn_res(),
+        _conv(), _weights(nullptr), _wp(nullptr), _weightsqi(), _output(nullptr), _qi(nullptr), _outputqi() {}
     NEConvolutionLayerQI(const NEConvolutionLayerQI &) = delete;
     NEConvolutionLayerQI &operator=(const NEConvolutionLayerQI &) = delete;
     NEConvolutionLayerQI(NEConvolutionLayerQI &&) = delete;
@@ -49,14 +53,33 @@ public:
         ARM_COMPUTE_ERROR_THROW_ON(NEConvolutionLayerQI::validate(input->info(), weights->info(), ((biases != nullptr) ? biases->info() : nullptr),
                                                                   output->info(), conv_info, weights_info, dilation, act_info, wp, qi));
 
+        arm_compute::ITensor *_input = input;
+        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->info()->data_type() == arm_compute::DataType::QASYMM8 && input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _i_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+            _memory_group->manage(&_i_sgn_res);
+            _i_sgn_res.allocator()->init(*(input->info()));
+            _i_sgn_res.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(1.f,
+                                                                output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
+            _i_sgn->configure(input, &_i_sgn_res);
+            _input = &_i_sgn_res;
+        }
+
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
-            _weightsqi.info()->set_quantization_info(*wp);
+            _weightsqi.allocator()->init(*(_weights->info()));
+            _weightsqi.info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp);
+        } else {
+            if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                output->info()->data_type() == arm_compute::DataType::QASYMM8 && weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+                _w_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+                _memory_group->manage(&_w_sgn_res);
+                _w_sgn_res.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(1.f,
+                                                                    output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
+                _w_sgn->configure(weights, &_w_sgn_res);
+                _weights = &_w_sgn_res;
+            }
         }
 
         _output = output;
@@ -67,7 +90,14 @@ public:
         }
 
         _conv = std::make_unique<arm_compute::NEConvolutionLayer>(_memory_manager);
-        _conv->configure(input, _wp ? &_weightsqi : _weights, biases, _qi ? &_outputqi : _output, conv_info, weights_info, dilation, act_info);
+        _conv->configure(_input, _wp ? &_weightsqi : _weights, biases, _qi ? &_outputqi : _output, conv_info, weights_info, dilation, act_info);
+
+        if (_i_sgn) {
+            _i_sgn_res.allocator()->allocate();
+        }
+        if (_w_sgn) {
+            _w_sgn_res.allocator()->allocate();
+        }
     }
     static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *weights,
                                         const arm_compute::ITensorInfo *biases, const arm_compute::ITensorInfo *output,
@@ -76,15 +106,28 @@ public:
                                         const arm_compute::QuantizationInfo *wp, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(weights, output);
         //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEConvolutionLayer::validate(input, wp ? &arm_compute::TensorInfo(*weights).set_quantization_info(*wp) : weights, biases,
-                                                         qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output,
-                                                         conv_info, weights_info, dilation, act_info);
+        return arm_compute::NEConvolutionLayer::validate(
+                    output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8 ||
+                    output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED ?
+                    &arm_compute::TensorInfo(*input).set_data_type(output->data_type()) : input,
+                    wp ? &arm_compute::TensorInfo(*weights).set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp) :
+                    (output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && weights->data_type() == arm_compute::DataType::QASYMM8 ||
+                     output->data_type() == arm_compute::DataType::QASYMM8 && weights->data_type() == arm_compute::DataType::QASYMM8_SIGNED ?
+                     &arm_compute::TensorInfo(*weights).set_data_type(output->data_type()) : weights),
+                    biases, qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output, conv_info, weights_info, dilation, act_info);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_conv.get(), "Kernel didn't configured");
+        std::unique_ptr<arm_compute::MemoryGroupResourceScope> _sgn_scope = _i_sgn || _w_sgn ?
+                                                                std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memory_group) : nullptr;
+        if (_i_sgn) {
+            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _i_sgn.get(), arm_compute::Window::DimY);
+        }
         if (_wp) {
             if (_weightsqi.info()->padding() != _weights->info()->padding()) _weightsqi.info()->extend_padding(_weights->info()->padding());
             _weightsqi.allocator()->import_memory(_weights->buffer());
+        } else if (_w_sgn) {
+            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _w_sgn.get(), arm_compute::Window::DimY);
         }
         if (_qi) {
             if (_outputqi.info()->padding() != _output->info()->padding()) _outputqi.info()->extend_padding(_output->info()->padding());
@@ -97,6 +140,9 @@ public:
 
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
+    std::unique_ptr<arm_compute::MemoryGroup> _memory_group;
+    std::unique_ptr<arm_compute::NEConvertQuantizedSignednessKernel> _i_sgn, _w_sgn;
+    arm_compute::Tensor _i_sgn_res, _w_sgn_res;
     const arm_compute::QuantizationInfo *_wp;
     const arm_compute::ITensor *_weights;
     arm_compute::Tensor _weightsqi;
@@ -112,10 +158,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolu
 
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
     arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
+                                           &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
+                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
 
     if (node.get_input_size() == 3) {
         return MakeConversion<NEConvolutionLayerQI>(
@@ -147,11 +193,8 @@ public:
         _weights = weights;
         _wp = wp;
         if (_wp) {
-            bool setPerChannel = _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-                                 _weights->info()->data_type() == arm_compute::DataType::QSYMM8;
-            _weightsqi.allocator()->init(setPerChannel ? _weights->info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL) : *(_weights->info()));
-            _weightsqi.info()->set_quantization_info(*wp);
+            _weightsqi.allocator()->init(*(_weights->info()));
+            _weightsqi.info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp);
         }
 
         _output = output;
@@ -214,10 +257,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
 
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
     arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(wInfoIt->second)->get());
+                                           &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(qInfoIt->second)->get());
+                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
 
     if (node.get_input_size() == 3) {
         return MakeConversion<NEDepthwiseConvolutionLayerQI>(

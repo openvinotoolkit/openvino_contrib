@@ -55,7 +55,7 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
 #endif
     _pool = std::make_shared<arm_compute::PoolManager>();
     _memoryManager = std::make_shared<arm_compute::MemoryManagerOnDemand>(_lifetime, _pool);
-    _memoryGroup = std::make_shared<arm_compute::MemoryGroup>(_memoryManager);
+    _memoryGroup = std::make_unique<arm_compute::MemoryGroup>(_memoryManager);
 
     auto requestID = std::to_string(_executableNetwork->_requestId.fetch_add(1));
     Layer::Map layers;
@@ -149,7 +149,7 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     }
     IE_ASSERT(!_outputInfo.empty());
     _memoryManager->populate(_allocator, 1);
-    _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
+    _memoryGroupScope = std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
     for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
         auto& layer = layers.at(node->get_instance_id());
         auto execType = layer._execType;
