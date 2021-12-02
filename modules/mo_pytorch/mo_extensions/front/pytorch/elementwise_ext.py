@@ -23,7 +23,6 @@ from mo.ops.eltwise_n import EltwiseNAdd, EltwiseNMax
 from mo.ops.power import AttributedPower
 from extensions.ops.activation_ops import *
 from mo.ops.const import Const
-from mo.ops.clamp import Clamp
 from extensions.ops.Cast import Cast
 
 

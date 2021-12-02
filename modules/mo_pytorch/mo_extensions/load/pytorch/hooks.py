@@ -467,17 +467,10 @@ def implements(torch_function):
     return decorator
 
 
-def register_functional_hook(func):
-    @implements(func)
-    def function_hook(input, *args, **kwargs):
-        output = OpenVINOTensor()
-        output.graph = input.graph
-        output.dynamic_shape = list(input.dynamic_shape)
-        return output
-
-register_functional_hook(F.adaptive_avg_pool2d)
-register_functional_hook(F.dropout)
-register_functional_hook(F.dropout3d)
+@implements(F.dropout)
+@implements(F.dropout3d)
+def function_hook(input, *args, **kwargs):
+    return input
 
 
 @implements(F.max_pool2d)
@@ -516,6 +509,16 @@ def function_hook(input, *args, **kwargs):
             self.padding = padding
 
     return forward_hook(AvgPool2d(*args, **kwargs), (input,))
+
+
+@implements(F.adaptive_avg_pool2d)
+def function_hook(input, output_size):
+    class AdaptiveAvgPool2d(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.output_size = output_size
+
+    return forward_hook(AdaptiveAvgPool2d(), (input,))
 
 
 @implements(torch.relu_)
