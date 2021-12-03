@@ -43,5 +43,9 @@ std::vector<std::string> disabledTestPatterns() {
         ".*checkGetExecGraphInfoIsNotNullptr.*(AUTO|HETERO|MULTI).*", // Dose not supported in OpenVINO
         ".*OVInferenceChaining.*Dynamic.*", // Dynamic shape is not supported
         ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
+#ifdef __arm__
+        // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
+        ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*CPU_THROUGHPUT_STREAMS_CPU_THROUGHPUT_AUTO_",
+#endif
     };
 }

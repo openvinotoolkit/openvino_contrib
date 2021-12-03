@@ -1,5 +1,5 @@
 """
- Copyright (C) 2018-2020 Intel Corporation
+ Copyright (C) 2018-2021 Intel Corporation
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -16,21 +16,22 @@
 
 import numpy as np
 
-from mo.front.common.partial_infer.utils import int64_array
 from mo.front.extractor import FrontExtractorOp
-from mo.ops.flatten import Flatten
-from mo.utils.error import Error
+from extensions.ops.roialign import ROIAlign
 
 
-class FlattenExtractor(FrontExtractorOp):
-    op = 'Flatten'
+class ROIAlignExtractor(FrontExtractorOp):
+    op = 'ROIAlign'
     enabled = True
 
     @classmethod
     def extract(cls, node):
         attrs = {
-            'axis': node.module.axis,
-            'end_axis': node.module.end_axis,
+            'pooled_h': node.module.pooled_h,
+            'pooled_w': node.module.pooled_w,
+            'sampling_ratio': node.module.sampling_ratio,
+            'mode': node.module.mode,
+            'spatial_scale': node.module.spatial_scale,
         }
-        Flatten.update_node_stat(node, attrs)
+        ROIAlign.update_node_stat(node, attrs)
         return cls.enabled

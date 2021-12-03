@@ -127,8 +127,7 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
 
     for (auto&& node : _executableNetwork->_function->get_results()) {
         IE_ASSERT(node->inputs().size() == 1);
-        auto outputName = safe_cast<ngraph::VariantWrapper<std::string>>(
-            node->get_rt_info().at("ResultName"))->get();
+        auto outputName = node->get_rt_info().at("ResultName").as<std::string>();
         auto input = node->input(0);
         auto sourceOutput = input.get_source_output();
         auto tensor = layers.at(node->get_instance_id())._inputs.at(input)->_tensor.get();
