@@ -32,10 +32,10 @@ static void pad_input_data(const uint8_t* data_ptr,
     }
 }
 
-template <typename T, typename U>
+template <typename T, typename V, typename U>
 void wrap_interpolate(const T* input_data,
                       const ngraph::Shape& input_shape,
-                      const T* scales,
+                      const V* scales,
                       const ngraph::Shape& scales_shape,
                       const U* axes,
                       const ngraph::Shape& axes_shape,
@@ -93,7 +93,8 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolat
     };
     return CallSwitch(
         AP_WRAP(make, wrap_interpolate),
-        node.get_input_element_type(0), floatTypes,
+        node.get_input_element_type(0), allTypes,
+        node.get_input_element_type(2), floatTypes,
         node.get_input_element_type(1), indexTypes);
 }
 

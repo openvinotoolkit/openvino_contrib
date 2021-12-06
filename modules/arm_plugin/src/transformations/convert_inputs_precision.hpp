@@ -36,7 +36,6 @@ public:
     AlignNodePrecision() {
         add_matcher<ConvertPReluPrecision>();
         add_matcher<ConvertProposalPrecision>();
-        add_matcher<ConvertInterpolatePrecision>();
     }
 };
 }  // namespace pass
