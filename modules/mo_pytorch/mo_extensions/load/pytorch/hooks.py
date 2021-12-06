@@ -924,8 +924,8 @@ def function_hook(condition, x, y):
     inputs = [inp if isinstance(inp, OpenVINOTensor) else OpenVINOTensor(inp) for inp in inputs]
     return forward_hook(Select(), inputs)
 
-new_fft = version.parse(torch.__version__) >= version.parse('1.8.0')
-@implements(torch.fft.rfft if new_fft else torch.rfft)
+
+@implements(torch.rfft if version.parse(torch.__version__) < version.parse('1.8.0') else None)
 def function_hook(x, *args, **kwargs):
 
     class RFFT(nn.Module):
@@ -940,7 +940,7 @@ def function_hook(x, *args, **kwargs):
     return forward_hook(RFFT(), (x,))
 
 
-@implements(torch.fft.irfft if new_fft else torch.irfft)
+@implements(torch.irfft if version.parse(torch.__version__) < version.parse('1.8.0') else None)
 def function_hook(x, *args, **kwargs):
 
     class RFFT(nn.Module):
@@ -1111,8 +1111,3 @@ def function_hook(input, dim, index):
 
     axes = OpenVINOTensor(torch.tensor(dim))
     return forward_hook(Gather(), (input, index, axes))
-
-
-@implements(torch.view_as_real)
-def function_hook(input):
-    return input

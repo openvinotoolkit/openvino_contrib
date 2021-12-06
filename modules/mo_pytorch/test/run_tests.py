@@ -236,10 +236,10 @@ class TestModels(unittest.TestCase):
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 1e-4)
 
-
+    @unittest.skipIf(version.parse(torch.__version__) >= version.parse('1.8.0'), 'Deprecated FFT')
     def test_usrnet(self):
         sys.path.append('USRNet')
-        from models.network_usrnet import USRNet as net
+        from models.network_usrnet import USRNet as net   # for pytorch version <= 1.7.1
         from utils import utils_deblur
         from utils import utils_sisr as sr
         from utils import utils_image as util
@@ -270,15 +270,6 @@ class TestModels(unittest.TestCase):
         model = net(n_iter=8, h_nc=64, in_nc=4, out_nc=3, nc=[64, 128, 256, 512],
                     nb=2, act_mode="R", downsample_mode='strideconv', upsample_mode="convtranspose")
         model.eval()
-
-        if version.parse(torch.__version__) >= version.parse('1.8.0'):
-            def rfft(x, ndim, onesided):
-                return torch.view_as_real(torch.fft.rfft(x, n=x.shape[2], dim=2))
-            torch.rfft = rfft
-
-            def irfft(x, ndim, onesided):
-                return torch.fft.irfft(torch.view_as_complex(x), n=x.shape[2], dim=2)
-            torch.irfft = irfft
 
         ref = model(torch.tensor(inp), kernel, sf, sigma)
 
