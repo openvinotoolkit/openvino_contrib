@@ -78,7 +78,7 @@ checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git master
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git develop
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git master
 fi
 
 #cleanup package destination folder
