@@ -173,13 +173,13 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
         -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
         -DInferenceEngine_DIR=$OPENVINO_HOME/build \
         -DOpenCV_DIR=$OPENCV_HOME/build \
-        -Dngraph_DIR=$OPENVINO_HOME/build/ngraph \
+        -Dngraph_DIR=$OPENVINO_HOME/build/src/core \
         $OMZ_HOME/demos && \
   cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
   cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
   python3 $OMZ_HOME/ci/prepare-openvino-content.py l $OMZ_DEMOS_BUILD && \
   cp -vr $OMZ_DEMOS_BUILD/dev/. $STAGING_DIR && \
-  find $OMZ_DEMOS_BUILD -type d -name "Release" -exec cp -vr {} $STAGING_DIR/deployment_tools/open_model_zoo/demos \; || \
+  find $OMZ_DEMOS_BUILD -type d -name "Release" -exec cp -vr {} $STAGING_DIR/extras/open_model_zoo/demos \; || \
   fail 21 "Open Model Zoo package preparation failed. Stopping"
 fi
 
