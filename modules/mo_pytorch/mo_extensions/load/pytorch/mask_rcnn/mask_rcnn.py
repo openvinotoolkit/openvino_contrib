@@ -20,7 +20,15 @@ class DetectionOutput(torch.nn.Module):
         return [1, 1, self.keep_top_k, 7]
 
 
-def rpn_forward(self, images, features, targets=None):
+def filter_detections(detections, is_dynamic):
+    if is_dynamic:
+        scores = detections[0, 0, :, 2]
+        ids = torch.nonzero(scores).reshape(-1)
+        return torch.gather(detections, 2, ids)
+    else:
+        return detections
+
+def rpn_forward(self, is_dynamic, images, features, targets=None):
     from torchvision.models.detection.rpn import concat_box_prediction_layers
     # Copy of torchvision/models/detection/rpn.py
     features = list(features.values())
@@ -51,6 +59,8 @@ def rpn_forward(self, images, features, targets=None):
                               confidence_threshold=0.0,
                               background_label_id=2)
         proposals = forward_hook(det, (deltas, scores, OpenVINOTensor(priors)))
+        proposals = filter_detections(proposals, is_dynamic)
+
         all_proposals.append(proposals)
         start_idx = end_idx
 
@@ -61,9 +71,11 @@ def rpn_forward(self, images, features, targets=None):
     return [all_proposals, OpenVINOTensor()]
 
 
-def multi_scale_roi_align(cls, features, proposals, image_shapes):
+def multi_scale_roi_align(cls, features, proposals, image_shapes, is_dynamic):
     num_proposals = proposals.shape[0]
-    zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
+    pooled_h = cls.output_size[0]
+    pooled_w = cls.output_size[1]
+    ch = features[cls.featmap_names[0]].shape[1]
 
     # Proposals are in absolute coordinates
     img_h, img_w = image_shapes[0]
@@ -73,15 +85,19 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes):
         x_filtered = [features[k] for k in cls.featmap_names]
         cls.setup_scales(x_filtered, image_shapes)
 
-    levels = cls.map_levels([proposals]).reshape(-1, 1, 1, 1)
+    levels = cls.map_levels([proposals])
 
-    final_box_features = None
+    if not is_dynamic:
+        levels = levels.reshape(-1, 1, 1, 1)
+        zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
+
+    final_box_features = OpenVINOTensor(torch.zeros([num_proposals, ch, pooled_h, pooled_w], dtype=torch.float32))
     for lvl, name in enumerate(cls.featmap_names):
         class ROIAlign(torch.nn.Module):
             def __init__(self):
                 super().__init__()
-                self.pooled_h = cls.output_size[0]
-                self.pooled_w = cls.output_size[1]
+                self.pooled_h = pooled_h
+                self.pooled_w = pooled_w
                 self.sampling_ratio = 2
                 self.mode = 'avg'
                 self.spatial_scale = cls.scales[lvl]
@@ -91,21 +107,29 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes):
                 rois_shape = inputs[1].dynamic_shape
                 return [rois_shape[0], feat_shape[1], self.pooled_h, self.pooled_w]
 
+        if is_dynamic:
+            ids = torch.nonzero(levels == lvl).reshape(-1)
+            zeros = ids * 0
+            proposals_lvl = torch.gather(proposals, 0, ids)
+            box_features = forward_hook(ROIAlign(), (features[name], proposals_lvl, zeros))
 
-        box_features = forward_hook(ROIAlign(), (features[name], proposals, zeros))
-
-        # Imitation of level-wise ROIAlign
-        box_features = box_features * (levels == lvl).to(torch.float32)
-        if lvl > 0:
-            final_box_features += box_features
+            ids = ids.reshape(-1, 1, 1, 1).repeat(1, ch, pooled_h, pooled_w)
+            final_box_features = torch.scatter(final_box_features, 0, ids, box_features)
         else:
-            final_box_features = box_features
+            box_features = forward_hook(ROIAlign(), (features[name], proposals, zeros))
+
+            # Imitation of level-wise ROIAlign
+            box_features = box_features * (levels == lvl).to(torch.float32)
+            if lvl > 0:
+                final_box_features += box_features
+            else:
+                final_box_features = box_features
 
     return final_box_features
 
 
-def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
-    box_features = multi_scale_roi_align(self.box_roi_pool, features, proposals, image_shapes)
+def roi_heads_forward(self, is_dynamic, features, proposals, image_shapes, targets=None):
+    box_features = multi_scale_roi_align(self.box_roi_pool, features, proposals, image_shapes, is_dynamic)
     box_features = self.box_head(box_features)
     class_logits, box_regression = self.box_predictor(box_features)
 
@@ -122,8 +146,10 @@ def roi_heads_forward(self, features, proposals, image_shapes, targets=None):
     detections = forward_hook(det, (box_regression, class_logits, proposal))
 
     # Predict masks
+    detections = filter_detections(detections, is_dynamic)
+
     boxes = detections[0, 0, :, 3:]
-    mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, image_shapes)
+    mask_features = multi_scale_roi_align(self.mask_roi_pool, features, boxes, image_shapes, is_dynamic)
     mask_features = self.mask_head(mask_features)
     mask_logits = self.mask_predictor(mask_features)
     mask_probs = mask_logits.sigmoid()
@@ -149,7 +175,7 @@ class MaskRCNN(object):
         self.class_name = 'torchvision.models.detection.mask_rcnn.MaskRCNN'
 
 
-    def register_hook(self, model):
+    def register_hook(self, model, is_dynamic):
         model.forward = lambda *args: model_forward(model, *args)
-        model.rpn.forward = lambda *args: rpn_forward(model.rpn, *args)
-        model.roi_heads.forward = lambda *args: roi_heads_forward(model.roi_heads, *args)
+        model.rpn.forward = lambda *args: rpn_forward(model.rpn, is_dynamic, *args)
+        model.roi_heads.forward = lambda *args: roi_heads_forward(model.roi_heads, is_dynamic, *args)

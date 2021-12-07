@@ -10,8 +10,8 @@ classes = [
     MaskRCNN(),
 ]
 
-def register_model_hook(model):
+def register_model_hook(model, is_dynamic):
     class_name = str(model.__class__)
     for cl in classes:
         if fnmatch(class_name, '*{}*'.format(cl.class_name)):
-            cl.register_hook(model)
+            cl.register_hook(model, is_dynamic)

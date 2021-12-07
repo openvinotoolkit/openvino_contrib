@@ -44,7 +44,7 @@ class USRNet(object):
     def hook(self, new_func):
         return lambda *args: new_func(*args)
 
-    def register_hook(self, model):
+    def register_hook(self, model, is_dynamic):
         import models.network_usrnet
         models.network_usrnet.upsample = deconv_upsample
         models.network_usrnet.p2o = p2o
