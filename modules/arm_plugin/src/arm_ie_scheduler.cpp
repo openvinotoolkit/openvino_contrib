@@ -37,7 +37,7 @@ void IEScheduler::Schedule(arm_compute::ICPPKernel* kernel,
     }
     if (!kernel->is_parallelisable()) {
         arm_compute::ThreadInfo info;
-        info.cpu_info = &_cpu_info;
+        info.cpu_info = &cpu_info();
         if (tensors.empty()) {
             kernel->run(max_window, info);
         } else {
@@ -59,7 +59,7 @@ void IEScheduler::Schedule(arm_compute::ICPPKernel* kernel,
         }
         InferenceEngine::parallel_for(num_windows, [&] (int workloadId) {
             arm_compute::ThreadInfo   info;
-            info.cpu_info       = &_cpu_info;
+            info.cpu_info       = &cpu_info();
             info.num_threads    = parallel_get_num_threads();
             info.thread_id      = parallel_get_thread_num();
             auto win = max_window.split_window(splitDimension, workloadId, num_windows);
@@ -88,7 +88,7 @@ void IEScheduler::schedule_op(arm_compute::ICPPKernel*  kernel,
 void IEScheduler::run_workloads(std::vector<arm_compute::IScheduler::Workload>& workloads) {
     InferenceEngine::parallel_for(workloads.size(), [&] (int workloadId) {
         arm_compute::ThreadInfo   info;
-        info.cpu_info       = &_cpu_info;
+        info.cpu_info       = &cpu_info();
         info.num_threads    = parallel_get_num_threads();
         info.thread_id      = parallel_get_thread_num();
         workloads[workloadId](info);
