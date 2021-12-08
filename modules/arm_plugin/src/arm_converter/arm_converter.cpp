@@ -41,8 +41,8 @@ std::size_t AxisCast(const std::size_t axis, const std::size_t shapeSize) {
     return shapeSize - axis - 1;
 }
 
-Converter::Converter(const std::shared_ptr<const ngraph::Function> function, bool ref) :
-    _function{function} {
+Converter::Converter(const std::shared_ptr<const ngraph::Function> function, const Configuration& cfg) :
+    _function{function}, _cfg{cfg} {
     Register<opset::Parameter>();
     Register<opset::Constant>();
     Register<opset::ArmConvolution>();
@@ -110,7 +110,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, boo
     Register<opset::ArmFFT>();
     Register<opset::ArmQuantize>();
     Register<opset::ArmDequantize>();
-    if (ref) {
+    if (_cfg._ref) {
         Register<opset::MVN>();
         Register<opset::NormalizeL2>();
         Register<opset::Interpolate>();

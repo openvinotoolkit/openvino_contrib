@@ -91,7 +91,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     auto transformedFunction = Transform(function, cfg);
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
-    Converter converter{transformedFunction};
+    Converter converter{transformedFunction, cfg};
     for (auto&& node : transformedFunction->get_ops()) {
         auto itConversion = converter._conversions.find(node->get_type_info());
         bool nodeIsSupported = false;

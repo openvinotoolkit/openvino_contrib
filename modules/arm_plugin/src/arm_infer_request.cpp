@@ -62,7 +62,7 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     IE_ASSERT(_executableNetwork->_executor != nullptr);
     _executableNetwork->_executor->runAndWait({
         [&] {
-            layers = Converter{_executableNetwork->_function}.Configure(_memoryManager, *_memoryGroup);
+            layers = Converter{_executableNetwork->_function, _executableNetwork->_cfg}.Configure(_memoryManager, *_memoryGroup);
         }
     });
     auto allocateMemory = [] (const auto& blobName, const auto& blobDataMap, auto& blobs, auto tensor, auto output) {

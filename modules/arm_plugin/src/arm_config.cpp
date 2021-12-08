@@ -33,6 +33,8 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _perfCount = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
+        } else if (CONFIG_KEY_INTERNAL(USE_REF_IMPL) == key) {
+            _ref = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE) == key) {
             _lpt = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(DUMP_GRAPH) == key) {
@@ -54,6 +56,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
+    } else if (name == CONFIG_KEY_INTERNAL(USE_REF_IMPL)) {
+        return {_ref ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
         return {_lpt ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
     } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
