@@ -26,10 +26,6 @@ struct DequantizeNodeFusion : public ngraph::pass::FunctionPass{
     bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
 };
 
-struct PropogateQuantizationInfo: public ngraph::pass::FunctionPass {
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
-};
-
 struct AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
     AddDequantizeOnInputs();
 };

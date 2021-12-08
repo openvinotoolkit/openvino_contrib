@@ -19,6 +19,7 @@
 #include <ngraph/function.hpp>
 #include <ngraph/pass/manager.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
+#include <low_precision/low_precision.hpp>
 
 #include <ie_parallel.hpp>
 #include "arm_ie_scheduler.hpp"
@@ -74,7 +75,9 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     if (function == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
-    return std::make_shared<ExecutableNetwork>(Transform(function, cfg), cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
+    auto transformedFunction = Transform(function, cfg);
+    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(function);
+    return std::make_shared<ExecutableNetwork>(transformedFunction, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigMap& config) const {
@@ -91,6 +94,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     auto transformedFunction = Transform(function, cfg);
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
+    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(function);
     Converter converter{transformedFunction, cfg};
     for (auto&& node : transformedFunction->get_ops()) {
         auto itConversion = converter._conversions.find(node->get_type_info());

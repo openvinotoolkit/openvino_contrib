@@ -185,7 +185,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
         ngraph::pattern::has_static_shape());
-    register_matcher(std::make_shared<ngraph::pattern::Matcher>(fq_pattern, "NodeQuantizeFusion"),
+    register_matcher(std::make_shared<ngraph::pattern::Matcher>(fq_pattern, "ConvolutionQuantizeFusion"),
         [=](ngraph::pattern::Matcher& m) {
             auto pattern_map = m.get_pattern_value_map();
             auto node = pattern_map[node_pattern].get_node_shared_ptr();
@@ -273,7 +273,7 @@ ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
         ngraph::pattern::has_static_shape());
-    register_matcher(std::make_shared<ngraph::pattern::Matcher>(fq_pattern, "NodeQuantizeFusion"),
+    register_matcher(std::make_shared<ngraph::pattern::Matcher>(fq_pattern, "MeanQuantizeFusion"),
         [=](ngraph::pattern::Matcher& m) {
             auto pattern_map = m.get_pattern_value_map();
             auto node = pattern_map[node_pattern].get_node_shared_ptr();
@@ -452,19 +452,6 @@ bool ArmPlugin::pass::DequantizeNodeFusion::run_on_function(std::shared_ptr<ngra
     manager.register_pass<DequantizeNodeFusionMul>();
     manager.run_passes(f);
     return true;
-}
-
-bool ArmPlugin::pass::PropogateQuantizationInfo::run_on_function(std::shared_ptr<ngraph::Function> f) {
-    for (auto&& node : f->get_ordered_ops()) {
-        auto outputs = node->outputs();
-        auto quantizedOutput = std::any_of(std::begin(outputs), std::end(outputs), [] (auto& output) {
-            return output.get_element_type().is_quantized();
-        });
-        if (quantizedOutput) {
-            node->get_rt_info().emplace("QuantizationInfo", arm_compute::QuantizationInfo{1, 0});
-        }
-    }
-    return false;
 }
 
 ArmPlugin::pass::AddDequantizeOnInputs::AddDequantizeOnInputs() {

@@ -190,11 +190,8 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, con
                 auto tensorShape = ShapeCast(output.get_partial_shape().get_max_shape());
                 auto outputDataType = output.get_element_type();
                 auto quantizedOutput = (outputDataType == ngraph::element::u8 || outputDataType == ngraph::element::i8);
-                auto& rt_info = node->get_rt_info();
-                auto itInfo = rt_info.find("QuantizationInfo");
-                auto hasQuantizationInfo = (itInfo != rt_info.end());
                 arm_compute::TensorInfo tensorInfo;
-                if (quantizedOutput && hasQuantizationInfo) {
+                if (quantizedOutput && _cfg._lpt) {
                     arm_compute::DataType dataType;
                     switch (outputDataType) {
                         case ngraph::element::Type_t::u8 : dataType = arm_compute::DataType::QASYMM8; break;
