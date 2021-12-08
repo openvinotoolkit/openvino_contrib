@@ -145,7 +145,7 @@ jobs:
       python3 -m pip install -r requirements.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
       git clone https://github.com/cszn/USRNet && cd USRNet && git checkout 9564ad2 && cd ..
-      git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout 9a2a7c4 && python3 -m pip install . && cd ..
+      git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
     displayName: 'Install PyTorch tests dependencies'
 

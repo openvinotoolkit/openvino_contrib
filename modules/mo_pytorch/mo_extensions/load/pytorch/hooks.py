@@ -110,7 +110,7 @@ class OpenVINOTensor(object):
             self.dynamic_shape = list(value.shape) or [1]
         self.requires_grad = False
         self.device = 'cpu'
-        self.dtype = None
+        self.dtype = torch.float32
         if self.requires_grad:
             raise Error('Model in training mode is used')
 
@@ -359,7 +359,7 @@ class OpenVINOTensor(object):
         class Reshape(nn.Module):
             def __init__(self, shape):
                 super().__init__()
-                self.shape = shape
+                self.shape = list(np.array(shape).flat)
 
             def infer_shapes(self, inputs):
                 target_shape = list(self.shape)  # Create a copy of shape and replace -1
@@ -444,6 +444,12 @@ class OpenVINOTensor(object):
         return forward_hook(Sigmoid(), (self,))
 
     def contiguous(self):
+        return self
+
+    def is_floating_point(self):
+        return True
+
+    def type(self, dtype):
         return self
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
@@ -822,6 +828,11 @@ def function_hook(weight, input, *args, **kwargs):
             return inputs[0].dynamic_shape + [weight.shape[1]]
 
     return forward_hook(Embedding(weight), (input,))
+
+
+@implements(F.embedding)
+def function_hook(input, weight, *args, **kwargs):
+    return torch.embedding(weight, input)
 
 
 @implements(F.layer_norm)

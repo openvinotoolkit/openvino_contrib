@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from packaging import version
 import numpy as np
 import torch
 from pathlib import Path
@@ -235,7 +236,7 @@ class TestModels(unittest.TestCase):
         diff = np.max(np.abs(out - ref))
         self.assertLessEqual(diff, 1e-4)
 
-
+    @unittest.skipIf(version.parse(torch.__version__) >= version.parse('1.8.0'), 'Deprecated FFT')
     def test_usrnet(self):
         sys.path.append('USRNet')
         from models.network_usrnet import USRNet as net   # for pytorch version <= 1.7.1
