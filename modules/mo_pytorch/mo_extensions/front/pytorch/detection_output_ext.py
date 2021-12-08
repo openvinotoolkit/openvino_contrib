@@ -16,10 +16,10 @@
 
 import numpy as np
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.extractor import FrontExtractorOp
-from extensions.ops.DetectionOutput import DetectionOutput
-from mo.utils.error import Error
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.DetectionOutput import DetectionOutput
+from openvino.tools.mo.utils.error import Error
 
 
 class DetectionOutputExtractor(FrontExtractorOp):

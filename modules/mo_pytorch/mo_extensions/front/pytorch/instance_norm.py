@@ -13,13 +13,13 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from extensions.ops.elementwise import Mul, Add
-from extensions.ops.mvn import MVN
-from mo.ops.const import Const
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.elementwise import Mul, Add
+from openvino.tools.mo.ops.mvn import MVN
+from openvino.tools.mo.ops.const import Const
 import numpy as np
-from mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
 
 
 class InstanceNorm(FrontReplacementOp):

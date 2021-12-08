@@ -13,15 +13,15 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from extensions.ops.dft import DFT, IDFT
-from mo.front.common.partial_infer.utils import int64_array
-from mo.ops.const import Const
-from extensions.ops.pack import PackOp
-from extensions.ops.elementwise import Mul
-from mo.ops.strided_slice import StridedSlice
-from mo.ops.squeeze import Squeeze
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.dft import DFT, IDFT
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.ops.const import Const
+from openvino.tools.mo.ops.pack import PackOp
+from openvino.tools.mo.ops.elementwise import Mul
+from openvino.tools.mo.ops.strided_slice import StridedSlice
+from openvino.tools.mo.ops.squeeze import Squeeze
 
 class RFFT(FrontReplacementOp):
     op = 'RFFT'

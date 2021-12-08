@@ -3,7 +3,7 @@ from collections import namedtuple
 
 from ..hooks import OpenVINOTensor, forward_hook
 
-from mo.utils.error import Error
+from openvino.tools.mo.utils.error import Error
 
 def inference(model, func, anchors, pred_logits, pred_anchor_deltas, image_sizes):
     # Concatenate the inputs (should be tracked)

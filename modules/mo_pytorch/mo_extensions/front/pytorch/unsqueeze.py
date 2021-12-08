@@ -13,9 +13,9 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.extractor import FrontExtractorOp
-from mo.graph.graph import Node
-from mo.ops.unsqueeze import Unsqueeze
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.graph.graph import Node
+from openvino.tools.mo.ops.unsqueeze import Unsqueeze
 
 
 class UnsqueezeFrontExtractor(FrontExtractorOp):

@@ -14,9 +14,9 @@
  limitations under the License.
 """
 
-from extensions.ops.identity import Identity
-from mo.front.extractor import FrontExtractorOp
-from mo.utils.error import Error
+from openvino.tools.mo.ops.identity import Identity
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.utils.error import Error
 
 
 class DropoutFrontExtractor(FrontExtractorOp):

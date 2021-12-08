@@ -16,8 +16,8 @@
 
 import numpy as np
 
-from mo.front.extractor import FrontExtractorOp
-from extensions.ops.roialign import ROIAlign
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.roialign import ROIAlign
 
 
 class ROIAlignExtractor(FrontExtractorOp):

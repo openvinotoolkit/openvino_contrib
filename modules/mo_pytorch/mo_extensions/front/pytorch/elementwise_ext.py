@@ -15,15 +15,15 @@
 """
 import numpy as np
 
-from extensions.ops.elementwise import *
-from mo.front.extractor import FrontExtractorOp
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from mo.ops.eltwise_n import EltwiseNAdd, EltwiseNMax
-from mo.ops.power import AttributedPower
-from extensions.ops.activation_ops import *
-from mo.ops.const import Const
-from extensions.ops.Cast import Cast
+from openvino.tools.mo.ops.elementwise import *
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.eltwise_n import EltwiseNAdd, EltwiseNMax
+from openvino.tools.mo.ops.power import AttributedPower
+from openvino.tools.mo.ops.activation_ops import *
+from openvino.tools.mo.ops.const import Const
+from openvino.tools.mo.ops.Cast import Cast
 
 
 class AddFrontExtractor(FrontExtractorOp):
