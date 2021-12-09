@@ -1,7 +1,7 @@
 
 # [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - ARM CPU plugin
 
-OpenVINO™ ARM CPU plugin is developed in order to enable deep neural networks inference on ARM CPUs, using OpenVINO™ API. The plugin uses [ARM Compute Library\*] as a backend.
+OpenVINO™ ARM CPU plugin is developed in order to enable deep neural networks inference on ARM CPUs, using OpenVINO™ API. The plugin uses [ARM Compute Library\*](https://github.com/ARM-software/ComputeLibrary) as a backend.
 
 ## Supported Platforms
 OpenVINO™ ARM CPU plugin is supported and validated on the following platforms: 
@@ -11,16 +11,16 @@ Host  | OS
 Raspberry Pi* 4 Model B   | Debian* 9 (32-bit)
 Raspberry Pi* 4 Model B   | Debian* 10.3 (32-bit)
 Raspberry Pi* 4 Model B   | Ubuntu* 18.04 (64-bit)
-Apple* Mac mini with M1   | MacOS* 11.1 (64-bit)
+Apple* Mac mini with M1   | macOS 11.1 (64-bit)
 
 ## Distribution
 OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
 
 ## Get Started
-
-1. [Build ARM CPU plugin](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-build-ARM-CPU-plugin)
+1. [Build ARM plugin](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-build-ARM-CPU-plugin)
 2. [Prepare models](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-prepare-models)
 3. [Run IE samples](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-run-IE-samples)
+4. [Run OMZ demos](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-run-OMZ-demos)
 
 ## Supported Configuration Parameters
 The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
@@ -69,16 +69,3 @@ All guidelines for contributing to the repository can be found [here](../../CONT
 
 ---
 \* Other names and brands may be claimed as the property of others.
-
-[ARM Compute Library\*]:https://github.com/ARM-software/ComputeLibrary
-[extra modules flags]:https://github.com/openvinotoolkit/openvino_contrib#how-to-build-openvino-with-extra-modules
-[OpenVINO™ samples]:https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Samples_Overview.html
-[build it from source]:https://docs.opencv.org/master/d7/d9f/tutorial_linux_install.html
-[Object Detection for SSD sample]:https://docs.openvinotoolkit.org/latest/openvino_inference_engine_samples_object_detection_sample_ssd_README.html
-[Model Optimizer]:https://github.com/openvinotoolkit/openvino/tree/master/model-optimizer
-[model downloader]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-downloader-usage
-[model converter]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/tools/downloader/README.md#model-converter-usage
-[this image]:https://github.com/openvinotoolkit/openvino/blob/master/scripts/demo/car_1.bmp
-[Intermediate Representation]:https://docs.openvinotoolkit.org/latest/openvino_docs_MO_DG_IR_and_opsets.html#intermediate_representation_used_in_openvino
-[the guideline]:https://github.com/openvinotoolkit/openvino/wiki/BuildingForRaspbianStretchOS#cross-compilation-using-docker
-[this guideline]:https://github.com/openvinotoolkit/open_model_zoo/blob/master/demos/README.md#build-the-demo-applications
