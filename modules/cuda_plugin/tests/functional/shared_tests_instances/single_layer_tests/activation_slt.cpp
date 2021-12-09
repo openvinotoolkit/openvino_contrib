@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <single_layer_tests/activation.hpp>
 #include <cuda_test_constants.hpp>
+#include <single_layer_tests/activation.hpp>
 
 namespace LayerTestsDefinitions {
 namespace {
@@ -1958,15 +1958,15 @@ auto listToVectors(const std::initializer_list<std::initializer_list<std::size_t
     return shapes;
 }
 
-const auto basicTanhCases = ::testing::Combine(
-    ::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{ngraph::helpers::Sigmoid, 0}),
-    ::testing::Values(InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16),
-    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-    ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-    ::testing::Values(InferenceEngine::Layout::ANY),
-    ::testing::Values(InferenceEngine::Layout::ANY),
-    ::testing::ValuesIn(listToVectors(tanhShapes)),
-    ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+const auto basicTanhCases =
+    ::testing::Combine(::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{ngraph::helpers::Tanh, 0}),
+                       ::testing::Values(InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(listToVectors(tanhShapes)),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Tanh,
                         ActivationLayerTest,
