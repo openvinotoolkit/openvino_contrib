@@ -14,10 +14,10 @@
  limitations under the License.
 """
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.extractor import FrontExtractorOp
-from mo.ops.softmax import Softmax
-from mo.utils.error import Error
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.softmax import Softmax
+from openvino.tools.mo.utils.error import Error
 
 
 class SoftmaxFrontExtractor(FrontExtractorOp):

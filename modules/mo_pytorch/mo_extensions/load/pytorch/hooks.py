@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mo.utils.error import Error
+from openvino.tools.mo.utils.error import Error
 
 # Callback which is executed after nn.Module forward
 def forward_hook(self, inputs, output=None):

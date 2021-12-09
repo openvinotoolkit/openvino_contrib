@@ -16,10 +16,10 @@
 
 import numpy as np
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.extractor import FrontExtractorOp
-from extensions.ops.transpose import Transpose
-from mo.utils.error import Error
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.transpose import Transpose
+from openvino.tools.mo.utils.error import Error
 
 
 class TransposeFrontExtractor(FrontExtractorOp):

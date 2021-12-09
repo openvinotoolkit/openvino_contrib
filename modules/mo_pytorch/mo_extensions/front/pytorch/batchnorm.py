@@ -14,10 +14,10 @@
  limitations under the License.
 """
 
-from mo.front.common.partial_infer.elemental import copy_shape_infer
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from mo.ops.op import Op
+from openvino.tools.mo.front.common.partial_infer.elemental import copy_shape_infer
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.op import Op
 
 
 class BatchNorm(Op):

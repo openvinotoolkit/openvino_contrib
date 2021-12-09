@@ -16,10 +16,10 @@
 
 import numpy as np
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.extractor import FrontExtractorOp
-from mo.ops.flatten import Flatten
-from mo.utils.error import Error
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.flatten import Flatten
+from openvino.tools.mo.utils.error import Error
 
 
 class FlattenExtractor(FrontExtractorOp):
