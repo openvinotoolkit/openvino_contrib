@@ -22,8 +22,8 @@ struct MeanQuantizeFusion : public ngraph::pass::MatcherPass {
     MeanQuantizeFusion();
 };
 
-struct DequantizeNodeFusion : public ngraph::pass::FunctionPass{
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+struct DequantizeInputFusion : public ngraph::pass::MatcherPass{
+    DequantizeInputFusion();
 };
 
 struct AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
