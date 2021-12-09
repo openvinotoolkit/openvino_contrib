@@ -14,8 +14,8 @@
  limitations under the License.
 """
 
-from mo.front.extractor import FrontExtractorOp
-from extensions.ops.split import AttributedSplit
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.split import AttributedSplit
 
 
 class SplitFrontExtractor(FrontExtractorOp):

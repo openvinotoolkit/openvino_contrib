@@ -14,8 +14,8 @@
  limitations under the License.
 """
 
-from extensions.ops.pack import PackOp
-from mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.pack import PackOp
+from openvino.tools.mo.front.extractor import FrontExtractorOp
 
 
 class StackFrontExtractor(FrontExtractorOp):

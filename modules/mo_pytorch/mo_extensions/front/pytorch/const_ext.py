@@ -13,8 +13,8 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.extractor import FrontExtractorOp
-from mo.ops.const import Const
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.const import Const
 
 
 class ConstExtractor(FrontExtractorOp):

@@ -112,7 +112,7 @@ jobs:
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
-  - script: ls -alR $(BUILD_DIR)/temp/
+  - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
     displayName: 'List temp SDKs'
 
   - script: ninja
@@ -140,7 +140,7 @@ jobs:
     displayName: 'Java tests'
 
   - script: |
-      python3 -m pip install --no-deps $(INSTALL_DIR)/tools/*.whl
+      python3 -m pip install $(INSTALL_DIR)/tools/*.whl
       python3 -m pip install -U setuptools==51.0.0
       python3 -m pip install -r requirements.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt

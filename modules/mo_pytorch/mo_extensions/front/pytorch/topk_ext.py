@@ -14,8 +14,8 @@
  limitations under the License.
 """
 
-from extensions.ops.topk import TopK
-from mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.topk import TopK
+from openvino.tools.mo.front.extractor import FrontExtractorOp
 
 
 class TopKFrontExtractor(FrontExtractorOp):

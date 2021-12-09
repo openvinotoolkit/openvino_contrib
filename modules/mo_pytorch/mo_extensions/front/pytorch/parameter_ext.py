@@ -14,8 +14,8 @@
  limitations under the License.
 """
 import numpy as np
-from extensions.ops.parameter import Parameter
-from mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.parameter import Parameter
+from openvino.tools.mo.front.extractor import FrontExtractorOp
 
 
 class PlaceholderFrontExtractor(FrontExtractorOp):

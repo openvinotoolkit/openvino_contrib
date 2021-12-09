@@ -13,8 +13,8 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from extensions.ops.activation_ops import *
-from mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.activation_ops import *
+from openvino.tools.mo.front.extractor import FrontExtractorOp
 
 class ReLUExtractor(FrontExtractorOp):
     op = 'ReLU'

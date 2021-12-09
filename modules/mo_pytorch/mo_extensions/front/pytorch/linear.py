@@ -15,11 +15,11 @@
 """
 import numpy as np
 
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from extensions.ops.MatMul import MatMul
-from extensions.ops.elementwise import Add
-from mo.ops.const import Const
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.MatMul import MatMul
+from openvino.tools.mo.ops.elementwise import Add
+from openvino.tools.mo.ops.const import Const
 
 
 class Linear(FrontReplacementOp):

@@ -13,10 +13,10 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 """
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from mo.ops.pad import Pad
-from mo.ops.const import Const
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.ops.pad import Pad
+from openvino.tools.mo.ops.const import Const
 
 
 class Padding(FrontReplacementOp):

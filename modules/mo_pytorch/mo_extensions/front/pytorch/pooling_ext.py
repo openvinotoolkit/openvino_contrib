@@ -16,11 +16,11 @@
 
 import numpy as np
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.extractor import FrontExtractorOp
-from mo.ops.pooling import Pooling
-from extensions.ops.adaptive_avg_pooling import AdaptiveAvgPooling
-from mo.utils.error import Error
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.extractor import FrontExtractorOp
+from openvino.tools.mo.ops.pooling import Pooling
+from openvino.tools.mo.ops.adaptive_avg_pooling import AdaptiveAvgPooling
+from openvino.tools.mo.utils.error import Error
 
 from .common import get_pads
 

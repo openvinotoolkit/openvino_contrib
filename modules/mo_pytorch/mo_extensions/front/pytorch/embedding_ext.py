@@ -14,12 +14,12 @@
  limitations under the License.
 """
 
-from mo.front.common.partial_infer.utils import int64_array
-from mo.front.common.replacement import FrontReplacementOp
-from mo.graph.graph import Graph, Node
-from mo.utils.error import Error
-from extensions.ops.gather import Gather
-from mo.ops.const import Const
+from openvino.tools.mo.front.common.partial_infer.utils import int64_array
+from openvino.tools.mo.front.common.replacement import FrontReplacementOp
+from openvino.tools.mo.graph.graph import Graph, Node
+from openvino.tools.mo.utils.error import Error
+from openvino.tools.mo.ops.gather import Gather
+from openvino.tools.mo.ops.const import Const
 
 
 class EmbeddingExtractor(FrontReplacementOp):
