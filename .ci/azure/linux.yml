@@ -112,7 +112,7 @@ jobs:
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
-  - script: ls -alR $(BUILD_DIR)/temp/
+  - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
     displayName: 'List temp SDKs'
 
   - script: ninja
