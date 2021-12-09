@@ -97,11 +97,8 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
 std::shared_ptr<ngraph::Function> ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
     for (auto&& node : _function->get_ops()) {
         auto& rtInfo = node->get_rt_info();
-        rtInfo.emplace("layerType",
-                       std::make_shared<ngraph::VariantWrapper<std::string>>(node->get_type_name()));
-        rtInfo.emplace("runtimePrecision",
-                       std::make_shared<ngraph::VariantWrapper<std::string>>(
-                            InferenceEngine::details::convertPrecision(node->output(0).get_element_type()).name()));
+        rtInfo.emplace("layerType", node->get_type_name());
+        rtInfo.emplace("runtimePrecision", InferenceEngine::details::convertPrecision(node->output(0).get_element_type()).name());
     }
     return std::const_pointer_cast<ngraph::Function>(_function);
 }
