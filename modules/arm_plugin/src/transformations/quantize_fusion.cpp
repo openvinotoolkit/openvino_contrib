@@ -42,18 +42,6 @@ std::vector<float> getFloatVector(const ngraph::Node* constant) {
     }
 }
 
-std::vector<float> invQScale(const std::vector<float>& scale) {
-    std::vector<float> invScale;
-    std::transform(scale.begin(), scale.end(), std::back_inserter(invScale), [](float f) -> float { return 1./f; } );
-    return invScale;
-}
-
-std::vector<std::int32_t> castZPoint(const std::vector<float>& zpf) {
-    std::vector<std::int32_t> zpi;
-    std::transform(zpf.begin(), zpf.end(), std::back_inserter(zpi), [](float f) -> std::int32_t { return static_cast<std::int32_t>(std::round(f)); } );
-    return zpi;
-}
-
 std::pair<std::vector<float>, std::vector<float>> makeQuantizationInfo(const std::vector<float>& input_low, const std::vector<float>& input_high,
                                                                        const std::vector<float>& output_low, const std::vector<float>& output_high) {
     IE_ASSERT(input_low.size() == input_high.size());
@@ -64,6 +52,12 @@ std::pair<std::vector<float>, std::vector<float>> makeQuantizationInfo(const std
         qVector.second.emplace_back(output_low[0] - input_low[i] * scale);
     }
     return qVector;
+}
+
+template <typename T>
+bool allEqualToFirst(const T& values) {
+    auto& ref = *std::begin(values);
+    return std::all_of(std::begin(values), std::end(values), [&] (auto& value) {return value == ref;});
 }
 
 std::shared_ptr<ngraph::Node> makeTypeRelaxed(const ngraph::Node* node,
@@ -190,13 +184,14 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                     ngraph::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
             }
             std::int32_t qiOffset = 0;
-            if (!std::all_of(std::begin(quantizationInfo.second), std::end(quantizationInfo.second), [&] (auto offset) {
-                             return offset == quantizationInfo.second.front();})) {
+            if (!allEqualToFirst(quantizationInfo.second)) {
                 auto shape = ngraph::Shape{{quantizationInfo.second.size()}};
-                std::shared_ptr<ngraph::Node> bias;
-                bias = std::make_shared<opset::Multiply>(
-                        std::make_shared<opset::Constant>(ngraph::element::f32, shape, quantizationInfo.second),
-                        std::make_shared<opset::Constant>(ngraph::element::f32, shape, invQScale(quantizationInfo.first)));
+                std::vector<float> invScale;
+                std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), std::back_inserter(invScale),
+                                                                                             [](float f) -> float { return 1./f; } );
+                std::shared_ptr<ngraph::Node> bias = std::make_shared<opset::Multiply>(
+                                                         std::make_shared<opset::Constant>(ngraph::element::f32, shape, quantizationInfo.second),
+                                                         std::make_shared<opset::Constant>(ngraph::element::f32, shape, invScale));
                 if (node->inputs().size() > 2) {
                     bias = std::make_shared<opset::Add>(node->input_value(2), bias);
                     newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
@@ -225,8 +220,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
             }
 
             float qiScale = 1.f;
-            if (!std::all_of(std::begin(quantizationInfo.first), std::end(quantizationInfo.first), [&] (auto scale) {
-                             return scale == quantizationInfo.first.front();})) {
+            if (!allEqualToFirst(quantizationInfo.first)) {
                 if (node->get_input_element_type(1) != ngraph::element::i8)
                     return false;
                 newNode->get_rt_info()["WeightsPrescaleInfo"] =
@@ -269,10 +263,7 @@ ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
                                                          getFloatVector(fakeQuantize->input_value(2).get_node()),
                                                          getFloatVector(fakeQuantize->input_value(3).get_node()),
                                                          getFloatVector(fakeQuantize->input_value(4).get_node()));
-            if (!std::all_of(std::begin(quantizationInfo.first), std::end(quantizationInfo.first), [&] (auto scale) {
-                             return scale == quantizationInfo.first.front();}) ||
-                !std::all_of(std::begin(quantizationInfo.second), std::end(quantizationInfo.second), [&] (auto offset) {
-                             return offset == quantizationInfo.second.front();})) {
+            if (!allEqualToFirst(quantizationInfo.first) || !allEqualToFirst(quantizationInfo.second)) {
                 return false;
             }
 
@@ -366,18 +357,13 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
             std::int32_t offset = 0;
             if (itPostMul != pattern_map.end() || itMul != pattern_map.end()) {
                 std::vector<float> scales = getFloatVector(pattern_map[scale_pattern].get_node());
-                if (!std::all_of(std::begin(scales), std::end(scales), [&] (auto scale) {return scale == scales.front();})) {
-                    return false;
-                }
+                if (!allEqualToFirst(scales)) return false;
                 scale = scales.front();
             }
             if (itPreAdd != pattern_map.end() || itPreSub != pattern_map.end() ||
                 itAdd != pattern_map.end() || itSub != pattern_map.end()) {
                 std::vector<float> offsets = getFloatVector(pattern_map[offset_pattern].get_node());
-                if (!std::all_of(std::begin(offsets), std::end(offsets), [&] (auto offset) {return offset == offsets.front();})) {
-                    return false;
-                }
-
+                if (!allEqualToFirst(offsets)) return false;
                 float foffset = (itPreAdd != pattern_map.end() || itAdd != pattern_map.end()) ? - offsets.front() : offsets.front();
                 if (itMul != pattern_map.end()) foffset /= scale;
                 offset = static_cast<std::int32_t>(std::round(itPreAdd != pattern_map.end() ? - offsets.front() :
