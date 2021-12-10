@@ -126,7 +126,6 @@ public:
                                         const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *wp,
                                         const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(input, weights, output);
-        //At the moment quantization info isn't checked actually, but just in case
         arm_compute::TensorInfo vld_input(*input);
         if (output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8 ||
             output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
@@ -202,7 +201,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolu
 
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
     arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(iInfoIt->second)->get());
+                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
     arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
@@ -312,7 +311,6 @@ public:
                                         const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *wp,
                                         const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(input, weights, output);
-        //At the moment quantization info isn't checked actually, but just in case
         arm_compute::TensorInfo vld_input(*input);
         if (output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8 ||
             output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
@@ -396,7 +394,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
 
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
     arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(safe_cast<ngraph::VariantWrapper<arm_compute::QuantizationInfo>>(iInfoIt->second)->get());
+                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
     arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
