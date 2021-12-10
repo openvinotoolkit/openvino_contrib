@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
+#include <src/core/NEON/kernels/NEConvertQuantizedSignednessKernel.h>
+#include <src/runtime/Utils.h>
 #include <arm_compute/runtime/NEON/functions/NEPoolingLayer.h>
 #include "arm_converter/arm_converter.hpp"
 
@@ -38,16 +40,41 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& n
 struct NEPoolingLayerQI final: public arm_compute::IFunction {
 public:
     NEPoolingLayerQI(std::shared_ptr<arm_compute::IMemoryManager> memory_manager = nullptr):
-        _memory_manager(memory_manager), _pool(), _output(nullptr), _qi(nullptr), _outputqi() {}
+        _memory_manager(memory_manager), _memory_group{std::make_unique<arm_compute::MemoryGroup>(memory_manager)},
+        _i_sgn(nullptr), _pool(nullptr), _input(nullptr), _ip(nullptr), _inputqi(), _output(nullptr), _qi(nullptr), _outputqi() {}
     NEPoolingLayerQI(const NEPoolingLayerQI &) = delete;
     NEPoolingLayerQI &operator=(const NEPoolingLayerQI &) = delete;
     NEPoolingLayerQI(NEPoolingLayerQI &&) = delete;
     NEPoolingLayerQI &operator=(NEPoolingLayerQI &&) = delete;
     ~NEPoolingLayerQI() = default;
     void configure(arm_compute::ITensor *input, arm_compute::ITensor *output, const arm_compute::PoolingLayerInfo &pool_info,
-                   const arm_compute::QuantizationInfo *qi) {
+                   const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
-        ARM_COMPUTE_ERROR_THROW_ON(NEPoolingLayerQI::validate(input->info(), output->info(), pool_info, qi));
+        ARM_COMPUTE_ERROR_THROW_ON(NEPoolingLayerQI::validate(input->info(), output->info(), pool_info, ip, qi));
+
+        _input = input;
+        arm_compute::ITensor *conv_input = input;
+        _ip = ip;
+        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->info()->data_type() == arm_compute::DataType::QASYMM8 && input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _i_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+            _memory_group->manage(&_inputqi);
+            _inputqi.allocator()->init(*(input->info()));
+            float scale = 1.f;
+            std::int32_t offset = output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
+            if (ip) {
+                scale = ip->scale()[0];
+                offset += ip->offset()[0];
+            }
+            _inputqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
+            _i_sgn->configure(input, &_inputqi);
+            conv_input = &_inputqi;
+        } else if (_ip) {
+            _inputqi.allocator()->init(*(_input->info()));
+            _inputqi.info()->set_quantization_info(*ip);
+            conv_input = &_inputqi;
+        }
+
         _output = output;
         _qi = qi;
         if (_qi) {
@@ -55,29 +82,67 @@ public:
             _outputqi.info()->set_quantization_info(*qi);
         }
         _pool = std::make_unique<arm_compute::NEPoolingLayer>(_memory_manager);
-        _pool->configure(input, _qi ? &_outputqi : _output, pool_info);
+        _pool->configure(conv_input, _qi ? &_outputqi : _output, pool_info);
+
+        if (_i_sgn) {
+            _inputqi.allocator()->allocate();
+        } else if (_ip && _inputqi.info()->padding() != _input->info()->padding()) {
+            //Backpropagate possible input padding change
+            _input->info()->extend_padding(_inputqi.info()->padding());
+        }
     }
     static arm_compute::Status validate(const arm_compute::ITensorInfo *input, const arm_compute::ITensorInfo *output,
-                                        const arm_compute::PoolingLayerInfo &pool_info, const arm_compute::QuantizationInfo *qi) {
-        ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(output);
-        //At the moment quantization info isn't checked actually, but just in case
-        return arm_compute::NEPoolingLayer::validate(input, qi ? &arm_compute::TensorInfo(*output).set_quantization_info(*qi) : output, pool_info);
+                                        const arm_compute::PoolingLayerInfo &pool_info,
+                                        const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *qi) {
+        ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(input, output);
+        arm_compute::TensorInfo vld_input(*input);
+        if (output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            vld_input.set_data_type(output->data_type());
+            float scale = 1.f;
+            std::int32_t offset = output->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
+            if (ip) {
+                scale = ip->scale()[0];
+                offset += ip->offset()[0];
+            }
+            vld_input.set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
+        } else if (ip) {
+            vld_input.set_quantization_info(*ip);
+        }
+        arm_compute::TensorInfo vld_output(*output);
+        if (qi) vld_output.set_quantization_info(*qi);
+
+        return arm_compute::NEPoolingLayer::validate(&vld_input, &vld_output, pool_info);
     }
     void run() override {
         ARM_COMPUTE_ERROR_ON_MSG(!_pool.get(), "Kernel didn't configured");
+        std::unique_ptr<arm_compute::MemoryGroupResourceScope> _sgn_scope;
+        if (_i_sgn) {
+            _sgn_scope = std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memory_group);
+            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _i_sgn.get(), arm_compute::Window::DimY);
+        } else if (_ip) {
+            if (_inputqi.info()->padding() != _input->info()->padding()) _inputqi.info()->extend_padding(_input->info()->padding());
+            _inputqi.allocator()->import_memory(_input->buffer());
+        }
         if (_qi) {
             if (_outputqi.info()->padding() != _output->info()->padding()) _outputqi.info()->extend_padding(_output->info()->padding());
             _outputqi.allocator()->import_memory(_output->buffer());
         }
         _pool->run();
+        if (!_i_sgn && _ip) _inputqi.allocator()->free();
         if (_qi) _outputqi.allocator()->free();
     }
 
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
+    std::unique_ptr<arm_compute::MemoryGroup> _memory_group;
+    const arm_compute::QuantizationInfo *_ip;
+    arm_compute::ITensor *_input;
+    arm_compute::Tensor _inputqi;
     const arm_compute::QuantizationInfo *_qi;
     arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
+    std::unique_ptr<arm_compute::NEConvertQuantizedSignednessKernel> _i_sgn;
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& node) {
@@ -85,9 +150,12 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& n
     FillLayerInfo(node, pool_info);
     pool_info.pool_type       = arm_compute::PoolingType::AVG;
     pool_info.exclude_padding = node.get_exclude_pad();
+    auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
+    arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
+                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                            &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, qInfo);
+    return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, iInfo, qInfo);
 }
 }  // namespace ArmPlugin
