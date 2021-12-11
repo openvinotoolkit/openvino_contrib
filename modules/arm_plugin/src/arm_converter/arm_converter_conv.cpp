@@ -3,8 +3,8 @@
 //
 
 
-#include <src/core/NEON/kernels/NEConvertQuantizedSignednessKernel.h>
-#include <src/runtime/Utils.h>
+#include <src/cpu/kernels/CpuConvertQuantizedSignednessKernel.h>
+#include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEConvolutionLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h>
 #include "arm_converter/arm_converter.hpp"
@@ -59,11 +59,11 @@ public:
         _input = input;
         arm_compute::ITensor *conv_input = input;
         _ip = ip;
-        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-            output->info()->data_type() == arm_compute::DataType::QASYMM8 && input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
-            _i_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->info()->data_type() == arm_compute::DataType::QASYMM8 && _input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _i_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_inputqi);
-            _inputqi.allocator()->init(*(input->info()));
+            _inputqi.allocator()->init(*(_input->info()));
             float scale = 1.f;
             std::int32_t offset = output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
             if (ip) {
@@ -71,7 +71,7 @@ public:
                 offset += ip->offset()[0];
             }
             _inputqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
-            _i_sgn->configure(input, &_inputqi);
+            _i_sgn->configure(_input->info(), _inputqi.info());
             conv_input = &_inputqi;
         } else if (_ip) {
             _inputqi.allocator()->init(*(_input->info()));
@@ -86,13 +86,14 @@ public:
             _weightsqi.allocator()->init(*(_weights->info()));
             _weightsqi.info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp);
             conv_weights = &_weightsqi;
-        } else if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-                   output->info()->data_type() == arm_compute::DataType::QASYMM8 && weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
-            _w_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+        } else if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                   output->info()->data_type() == arm_compute::DataType::QASYMM8 && _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _w_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_weightsqi);
+            _weightsqi.allocator()->init(*(_weights->info()));
             _weightsqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(1.f,
                                                                 output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
-            _w_sgn->configure(weights, &_weightsqi);
+            _w_sgn->configure(_weights->info(), _weightsqi.info());
             conv_weights = &_weightsqi;
         }
 
@@ -137,6 +138,7 @@ public:
                 offset += ip->offset()[0];
             }
             vld_input.set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
+            ARM_COMPUTE_RETURN_ON_ERROR(arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel::validate(input, &vld_input));
         } else if (ip) {
             vld_input.set_quantization_info(*ip);
         }
@@ -147,6 +149,7 @@ public:
                    output->data_type() == arm_compute::DataType::QASYMM8 && weights->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
             vld_weights.set_data_type(output->data_type());
             vld_weights.set_quantization_info(arm_compute::QuantizationInfo(1.f, output->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
+            ARM_COMPUTE_RETURN_ON_ERROR(arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel::validate(weights, &vld_weights));
         }
         arm_compute::TensorInfo vld_output(*output);
         if (qi) vld_output.set_quantization_info(*qi);
@@ -158,13 +161,21 @@ public:
         std::unique_ptr<arm_compute::MemoryGroupResourceScope> _sgn_scope = _i_sgn || _w_sgn ?
                                                                 std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memory_group) : nullptr;
         if (_i_sgn) {
-            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _i_sgn.get(), arm_compute::Window::DimY);
+            arm_compute::ITensorPack pack = {
+                { arm_compute::TensorType::ACL_SRC, _input },
+                { arm_compute::TensorType::ACL_DST, &_inputqi }
+            };
+            arm_compute::NEScheduler::get().schedule_op(_i_sgn.get(), arm_compute::Window::DimY, _i_sgn->window(), pack);
         } else if (_ip) {
             if (_inputqi.info()->padding() != _input->info()->padding()) _inputqi.info()->extend_padding(_input->info()->padding());
             _inputqi.allocator()->import_memory(_input->buffer());
         }
         if (_w_sgn) {
-            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _w_sgn.get(), arm_compute::Window::DimY);
+            arm_compute::ITensorPack pack = {
+                { arm_compute::TensorType::ACL_SRC, _weights },
+                { arm_compute::TensorType::ACL_DST, &_weightsqi }
+            };
+            arm_compute::NEScheduler::get().schedule_op(_w_sgn.get(), arm_compute::Window::DimY, _w_sgn->window(), pack);
         } else if (_wp) {
             if (_weightsqi.info()->padding() != _weights->info()->padding()) _weightsqi.info()->extend_padding(_weights->info()->padding());
             _weightsqi.allocator()->import_memory(_weights->buffer());
@@ -191,7 +202,7 @@ protected:
     const arm_compute::QuantizationInfo *_qi;
     arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
-    std::unique_ptr<arm_compute::NEConvertQuantizedSignednessKernel> _i_sgn, _w_sgn;
+    std::unique_ptr<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel> _i_sgn, _w_sgn;
     std::unique_ptr<arm_compute::NEConvolutionLayer> _conv;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolution& node) {
@@ -200,14 +211,14 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolu
     std::tie(conv_info, dilation) = ConvParameters(node);
 
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
 
     if (node.get_input_size() == 3) {
         return MakeConversion<NEConvolutionLayerQI>(
@@ -244,11 +255,11 @@ public:
         _input = input;
         arm_compute::ITensor *conv_input = input;
         _ip = ip;
-        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-            output->info()->data_type() == arm_compute::DataType::QASYMM8 && input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
-            _i_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->info()->data_type() == arm_compute::DataType::QASYMM8 && _input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _i_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_inputqi);
-            _inputqi.allocator()->init(*(input->info()));
+            _inputqi.allocator()->init(*(_input->info()));
             float scale = 1.f;
             std::int32_t offset = output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
             if (ip) {
@@ -256,7 +267,7 @@ public:
                 offset += ip->offset()[0];
             }
             _inputqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
-            _i_sgn->configure(input, &_inputqi);
+            _i_sgn->configure(_input->info(), _inputqi.info());
             conv_input = &_inputqi;
         } else if (_ip) {
             _inputqi.allocator()->init(*(_input->info()));
@@ -271,13 +282,14 @@ public:
             _weightsqi.allocator()->init(*(_weights->info()));
             _weightsqi.info()->set_data_type(arm_compute::DataType::QSYMM8_PER_CHANNEL).set_quantization_info(*wp);
             conv_weights = &_weightsqi;
-        } else if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-                   output->info()->data_type() == arm_compute::DataType::QASYMM8 && weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
-            _w_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+        } else if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _weights->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+                   output->info()->data_type() == arm_compute::DataType::QASYMM8 && _weights->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _w_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_weightsqi);
+            _weightsqi.allocator()->init(*(_weights->info()));
             _weightsqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(1.f,
                                                                 output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
-            _w_sgn->configure(weights, &_weightsqi);
+            _w_sgn->configure(_weights->info(), _weightsqi.info());
             conv_weights = &_weightsqi;
         }
 
@@ -322,6 +334,7 @@ public:
                 offset += ip->offset()[0];
             }
             vld_input.set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
+            ARM_COMPUTE_RETURN_ON_ERROR(arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel::validate(input, &vld_input));
         } else if (ip) {
             vld_input.set_quantization_info(*ip);
         }
@@ -332,6 +345,7 @@ public:
                    output->data_type() == arm_compute::DataType::QASYMM8 && weights->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
             vld_weights.set_data_type(output->data_type());
             vld_weights.set_quantization_info(arm_compute::QuantizationInfo(1.f, output->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128));
+            ARM_COMPUTE_RETURN_ON_ERROR(arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel::validate(weights, &vld_weights));
         }
         arm_compute::TensorInfo vld_output(*output);
         if (qi) vld_output.set_quantization_info(*qi);
@@ -344,13 +358,21 @@ public:
         std::unique_ptr<arm_compute::MemoryGroupResourceScope> _sgn_scope = _i_sgn || _w_sgn ?
                                                                 std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memory_group) : nullptr;
         if (_i_sgn) {
-            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _i_sgn.get(), arm_compute::Window::DimY);
+            arm_compute::ITensorPack pack = {
+                { arm_compute::TensorType::ACL_SRC, _input },
+                { arm_compute::TensorType::ACL_DST, &_inputqi }
+            };
+            arm_compute::NEScheduler::get().schedule_op(_i_sgn.get(), arm_compute::Window::DimY, _i_sgn->window(), pack);
         } else if (_ip) {
             if (_inputqi.info()->padding() != _input->info()->padding()) _inputqi.info()->extend_padding(_input->info()->padding());
             _inputqi.allocator()->import_memory(_input->buffer());
         }
         if (_w_sgn) {
-            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _w_sgn.get(), arm_compute::Window::DimY);
+            arm_compute::ITensorPack pack = {
+                { arm_compute::TensorType::ACL_SRC, _weights },
+                { arm_compute::TensorType::ACL_DST, &_weightsqi }
+            };
+            arm_compute::NEScheduler::get().schedule_op(_w_sgn.get(), arm_compute::Window::DimY, _w_sgn->window(), pack);
         } else if (_wp) {
             if (_weightsqi.info()->padding() != _weights->info()->padding()) _weightsqi.info()->extend_padding(_weights->info()->padding());
             _weightsqi.allocator()->import_memory(_weights->buffer());
@@ -377,7 +399,7 @@ protected:
     const arm_compute::QuantizationInfo *_qi;
     arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
-    std::unique_ptr<arm_compute::NEConvertQuantizedSignednessKernel> _i_sgn, _w_sgn;
+    std::unique_ptr<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel> _i_sgn, _w_sgn;
     std::unique_ptr<arm_compute::NEDepthwiseConvolutionLayer> _conv;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupConvolution& node) {
@@ -393,14 +415,14 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmGroupCo
     }));
 
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
 
     if (node.get_input_size() == 3) {
         return MakeConversion<NEDepthwiseConvolutionLayerQI>(

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include <src/core/NEON/kernels/NEConvertQuantizedSignednessKernel.h>
-#include <src/runtime/Utils.h>
+#include <src/cpu/kernels/CpuConvertQuantizedSignednessKernel.h>
+#include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEPoolingLayer.h>
 #include "arm_converter/arm_converter.hpp"
 
@@ -55,11 +55,11 @@ public:
         _input = input;
         arm_compute::ITensor *conv_input = input;
         _ip = ip;
-        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-            output->info()->data_type() == arm_compute::DataType::QASYMM8 && input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
-            _i_sgn = std::make_unique<arm_compute::NEConvertQuantizedSignednessKernel>();
+        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
+            output->info()->data_type() == arm_compute::DataType::QASYMM8 && _input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+            _i_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_inputqi);
-            _inputqi.allocator()->init(*(input->info()));
+            _inputqi.allocator()->init(*(_input->info()));
             float scale = 1.f;
             std::int32_t offset = output->info()->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
             if (ip) {
@@ -67,7 +67,7 @@ public:
                 offset += ip->offset()[0];
             }
             _inputqi.info()->set_data_type(output->info()->data_type()).set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
-            _i_sgn->configure(input, &_inputqi);
+            _i_sgn->configure(_input->info(), _inputqi.info());
             conv_input = &_inputqi;
         } else if (_ip) {
             _inputqi.allocator()->init(*(_input->info()));
@@ -106,6 +106,7 @@ public:
                 offset += ip->offset()[0];
             }
             vld_input.set_quantization_info(arm_compute::QuantizationInfo(scale, offset));
+            ARM_COMPUTE_RETURN_ON_ERROR(arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel::validate(input, &vld_input));
         } else if (ip) {
             vld_input.set_quantization_info(*ip);
         }
@@ -119,7 +120,11 @@ public:
         std::unique_ptr<arm_compute::MemoryGroupResourceScope> _sgn_scope;
         if (_i_sgn) {
             _sgn_scope = std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memory_group);
-            arm_compute::utils::schedule_kernel_on_ctx(nullptr, _i_sgn.get(), arm_compute::Window::DimY);
+            arm_compute::ITensorPack pack = {
+                { arm_compute::TensorType::ACL_SRC, _input },
+                { arm_compute::TensorType::ACL_DST, &_inputqi }
+            };
+            arm_compute::NEScheduler::get().schedule_op(_i_sgn.get(), arm_compute::Window::DimY, _i_sgn->window(), pack);
         } else if (_ip) {
             if (_inputqi.info()->padding() != _input->info()->padding()) _inputqi.info()->extend_padding(_input->info()->padding());
             _inputqi.allocator()->import_memory(_input->buffer());
@@ -142,7 +147,7 @@ protected:
     const arm_compute::QuantizationInfo *_qi;
     arm_compute::ITensor *_output;
     arm_compute::Tensor _outputqi;
-    std::unique_ptr<arm_compute::NEConvertQuantizedSignednessKernel> _i_sgn;
+    std::unique_ptr<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel> _i_sgn;
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& node) {
@@ -151,11 +156,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& n
     pool_info.pool_type       = arm_compute::PoolingType::AVG;
     pool_info.exclude_padding = node.get_exclude_pad();
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                           &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
+    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
+                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
     return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, iInfo, qInfo);
 }
 }  // namespace ArmPlugin
