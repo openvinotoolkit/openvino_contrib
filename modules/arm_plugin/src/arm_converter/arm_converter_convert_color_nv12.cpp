@@ -46,10 +46,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::N
                                     ov::op::util::ConvertColorNV12Base::ColorConversion::NV12_TO_BGR,
                                     single_plane);
         };
-    constexpr static auto types = std::tuple<std::uint8_t, ngraph::float16, float>{};
     return CallSwitch(
         AP_WRAP(make, wrap_color_convert_nv12),
-        node.get_input_element_type(0), types);
+        node.get_input_element_type(0),
+        std::tuple<std::uint8_t, ngraph::float16, float>{});
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::NV12toRGB& node) {
@@ -63,10 +63,10 @@ template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::N
                                     ov::op::util::ConvertColorNV12Base::ColorConversion::NV12_TO_RGB,
                                     single_plane);
         };
-    constexpr static auto types = std::tuple<std::uint8_t, ngraph::float16, float>{};
     return CallSwitch(
         AP_WRAP(make, wrap_color_convert_nv12),
-        node.get_input_element_type(0), types);
+        node.get_input_element_type(0),
+        std::tuple<std::uint8_t, ngraph::float16, float>{});
 }
 
 } // namespace ArmPlugin
