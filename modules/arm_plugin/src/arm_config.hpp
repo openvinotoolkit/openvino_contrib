@@ -13,6 +13,7 @@
 
 namespace InferenceEngine {
 namespace PluginConfigInternalParams {
+DECLARE_CONFIG_KEY(USE_REF_IMPL);
 DECLARE_CONFIG_KEY(DUMP_GRAPH);
 }  // namespace PluginConfigInternalParams
 }  // namespace InferenceEngine
@@ -36,6 +37,7 @@ struct Configuration {
 
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
+    bool _ref                    = true;
     bool _lpt                    = true;
     bool _dump                   = false;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;

@@ -12,6 +12,7 @@
 #include <arm_compute/runtime/IFunction.h>
 #include <arm_compute/runtime/Tensor.h>
 
+#include "arm_config.hpp"
 #include "opset/opset.hpp"
 
 
@@ -399,7 +400,7 @@ struct Converter {
         return std::make_unique<ConversionCallableImpl<Callable, Args...>>(*this, std::forward<Callable>(callable), std::forward<Args>(args)...);
     }
 
-    Converter(const std::shared_ptr<const ngraph::Function> function, bool ref = true);
+    Converter(const std::shared_ptr<const ngraph::Function> function, const Configuration& cfg);
 
     Layer::Map Configure(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager,
                          arm_compute::MemoryGroup& memoryGroup);
@@ -418,6 +419,7 @@ struct Converter {
         });
     }
 
+    const Configuration                             _cfg;
     std::map<ngraph::Node::type_info_t, ConvertFn>  _conversions;
     std::shared_ptr<const ngraph::Function>         _function;
     Layer::Map                                      _layers;

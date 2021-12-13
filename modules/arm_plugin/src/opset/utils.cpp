@@ -16,52 +16,6 @@ float round(const float v) {
 #endif // __aarch64__z
 }
 
-arm_compute::QuantizationInfo makeQuantizationInfo(
-                const ngraph::Output<ngraph::Node>& input_low_output,
-                const ngraph::Output<ngraph::Node>& input_high_output,
-                const ngraph::Output<ngraph::Node>& output_low_output,
-                const ngraph::Output<ngraph::Node>& output_high_output) {
-    auto data_type = input_low_output.get_element_type();
-    std::vector<float> scale_vector;
-    std::vector<std::int32_t> zero_point_vector;
-    auto add_chanel = [&](float min, float max, float qMin, float qMax) {
-        auto scale = (max - min) / (qMax - qMin);
-        auto zeroPointReal = qMin - min / scale;
-        std::int32_t zeroPointNudged = 0;
-        if (zeroPointReal < qMin) {
-            zeroPointNudged = qMin;
-        } else if (zeroPointReal > qMax) {
-            zeroPointNudged = qMax;
-        } else {
-            zeroPointNudged = static_cast<std::int32_t>(std::round(zeroPointReal));
-        }
-        scale_vector.emplace_back(scale);
-        zero_point_vector.emplace_back(zeroPointNudged);
-    };
-    auto init = [&] (auto get_vector) {
-        auto input_low = get_vector(input_low_output);
-        auto input_high = get_vector(input_high_output);
-        auto output_low = get_vector(output_low_output);
-        auto output_high = get_vector(output_high_output);
-        IE_ASSERT(input_low.size() == input_high.size());
-        for (std::size_t i = 0; i < input_low.size(); ++i) {
-            add_chanel(input_low[i], input_high[i], output_low[0], output_high[0]);
-        }
-    };
-    if (data_type == ngraph::element::Type_t::f16) {
-        init([&](const ngraph::Output<ngraph::Node>& input) {
-            return safe_cast<opset::Constant>(input.get_node())->cast_vector<ngraph::float16>();
-        });
-    } else if (data_type == ngraph::element::Type_t::f32) {
-        init([&](const ngraph::Output<ngraph::Node>& input) {
-            return safe_cast<opset::Constant>(input.get_node())->cast_vector<float>();
-        });
-    } else {
-        IE_THROW() << "Arm Plugin: Unsupported Data type: " << data_type;
-    }
-    return {scale_vector, zero_point_vector};
-}
-
 arm_compute::ActivationLayerInfo makeActivationLayerInfo(ngraph::Node* node) {
     if (ngraph::is_type<opset::Sigmoid>(node)) {
         return {arm_compute::ActivationLayerInfo::ActivationFunction::LOGISTIC};

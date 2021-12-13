@@ -14,20 +14,16 @@ struct ConvertQuantize: public ngraph::pass::MatcherPass {
     ConvertQuantize();
 };
 
-struct NodeQuantizeFusion : public ngraph::pass::MatcherPass {
-    NodeQuantizeFusion();
+struct ConvolutionQuantizeFusion : public ngraph::pass::MatcherPass {
+    ConvolutionQuantizeFusion();
 };
 
-struct DequantizeNodeFusion : public ngraph::pass::FunctionPass{
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+struct MeanQuantizeFusion : public ngraph::pass::MatcherPass {
+    MeanQuantizeFusion();
 };
 
-struct MovePerChenelQuantizationInfoToWeights : public ngraph::pass::MatcherPass {
-    MovePerChenelQuantizationInfoToWeights();
-};
-
-struct PropogateQuantizationInfo: public ngraph::pass::FunctionPass {
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+struct DequantizeInputFusion : public ngraph::pass::MatcherPass{
+    DequantizeInputFusion();
 };
 
 struct AddDequantizeOnInputs: public ngraph::pass::MatcherPass {

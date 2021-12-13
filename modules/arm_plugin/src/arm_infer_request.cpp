@@ -55,14 +55,14 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
 #endif
     _pool = std::make_shared<arm_compute::PoolManager>();
     _memoryManager = std::make_shared<arm_compute::MemoryManagerOnDemand>(_lifetime, _pool);
-    _memoryGroup = std::make_shared<arm_compute::MemoryGroup>(_memoryManager);
+    _memoryGroup = std::make_unique<arm_compute::MemoryGroup>(_memoryManager);
 
     auto requestID = std::to_string(_executableNetwork->_requestId.fetch_add(1));
     Layer::Map layers;
     IE_ASSERT(_executableNetwork->_executor != nullptr);
     _executableNetwork->_executor->runAndWait({
         [&] {
-            layers = Converter{_executableNetwork->_function}.Configure(_memoryManager, *_memoryGroup);
+            layers = Converter{_executableNetwork->_function, _executableNetwork->_cfg}.Configure(_memoryManager, *_memoryGroup);
         }
     });
     auto allocateMemory = [] (const auto& blobName, const auto& blobDataMap, auto& blobs, auto tensor, auto output) {
@@ -149,16 +149,9 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     }
     IE_ASSERT(!_outputInfo.empty());
     _memoryManager->populate(_allocator, 1);
-    _memoryGroupScope = std::make_shared<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
+    _memoryGroupScope = std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
     for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
         auto& layer = layers.at(node->get_instance_id());
-        if (ngraph::is_type<opset::ArmNoOp>(node.get())) {
-            IE_ASSERT(node->inputs().size() == 1);
-            for (auto&& output : node->outputs()) {
-                layer._outputs.at(output)._tensor->allocator()->import_memory(
-                    layer._inputs.at(node->input(0))->_tensor->buffer());
-            }
-        }
         auto execType = layer._execType;
         _layers.emplace_back(LayerInfo{
             std::move(layer),

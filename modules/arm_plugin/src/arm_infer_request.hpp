@@ -72,8 +72,8 @@ struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     std::shared_ptr<arm_compute::ISimpleLifetimeManager>                        _lifetime;
     std::shared_ptr<arm_compute::PoolManager>                                   _pool;
     std::shared_ptr<arm_compute::MemoryManagerOnDemand>                         _memoryManager;
-    std::shared_ptr<arm_compute::MemoryGroup>                                   _memoryGroup;
-    std::shared_ptr<arm_compute::MemoryGroupResourceScope>                      _memoryGroupScope;
+    std::unique_ptr<arm_compute::MemoryGroup>                                   _memoryGroup;
+    std::unique_ptr<arm_compute::MemoryGroupResourceScope>                      _memoryGroupScope;
 
 private:
     void InitArmInferRequest(const std::shared_ptr<ArmPlugin::ExecutableNetwork>& executableNetwork);
