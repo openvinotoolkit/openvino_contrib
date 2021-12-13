@@ -104,6 +104,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [NonZero](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/NonZero_3.md)                                                                                       | Not Supported |
 | [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                                                           | Supported*    |
 | [NotEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/NotEqual_1.md)                                                                                    | Supported*    |
+| [NV12toBGR](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/NV12toBGR_8.md)                                                                                          | Supported**   |
+| [NV12toRGB](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/NV12toRGB_8.md)                                                                                          | Supported**   |
 | [OneHot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/OneHot_1.md)                                                                                          | Supported**   |
 | [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                                                                | Supported*    |
 | [Parameter](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Parameter_1.md)                                                                              | Supported     |
