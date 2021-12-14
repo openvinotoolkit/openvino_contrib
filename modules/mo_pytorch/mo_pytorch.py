@@ -118,6 +118,7 @@ def convert(model, **args):
                         ie_is_available=False)
     for arg, value in args.items():
         parser.set_defaults(**{arg: str(value)})
+    parser.set_defaults(layout_values={})
 
     # Replace original parser to ignore global sys.argv
     origin_parse = parser.parse_args
