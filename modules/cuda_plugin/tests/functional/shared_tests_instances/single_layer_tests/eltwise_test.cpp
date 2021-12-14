@@ -111,22 +111,29 @@ INSTANTIATE_TEST_CASE_P(Add, EltwiseLayerTest,
                             ::testing::Values(additional_config)),
                         EltwiseLayerTest::getTestCaseName);
 
-// Tacotron2 int
-const std::vector<std::vector<std::vector<size_t>>> tacotron2_int_shapes = {
+const std::vector<InferenceEngine::Precision> integer_precisions = {
+    InferenceEngine::Precision::I32,
+};
+
+const std::vector<std::vector<std::vector<size_t>>> smoke_integer_Multiply_shapes = {
+    // Tacotron2 int
     {{1}, {1}},
     {{2}, {1}},
     {{1}, {2}},
     {{10}, {1}},
     {{1}, {10}},
+    // Smoke broadcasting tests
+    {{2, 16}, {1, 16}},
+    {{1, 16}, {2, 16}},
 };
 
-INSTANTIATE_TEST_CASE_P(tacotron2_int_Multiply,
+INSTANTIATE_TEST_CASE_P(smoke_integer_Multiply,
                         EltwiseLayerTest,
-                        ::testing::Combine(::testing::ValuesIn(tacotron2_int_shapes),
+                        ::testing::Combine(::testing::ValuesIn(smoke_integer_Multiply_shapes),
                                            ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
                                            ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                            ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                           ::testing::Values(InferenceEngine::Precision::I32),
+                                           ::testing::ValuesIn(integer_precisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),

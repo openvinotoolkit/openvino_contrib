@@ -2215,5 +2215,28 @@ TEST_F(ClampBenchmark, DISABLED_benchmark) {
 
 // =============================================================================
 
+// ------------- Swish -------------
+std::initializer_list<std::initializer_list<std::size_t>> smoke_SwishShapes{
+    {1},
+    {2},
+    {1, 1},
+    {2, 2},
+    {1, 2, 3, 4, 5},
+};
+INSTANTIATE_TEST_CASE_P(
+    smoke_Swish,
+    ActivationLayerTest,
+    ::testing::Combine(::testing::Values(std::pair<ngraph::helpers::ActivationTypes, std::vector<float>>{
+                           ngraph::helpers::Swish, {0.59}}),
+                       ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32,
+                                                                                    InferenceEngine::Precision::FP16})),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(listToVectors(smoke_SwishShapes)),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+    ActivationLayerTest::getTestCaseName);
+
 }  // namespace
 }  // namespace LayerTestsDefinitions
