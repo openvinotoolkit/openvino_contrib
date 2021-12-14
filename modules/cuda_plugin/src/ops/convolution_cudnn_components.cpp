@@ -18,6 +18,7 @@ namespace CUDAPlugin::Convolution::Details {
 
 ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::ConvolutionParams& params)
     : number_of_dims_{static_cast<int>(params.NumberOfDims())},
+      groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.padding_before_ != params.padding_after_) {
         throwIEException(
@@ -47,15 +48,18 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::Convo
 }
 
 CUDA::DnnTensorDescriptor ConvolutionParamsCuDnn::MakeInputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, input_shape_.data());
+    return CUDA::DnnTensorDescriptor{}.set(
+        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, input_shape_.data());
 }
 
 CUDA::DnnFilterDescriptor ConvolutionParamsCuDnn::MakeFilterDescriptor() const {
-    return CUDA::DnnFilterDescriptor{}.set(data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
+    return CUDA::DnnFilterDescriptor{}.set(
+        data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
 }
 
 CUDA::DnnTensorDescriptor ConvolutionParamsCuDnn::MakeOutputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, output_shape_.data());
+    return CUDA::DnnTensorDescriptor{}.set(
+        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, output_shape_.data());
 }
 
 CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor(cudnnDataType_t convDataType) const {
@@ -74,6 +78,7 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
     // (compute capability 7.0).
     const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
     throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
+    throwIfError(::cudnnSetConvolutionGroupCount(conv_desc.get(), groups_));
 
     return conv_desc;
 }
@@ -272,15 +277,18 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
 }
 
 CUDA::DnnTensorDescriptor ConvolutionBackpropDataParamsCuDnn::MakeDOutputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, doutput_shape_.data());
+    return CUDA::DnnTensorDescriptor{}.set(
+        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, doutput_shape_.data());
 }
 
 CUDA::DnnFilterDescriptor ConvolutionBackpropDataParamsCuDnn::MakeFilterDescriptor() const {
-    return CUDA::DnnFilterDescriptor{}.set(data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
+    return CUDA::DnnFilterDescriptor{}.set(
+        data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
 }
 
 CUDA::DnnTensorDescriptor ConvolutionBackpropDataParamsCuDnn::MakeDInputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, dinput_shape_.data());
+    return CUDA::DnnTensorDescriptor{}.set(
+        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, dinput_shape_.data());
 }
 
 CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvolutionDescriptor(
