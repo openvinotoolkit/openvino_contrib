@@ -115,12 +115,12 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
                         fInput = dqNode;
                     }
 
-                    auto quantScale = opset::Constant::create<float>(input_type, ngraph::Shape{ qInfo.first.size(), 1, 1}, qInfo.first);
+                    auto quantScale = opset::Constant::create<float>(input_type, fakeQuantize->get_input_shape(1), qInfo.first);
                     auto quantMultiply = std::make_shared<opset::Multiply>(fInput, quantScale);
                     quantMultiply->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_scale");
                     ngraph::copy_runtime_info(fakeQuantize, quantMultiply);
 
-                    auto quantShift = opset::Constant::create<float>(input_type, ngraph::Shape{ qInfo.second.size(), 1, 1}, qInfo.second);
+                    auto quantShift = opset::Constant::create<float>(input_type, fakeQuantize->get_input_shape(1), qInfo.second);
                     auto quantAdd = std::make_shared<opset::Add>(quantMultiply, quantShift);
                     quantAdd->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_shift");
                     ngraph::copy_runtime_info(fakeQuantize, quantAdd);
