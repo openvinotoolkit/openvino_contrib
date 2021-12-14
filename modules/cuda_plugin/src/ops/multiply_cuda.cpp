@@ -37,9 +37,7 @@ MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
     }
 
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
-    kernel_ = kernel::Elementwise{kernel::Elementwise::Op_t::mul,
-                                  convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
-                                  max_threads_per_block};
+    kernel_ = kernel::Multiply{convertDataType<CUDAPlugin::kernel::Type_t>(element_type), max_threads_per_block};
 }
 
 void MultiplyCudaOp::Execute(const InferenceRequestContext& context,

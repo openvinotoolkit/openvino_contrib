@@ -5,17 +5,18 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
+#include <ngraph/op/swish.hpp>
 
-#include "kernels/multiply.hpp"
+#include "kernels/swish.hpp"
 
 namespace CUDAPlugin {
 
-class MultiplyCudaOp : public OperationBase {
+class SwishOp : public OperationBase {
 public:
-    MultiplyCudaOp(const CreationContext& context,
-                   const ngraph::Node& node,
-                   IndexCollection&& inputIds,
-                   IndexCollection&& outputIds);
+    SwishOp(const CreationContext& context,
+            const ngraph::Node& node,
+            IndexCollection&& inputIds,
+            IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -23,9 +24,9 @@ public:
                  const Workbuffers& workbuffers) const override;
 
 private:
-    size_t in0_num_elements_;
-    size_t in1_num_elements_;
-    std::optional<kernel::Multiply> kernel_;
+    double beta_;
+    size_t num_elements_;
+    std::optional<kernel::Swish> kernel_;
 };
 
 }  // namespace CUDAPlugin

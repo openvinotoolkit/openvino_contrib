@@ -10,13 +10,14 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-class Elementwise {
+/**
+ * Elementwise multiplication for tensors of integers.
+ */
+class Multiply {
 public:
-    enum class Op_t : int { add, mul };
-
-    Elementwise(Op_t op_type, Type_t element_type, size_t max_threads_per_block);
-    Elementwise(Elementwise&&) = default;
-    Elementwise& operator=(Elementwise&&) = default;
+    Multiply(Type_t element_type, size_t max_threads_per_block);
+    Multiply(Multiply&&) = default;
+    Multiply& operator=(Multiply&&) = default;
 
     /**
      * @param out   Output buffer. Is expected to be large enough to fit max(in0_num_elements, in1_num_elements)
@@ -30,7 +31,6 @@ public:
                     void* out) const;
 
 private:
-    Op_t op_type_;
     Type_t element_type_;
     size_t max_threads_per_block_;
 };
