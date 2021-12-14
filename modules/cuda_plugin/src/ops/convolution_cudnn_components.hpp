@@ -28,6 +28,7 @@ public:
 
 private:
     const int number_of_dims_;
+    const int groups_;
     const cudnnDataType_t data_type_;
     using IntArray = std::array<int, CUDNN_DIM_MAX>;
     IntArray input_shape_;
@@ -94,8 +95,7 @@ private:
                                  cudnnDataType_t convDataType);
     void BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle, const ConvolutionParamsCuDnn& params);
     void GetAlgo(const CUDA::DnnHandle& dnnHandle);
-    bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
-                                cudnnDataType_t convDataType);
+    bool GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
     void FindAlgo(const CUDA::DnnHandle& dnnHandle);
     bool FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle, cudnnDataType_t convDataType);
 

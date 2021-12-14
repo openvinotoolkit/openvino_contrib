@@ -49,5 +49,4 @@ WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
     else
         return {{}, {}};
 }
-
 }  // namespace CUDAPlugin
