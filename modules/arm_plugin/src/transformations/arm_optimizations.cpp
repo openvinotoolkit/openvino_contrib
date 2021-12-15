@@ -97,6 +97,13 @@
 
 #include "arm_optimizations.hpp"
 
+#if(__ANDROID__)
+#define REGISTER_PASS manager.register_pass<ov::pass::GraphRewrite>()->add_matcher
+#else
+#define REGISTER_PASS manager.register_pass
+#endif
+
+
 void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix) {
     if (_dump) {
         ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix +
@@ -136,7 +143,7 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Funct
 }
 
 bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::Function> f) {
-    ngraph::pass::Manager manager;
+    ov::pass::Manager manager;
 
     Dump(f, "initial");
 
@@ -153,7 +160,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::RemoveFilteringBoxesBySize>(); // Resolves dynamism (replaces NonZero), CF needed
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::NopElimination>(); // may introduce fake dynamism
-    manager.register_pass<pass::ReplacePowerByMul>();
+    REGISTER_PASS<pass::ReplacePowerByMul>();
     manager.register_pass<ngraph::pass::AlgebraicSimplification>(); // may introduce fake dynamism
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::SoftPlusFusion>();
@@ -166,9 +173,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::GRUCellDecomposition>();
     manager.register_pass<ngraph::pass::ConvertGELU>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
-    manager.register_pass<pass::ConvertConv1D>();
-    manager.register_pass<pass::ConvertGroupConv1D>();
-    manager.register_pass<pass::ConvertGroupConvolution>();
+    REGISTER_PASS<pass::ConvertConv1D>();
+    REGISTER_PASS<pass::ConvertGroupConv1D>();
+    REGISTER_PASS<pass::ConvertGroupConvolution>();
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::ConvolutionMultiplyFusion>();
     manager.register_pass<ngraph::pass::GroupConvolutionMultiplyFusion>();
@@ -228,7 +235,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
             OperationPerTensorQuantizationRestriction::create<ngraph::opset1::GroupConvolution>({0})
         });
 
-        ngraph::pass::Manager lptManager;
+        ov::pass::Manager lptManager;
         lptManager.register_pass<ngraph::pass::low_precision::LowPrecision>(supportedPrecisions, perTensorQuantization);
         auto pass_config = lptManager.get_pass_config();
         pass_config->disable<ngraph::pass::low_precision::MultiplyToGroupConvolutionTransformation>();
@@ -242,13 +249,13 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
     {
         Dump(f, "before_arm_specific_transformations");
-        ngraph::pass::Manager manager;
+        ov::pass::Manager manager;
         manager.register_pass<ngraph::pass::LogSoftmaxDecomposition>();
-        manager.register_pass<pass::ConvertGRN>();
-        manager.register_pass<pass::NormalizeL2Fusion>();
-        manager.register_pass<pass::DecomposeNormalizeL2Add>();
-        manager.register_pass<pass::ConvertNormalizeL2ToArm>();
-        manager.register_pass<pass::ConvertReduceMultiAxis>();
+        REGISTER_PASS<pass::ConvertGRN>();
+        REGISTER_PASS<pass::NormalizeL2Fusion>();
+        REGISTER_PASS<pass::DecomposeNormalizeL2Add>();
+        REGISTER_PASS<pass::ConvertNormalizeL2ToArm>();
+        REGISTER_PASS<pass::ConvertReduceMultiAxis>();
         manager.register_pass<ngraph::pass::ReduceL1Decomposition>();
         manager.register_pass<ngraph::pass::ReduceL2Decomposition>();
         manager.register_pass<ngraph::pass::ConvertReduceMeanToPooling>();
@@ -256,70 +263,69 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<ngraph::pass::ConvertReduceSumToPooling>();
         manager.register_pass<ngraph::pass::ConvertMod>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::DecomposeSwish>();
-        manager.register_pass<pass::DecomposeMish>();
-        manager.register_pass<pass::BroadcastPRelu>();
-        manager.register_pass<pass::ConvertLogical>();
-        manager.register_pass<pass::ConvertComparison>();
-        manager.register_pass<pass::ConvertTranspose>();
+        REGISTER_PASS<pass::DecomposeSwish>();
+        REGISTER_PASS<pass::DecomposeMish>();
+        REGISTER_PASS<pass::BroadcastPRelu>();
+        REGISTER_PASS<pass::ConvertLogical>();
+        REGISTER_PASS<pass::ConvertComparison>();
+        REGISTER_PASS<pass::ConvertTranspose>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertRound>();
-        manager.register_pass<pass::ConvertSign>();
-        manager.register_pass<pass::ConvertCeiling>();
-        manager.register_pass<pass::DecomposeVariadicSplit>();
-        manager.register_pass<pass::ConvertStridedSliceToArm>();
-        manager.register_pass<pass::ConvertStridedSlice>();
-        manager.register_pass<pass::ConvertBatchNormInferenceV0toV5>();
-        manager.register_pass<pass::ConvertBatchNormInference>();
-        manager.register_pass<pass::ConvertShuffleChannels>();
-        manager.register_pass<pass::ConvertInterpolate>();
-        manager.register_pass<pass::ConvertMVN>();
-        manager.register_pass<pass::ConvertReorgYolo>();
-        manager.register_pass<pass::ConvertMaxPool1D>();
-        manager.register_pass<pass::ConvertAvgPool1D>();
-        manager.register_pass<pass::BroadcastSelect>();
-        manager.register_pass<pass::ConvertGather>();
+        REGISTER_PASS<pass::ConvertRound>();
+        REGISTER_PASS<pass::ConvertSign>();
+        REGISTER_PASS<pass::ConvertCeiling>();
+        REGISTER_PASS<pass::DecomposeVariadicSplit>();
+        REGISTER_PASS<pass::ConvertStridedSliceToArm>();
+        REGISTER_PASS<pass::ConvertStridedSlice>();
+        REGISTER_PASS<pass::ConvertBatchNormInferenceV0toV5>();
+        REGISTER_PASS<pass::ConvertBatchNormInference>();
+        REGISTER_PASS<pass::ConvertShuffleChannels>();
+        REGISTER_PASS<pass::ConvertInterpolate>();
+        REGISTER_PASS<pass::ConvertMVN>();
+        REGISTER_PASS<pass::ConvertReorgYolo>();
+        REGISTER_PASS<pass::ConvertMaxPool1D>();
+        REGISTER_PASS<pass::ConvertAvgPool1D>();
+        REGISTER_PASS<pass::BroadcastSelect>();
+        REGISTER_PASS<pass::ConvertGather>();
         manager.register_pass<ngraph::pass::ConvertGather8ToGather7>();
-        manager.register_pass<pass::ConvertDFT>();
-        manager.register_pass<pass::ConvertIDFT>();
+        REGISTER_PASS<pass::ConvertDFT>();
+        REGISTER_PASS<pass::ConvertIDFT>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvBiasFusion>();
+        REGISTER_PASS<pass::ConvBiasFusion>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertMatMulToFC>();
+        REGISTER_PASS<pass::ConvertMatMulToFC>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertArmConvert>();
-        manager.register_pass<pass::ConvertArmConvertLike>();
+        REGISTER_PASS<pass::ConvertArmConvert>();
+        REGISTER_PASS<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ngraph::pass::ConvertDivide>();
         manager.register_pass<ngraph::pass::ConvertBroadcast3>();
         manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
-        manager.register_pass<pass::ConvertEltwise>();
+        REGISTER_PASS<pass::ConvertEltwise>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertTile>();
-        manager.register_pass<pass::ConvertSplit>();
-        manager.register_pass<pass::ConvertConcat>();
+        REGISTER_PASS<pass::ConvertTile>();
+        REGISTER_PASS<pass::ConvertSplit>();
+        REGISTER_PASS<pass::ConvertConcat>();
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
-        manager.register_pass<pass::AlignNodePrecision>();
+        REGISTER_PASS<pass::AlignNodePrecision>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(f);
     }
 
-
     if (quantized) {
         Dump(f, "before_arm");
-        ngraph::pass::Manager manager;
-        manager.register_pass<pass::ConvolutionQuantizeFusion>();
-        manager.register_pass<pass::MeanQuantizeFusion>();
-        manager.register_pass<pass::DequantizeInputFusion>();
-        manager.register_pass<pass::AddDequantizeOnInputs>();
+        ov::pass::Manager manager;
+        REGISTER_PASS<pass::ConvolutionQuantizeFusion>();
+        REGISTER_PASS<pass::MeanQuantizeFusion>();
+        REGISTER_PASS<pass::DequantizeInputFusion>();
+        REGISTER_PASS<pass::AddDequantizeOnInputs>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertQuantize>();
-        manager.register_pass<pass::ConvertBiasToI32>();
+        REGISTER_PASS<pass::ConvertQuantize>();
+        REGISTER_PASS<pass::ConvertBiasToI32>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(f);
     }

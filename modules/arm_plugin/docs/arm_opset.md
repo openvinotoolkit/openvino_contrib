@@ -79,6 +79,10 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                                                                        | Supported     |
 | [IDFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/IDFT_7.md)                                                                                               | Supported**   |
 | [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                                                                   | Supported*    |
+| [I420toBGR](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toBGR_8.md)                                                                                
+| Supported**   |
+| [I420toRGB](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toRGB_8.md)                                                                                
+| Supported**   |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                                                            | Supported*    |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                                                                  | Supported*    |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                                                              | Supported     |
