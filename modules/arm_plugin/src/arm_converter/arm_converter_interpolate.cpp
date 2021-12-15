@@ -105,7 +105,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpo
     arm_compute::SamplingPolicy coord = arm_compute::SamplingPolicy::TOP_LEFT;
     auto& out_shape = node.get_output_shape(0);
     if ((coord_mode == Transform_mode::PYTORCH_HALF_PIXEL && out_shape[2] > 1 && out_shape[3] > 1) ||
-        coord_mode == Transform_mode::HELF_PIXEL) {
+        coord_mode == Transform_mode::HALF_PIXEL) {
         coord = arm_compute::SamplingPolicy::CENTER;
     }
 
