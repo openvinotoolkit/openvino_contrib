@@ -24,27 +24,27 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
     auto& coord_mode = attrs.coordinate_transformation_mode;
     auto& nearest_mode = attrs.nearest_mode;
 
-    if (coord_mode == Transform_mode::asymmetric && nearest_mode == Nearest_mode::floor) {
+    if (coord_mode == Transform_mode::asymmetric && nearest_mode == Nearest_mode::FLOOR) {
         return is_upsample;
     }
 
-    if (coord_mode == Transform_mode::align_corners && nearest_mode == Nearest_mode::round_prefer_ceil) {
+    if (coord_mode == Transform_mode::ALIGN_CORNERS && nearest_mode == Nearest_mode::ROUND_PREFER_CEIL) {
         return true;
     }
 
-    if (coord_mode == Transform_mode::half_pixel &&
-        (nearest_mode == Nearest_mode::simple || nearest_mode == Nearest_mode::round_prefer_ceil)) {
+    if (coord_mode == Transform_mode::HALF_PIXEL &&
+        (nearest_mode == Nearest_mode::SIMPLE || nearest_mode == Nearest_mode::ROUND_PREFER_CEIL)) {
         return false;
     }
 
-    if (coord_mode == Transform_mode::asymmetric && (nearest_mode == Nearest_mode::simple || nearest_mode == Nearest_mode::floor)) {
+    if (coord_mode == Transform_mode::ASYMMETRIC && (nearest_mode == Nearest_mode::SIMPLE || nearest_mode == Nearest_mode::FLOOR)) {
         return is_upsample;
     }
 
     if (is_upsample) {
         bool int_factor = scale_h == static_cast<int>(scale_h) && scale_w == static_cast<int>(scale_w);
-        if (int_factor && coord_mode != Transform_mode::asymmetric &&
-            (nearest_mode == Nearest_mode::round_prefer_ceil || nearest_mode == Nearest_mode::round_prefer_floor)) {
+        if (int_factor && coord_mode != Transform_mode::ASYMMETRIC &&
+            (nearest_mode == Nearest_mode::ROUND_PREFER_CEIL || nearest_mode == Nearest_mode::ROUND_PREFER_FLOOR)) {
             return true;
         }
     } else if (scale_h < 1 && scale_w < 1) {
@@ -52,12 +52,12 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
         float down_scale_w = inp_shape[3] / out_shape[3];
         bool int_factor = down_scale_h == static_cast<int>(down_scale_h) && down_scale_w == static_cast<int>(down_scale_w);
 
-        if (int_factor && coord_mode != Transform_mode::align_corners && nearest_mode == Nearest_mode::simple) {
+        if (int_factor && coord_mode != Transform_mode::ALIGN_CORNERS && nearest_mode == Nearest_mode::SIMPLE) {
             return true;
         }
 
-        if (int_factor && nearest_mode == Nearest_mode::round_prefer_ceil &&
-            ((out_shape[2] > 1 && out_shape[3] > 1) || coord_mode != Transform_mode::half_pixel)) {
+        if (int_factor && nearest_mode == Nearest_mode::ROUND_PREFER_CEIL &&
+            ((out_shape[2] > 1 && out_shape[3] > 1) || coord_mode != Transform_mode::HALF_PIXEL)) {
             return true;
         }
     }
@@ -90,19 +90,19 @@ ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
 
         auto& nearest_mode = attrs.nearest_mode;
         auto& coord_mode   = attrs.coordinate_transformation_mode;
-        if (attrs.antialias || coord_mode == Transform_mode::tf_half_pixel_for_nn || nearest_mode == Nearest_mode::ceil) {
+        if (attrs.antialias || coord_mode == Transform_mode::TF_HALF_PIXEL_FOR_NN || nearest_mode == Nearest_mode::CEIL) {
             return false;
         }
 
-        if (attrs.mode == opset::Interpolate::InterpolateMode::cubic) {
+        if (attrs.mode == opset::Interpolate::InterpolateMode::CUBIC) {
             return false;
         }
 
-        if (attrs.mode == opset::Interpolate::InterpolateMode::nearest && !isSupportedConfiguration(*interp)) {
+        if (attrs.mode == opset::Interpolate::InterpolateMode::NEAREST && !isSupportedConfiguration(*interp)) {
             return false;
         }
 
-        if (coord_mode == Transform_mode::pytorch_half_pixel) {
+        if (coord_mode == Transform_mode::PYTORCH_HALF_PIXEL) {
             return false;
         }
 
