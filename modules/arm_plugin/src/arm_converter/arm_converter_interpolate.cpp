@@ -58,7 +58,7 @@ void wrap_interpolate(const T* input_data,
 
     auto scales_size = ngraph::shape_size(scales_shape);
     std::vector<float> scales_vec;
-    if (attrs.shape_calculation_mode == ngraph::op::v4::Interpolate::ShapeCalcMode::sizes) {
+    if (attrs.shape_calculation_mode == ngraph::op::v4::Interpolate::ShapeCalcMode::SIZES) {
         for (size_t i = 0; i < scales_size; i++) {
             auto axis = axes[i];
             scales_vec.push_back(static_cast<float>(out_shape[axis]) / padded_shape[axis]);
@@ -104,18 +104,18 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpo
 
     arm_compute::SamplingPolicy coord = arm_compute::SamplingPolicy::TOP_LEFT;
     auto& out_shape = node.get_output_shape(0);
-    if ((coord_mode == Transform_mode::pytorch_half_pixel && out_shape[2] > 1 && out_shape[3] > 1) ||
-        coord_mode == Transform_mode::half_pixel) {
+    if ((coord_mode == Transform_mode::PYTORCH_HALF_PIXEL && out_shape[2] > 1 && out_shape[3] > 1) ||
+        coord_mode == Transform_mode::HALF_PIXEL) {
         coord = arm_compute::SamplingPolicy::CENTER;
     }
 
     arm_compute::InterpolationPolicy policy;
     switch (attrs.mode) {
-        case opset::Interpolate::InterpolateMode::linear:
-        case opset::Interpolate::InterpolateMode::linear_onnx:
+        case opset::Interpolate::InterpolateMode::LINEAR:
+        case opset::Interpolate::InterpolateMode::LINEAR_ONNX:
             policy = arm_compute::InterpolationPolicy::BILINEAR;
             break;
-        case opset::Interpolate::InterpolateMode::nearest:
+        case opset::Interpolate::InterpolateMode::NEAREST:
             policy = arm_compute::InterpolationPolicy::NEAREST_NEIGHBOR;
             break;
         default:
@@ -129,6 +129,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpo
                                                                              arm_compute::PixelValue(),
                                                                              coord,
                                                                              false,
-                                                                             coord_mode == Transform_mode::align_corners));
+                                                                             coord_mode == Transform_mode::ALIGN_CORNERS));
 }
 } //  namespace ArmPlugin
