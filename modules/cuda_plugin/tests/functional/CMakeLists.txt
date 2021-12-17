@@ -15,6 +15,7 @@ addIeTargetTest(
         CUDAPlugin_OBJ
         LINK_LIBRARIES
         IE::funcSharedTests
+        gmock
         INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
         LABELS
