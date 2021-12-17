@@ -114,8 +114,7 @@ def convert(model, **args):
     mo.main.prepare_ir = _prepare_ir
 
     parser = get_common_cli_parser()
-    parser.set_defaults(input_model=model, extensions=os.path.join(os.path.dirname(__file__), 'mo_extensions'),
-                        ie_is_available=False)
+    parser.set_defaults(input_model=model, extensions=os.path.join(os.path.dirname(__file__), 'mo_extensions'))
     for arg, value in args.items():
         parser.set_defaults(**{arg: str(value)})
 
