@@ -38,8 +38,13 @@ enum class Type_t : int {
     u64
 };
 
+constexpr int type_t_first_value = static_cast<int>(Type_t::boolean);
+constexpr int type_t_last_value = static_cast<int>(Type_t::u64);
+
 template <Type_t>
-struct cuda_type_traits {};
+struct cuda_type_traits {
+    using value_type = void;
+};
 
 template <Type_t Type>
 using cuda_type_traits_t = typename cuda_type_traits<Type>::value_type;
