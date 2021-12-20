@@ -13,12 +13,15 @@ namespace CUDAPlugin {
 class ThreadContext {
   CUDA::Device device_;
   CUDA::Stream stream_;
-  CUDA::DnnHandle dnnHandle_{stream_};
-  CUDA::CuBlasHandle cuBlasHandle_{stream_};
+  CUDA::DnnHandle dnnHandle_;
+  CUDA::CuBlasHandle cuBlasHandle_;
   CUDA::CuTensorHandle cuTensorHandle_;
 
- public:
-  explicit ThreadContext(CUDA::Device d) : device_{d.setCurrent()} {}
+  public:
+  explicit ThreadContext(CUDA::Device d) : device_{d.setCurrent()} {
+      dnnHandle_.setStream(stream_);
+      cuBlasHandle_.setStream(stream_);
+  }
   CUDA::Device device() const { return device_; }
   const CUDA::Stream& stream() const noexcept { return stream_; }
   const CUDA::DnnHandle& dnnHandle() const noexcept { return dnnHandle_; }
