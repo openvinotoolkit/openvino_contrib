@@ -240,14 +240,13 @@ class TestModels(unittest.TestCase):
     def test_mask_rcnn(self):
         # For better efficiency, you may reduce parameters <box_detections_per_img> (default 100)
         # and <rpn_post_nms_top_n_test> (default 1000).
-        model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False,
-                                                                 box_detections_per_img=10,
-                                                                 rpn_post_nms_top_n_test=100)
+        model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False)
         model.eval()
 
         # Preprocess input image
         img_size = 800
-        inp = cv.resize(self.test_img, (img_size, img_size))
+        inp = self.test_img[:, :, [2, 1, 0]]  # BGR to RGB
+        inp = cv.resize(inp, (img_size, img_size))
         inp = np.expand_dims(inp.astype(np.float32).transpose(2, 0, 1), axis=0)
         inp /= 255
         inp = torch.tensor(inp)
@@ -262,9 +261,9 @@ class TestModels(unittest.TestCase):
         # Do inference
         net = self.ie.load_network('model.xml', 'CPU')
         out = net.infer({'input': inp})
+        detections, masks, _ = out.values()
 
         # Test boxes
-        detections = out['DetectionOutput_647']
         labels = detections[0, 0, :, 1]
         scores = detections[0, 0, :, 2]
         boxes = detections[0, 0, :, 3:] * img_size
@@ -273,7 +272,6 @@ class TestModels(unittest.TestCase):
                                             labels, scores, boxes)
 
         # Test masks
-        masks = out['Sigmoid_733']
         for test_id, ref_id in matches:
             ref_mask = ref[0]['masks'][ref_id].detach().numpy()
             class_id = ref[0]['labels'][ref_id]

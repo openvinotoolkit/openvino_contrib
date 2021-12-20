@@ -46,7 +46,8 @@ img_size = 800
 mo_pytorch.convert(model,
                    input_shape=[1, 3, img_size, img_size],
                    model_name="Mask_RCNN",
-                   scale=255)
+                   scale=255,
+                   reverse_input_channels=True)
 
 # Prepare input image
 img = cv.imread(args.input)
