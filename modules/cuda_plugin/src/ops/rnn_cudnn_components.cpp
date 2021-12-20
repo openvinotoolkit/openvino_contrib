@@ -80,20 +80,21 @@ CUDA::DnnRnnDescriptor LSTMCellParamsCuDnn::makeRNNDescriptor() const {
     // A single layer network will have no dropout applied. Dropout is used in the training mode only.
     const cudnnDropoutDescriptor_t drop_out_desc = nullptr;
     const uint32_t aux_flags = CUDNN_RNN_PADDED_IO_DISABLED;
-    CUDA::DnnRnnDescriptor rnn_desc{rnn_algo,
-                                    rnn_mode,
-                                    bias_mode,
-                                    dir_mode,
-                                    input_mode,
-                                    dataType(),
-                                    math_prec,
-                                    math_type,
-                                    inputSize(),
-                                    hiddenSize(),
-                                    projSize(),
-                                    numLayers(),
-                                    drop_out_desc,
-                                    aux_flags};
+    CUDA::DnnRnnDescriptor rnn_desc;
+    rnn_desc.set(rnn_algo,
+                 rnn_mode,
+                 bias_mode,
+                 dir_mode,
+                 input_mode,
+                 dataType(),
+                 math_prec,
+                 math_type,
+                 inputSize(),
+                 hiddenSize(),
+                 projSize(),
+                 numLayers(),
+                 drop_out_desc,
+                 aux_flags);
 
     const bool is_clipped = clip() != 0.0f && !std::isinf(clip());
     if (is_clipped) {
@@ -110,24 +111,24 @@ CUDA::DnnRnnDescriptor LSTMCellParamsCuDnn::makeRNNDescriptor() const {
 
 CUDA::DnnRnnDataDescriptor LSTMCellParamsCuDnn::makeXDescriptor() const {
     const auto x_vector_size = inputSize();
-    return {dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill()};
+    return CUDA::DnnRnnDataDescriptor{}.set(dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnRnnDataDescriptor LSTMCellParamsCuDnn::makeYDescriptor() const {
     const auto y_vector_size = projSize();
-    return {dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill()};
+    return CUDA::DnnRnnDataDescriptor{}.set(dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnTensorDescriptor LSTMCellParamsCuDnn::makeHDescriptor() const {
     const int h_dim_a[nbDims()] = {numLayers(), batchSize(), projSize()};
     const int h_stride_a[nbDims()] = {batchSize() * projSize(), projSize(), 1};
-    return {dataType(), nbDims(), h_dim_a, h_stride_a};
+    return CUDA::DnnTensorDescriptor{}.set(dataType(), nbDims(), h_dim_a, h_stride_a);
 }
 
 CUDA::DnnTensorDescriptor LSTMCellParamsCuDnn::makeCDescriptor() const {
     const int c_dim_a[nbDims()] = {numLayers(), batchSize(), hiddenSize()};
     const int c_stride_a[nbDims()] = {batchSize() * hiddenSize(), hiddenSize(), 1};
-    return {dataType(), nbDims(), c_dim_a, c_stride_a};
+    return CUDA::DnnTensorDescriptor{}.set(dataType(), nbDims(), c_dim_a, c_stride_a);
 }
 
 LSTMCellDescriptorsCuDnn::LSTMCellDescriptorsCuDnn(const LSTMCellParamsCuDnn& params)
@@ -425,20 +426,21 @@ CUDA::DnnRnnDescriptor GRUCellParamsCuDnn::makeRNNDescriptor() const {
     // A single layer network will have no dropout applied. Dropout is used in the training mode only.
     const cudnnDropoutDescriptor_t drop_out_desc = nullptr;
     const uint32_t aux_flags = CUDNN_RNN_PADDED_IO_DISABLED;
-    CUDA::DnnRnnDescriptor rnn_desc{rnn_algo,
-                                    rnn_mode,
-                                    bias_mode,
-                                    dir_mode,
-                                    input_mode,
-                                    dataType(),
-                                    math_prec,
-                                    math_type,
-                                    inputSize(),
-                                    hiddenSize(),
-                                    projSize(),
-                                    numLayers(),
-                                    drop_out_desc,
-                                    aux_flags};
+    CUDA::DnnRnnDescriptor rnn_desc;
+    rnn_desc.set(rnn_algo,
+                 rnn_mode,
+                 bias_mode,
+                 dir_mode,
+                 input_mode,
+                 dataType(),
+                 math_prec,
+                 math_type,
+                 inputSize(),
+                 hiddenSize(),
+                 projSize(),
+                 numLayers(),
+                 drop_out_desc,
+                 aux_flags);
 
     const bool is_clipped = clip() != 0.0f && !std::isinf(clip());
     if (is_clipped) {
@@ -455,18 +457,20 @@ CUDA::DnnRnnDescriptor GRUCellParamsCuDnn::makeRNNDescriptor() const {
 
 CUDA::DnnRnnDataDescriptor GRUCellParamsCuDnn::makeXDescriptor() const {
     const auto x_vector_size = inputSize();
-    return {dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill()};
+    return CUDA::DnnRnnDataDescriptor{}.set(
+        dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnRnnDataDescriptor GRUCellParamsCuDnn::makeYDescriptor() const {
     const auto y_vector_size = projSize();
-    return {dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill()};
+    return CUDA::DnnRnnDataDescriptor{}.set(
+        dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnTensorDescriptor GRUCellParamsCuDnn::makeHDescriptor() const {
     const int h_dim_a[nbDims()] = {numLayers(), batchSize(), projSize()};
     const int h_stride_a[nbDims()] = {batchSize() * projSize(), projSize(), 1};
-    return {dataType(), nbDims(), h_dim_a, h_stride_a};
+    return CUDA::DnnTensorDescriptor{}.set(dataType(), nbDims(), h_dim_a, h_stride_a);
 }
 
 GRUCellDescriptorsCuDnn::GRUCellDescriptorsCuDnn(const GRUCellParamsCuDnn& params)

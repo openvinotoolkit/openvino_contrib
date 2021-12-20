@@ -35,6 +35,12 @@ private:
         IoParams(const ngraph::Node& node, const Type& io_type, int index);
     };
 
+    static CUDA::DnnOpTensorDescriptor makeDnnOpTensorDescriptor(cudnnOpTensorOp_t opType,
+                                                                 cudnnDataType_t dataType,
+                                                                 cudnnNanPropagation_t nanPropogationType) {
+        return CUDA::DnnOpTensorDescriptor{}.set(opType, dataType, nanPropogationType);
+    }
+
     IoParams in0;
     IoParams in1;
     IoParams out;

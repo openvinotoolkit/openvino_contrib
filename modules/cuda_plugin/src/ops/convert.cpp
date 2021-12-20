@@ -28,17 +28,17 @@ ConvertOp::ConvertOp(const CreationContext& context,
         throwIEException("Unsupported data type : Type_t::u1");
     auto input_shape = node->get_input_shape(0);
     auto output_shape = node->get_output_shape(0);
-    size_ = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
-    auto output_size_ = std::accumulate(output_shape.begin(), output_shape.end(), 1, std::multiplies<size_t>());
-    Expects(size_ == output_size_);
+    const unsigned size = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
+    auto output_size = std::accumulate(output_shape.begin(), output_shape.end(), 1, std::multiplies<size_t>());
+    Expects(size == output_size);
     const auto max_block_size = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
-    const auto numBlocks = (size_ % max_block_size == 0) ? (size_ / max_block_size) : (size_ / max_block_size + 1);
-    const auto threadsPerBlock = (num_blocks_ == 1) ? size_ : max_block_size;
+    const auto num_blocks = (size % max_block_size == 0) ? (size / max_block_size) : (size / max_block_size + 1);
+    const auto threads_per_block = (num_blocks == 1) ? size : max_block_size;
     convert_kernel_ = kernel::Convert(convertDataType<CUDAPlugin::kernel::Type_t>(output_element_type),
                                       convertDataType<CUDAPlugin::kernel::Type_t>(input_element_type),
-                                      size_,
-                                      numBlocks,
-                                      threadsPerBlock);
+                                      size,
+                                      num_blocks,
+                                      threads_per_block);
 }
 
 void ConvertOp::Execute(const InferenceRequestContext& context,

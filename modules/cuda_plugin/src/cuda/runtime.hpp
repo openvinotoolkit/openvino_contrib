@@ -6,6 +6,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <functional>
 #include <cuda/device_pointers.hpp>
 #include <error.hpp>
 
@@ -105,39 +106,57 @@ inline bool isInt8Supported(CUDA::Device d) {
     return int8SupportedArchitecture.count(computeCompatabilityVersion) > 0;
 }
 
-template <typename R, typename T, typename... Args>
-T firstArgHelper(R (*f)(T, Args...));
-template <auto F>
-using FirstArg = decltype(firstArgHelper(F));
-
-template <auto Construct, auto Destruct, typename N = FirstArg<Destruct>>
-class UniqueBase {
-    static_assert(std::is_same_v<N, FirstArg<Destruct>>,
-                  "you can pass third argument explicitly, but it must be the "
-                  "same as default");  // third arg isn't needed, but
-                                       // eclipse parser can't derive it
-    using Native = N;
-    Native native{create(Construct)};
-
+template <typename T>
+class Handle {
 public:
-    ~UniqueBase() { logIfError(Destruct(native)); }
-    const Native& get() const noexcept { return native; }
-};
+    using Native = T;
 
-template <auto Construct, auto Destruct, typename N>
-class UniqueBase<Construct, Destruct, N*> {
-    static_assert(std::is_same_v<N*, FirstArg<Destruct>>,
-                  "you can pass third argument explicitly, but it must be the "
-                  "same as default");  // third arg isn't needed, but
-                                       // eclipse parser can't derive it
-    using Native = N*;
-    struct Deleter {
-        void operator()(Native p) const noexcept { logIfError(Destruct(p)); }
-    };
-    std::unique_ptr<std::remove_pointer_t<Native>, Deleter> native{create(Construct)};
+    template <typename R, typename... Args>
+    using Construct = R (*)(T*, Args... args);
 
-public:
-    Native get() const noexcept { return native.get(); }
+    template <typename R, typename... Args>
+    using Destruct = R (*)(T);
+
+    Handle(const Handle&) = delete;
+    Handle& operator=(const Handle&) = delete;
+
+    Handle(Handle&& handle) { operator=(std::move(handle)); }
+    Handle& operator=(Handle&& handle) {
+        destroy();
+        std::swap(native_, handle.native_);
+        destructor_ = std::move(handle.destructor_);
+        return *this;
+    }
+
+    ~Handle() { destroy(); }
+
+    const Native& get() const noexcept { return native_; }
+
+protected:
+    template <typename R, typename... Args>
+    Handle(Construct<R, Args...> constructor, Destruct<R> destructor, Args... args) {
+        native_ = Native{create(constructor, args...)};
+        if (destructor) {
+            destructor_ = [destructor](const Native& native) { logIfError(destructor(native)); };
+        }
+    }
+
+    template <typename R, typename... Args>
+    Handle(Construct<R, Args...> constructor, std::nullptr_t, Args... args) {
+        native_ = Native{create(constructor, args...)};
+    }
+
+private:
+    void destroy() {
+        if (destructor_) {
+            destructor_(native_);
+            destructor_ = nullptr;
+            native_ = Native{};
+        }
+    }
+
+    Native native_{};
+    std::function<void(const Native&)> destructor_;
 };
 
 class Allocation {
@@ -183,27 +202,10 @@ public:
     }
 };
 
-class Stream : public UniqueBase<cudaStreamCreate, cudaStreamDestroy, cudaStream_t> {
-    void uploadImpl(void* dst, const void* src, std::size_t count) const {
-        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));
-    }
-    void downloadImpl(void* dst, const void* src, std::size_t count) const {
-        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToHost, get()));
-    }
-    auto mallocImpl(std::size_t size) const {
-        return create<void*, cudaError_t>(
-#if CUDART_VERSION >= 11020
-            cudaMallocAsync, size, get()
-#else
-            cudaMalloc, size
-#endif
-        );
-    }
-    void memsetImpl(void* dst, int value, size_t count) const {
-        throwIfError(cudaMemsetAsync(dst, value, count, get()));
-    }
-
+class Stream : public Handle<cudaStream_t> {
 public:
+    Stream() : Handle(cudaStreamCreate, cudaStreamDestroy) {}
+
     Allocation malloc(std::size_t size) const { return {mallocImpl(size), get()}; }
     void upload(CUDA::DevicePointer<void*> dst, const void* src, std::size_t count) const {
         uploadImpl(dst.get(), src, count);
@@ -234,6 +236,26 @@ public:
             (args...);
     }
 #endif
+
+private:
+    void uploadImpl(void* dst, const void* src, std::size_t count) const {
+        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, get()));
+    }
+    void downloadImpl(void* dst, const void* src, std::size_t count) const {
+        throwIfError(cudaMemcpyAsync(dst, src, count, cudaMemcpyDeviceToHost, get()));
+    }
+    void* mallocImpl(std::size_t size) const {
+        return create<void*, cudaError_t>(
+#if CUDART_VERSION >= 11020
+            cudaMallocAsync, size, get()
+#else
+            cudaMalloc, size
+#endif
+        );
+    }
+    void memsetImpl(void* dst, int value, size_t count) const {
+        throwIfError(cudaMemsetAsync(dst, value, count, get()));
+    }
 };
 
 class DefaultStream {

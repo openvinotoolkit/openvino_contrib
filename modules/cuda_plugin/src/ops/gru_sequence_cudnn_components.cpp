@@ -97,20 +97,20 @@ void GRUSequenceDescriptorsCuDnn::createRNNDescriptor(const CreationContext& con
 
     const uint32_t aux_flags =
         (config_.rnn_data_layout == CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_PACKED) ? 0 : CUDNN_RNN_PADDED_IO_ENABLED;
-    rnn_desc_ = CUDA::DnnRnnDescriptor{rnn_algo,
-                                       rnn_mode,
-                                       bias_mode,
-                                       params_.direction_,
-                                       input_mode,
-                                       params_.element_type_,
-                                       math_prec,
-                                       math_type,
-                                       params_.input_size_,
-                                       params_.hidden_size_,
-                                       params_.projSize(),
-                                       numLayers,
-                                       drop_out_desc,
-                                       aux_flags};
+    rnn_desc_.set(rnn_algo,
+                  rnn_mode,
+                  bias_mode,
+                  params_.direction_,
+                  input_mode,
+                  params_.element_type_,
+                  math_prec,
+                  math_type,
+                  params_.input_size_,
+                  params_.hidden_size_,
+                  params_.projSize(),
+                  numLayers,
+                  drop_out_desc,
+                  aux_flags);
 
     // TODO: If cuDNN starts supporting similar clipping to OpenVINO, apply clipping here:
     //  rnn_desc_.setClip(...);
@@ -118,31 +118,31 @@ void GRUSequenceDescriptorsCuDnn::createRNNDescriptor(const CreationContext& con
 
 void GRUSequenceDescriptorsCuDnn::createXDescriptor() {
     const auto x_vector_size = params_.input_size_;
-    x_desc_ = CUDA::DnnRnnDataDescriptor{params_.element_type_,
-                                         config_.rnn_data_layout,
-                                         params_.max_seq_length_,
-                                         params_.batch_size_,
-                                         x_vector_size,
-                                         params_.seq_length_array_.data(),
-                                         nullptr};
+    x_desc_.set(params_.element_type_,
+                config_.rnn_data_layout,
+                params_.max_seq_length_,
+                params_.batch_size_,
+                x_vector_size,
+                params_.seq_length_array_.data(),
+                nullptr);
 }
 
 void GRUSequenceDescriptorsCuDnn::createYDescriptor() {
     const auto y_vector_size = params_.numDirections() * params_.projSize();
-    y_desc_ = CUDA::DnnRnnDataDescriptor{params_.element_type_,
+    y_desc_.set(params_.element_type_,
                                          config_.rnn_data_layout,
                                          params_.max_seq_length_,
                                          params_.batch_size_,
                                          y_vector_size,
                                          params_.seq_length_array_.data(),
-                                         nullptr};
+                                         nullptr);
 }
 
 void GRUSequenceDescriptorsCuDnn::createHDescriptor() {
     const size_t nbDims = 3;
     const int h_dim_a[nbDims] = {params_.numDirections(), params_.batch_size_, params_.projSize()};
     const int h_stride_a[nbDims] = {params_.batch_size_ * params_.projSize(), params_.projSize(), 1};
-    h_desc_ = CUDA::DnnTensorDescriptor{params_.element_type_, nbDims, h_dim_a, h_stride_a};
+    h_desc_.set(params_.element_type_, nbDims, h_dim_a, h_stride_a);
 }
 
 void GRUSequenceDescriptorsCuDnn::initDevSeqLengthArray(DevPtr buffer) {

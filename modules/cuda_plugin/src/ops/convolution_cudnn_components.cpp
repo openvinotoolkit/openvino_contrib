@@ -47,18 +47,15 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::Convo
 }
 
 CUDA::DnnTensorDescriptor ConvolutionParamsCuDnn::MakeInputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{
-        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, input_shape_.data()};
+    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, input_shape_.data());
 }
 
 CUDA::DnnFilterDescriptor ConvolutionParamsCuDnn::MakeFilterDescriptor() const {
-    return CUDA::DnnFilterDescriptor{
-        data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data()};
+    return CUDA::DnnFilterDescriptor{}.set(data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
 }
 
 CUDA::DnnTensorDescriptor ConvolutionParamsCuDnn::MakeOutputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{
-        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, output_shape_.data()};
+    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, output_shape_.data());
 }
 
 CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor(cudnnDataType_t convDataType) const {
@@ -70,8 +67,8 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
     // potentially different from the input/output tensors.
     const cudnnDataType_t datatype = convDataType;
 
-    CUDA::DnnConvolutionDescriptor conv_desc{
-        NumberOfSpatialDims(), paddings_.data(), strides_.data(), dilations_.data(), mode, datatype};
+    CUDA::DnnConvolutionDescriptor conv_desc;
+    conv_desc.set(NumberOfSpatialDims(), paddings_.data(), strides_.data(), dilations_.data(), mode, datatype);
 
     // Enable computations on Tensor Core hardware which requires at least Volta GPU
     // (compute capability 7.0).
@@ -276,18 +273,15 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
 }
 
 CUDA::DnnTensorDescriptor ConvolutionBackpropDataParamsCuDnn::MakeDOutputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{
-        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, doutput_shape_.data()};
+    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, doutput_shape_.data());
 }
 
 CUDA::DnnFilterDescriptor ConvolutionBackpropDataParamsCuDnn::MakeFilterDescriptor() const {
-    return CUDA::DnnFilterDescriptor{
-        data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data()};
+    return CUDA::DnnFilterDescriptor{}.set(data_type_, cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, number_of_dims_, filter_shape_.data());
 }
 
 CUDA::DnnTensorDescriptor ConvolutionBackpropDataParamsCuDnn::MakeDInputDescriptor() const {
-    return CUDA::DnnTensorDescriptor{
-        cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, dinput_shape_.data()};
+    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, data_type_, number_of_dims_, dinput_shape_.data());
 }
 
 CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvolutionDescriptor(
@@ -300,8 +294,8 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
     // potentially different from the input/output tensors.
     const cudnnDataType_t datatype = convDataType;
 
-    CUDA::DnnConvolutionDescriptor conv_desc{
-        NumberOfSpatialDims(), paddings_.data(), strides_.data(), dilations_.data(), mode, datatype};
+    CUDA::DnnConvolutionDescriptor conv_desc;
+    conv_desc.set(NumberOfSpatialDims(), paddings_.data(), strides_.data(), dilations_.data(), mode, datatype);
 
     // Enable computations on Tensor Core hardware which requires at least Volta GPU
     // (compute capability 7.0).
