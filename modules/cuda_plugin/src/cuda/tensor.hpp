@@ -22,11 +22,10 @@ inline void logIfError(cutensorStatus_t err,
 }
 
 namespace CUDA {
-namespace cutensor::details {
-constexpr inline cudaError_t dummyDestroy(cutensorHandle_t) { return cudaSuccess; }
-}
 
-class CuTensorHandle : public UniqueBase<cutensorInit, cutensor::details::dummyDestroy> {
+class CuTensorHandle : public Handle<cutensorHandle_t> {
+public:
+    CuTensorHandle() : Handle(cutensorInit, nullptr) {}
 };
 
 }  // namespace CUDA
