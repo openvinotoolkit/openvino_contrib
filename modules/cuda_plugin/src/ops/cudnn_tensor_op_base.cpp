@@ -55,7 +55,7 @@ CUDA::DnnTensorDescriptor desc(const cudnnDataType_t type, ShapeArray& dims) {
     ShapeArray strides;
     strides.back() = 1;
     for (int i = dims.size() - 1; i > 0; i--) strides[i - 1] = strides[i] * dims[i];
-    return {type, static_cast<int>(dims.size()), dims.data(), strides.data()};
+    return CUDA::DnnTensorDescriptor{}.set(type, static_cast<int>(dims.size()), dims.data(), strides.data());
 }
 }  // namespace
 
@@ -72,7 +72,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
       // According to https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor
       // opTensorCompType for cudnnOpTensor should always be FLOAT unless inputs and outputs are
       // double which is not supported by CudaPlugin
-      op_desc_(opType, cudnnDataType_t::CUDNN_DATA_FLOAT, nanPropogationType),
+      op_desc_{makeDnnOpTensorDescriptor(opType, cudnnDataType_t::CUDNN_DATA_FLOAT, nanPropogationType)},
       op_type_(opType) {
     Expects(node->get_input_size() == 2);
     Expects(node->get_output_size() == 1);

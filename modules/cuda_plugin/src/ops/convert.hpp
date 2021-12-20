@@ -25,11 +25,7 @@ public:
         const CUDA::Stream&, size_t, CUDA::DevicePointer<void*>, CUDA::DevicePointer<const void*>, unsigned, unsigned);
 
 private:
-    static convert_t getConvertKernel(Type_t output_type, Type_t input_type);
     std::optional<kernel::Convert> convert_kernel_;
-    unsigned size_;
-    unsigned num_blocks_;
-    unsigned threads_per_block_;
 };
 
 }  // namespace CUDAPlugin
