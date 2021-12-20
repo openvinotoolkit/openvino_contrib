@@ -23,51 +23,45 @@ static constexpr size_t max_total_dims_{max_spatial_dims_ + non_spatial_dims_};
 static constexpr size_t default_stride_{1};
 
 PoolingImpl::PoolingImpl(const ngraph::op::v1::MaxPool& node)
-    : mode_{CUDNN_POOLING_MAX},
-      pooling_descriptor_{mode_,
-                          CUDNN_PROPAGATE_NAN,
-                          max_spatial_dims_,
-                          spatial_shape_from_ngraph(node.get_kernel()).data(),
-                          paddings_from_ngraph(node.get_pads_begin(),
-                                               node.get_pads_end(), mode_)
-                              .data(),
-                          spatial_shape_from_ngraph(node.get_strides()).data()},
-      input_tensor_descriptor_{
-          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
-          tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
-          tensor_strides_from_ngraph(node.get_input_shape(input_index)).data()},
-      output_tensor_descriptor_{
-          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
-          tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
-          tensor_strides_from_ngraph(node.get_output_shape(output_index))
-              .data()} {
-  Expects(node.get_input_shape(input_index).size() ==
-          node.get_output_shape(output_index).size());
+    : mode_{CUDNN_POOLING_MAX}, pooling_descriptor_{}, input_tensor_descriptor_{}, output_tensor_descriptor_{} {
+    pooling_descriptor_.set(mode_,
+                            CUDNN_PROPAGATE_NAN,
+                            max_spatial_dims_,
+                            spatial_shape_from_ngraph(node.get_kernel()).data(),
+                            paddings_from_ngraph(node.get_pads_begin(), node.get_pads_end(), mode_).data(),
+                            spatial_shape_from_ngraph(node.get_strides()).data());
+    input_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+                                 max_total_dims_,
+                                 tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
+                                 tensor_strides_from_ngraph(node.get_input_shape(input_index)).data());
+    output_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+                                  max_total_dims_,
+                                  tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
+                                  tensor_strides_from_ngraph(node.get_output_shape(output_index)).data());
+    Expects(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
 }
 
 PoolingImpl::PoolingImpl(const ngraph::op::AvgPool& node)
-    : mode_(node.get_exclude_pad()
-                ? CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING
-                : CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING),
-      pooling_descriptor_{mode_,
-                          CUDNN_PROPAGATE_NAN,
-                          max_spatial_dims_,
-                          spatial_shape_from_ngraph(node.get_kernel()).data(),
-                          paddings_from_ngraph(node.get_pads_begin(),
-                                               node.get_pads_end(), mode_)
-                              .data(),
-                          spatial_shape_from_ngraph(node.get_strides()).data()},
-      input_tensor_descriptor_{
-          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
-          tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
-          tensor_strides_from_ngraph(node.get_input_shape(input_index)).data()},
-      output_tensor_descriptor_{
-          convertDataType<cudnnDataType_t>(node.get_element_type()), max_total_dims_,
-          tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
-          tensor_strides_from_ngraph(node.get_output_shape(output_index))
-              .data()} {
-  Expects(node.get_input_shape(input_index).size() ==
-          node.get_output_shape(output_index).size());
+    : mode_(node.get_exclude_pad() ? CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING
+                                   : CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING),
+      pooling_descriptor_{},
+      input_tensor_descriptor_{},
+      output_tensor_descriptor_{} {
+    pooling_descriptor_.set(mode_,
+                            CUDNN_PROPAGATE_NAN,
+                            max_spatial_dims_,
+                            spatial_shape_from_ngraph(node.get_kernel()).data(),
+                            paddings_from_ngraph(node.get_pads_begin(), node.get_pads_end(), mode_).data(),
+                            spatial_shape_from_ngraph(node.get_strides()).data());
+    input_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+                                 max_total_dims_,
+                                 tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
+                                 tensor_strides_from_ngraph(node.get_input_shape(input_index)).data());
+    output_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+                                  max_total_dims_,
+                                  tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
+                                  tensor_strides_from_ngraph(node.get_output_shape(output_index)).data());
+    Expects(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
 }
 
 void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,

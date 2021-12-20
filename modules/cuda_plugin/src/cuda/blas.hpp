@@ -52,17 +52,10 @@ inline void logIfError(cublasStatus_t err,
 
 namespace CUDA {
 
-class CuBlasHandle : public UniqueBase<cublasCreate, cublasDestroy> {
+class CuBlasHandle : public Handle<cublasHandle_t> {
  public:
-    CuBlasHandle() = default;
-    explicit CuBlasHandle(Stream& stream) {
-        call(cublasSetStream, stream.get());
-    }
-
-    template <typename ... TArgs>
-    void call(cublasStatus_t(*cublasApiFunc)(cublasHandle_t, TArgs...), TArgs... args) const {
-        throwIfError(cublasApiFunc(get(), args...));
-    }
+     CuBlasHandle() : Handle(cublasCreate, cublasDestroy) {}
+     void setStream(Stream& stream) { throwIfError(cublasSetStream(get(), stream.get())); }
 };
 
 } // namespace CUDA

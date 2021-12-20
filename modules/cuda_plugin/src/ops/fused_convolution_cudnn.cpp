@@ -81,14 +81,14 @@ CUDA::DnnTensorDescriptor FusedConvolutionCuDnn::MakeBiasDescriptor(const ngraph
                                                                     ngraph::element::Type_t element_type) {
     std::array<int, CUDNN_DIM_MAX> int_shape;
     std::copy(shape.begin(), shape.end(), int_shape.begin());
-    return CUDA::DnnTensorDescriptor{cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
-                                     convertDataType<cudnnDataType_t>(element_type),
-                                     static_cast<int>(shape.size()),
-                                     int_shape.data()};
+    return CUDA::DnnTensorDescriptor{}.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+                                           convertDataType<cudnnDataType_t>(element_type),
+                                           static_cast<int>(shape.size()),
+                                           int_shape.data());
 }
 
 CUDA::DnnActivationDescriptor FusedConvolutionCuDnn::MakeActivationDescriptor(nodes::ActivationMode mode) {
-    return CUDA::DnnActivationDescriptor{convertActivationMode(mode), CUDNN_PROPAGATE_NAN, 0};
+    return CUDA::DnnActivationDescriptor{}.set(convertActivationMode(mode), CUDNN_PROPAGATE_NAN, 0);
 }
 
 }  // namespace CUDAPlugin
