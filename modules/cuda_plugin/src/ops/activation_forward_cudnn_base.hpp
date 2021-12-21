@@ -8,6 +8,7 @@
 
 #include <cuda/dnn.hpp>
 #include <cuda_operation_base.hpp>
+#include <initializer_list>
 #include <ngraph/node.hpp>
 
 namespace CUDAPlugin {
@@ -15,6 +16,9 @@ namespace CUDAPlugin {
 class ActivationForwardCuDnnOpBase : public OperationCuDnn {
 public:
     static constexpr std::size_t max_shape_size = 5;
+
+    static constexpr std::initializer_list<cudnnDataType_t> supported_types{
+        CUDNN_DATA_FLOAT, CUDNN_DATA_DOUBLE, CUDNN_DATA_HALF, CUDNN_DATA_INT8};
 
     ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA::DnnActivationDescriptor> opDesc,
                                  const CreationContext& context,
