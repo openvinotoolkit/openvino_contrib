@@ -67,7 +67,7 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes):
 
     # Proposals are in absolute coordinates
     img_h, img_w = image_shapes[0]
-    proposals = proposals * torch.tensor([img_h, img_w, img_h, img_w])
+    proposals = proposals * torch.tensor([img_w, img_h, img_w, img_h])
 
     if cls.scales is None:
         x_filtered = [features[k] for k in cls.featmap_names]
