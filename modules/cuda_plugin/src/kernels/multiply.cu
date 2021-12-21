@@ -25,9 +25,9 @@ void Multiply::operator()(cudaStream_t stream,
                           void* out) const {
     using SupportedElementTypes =
         ElementTypesSwitch<Type_t::i16, Type_t::i32, Type_t::i64, Type_t::u8, Type_t::u16, Type_t::u32, Type_t::u64>;
-    using Helper = ElementwiseHelper<SupportedElementTypes, MultiplyOpImpl>;
-    Helper helper{element_type_, max_threads_per_block_};
-    helper.binaryOperator(stream, in0, in0_num_elements, in1, in1_num_elements, out);
+    using Switcher = ElementwiseBinary<SupportedElementTypes, MultiplyOpImpl>;
+    Switcher switcher{element_type_, max_threads_per_block_};
+    switcher(stream, in0, in0_num_elements, in1, in1_num_elements, out);
 }
 
 }  // namespace kernel
