@@ -15,6 +15,8 @@ import ops.convolution as convolution
 import ops.mat_mul as mat_mul
 import ops.relu as relu
 import ops.sigmoid as sigmoid
+import ops.clamp as clamp
+import ops.swish as swish
 import ops.maxpool as maxpool
 import ops.avgpool as avgpool
 
@@ -27,6 +29,8 @@ tests_to_generate = [
     mat_mul.TestTraits(),
     relu.TestTraits(),
     sigmoid.TestTraits(),
+    clamp.TestTraits(),
+    swish.TestTraits(),
     maxpool.TestTraits(),
     avgpool.TestTraits(),
 
@@ -164,7 +168,7 @@ if __name__ == '__main__':
                                                                          str(len(test_params_providers_list))))
         test_params_providers_list.sort(key=lambda p: p.op.test_identity)
         template = Template(open(jinja_templates_directory + '/' + test_traits.template_filename).read())
-        generated_tests_string = template.render(operators=test_params_providers_list)
+        generated_tests_string = template.render(operators=test_params_providers_list, test_traits=test_traits)
         update_cpp_tests_file(cpp_testfile_directory + '/' + test_traits.cpp_test_filename,
                               test_traits.cpp_test_file_begin_tag,
                               test_traits.cpp_test_file_end_tag,

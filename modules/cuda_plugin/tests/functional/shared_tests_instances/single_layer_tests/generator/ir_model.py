@@ -242,6 +242,9 @@ class AttrValue:
     def as_int(self):
         return int(self.as_str())
 
+    def as_float(self):
+        return float(self.as_str())
+
     def as_tuple_of_str(self):
         return tuple(map(lambda s: s.strip(), self.as_str().split(',')))
 

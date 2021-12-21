@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <cuda/constant_factory.hpp>
 #include <cuda/descriptor_utils.hpp>
 
@@ -25,6 +26,11 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
       data_type_{convertDataType<cudnnDataType_t>(node.get_input_element_type(0))} {
     Expects(node.get_input_size() == 1);
     Expects(node.get_output_size() == 1);
+
+    if (std::find(supported_types.begin(), supported_types.end(), data_type_) == supported_types.end()) {
+        throwIEException(
+            fmt::format("CUDAPlugin::ActivationForwardCuDnnOpBase: unsupported data type: {}", toString(data_type_)));
+    }
 
     const auto& shape = node.get_input_shape(0);
     Expects(node.get_output_shape(0) == shape);

@@ -16,8 +16,6 @@ namespace kernel {
 class Multiply {
 public:
     Multiply(Type_t element_type, size_t max_threads_per_block);
-    Multiply(Multiply&&) = default;
-    Multiply& operator=(Multiply&&) = default;
 
     /**
      * @param out   Output buffer. Is expected to be large enough to fit max(in0_num_elements, in1_num_elements)

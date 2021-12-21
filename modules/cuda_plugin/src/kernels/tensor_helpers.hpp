@@ -4,6 +4,15 @@
 
 #pragma once
 
+#include <type_traits>
+
+#ifdef __CUDACC__
+#include <cuda_fp16.h>
+#if CUDA_VERSION >= 11000
+#include <cuda_bf16.h>
+#endif  // CUDA_VERSION >= 11000
+#endif  // __CUDACC__
+
 #include <cuda_runtime_api.h>
 
 namespace CUDAPlugin {
@@ -75,6 +84,63 @@ inline std::pair<unsigned, unsigned> calculateElementwiseGrid(const size_t size,
     const auto threads_per_block = (num_blocks == 1) ? size : max_threads_per_block;
     return {num_blocks, threads_per_block};
 }
+
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, T> double_round_cast(double x, double round_func(double)) {
+    constexpr T min_t = std::numeric_limits<T>::min();
+    constexpr T max_t = std::numeric_limits<T>::max();
+    const double xr = round_func(x);
+    if (xr < static_cast<double>(min_t)) {
+        return min_t;
+    }
+    if (xr > static_cast<double>(max_t)) {
+        return max_t;
+    }
+    return static_cast<T>(xr);
+}
+
+template <typename T>
+std::enable_if_t<!std::is_integral<T>::value, T> double_round_cast(double x, double(double)) {
+    return static_cast<T>(x);
+}
+
+template <typename T>
+inline __host__ __device__ T min(T x, T y) {
+    return x < y ? x : y;
+}
+
+template <typename T>
+inline __host__ __device__ T max(T x, T y) {
+    return x > y ? x : y;
+}
+
+#ifdef __CUDACC__
+
+#if __CUDA_ARCH__ < 530
+template <>
+inline __host__ __device__ __half min<__half>(__half x, __half y) {
+    return min<float>(static_cast<float>(x), static_cast<float>(y));
+}
+
+template <>
+inline __host__ __device__ __half max<__half>(__half x, __half y) {
+    return max<float>(static_cast<float>(x), static_cast<float>(y));
+}
+#endif  // __CUDA_ARCH__ < 530
+
+#if CUDA_VERSION >= 11000 && __CUDA_ARCH__ < 800
+template <>
+inline __host__ __device__ __nv_bfloat16 min<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
+    return min<float>(static_cast<float>(x), static_cast<float>(y));
+}
+
+template <>
+inline __host__ __device__ __nv_bfloat16 max<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
+    return max<float>(static_cast<float>(x), static_cast<float>(y));
+}
+#endif  // CUDA_VERSION >= 11000 && __CUDA_ARCH__ < 800
+
+#endif  // __CUDACC__
 
 }  // namespace kernel
 }  // namespace CUDAPlugin
