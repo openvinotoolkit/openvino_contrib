@@ -110,6 +110,7 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
                     auto fInput = input;
                     if (input_type.is_quantized()) {
                         auto dqNode = std::make_shared<opset::ArmDequantize>(input);
+                        OPENVINO_ASSERT(dqNode, "Failed to create ArmDequantize node for per channel requantization");
                         dqNode->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_dequantize_prescale");
                         ngraph::copy_runtime_info(fakeQuantize, dqNode);
                         fInput = dqNode;
@@ -192,6 +193,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                 std::shared_ptr<ngraph::Node> bias = std::make_shared<opset::Multiply>(
                                                          std::make_shared<opset::Constant>(ngraph::element::f32, shape, quantizationInfo.second),
                                                          std::make_shared<opset::Constant>(ngraph::element::f32, shape, invScale));
+                OPENVINO_ASSERT(bias, "Failed to create bias node for fused convolution");
                 if (node->inputs().size() > 2) {
                     bias = std::make_shared<opset::Add>(node->input_value(2), bias);
                     newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
