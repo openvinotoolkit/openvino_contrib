@@ -41,16 +41,7 @@ public class IECore extends IEWrapper {
     // plugins.xml and *.mvcmd in case of the JAR package os OpenVINO.
     public static void loadNativeLibs() {
         // A set of required libraries which are listed in dependency order.
-        final String[] nativeLibs = {
-            "tbb",
-            "tbbmalloc",
-            "ngraph",
-            "inference_engine_transformations",
-            "inference_engine",
-            "inference_engine_legacy",
-            "inference_engine_lp_transformations",
-            "inference_engine_java_api"
-        };
+        final String[] nativeLibs = {"tbb", "tbbmalloc", "ov_runtime", "inference_engine_java_api"};
 
         InputStream resources_list = null;
         try {
