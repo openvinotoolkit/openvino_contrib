@@ -87,7 +87,14 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes, is_dynamic):
 
     levels = cls.map_levels([proposals])
 
-    if not is_dynamic:
+    if is_dynamic:
+        # To prevent dynamic layer with zero dimension, add fake indices and proposals
+        # so there would be at least one proposal for each level
+        num_fake_proposals = len(cls.featmap_names)
+        levels = torch.cat((levels, torch.arange(0, num_fake_proposals)))
+        proposals = torch.nn.functional.pad(proposals, (0, 0, 0, num_fake_proposals))
+        num_proposals += num_fake_proposals
+    else:
         levels = levels.reshape(-1, 1, 1, 1)
         zeros = OpenVINOTensor(torch.zeros([num_proposals], dtype=torch.int32))
 
@@ -125,6 +132,8 @@ def multi_scale_roi_align(cls, features, proposals, image_shapes, is_dynamic):
             else:
                 final_box_features = box_features
 
+    if is_dynamic:
+        final_box_features = final_box_features[:-num_fake_proposals]
     return final_box_features
 
 
