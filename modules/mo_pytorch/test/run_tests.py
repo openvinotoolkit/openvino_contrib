@@ -237,7 +237,7 @@ class TestModels(unittest.TestCase):
         self.assertLessEqual(diff, 1e-4)
 
 
-    def test_mask_rcnn(self):
+    def run_mask_rcnn(self, is_dynamic):
         # For better efficiency, you may reduce parameters <box_detections_per_img> (default 100)
         # and <rpn_post_nms_top_n_test> (default 1000).
         model = models.detection.mask_rcnn.maskrcnn_resnet50_fpn(pretrained=True, progress=False)
@@ -256,7 +256,8 @@ class TestModels(unittest.TestCase):
             ref = model(inp)
 
         # Convert model to IR
-        mo_pytorch.convert(model, input_shape=[1, 3, img_size, img_size], model_name='model')
+        mo_pytorch.convert(model, input_shape=[1, 3, img_size, img_size], model_name='model',
+                           is_dynamic=is_dynamic)
 
         # Do inference
         net = self.ie.load_network('model.xml', 'CPU')
@@ -291,6 +292,15 @@ class TestModels(unittest.TestCase):
             union = np.sum(np.logical_or(ref_mask, out_mask))
             self.assertGreater(inter / union, 0.93)
 
+        if is_dynamic:
+            # Forward zero input to check zero dimensions behavior
+            out = net.infer({'input': torch.zeros_like(inp)})
+
+    def test_mask_rcnn(self):
+        self.run_mask_rcnn(is_dynamic=False)
+
+    def test_mask_rcnn_dynamic(self):
+        self.run_mask_rcnn(is_dynamic=True)
 
 if __name__ == '__main__':
     unittest.main()

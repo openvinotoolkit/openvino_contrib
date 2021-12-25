@@ -1111,3 +1111,24 @@ def function_hook(input, dim, index):
 
     axes = OpenVINOTensor(torch.tensor(dim))
     return forward_hook(Gather(), (input, index, axes))
+
+
+@implements(torch.nonzero)
+def function_hook(input):
+
+    class NonZero(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    return forward_hook(NonZero(), (input,))
+
+
+@implements(torch.scatter)
+def function_hook(input, dim, index, src):
+
+    class ScatterElementsUpdate(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+    axis = OpenVINOTensor(torch.tensor(dim))
+    return forward_hook(ScatterElementsUpdate(), (input, index, src, axis))
