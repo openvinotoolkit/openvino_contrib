@@ -20,7 +20,6 @@ public:
     using convert_t = void (*)(cudaStream_t, size_t, void*, const void*, unsigned, unsigned);
 
 private:
-    static convert_t getConvertKernel(Type_t output_type, Type_t input_type);
     convert_t convert_kernel_;
     size_t size_;
     size_t num_blocks_;
