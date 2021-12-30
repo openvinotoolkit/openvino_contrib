@@ -63,7 +63,7 @@ class RetinaNet(object):
     def hook(self, new_func, model, old_func):
         return lambda *args: new_func(model, old_func, *args)
 
-    def register_hook(self, model):
+    def register_hook(self, model, is_dynamic):
         model.inference = self.hook(inference, model, model.inference)
         model.forward = self.hook(forward, model, model.forward)
         model.preprocess_image = self.hook(preprocess_image, model, model.preprocess_image)

@@ -87,7 +87,7 @@ class PyTorchLoader(Loader):
 
         model = argv.input_model
 
-        register_model_hook(model)
+        register_model_hook(model, argv.is_dynamic)
 
         with torch.no_grad():
             if argv.input:
