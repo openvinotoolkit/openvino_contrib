@@ -8,7 +8,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct MatMulBiasFusion: public ngraph::pass::MatcherPass {
+
+class MatMulBiasFusion: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     MatMulBiasFusion();
 };
 }  // namespace pass

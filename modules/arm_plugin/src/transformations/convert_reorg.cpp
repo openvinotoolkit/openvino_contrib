@@ -10,6 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertReorgYolo, "ConvertReorgYolo", 0);
 ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() {
     auto reorg = ngraph::pattern::wrap_type<opset::ReorgYolo>();
 

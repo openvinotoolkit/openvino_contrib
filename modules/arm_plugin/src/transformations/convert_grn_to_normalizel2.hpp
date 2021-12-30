@@ -7,8 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
+
 class ConvertGRN: public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertGRN();
 };
 }  // namespace pass

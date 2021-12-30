@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct DecomposeMish: public ngraph::pass::MatcherPass {
+
+class DecomposeMish: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     DecomposeMish();
 };
 }  // namespace pass

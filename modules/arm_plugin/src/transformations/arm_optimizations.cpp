@@ -97,6 +97,7 @@
 
 #include "arm_optimizations.hpp"
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ArmOptimizations, "ArmOptimizations", 0);
 void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix) {
     if (_dump) {
         ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix +
@@ -131,7 +132,7 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Funct
                 itLabel->pop_back();
                 (*itLabel) += strm.str() + '\"';
             }
-        }}.run_on_function(f);
+        }}.run_on_model(f);
     }
 }
 
@@ -142,48 +143,50 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
 
         Dump(f, "initial");
 
-
         if (quantized) {
-            manager.register_pass<ngraph::pass::DisableConvertConstantFoldingOnConstPath>(
+            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::DisableConvertConstantFoldingOnConstPath>(
                 std::vector<ngraph::element::Type>{ ngraph::element::i8, ngraph::element::u8 });
         }
 
         // This pass must be called first in pipeline
         manager.register_pass<ngraph::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
-        manager.register_pass<ngraph::pass::RemoveFilteringBoxesBySize>(); // Resolves dynamism (replaces NonZero), CF needed
+        // Resolves dynamism (replaces NonZero), CF needed
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ngraph::pass::NopElimination>(); // may introduce fake dynamism
-        manager.register_pass<pass::ReplacePowerByMul>();
-        manager.register_pass<ngraph::pass::AlgebraicSimplification>(); // may introduce fake dynamism
+        // may introduce fake dynamism
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::NopElimination>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ReplacePowerByMul>();
+        // may introduce fake dynamism
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::AlgebraicSimplification>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ngraph::pass::SoftPlusFusion>();
-        manager.register_pass<ngraph::pass::HSwishFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::SoftPlusFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::HSwishFusion>();
 
         // LinOpSequenceFusion must be executed after all decompositions
-        manager.register_pass<ngraph::pass::LinOpSequenceFusion>();
-        manager.register_pass<ngraph::pass::RNNCellDecomposition>();
-        manager.register_pass<ngraph::pass::LSTMCellDecomposition>();
-        manager.register_pass<ngraph::pass::GRUCellDecomposition>();
-        manager.register_pass<ngraph::pass::ConvertGELU>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::LinOpSequenceFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::RNNCellDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::LSTMCellDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::GRUCellDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertGELU>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertConv1D>();
-        manager.register_pass<pass::ConvertGroupConv1D>();
-        manager.register_pass<pass::ConvertGroupConvolution>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertConv1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGroupConv1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGroupConvolution>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ngraph::pass::ConvolutionMultiplyFusion>();
-        manager.register_pass<ngraph::pass::GroupConvolutionMultiplyFusion>();
-        manager.register_pass<ngraph::pass::ConvolutionBackpropDataMultiplyFusion>();
-        manager.register_pass<ngraph::pass::GroupConvolutionBackpropDataMultiplyFusion>();
-        manager.register_pass<ngraph::pass::ConvertTensorIteratorToGRUSequence>();
-        manager.register_pass<ngraph::pass::ConvertTensorIteratorToLSTMSequence>();
-        manager.register_pass<ngraph::pass::ConvertTensorIteratorToRNNSequence>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvolutionMultiplyFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::GroupConvolutionMultiplyFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvolutionBackpropDataMultiplyFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::GroupConvolutionBackpropDataMultiplyFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertTensorIteratorToGRUSequence>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertTensorIteratorToLSTMSequence>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertTensorIteratorToRNNSequence>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
 
 
-        manager.register_pass<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
-        manager.register_pass<ngraph::pass::ConvertMVN1ToMVN6>();
-        manager.register_pass<ngraph::pass::ConvertQuantizeDequantize>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMVN1ToMVN6>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertQuantizeDequantize>();
         #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
             manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
         #endif
@@ -240,104 +243,95 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         lptManager.run_passes(f);
     }
 
-
     {
         Dump(f, "before_arm_specific_transformations");
         ov::pass::Manager manager;
-        manager.register_pass<ngraph::pass::LogSoftmaxDecomposition>();
-        manager.register_pass<pass::ConvertGRN>();
-        manager.register_pass<pass::NormalizeL2Fusion>();
-        manager.register_pass<pass::DecomposeNormalizeL2Add>();
-        manager.register_pass<pass::ConvertNormalizeL2ToArm>();
-        manager.register_pass<pass::ConvertReduceMultiAxis>();
-        manager.register_pass<ngraph::pass::ReduceL1Decomposition>();
-        manager.register_pass<ngraph::pass::ReduceL2Decomposition>();
-        manager.register_pass<ngraph::pass::ConvertReduceMeanToPooling>();
-        manager.register_pass<ngraph::pass::ConvertReduceMaxToPooling>();
-        manager.register_pass<ngraph::pass::ConvertReduceSumToPooling>();
-        manager.register_pass<ngraph::pass::ConvertMod>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::LogSoftmaxDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGRN>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::NormalizeL2Fusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeNormalizeL2Add>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertNormalizeL2ToArm>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReduceMultiAxis>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ReduceL1Decomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ReduceL2Decomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertReduceMeanToPooling>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertReduceMaxToPooling>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertReduceSumToPooling>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMod>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::DecomposeSwish>();
-        manager.register_pass<pass::DecomposeMish>();
-        manager.register_pass<pass::BroadcastPRelu>();
-        manager.register_pass<pass::ConvertLogical>();
-        manager.register_pass<pass::ConvertComparison>();
-        manager.register_pass<pass::ConvertTranspose>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeSwish>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeMish>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastPRelu>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLogical>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertComparison>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertTranspose>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertRound>();
-        manager.register_pass<pass::ConvertSign>();
-        manager.register_pass<pass::ConvertCeiling>();
-        manager.register_pass<pass::DecomposeVariadicSplit>();
-        manager.register_pass<pass::ConvertStridedSliceToArm>();
-        manager.register_pass<pass::ConvertStridedSlice>();
-        manager.register_pass<pass::ConvertBatchNormInferenceV0toV5>();
-        manager.register_pass<pass::ConvertBatchNormInference>();
-        manager.register_pass<pass::ConvertShuffleChannels>();
-        manager.register_pass<pass::ConvertInterpolate>();
-        manager.register_pass<pass::ConvertMVN>();
-        manager.register_pass<pass::ConvertReorgYolo>();
-        manager.register_pass<pass::ConvertMaxPool1D>();
-        manager.register_pass<pass::ConvertAvgPool1D>();
-        manager.register_pass<pass::BroadcastSelect>();
-        manager.register_pass<pass::ConvertGather>();
-        manager.register_pass<ngraph::pass::ConvertGather8ToGather7>();
-        manager.register_pass<pass::ConvertDFT>();
-        manager.register_pass<pass::ConvertIDFT>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertRound>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertSign>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertCeiling>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeVariadicSplit>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertStridedSliceToArm>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertStridedSlice>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInferenceV0toV5>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInference>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertShuffleChannels>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertInterpolate>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMVN>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReorgYolo>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPool1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertAvgPool1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastSelect>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGather>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertGather8ToGather7>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertDFT>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertIDFT>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvBiasFusion>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvBiasFusion>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertMatMulToFC>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMatMulToFC>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertArmConvert>();
-        manager.register_pass<pass::ConvertArmConvertLike>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ngraph::pass::ConvertDivide>();
-        manager.register_pass<ngraph::pass::ConvertBroadcast3>();
-        manager.register_pass<ngraph::pass::ConvertBroadcastToTiles>();
-        manager.register_pass<pass::ConvertEltwise>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertDivide>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertBroadcast3>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertBroadcastToTiles>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertEltwise>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<pass::ConvertTile>();
-        manager.register_pass<pass::ConvertSplit>();
-        manager.register_pass<pass::ConvertConcat>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertTile>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertSplit>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertConcat>();
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
-        manager.register_pass<pass::AlignNodePrecision>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::AlignNodePrecision>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(f);
     }
 
     if (quantized) {
         Dump(f, "before_arm");
+        ov::pass::Manager manager;
         {
-            ov::pass::Manager manager;
             auto pass = manager.register_pass<ov::pass::GraphRewrite>();
             pass->add_matcher<pass::ConvolutionQuantizeFusion>();
             pass->add_matcher<pass::MeanQuantizeFusion>();
-            manager.run_passes(f);
         }
         {
-            ov::pass::Manager manager;
             auto pass = manager.register_pass<ov::pass::GraphRewrite>();
             pass->add_matcher<pass::DequantizeInputFusion>();
-            manager.run_passes(f);
         }
         {
-            ov::pass::Manager manager;
             auto pass = manager.register_pass<ov::pass::GraphRewrite>();
             pass->add_matcher<pass::AddDequantizeOnInputs>();
             pass->add_matcher<pass::ConvertBiasToI32>();
             pass->add_matcher<pass::ConvertQuantize>();
-            manager.run_passes(f);
         }
-        {
-            ov::pass::Manager manager;
-            manager.register_pass<ngraph::pass::ConstantFolding>();
-            manager.run_passes(f);
-        }
+        manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.run_passes(f);
     }
 
     Dump(f, "final");

@@ -10,6 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DecomposeSingleSwish, "DecomposeSingleSwish", 0);
 ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
     auto swish = ngraph::pattern::wrap_type<opset::Swish>({ngraph::pattern::any_input()});
 
@@ -39,6 +40,7 @@ ArmPlugin::pass::DecomposeSingleSwish::DecomposeSingleSwish() {
     register_matcher(m, callback);
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DecomposeSwishWithBeta, "DecomposeSwishWithBeta", 0);
 ArmPlugin::pass::DecomposeSwishWithBeta::DecomposeSwishWithBeta() {
     auto swish = ngraph::pattern::wrap_type<opset::Swish>({ngraph::pattern::any_input(), ngraph::pattern::any_input()});
 

@@ -10,6 +10,7 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include "opset/opset.hpp"
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertBatchNormInference, "ConvertBatchNormInference", 0);
 ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() {
     auto batch_norm = ngraph::pattern::wrap_type<opset::BatchNormInference>();
 

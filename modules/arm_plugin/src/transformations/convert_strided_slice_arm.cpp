@@ -7,7 +7,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertStridedSliceToArm, "ConvertStridedSliceToArm", 0);
 ArmPlugin::pass::ConvertStridedSliceToArm::ConvertStridedSliceToArm() {
     auto slice = ngraph::pattern::wrap_type<opset::StridedSlice>();
 

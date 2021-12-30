@@ -8,6 +8,7 @@
 
 using namespace ArmPlugin;
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertComparisionBase, "ConvertComparisionBase", 0);
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertComparisionBase::convert_comparision() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -55,6 +56,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertComparisionBase::convert_c
     };
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertEqual, "ConvertEqual", 0);
 ArmPlugin::pass::ConvertEqual::ConvertEqual() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Equal>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -63,6 +65,7 @@ ArmPlugin::pass::ConvertEqual::ConvertEqual() {
     register_matcher(m, convert_comparision<opset::Equal>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertNotEqual, "ConvertNotEqual", 0);
 ArmPlugin::pass::ConvertNotEqual::ConvertNotEqual() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::NotEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -71,6 +74,7 @@ ArmPlugin::pass::ConvertNotEqual::ConvertNotEqual() {
     register_matcher(m, convert_comparision<opset::NotEqual>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGreater, "ConvertGreater", 0);
 ArmPlugin::pass::ConvertGreater::ConvertGreater() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Greater>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -79,6 +83,7 @@ ArmPlugin::pass::ConvertGreater::ConvertGreater() {
     register_matcher(m, convert_comparision<opset::Greater>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGreaterEqual, "ConvertGreaterEqual", 0);
 ArmPlugin::pass::ConvertGreaterEqual::ConvertGreaterEqual() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::GreaterEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -87,6 +92,7 @@ ArmPlugin::pass::ConvertGreaterEqual::ConvertGreaterEqual() {
     register_matcher(m, convert_comparision<opset::GreaterEqual>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLess, "ConvertLess", 0);
 ArmPlugin::pass::ConvertLess::ConvertLess() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Less>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -95,6 +101,7 @@ ArmPlugin::pass::ConvertLess::ConvertLess() {
     register_matcher(m, convert_comparision<opset::Less>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLessEqual, "ConvertLessEqual", 0);
 ArmPlugin::pass::ConvertLessEqual::ConvertLessEqual() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LessEqual>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

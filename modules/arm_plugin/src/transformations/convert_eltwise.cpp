@@ -11,6 +11,7 @@
 
 using namespace ArmPlugin;
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertEltwiseBase, "ConvertEltwiseBase", 0);
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertEltwiseBase::convert_eltwise() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -35,6 +36,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertEltwiseBase::convert_eltwi
     };
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertAdd, "ConvertAdd", 0);
 ArmPlugin::pass::ConvertAdd::ConvertAdd() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Add>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -43,6 +45,7 @@ ArmPlugin::pass::ConvertAdd::ConvertAdd() {
     register_matcher(m, convert_eltwise<opset::Add>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertSubtract, "ConvertSubtract", 0);
 ArmPlugin::pass::ConvertSubtract::ConvertSubtract() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Subtract>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -51,6 +54,7 @@ ArmPlugin::pass::ConvertSubtract::ConvertSubtract() {
     register_matcher(m, convert_eltwise<opset::Subtract>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMultiply, "ConvertMultiply", 0);
 ArmPlugin::pass::ConvertMultiply::ConvertMultiply() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Multiply>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -59,6 +63,7 @@ ArmPlugin::pass::ConvertMultiply::ConvertMultiply() {
     register_matcher(m, convert_eltwise<opset::Multiply>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMinimum, "ConvertMinimum", 0);
 ArmPlugin::pass::ConvertMinimum::ConvertMinimum() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Minimum>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -67,6 +72,7 @@ ArmPlugin::pass::ConvertMinimum::ConvertMinimum() {
     register_matcher(m, convert_eltwise<opset::Minimum>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMaximum, "ConvertMaximum", 0);
 ArmPlugin::pass::ConvertMaximum::ConvertMaximum() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Maximum>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

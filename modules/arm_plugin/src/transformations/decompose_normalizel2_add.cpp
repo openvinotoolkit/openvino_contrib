@@ -8,6 +8,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DecomposeNormalizeL2Add, "DecomposeNormalizeL2Add", 0);
 ArmPlugin::pass::DecomposeNormalizeL2Add::DecomposeNormalizeL2Add() {
     auto normalize_l2 = ngraph::pattern::wrap_type<opset::NormalizeL2>();
 

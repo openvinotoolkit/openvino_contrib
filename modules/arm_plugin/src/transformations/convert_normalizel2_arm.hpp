@@ -8,7 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertNormalizeL2ToArm: public ngraph::pass::MatcherPass {
+class ConvertNormalizeL2ToArm: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertNormalizeL2ToArm();
 };
 }  // namespace pass

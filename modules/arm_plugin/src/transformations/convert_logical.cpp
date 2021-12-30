@@ -9,6 +9,7 @@
 
 using namespace ArmPlugin;
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalBase, "ConvertLogicalBase", 0);
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertLogicalBase::convert_logical() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -39,6 +40,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertLogicalBase::convert_logic
     };
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalNot, "ConvertLogicalNot", 0);
 ArmPlugin::pass::ConvertLogicalNot::ConvertLogicalNot() {
     auto logical_not = std::make_shared<opset::LogicalNot>(ngraph::pattern::any_input());
 
@@ -65,6 +67,7 @@ ArmPlugin::pass::ConvertLogicalNot::ConvertLogicalNot() {
     register_matcher(m, callback);
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalAnd, "ConvertLogicalAnd", 0);
 ArmPlugin::pass::ConvertLogicalAnd::ConvertLogicalAnd() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalAnd>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -73,6 +76,7 @@ ArmPlugin::pass::ConvertLogicalAnd::ConvertLogicalAnd() {
     register_matcher(m, convert_logical<opset::LogicalAnd>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalOr, "ConvertLogicalOr", 0);
 ArmPlugin::pass::ConvertLogicalOr::ConvertLogicalOr() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalOr>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -81,6 +85,7 @@ ArmPlugin::pass::ConvertLogicalOr::ConvertLogicalOr() {
     register_matcher(m, convert_logical<opset::LogicalOr>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalXor, "ConvertLogicalXor", 0);
 ArmPlugin::pass::ConvertLogicalXor::ConvertLogicalXor() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalXor>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

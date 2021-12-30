@@ -7,13 +7,16 @@
 
 namespace ArmPlugin {
 namespace pass {
+
 class DecomposeSingleSwish: public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     DecomposeSingleSwish();
 };
 
 class  DecomposeSwishWithBeta: public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     DecomposeSwishWithBeta();
 };
 

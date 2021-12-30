@@ -8,7 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertMVN: public ngraph::pass::MatcherPass {
+class ConvertMVN: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertMVN();
 };
 }  // namespace pass

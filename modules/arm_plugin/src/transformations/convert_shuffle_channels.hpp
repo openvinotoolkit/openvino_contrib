@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertShuffleChannels: public ngraph::pass::MatcherPass {
+
+class ConvertShuffleChannels: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertShuffleChannels();
 };
 }  // namespace pass

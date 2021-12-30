@@ -8,7 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertInterpolate: public ngraph::pass::MatcherPass {
+class ConvertInterpolate: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertInterpolate();
 };
 }  // namespace pass

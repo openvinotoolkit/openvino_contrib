@@ -8,8 +8,10 @@
 
 namespace ArmPlugin {
 namespace pass {
+
 class  FinalizeTrailingNodes: public ngraph::pass::FunctionPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
 };
 }  // namespace pass
