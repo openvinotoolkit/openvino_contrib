@@ -37,7 +37,8 @@ auto toNative(T&& a) noexcept(noexcept(std::forward<T>(a).data())) -> decltype(s
 }
 
 template <typename T>
-std::enable_if_t<std::is_scalar_v<std::decay_t<T>>, std::decay_t<T>> toNative(T t) noexcept {
+typename std::enable_if<std::is_scalar<typename std::decay<T>::type>::value, typename std::decay<T>::type>::type
+toNative(T t) noexcept {
     return t;
 }
 
@@ -50,7 +51,9 @@ T createFirstArg(R (*creator)(T*, Args... args), Args... args) {
 
 template <typename R, typename... NativeArgs, typename... Args>
 auto createLastArg(R (*creator)(NativeArgs...), Args&&... args) {
-    std::remove_pointer_t<decltype((NativeArgs{}, ...))> t;
+    using LastType = typename std::remove_pointer<
+        typename std::tuple_element<sizeof...(NativeArgs) - 1, std::tuple<NativeArgs...>>::type>::type;
+    LastType t;
     throwIfError(creator(toNative(std::forward<Args>(args))..., &t));
     return t;
 }
@@ -203,7 +206,7 @@ class Allocation {
 public:
     Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
     void* get() const noexcept { return p.get(); }
-    template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
+    template <typename T, typename std::enable_if<std::is_void<T>::value>::type* = nullptr>
     operator DevicePointer<T*>() const noexcept {
         return DevicePointer<T*>{get()};
     }
@@ -218,7 +221,7 @@ class DefaultAllocation {
 public:
     explicit DefaultAllocation(void* p) noexcept : p{p} {}
     void* get() const noexcept { return p.get(); }
-    template <typename T, std::enable_if_t<std::is_void_v<T>>* = nullptr>
+    template <typename T, typename std::enable_if<std::is_void<T>::value>::type* = nullptr>
     operator DevicePointer<T*>() const noexcept {
         return DevicePointer<T*>{get()};
     }

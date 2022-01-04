@@ -99,39 +99,5 @@ std::enable_if_t<!std::is_integral<T>::value, T> double_round_cast(double x, dou
     return static_cast<T>(x);
 }
 
-template <typename T>
-inline __host__ __device__ T min(T x, T y) {
-    return x < y ? x : y;
-}
-
-template <typename T>
-inline __host__ __device__ T max(T x, T y) {
-    return x > y ? x : y;
-}
-
-#if !defined(CUDA_HAS_HALF_MATH)
-template <>
-inline __host__ __device__ __half min<__half>(__half x, __half y) {
-    return min<float>(static_cast<float>(x), static_cast<float>(y));
-}
-
-template <>
-inline __host__ __device__ __half max<__half>(__half x, __half y) {
-    return max<float>(static_cast<float>(x), static_cast<float>(y));
-}
-#endif  // !defined (CUDA_HAS_HALF_MATH)
-
-#if defined(CUDA_HAS_BF16_TYPE) && !defined(CUDA_HAS_BF16_MATH)
-template <>
-inline __host__ __device__ __nv_bfloat16 min<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
-    return min<float>(static_cast<float>(x), static_cast<float>(y));
-}
-
-template <>
-inline __host__ __device__ __nv_bfloat16 max<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
-    return max<float>(static_cast<float>(x), static_cast<float>(y));
-}
-#endif  // defined (CUDA_HAS_BF16_TYPE) && !defined (CUDA_HAS_BF16_MATH)
-
 }  // namespace kernel
 }  // namespace CUDAPlugin
