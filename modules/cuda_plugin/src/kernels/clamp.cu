@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda/math.cuh>
+
 #include "clamp.hpp"
 #include "error.hpp"
 #include "tensor_helpers.hpp"
@@ -9,10 +11,12 @@
 namespace CUDAPlugin {
 namespace kernel {
 
+namespace cumath = CUDA::math;
+
 template <typename T>
 struct ClampOpImpl {
     __device__ static inline T op(T x, T min_value, T max_value) {
-        return kernel::min(kernel::max(x, min_value), max_value);
+        return cumath::min(cumath::max(x, min_value), max_value);
     }
 };
 
