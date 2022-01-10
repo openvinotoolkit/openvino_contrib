@@ -52,6 +52,7 @@ public:
         bench_name_ = name;
         warmup_time_ = warmupTime;
         num_attempts_ = numAttempts;
+        configuration = {{"PERF_COUNT", "YES"}};
         LayerTestsUtils::LayerTestsCommon::Run();
     }
 
@@ -70,14 +71,15 @@ protected:
         }
 
         // Benchmark
-        const auto start = std::chrono::steady_clock::now();
+        size_t accumulated_real_time_usec = {};
         for (int i = 0; i < num_attempts_; ++i) {
             LayerTestsUtils::LayerTestsCommon::Infer();
+            std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perf_results =
+                inferRequest.GetPerformanceCounts();
+            accumulated_real_time_usec += perf_results.at(bench_name_).realTime_uSec;
         }
-        const auto end = std::chrono::steady_clock::now();
 
-        const auto averageMicroExecTime =
-            std::chrono::duration_cast<std::chrono::microseconds>((end - start) / num_attempts_);
+        const auto averageMicroExecTime = std::chrono::microseconds(accumulated_real_time_usec/num_attempts_);
         const auto averageMilliExecTime = std::chrono::duration_cast<std::chrono::milliseconds>(averageMicroExecTime);
         std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMicroExecTime.count() << " us\n";
         std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMilliExecTime.count() << " ms\n";
