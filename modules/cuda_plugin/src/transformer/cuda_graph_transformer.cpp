@@ -20,6 +20,7 @@
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
+#include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 
 using namespace CUDAPlugin;
 
@@ -30,6 +31,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
 
     auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
     ngraph::pass::Manager manager{passConfig};
+
+    passConfig->enable<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
