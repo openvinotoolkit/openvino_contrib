@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/common_optimizations/algebraic_simplification.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
 #include "transformations/common_optimizations/conv_mul_fusion.hpp"
 #include "transformations/convert_precision.hpp"
@@ -154,7 +153,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::NopElimination>(); // may introduce fake dynamism
     manager.register_pass<pass::ReplacePowerByMul>();
-    manager.register_pass<ngraph::pass::AlgebraicSimplification>(); // may introduce fake dynamism
     manager.register_pass<ngraph::pass::ConstantFolding>();
     manager.register_pass<ngraph::pass::SoftPlusFusion>();
     manager.register_pass<ngraph::pass::HSwishFusion>();
