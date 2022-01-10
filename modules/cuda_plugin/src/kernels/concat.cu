@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
 #include <fmt/format.h>
 
+#include <cuda/float16.hpp>
 #include <gsl/gsl_assert>
 
 #include "concat.hpp"
@@ -52,7 +48,7 @@ void Concat::operator()(const cudaStream_t stream, const void* chunks, const voi
     switch (element_type_) {
         case Type_t::boolean:
             return Call<bool>(stream, chunks, src, dst);
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return Call<__nv_bfloat16>(stream, chunks, src, dst);
 #endif

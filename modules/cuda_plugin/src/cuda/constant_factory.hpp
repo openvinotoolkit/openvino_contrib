@@ -4,13 +4,10 @@
 
 #pragma once
 
-#if __has_include(<cuda_bf16.h>)
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
 #include <cudnn_ops_infer.h>
 #include <fmt/format.h>
 
+#include <cuda/float16.hpp>
 #include <error.hpp>
 
 namespace CUDA {
@@ -29,7 +26,7 @@ union AnyNumeric {
     std::int64_t i64;
     std::uint64_t u64;
     __half h16;
-#if __has_include(<cuda_bf16.h>)
+#ifdef CUDA_HAS_BF16_TYPE
     __nv_bfloat16 bh16;
     explicit constexpr AnyNumeric(__nv_bfloat16 c) : bh16{c} {}
 #endif
@@ -63,7 +60,7 @@ struct one<__half> {
     const inline static AnyNumeric value{__float2half(1.0f)};
 };
 
-#if __has_include(<cuda_bf16.h>)
+#ifdef CUDA_HAS_BF16_TYPE
 template <>
 struct one<__nv_bfloat16> {
     const inline static AnyNumeric value{__float2bfloat16(1.0f)};
@@ -80,7 +77,7 @@ struct zero<__half> {
     const inline static AnyNumeric value{__float2half(0.0f)};
 };
 
-#if __has_include(<cuda_bf16.h>)
+#ifdef CUDA_HAS_BF16_TYPE
 template <>
 struct zero<__nv_bfloat16> {
     const inline static AnyNumeric value{__float2bfloat16(0.0f)};
@@ -101,7 +98,7 @@ struct zero<__nv_bfloat16> {
 template <template <typename T> class C>
 inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
     switch (computeType) {
-#if __has_include(<cuda_bf16.h>)
+#ifdef CUDA_HAS_BF16_TYPE
         case CUDA_R_16BF: {
             return C<__nv_bfloat16>::value;
         }

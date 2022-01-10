@@ -3,12 +3,15 @@
 //
 
 #pragma once
+
+#include <cuda/float16.hpp>
+
 #include "cuda_type_traits.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
 template <typename TOutput, typename TInput>
 __device__
     typename std::enable_if<std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
@@ -23,7 +26,7 @@ __device__
     return static_cast<TOutput>(static_cast<float>(in));
 }
 
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
 template <typename TOutput, typename TInput>
 __device__
     typename std::enable_if<!(std::is_same<TInput, __half>::value || std::is_same<TInput, __nv_bfloat16>::value ||
