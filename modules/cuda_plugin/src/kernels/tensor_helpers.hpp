@@ -4,16 +4,10 @@
 
 #pragma once
 
-#include <type_traits>
-
-#ifdef __CUDACC__
-#include <cuda_fp16.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif  // CUDA_VERSION >= 11000
-#endif  // __CUDACC__
-
 #include <cuda_runtime_api.h>
+
+#include <cuda/float16.hpp>
+#include <type_traits>
 
 namespace CUDAPlugin {
 namespace kernel {
@@ -114,9 +108,7 @@ inline __host__ __device__ T max(T x, T y) {
     return x > y ? x : y;
 }
 
-#ifdef __CUDACC__
-
-#if __CUDA_ARCH__ < 530
+#if !defined(CUDA_HAS_HALF_MATH)
 template <>
 inline __host__ __device__ __half min<__half>(__half x, __half y) {
     return min<float>(static_cast<float>(x), static_cast<float>(y));
@@ -126,9 +118,9 @@ template <>
 inline __host__ __device__ __half max<__half>(__half x, __half y) {
     return max<float>(static_cast<float>(x), static_cast<float>(y));
 }
-#endif  // __CUDA_ARCH__ < 530
+#endif  // !defined (CUDA_HAS_HALF_MATH)
 
-#if CUDA_VERSION >= 11000 && __CUDA_ARCH__ < 800
+#if defined(CUDA_HAS_BF16_TYPE) && !defined(CUDA_HAS_BF16_MATH)
 template <>
 inline __host__ __device__ __nv_bfloat16 min<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
     return min<float>(static_cast<float>(x), static_cast<float>(y));
@@ -138,9 +130,7 @@ template <>
 inline __host__ __device__ __nv_bfloat16 max<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
     return max<float>(static_cast<float>(x), static_cast<float>(y));
 }
-#endif  // CUDA_VERSION >= 11000 && __CUDA_ARCH__ < 800
-
-#endif  // __CUDACC__
+#endif  // defined (CUDA_HAS_BF16_TYPE) && !defined (CUDA_HAS_BF16_MATH)
 
 }  // namespace kernel
 }  // namespace CUDAPlugin

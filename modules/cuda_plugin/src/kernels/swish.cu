@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "elementwise.cuh"
+#include <cuda/float16.hpp>
+
 #include "swish.hpp"
 #include "tensor_helpers.hpp"
-
-#ifdef __CUDACC__
-#include <cuda_fp16.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif  // CUDA_VERSION >= 11000
-#endif  // __CUDACC__
 
 namespace CUDAPlugin {
 namespace kernel {
@@ -34,42 +28,31 @@ struct SwishOpImpl<float> {
 template <>
 struct SwishOpImpl<__half> {
     __device__ static inline __half op(__half x, double beta) {
-#if __CUDA_ARCH__ >= 530
+#ifdef CUDA_HAS_HALF_MATH
         return x / (static_cast<__half>(1.0f) + ::hexp(-x * static_cast<__half>(beta)));
 #else
         return SwishOpImpl<float>::op(static_cast<float>(x), beta);
-#endif
+#endif // CUDA_HAS_HALF_MATH
     }
 };
 
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
 template <>
 struct SwishOpImpl<__nv_bfloat16> {
     __device__ static inline __nv_bfloat16 op(__nv_bfloat16 x, double beta) {
-#if __CUDA_ARCH__ >= 800
+#ifdef CUDA_HAS_BF16_MATH
         return x / (static_cast<__nv_bfloat16>(1.0f) + ::hexp(-x * static_cast<__nv_bfloat16>(beta)));
 #else
         return SwishOpImpl<float>::op(static_cast<float>(x), beta);
-#endif  // __CUDA_ARCH__ >= 800
+#endif  // CUDA_HAS_BF16_MATH
     }
 };
-#endif  // CUDA_VERSION >= 11000
+#endif  // CUDA_HAS_BF16_TYPE
 
-Swish::Swish(Type_t element_type, size_t max_threads_per_block)
-    : element_type_{element_type}, max_threads_per_block_{max_threads_per_block} {}
+Swish::Swish(Type_t element_type, size_t max_threads_per_block, size_t num_elements, double beta)
+    : ewu_{element_type, max_threads_per_block, num_elements}, beta_{beta} {}
 
-void Swish::operator()(cudaStream_t stream, const void* in, size_t num_elements, void* out, double beta) const {
-    using SupportedElementTypes = ElementTypesSwitch<Type_t::f16,
-                                                     Type_t::f32,
-                                                     Type_t::f64,
-#if CUDA_VERSION >= 11000
-                                                     Type_t::bf16
-#endif  // CUDA_VERSION >= 11000
-                                                     >;
-    using Switcher = ElementwiseUnary<SupportedElementTypes, SwishOpImpl>;
-    Switcher switcher{element_type_, max_threads_per_block_};
-    switcher(stream, in, num_elements, out, beta);
-}
+void Swish::operator()(cudaStream_t stream, const void* in, void* out) const { ewu_(stream, in, out, beta_); }
 
 }  // namespace kernel
 }  // namespace CUDAPlugin

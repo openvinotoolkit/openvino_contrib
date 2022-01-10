@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
 #include <fmt/format.h>
 
+#include <cuda/float16.hpp>
 #include <gsl/gsl_assert>
 
 #include "slice.hpp"
@@ -43,7 +39,7 @@ void Slice::operator()(cudaStream_t stream, const void *src, void *dst, const si
     switch (element_type_) {
         case Type_t::boolean:
             return call<bool>(stream, src, dst, start);
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return call<__nv_bfloat16>(stream, src, dst, start);
 #endif

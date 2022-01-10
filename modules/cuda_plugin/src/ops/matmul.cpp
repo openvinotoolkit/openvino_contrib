@@ -5,6 +5,7 @@
 #include "matmul.hpp"
 
 #include <cuda/blas.hpp>
+#include <cuda/float16.hpp>
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
@@ -26,7 +27,8 @@ MatMulOp::MatMulOp(const CreationContext& context,
     : OperationCuBlas(context, op, std::move(inputIds), std::move(outputIds)) {
     Expects(op.get_input_size() >= 2);
     Expects(op.get_output_size() == 1);
-    Expects(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) == convertDataType<cudaDataType_t>(op.get_input_element_type(1)));
+    Expects(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) ==
+            convertDataType<cudaDataType_t>(op.get_input_element_type(1)));
     data_type_ = convertDataType<cudaDataType_t>(op.get_input_element_type(0));
     compute_type_ = GetComputeType(data_type_, convertDataType<cudaDataType_t>(op.get_output_element_type(0)));
     auto inputAShape = op.get_input_shape(0);
@@ -40,17 +42,17 @@ MatMulOp::MatMulOp(const CreationContext& context,
     const int batchBCount = GetMatrixNumBatches(inputBShape);
     BroadcastShapes(inputAShape, transposeA, inputBShape, transposeB, outputCShape);
     batch_count_ = std::max(batchACount, batchBCount);
-    const size_t rowsA = *(inputAShape.end()-!transposeA-1);
-    const size_t colsA = *(inputAShape.end()-transposeA-1);
-    const size_t rowsB = *(inputBShape.end()-!transposeB-1);
-    const size_t colsB = *(inputBShape.end()-transposeB-1);
+    const size_t rowsA = *(inputAShape.end() - !transposeA - 1);
+    const size_t colsA = *(inputAShape.end() - transposeA - 1);
+    const size_t rowsB = *(inputBShape.end() - !transposeB - 1);
+    const size_t colsB = *(inputBShape.end() - transposeB - 1);
     Expects(colsA == rowsB);
     m_ = rowsA;
     k_ = colsA;
     n_ = colsB;
-    ld_a_ = *(inputAShape.end()-1);
-    ld_b_ = *(inputBShape.end()-1);
-    ld_c_ = *(outputCShape.end()-1);
+    ld_a_ = *(inputAShape.end() - 1);
+    ld_b_ = *(inputBShape.end() - 1);
+    ld_c_ = *(outputCShape.end() - 1);
     stride_a_ = (batchACount > 1) ? (m_ * k_) : 0;
     stride_b_ = (batchBCount > 1) ? (k_ * n_) : 0;
     stride_c_ = (m_ * n_);
@@ -79,9 +81,7 @@ template MatMulOp::MatMulOp(const CreationContext& context,
                             IndexCollection&&);
 
 cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const cudaDataType_t cDataType) {
-    constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr {
-        return (a << 16) + b;
-    };
+    constexpr auto SwitchCase = [](cudaDataType_t a, cudaDataType_t b) constexpr { return (a << 16) + b; };
     /**
      * NOTE: This switch is an implementation of CuBlas table for available compute types:
      * @reference https://docs.nvidia.com/cuda/cublas/index.html#cublas-GemmStridedBatchedEx
@@ -93,7 +93,7 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
         case SwitchCase(CUDA_R_8I, CUDA_R_32I): {
             return CUDA_R_32I;
         }
-#if __has_include(<cuda_bf16.h>)
+#ifdef CUDA_HAS_BF16_TYPE
         case SwitchCase(CUDA_R_16BF, CUDA_R_16BF):
         case SwitchCase(CUDA_R_16BF, CUDA_R_32F):
 #endif
@@ -112,7 +112,8 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
             throwIEException(
                 fmt::format("Not supported combination of A and B types [{}] "
                             "with C type [{}]",
-                            abDataType, cDataType));
+                            abDataType,
+                            cDataType));
     }
 }
 
@@ -165,19 +166,19 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
         }
         Expects(GetMatrixNumBatches(matrixAShape) == GetMatrixNumBatches(matrixBShape));
     }
-    Expects(*(matrixAShape.end()-transposeA-1) == *(matrixBShape.end()-!transposeB-1));
+    Expects(*(matrixAShape.end() - transposeA - 1) == *(matrixBShape.end() - !transposeB - 1));
     if (matrixAShape.size() > matrixBShape.size()) {
         matrixCShape = matrixAShape;
     } else {
         matrixCShape = matrixBShape;
     }
-    *(matrixCShape.end()-2) = *(matrixAShape.end()-!transposeA-1);
-    *(matrixCShape.end()-1) = *(matrixBShape.end()-transposeB-1);
+    *(matrixCShape.end() - 2) = *(matrixAShape.end() - !transposeA - 1);
+    *(matrixCShape.end() - 1) = *(matrixBShape.end() - transposeB - 1);
 }
 
 void MatMulOp::BroadcastToMatrix(ngraph::Shape& shape) {
     if (shape.size() < 2) {
-        shape.insert(shape.begin(), 2-shape.size(), 1);
+        shape.insert(shape.begin(), 2 - shape.size(), 1);
     }
 }
 
@@ -202,13 +203,30 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
      *       we compute Ct = Bt x At (where t means transposed)
      *       As result Ct would be row-major matrix
      */
-    throwIfError(cublasGemmStridedBatchedEx(
-        cuBlasHandle.get(), cublas_transpose_b_, cublas_transpose_a_, n_, m_,
-        k_, &CUDA::NumericConst<CUDA::constants::one>(compute_type_), matrixB.get(),
-        data_type_, ld_b_, stride_b_, matrixA.get(), data_type_, ld_a_,
-        stride_a_, beta_, matrixC.get(), data_type_, ld_c_, stride_c_,
-        batch_count_, compute_type_, CUBLAS_GEMM_DEFAULT));
+    throwIfError(cublasGemmStridedBatchedEx(cuBlasHandle.get(),
+                                            cublas_transpose_b_,
+                                            cublas_transpose_a_,
+                                            n_,
+                                            m_,
+                                            k_,
+                                            &CUDA::NumericConst<CUDA::constants::one>(compute_type_),
+                                            matrixB.get(),
+                                            data_type_,
+                                            ld_b_,
+                                            stride_b_,
+                                            matrixA.get(),
+                                            data_type_,
+                                            ld_a_,
+                                            stride_a_,
+                                            beta_,
+                                            matrixC.get(),
+                                            data_type_,
+                                            ld_c_,
+                                            stride_c_,
+                                            batch_count_,
+                                            compute_type_,
+                                            CUBLAS_GEMM_DEFAULT));
 }
 
 OPERATION_REGISTER(MatMulOp, MatMul);
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

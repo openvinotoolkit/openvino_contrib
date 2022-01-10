@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda.h>
 #include <cuda_device_runtime_api.h>
 #include <fmt/format.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
+#include <cuda/float16.hpp>
 
 #include "gather.hpp"
 
@@ -163,7 +159,7 @@ void Gather::CallByDataType(const cudaStream_t stream,
     switch (element_type_) {
         case Type_t::boolean:
             return Call<bool, IndexType>(stream, is_benchmark_mode, src_dict, src_index, dst_data);
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return Call<__nv_bfloat16, IndexType>(stream, is_benchmark_mode, src_dict, src_index, dst_data);
 #endif
