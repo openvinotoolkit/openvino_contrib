@@ -4,17 +4,11 @@
 
 #pragma once
 
-#include <cuda.h>
-
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
 #include <optional>
 #include <unordered_map>
 #include <vector>
-#if __has_include(<cuda_bf16.h>)
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
 
 namespace CUDAPlugin {
 

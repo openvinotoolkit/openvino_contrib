@@ -26,9 +26,6 @@ public:
                  const Workbuffers& workbuffers) const override;
 
 private:
-    const size_t num_elements_;
-    const double min_;
-    const double max_;
     std::optional<kernel::Clamp> kernel_;
 };
 

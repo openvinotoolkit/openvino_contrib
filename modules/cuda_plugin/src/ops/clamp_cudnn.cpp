@@ -7,18 +7,14 @@
 #include <fmt/format.h>
 
 #include <cmath>
-#include <ngraph/util.hpp>
-#include <type_traits>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
-
+#include <cuda/constant_factory.hpp>
 #include <cuda/descriptor_utils.hpp>
+#include <cuda/float16.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_operation_registry.hpp>
+#include <ngraph/util.hpp>
+#include <type_traits>
 
-#include <cuda/constant_factory.hpp>
 #include "converters.hpp"
 
 namespace CUDAPlugin {
@@ -113,7 +109,7 @@ void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
         case CUDNN_DATA_INT8:
             initBuffers<int8_t>(buffers);
             break;
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case CUDNN_DATA_BFLOAT16:
             initBuffers<__nv_bfloat16>(buffers);
             break;
