@@ -5,22 +5,34 @@
 #pragma once
 
 #include "cuda_type_traits.hpp"
-#include "error.hpp"
+#include "elementwise_unary.cuh"
 
 namespace CUDAPlugin {
 namespace kernel {
 
+template <typename T>
+struct SwishOpImpl;
+
 class Swish {
 public:
-    Swish(Type_t element_type, size_t max_threads_per_block);
+    Swish(Type_t element_type, size_t max_threads_per_block, size_t num_elements, double beta);
     Swish(Swish&&) = default;
     Swish& operator=(Swish&&) = default;
 
-    void operator()(cudaStream_t stream, const void* in, size_t num_elements, void* out, double beta) const;
+    void operator()(cudaStream_t stream, const void* in, void* out) const;
 
 private:
-    Type_t element_type_;
-    size_t max_threads_per_block_;
+    using SupportedElementTypes = ElementTypesSwitch<Type_t::f16,
+                                                     Type_t::f32,
+                                                     Type_t::f64
+#if CUDA_VERSION >= 11000
+                                                     ,
+                                                     Type_t::bf16
+#endif  // CUDA_VERSION >= 11000
+                                                     >;
+
+    ElementwiseUnary<SupportedElementTypes, SwishOpImpl> ewu_;
+    double beta_;
 };
 
 }  // namespace kernel

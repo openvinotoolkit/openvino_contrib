@@ -4,14 +4,7 @@
 
 #pragma once
 
-#include <cuda.h>
-#include <cuda_runtime.h>
-#if defined __CUDACC__
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
-#include <cuda_fp16.h>
-#endif
+#include <cuda/float16.hpp>
 #include <cstdint>
 
 namespace CUDAPlugin {
@@ -19,7 +12,7 @@ namespace kernel {
 
 enum class Type_t : int {
     boolean,
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
     bf16,
 #endif
     f16,
@@ -54,8 +47,8 @@ struct cuda_type_traits<Type_t::boolean> {
     using value_type = char;
 };
 
-#if defined __CUDACC__
-#if __has_include(<cuda_bf16.h>)
+#ifdef __CUDACC__
+#ifdef CUDA_HAS_BF16_TYPE
 template <>
 struct cuda_type_traits<Type_t::bf16> {
     using value_type = __nv_bfloat16;  // 8bit exponent, 7bit mantissa

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda_fp16.h>
+#include <cuda/float16.hpp>
 
 #include "convert.cuh"
 #include "kernels/range.hpp"
@@ -22,7 +22,7 @@ static __global__ typename std::enable_if<std::is_same<T_OUT, __half>::value>::t
         return;
     }
     dst[i] = __hadd(cast<T_OUT, T_IN1>(start[0]),
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+#ifdef CUDA_HAS_HALF_MATH
                     __hmul(cast<T_OUT, T_IN2>(step[0]), cast<T_OUT, decltype(i)>(i))
 #else
                     // the __hmul operation isn't supported here. Also, operation+ and operation* aren't defined here

@@ -24,8 +24,6 @@ public:
                  const Workbuffers& workbuffers) const override;
 
 private:
-    double beta_;
-    size_t num_elements_;
     std::optional<kernel::Swish> kernel_;
 };
 
