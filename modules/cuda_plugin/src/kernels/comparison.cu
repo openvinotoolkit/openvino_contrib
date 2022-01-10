@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda.h>
 #include <fmt/format.h>
+
+#include <cuda/float16.hpp>
 
 #include "comparison.hpp"
 
@@ -72,7 +73,7 @@ void Comparison::operator()(const cudaStream_t stream,
         case Type_t::boolean:
             return Call<bool>(
                 op_type_, stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return Call<__nv_bfloat16>(
                 op_type_, stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);

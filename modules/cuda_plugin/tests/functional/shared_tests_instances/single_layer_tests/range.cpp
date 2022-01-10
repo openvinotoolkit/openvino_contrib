@@ -129,7 +129,7 @@ struct CudaRangeTest : public testing::WithParamInterface<CudaRangeParams>, virt
         using Type_k = CUDAPlugin::kernel::Type_t;
         switch (type) {
 #if defined __CUDACC__
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
             case Type_t::bf16:
                 return upload<Type_k::bf16>(stream, dst, src, size);
 #endif
@@ -179,7 +179,7 @@ struct CudaRangeTest : public testing::WithParamInterface<CudaRangeParams>, virt
         using Type_k = CUDAPlugin::kernel::Type_t;
         switch (type) {
 #if defined __CUDACC__
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
             case Type_t::bf16:
                 return download<Type_k::bf16>(stream, dst, src, size);
 #endif
@@ -265,7 +265,7 @@ const std::vector<dataType> stop = {5.0f, 5.2f};
 const std::vector<dataType> step = {1.0f, 0.1f};
 const std::vector<Type_t> types = {
 #if defined __CUDACC__
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
     Type_t::bf16,
 #endif
     Type_t::f16,
@@ -295,7 +295,7 @@ const std::vector<Type_t> int_types = {
 
 const std::vector<Type_t> float_types = {
 #if defined __CUDACC__
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
     Type_t::bf16,
 #endif
     Type_t::f16,

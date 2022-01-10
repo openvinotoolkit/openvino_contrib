@@ -5,21 +5,29 @@
 #pragma once
 
 #include "cuda_type_traits.hpp"
+#include "elementwise_unary.cuh"
 
 namespace CUDAPlugin {
 namespace kernel {
 
+template <typename T>
+struct ClampOpImpl;
+
+using EWClamp = ElementwiseUnary<AllElementTypesSwitch, ClampOpImpl>;
+
 class Clamp {
 public:
-    Clamp(Type_t element_type, size_t max_threads_per_block);
+    Clamp(Type_t element_type, size_t max_threads_per_block, size_t num_elements, double min, double max);
     Clamp(Clamp&&) = default;
     Clamp& operator=(Clamp&&) = default;
 
-    void operator()(cudaStream_t stream, const void* in, size_t num_elements, void* out, double min, double max) const;
+    void operator()(cudaStream_t stream, const void* in, void* out) const;
 
 private:
     Type_t element_type_;
-    size_t max_threads_per_block_;
+    EWClamp ew_clamp_;
+    double min_;
+    double max_;
 };
 
 }  // namespace kernel

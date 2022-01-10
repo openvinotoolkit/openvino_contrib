@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cuda/float16.hpp>
+
 #include "cuda_type_traits.hpp"
 #include "switch.hpp"
 
@@ -33,7 +35,7 @@ struct ElementTypesSwitch {
 };
 
 using AllElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
                                                  Type_t::bf16,
 #endif
                                                  Type_t::f16,
