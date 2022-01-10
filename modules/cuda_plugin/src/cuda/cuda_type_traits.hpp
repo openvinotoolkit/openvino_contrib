@@ -3,12 +3,10 @@
 //
 
 #pragma once
-#include <cuda_runtime_api.h>
 
 #include <ngraph/type/element_type_traits.hpp>
 #ifdef __CUDACC__
-#include <cuda_bf16.h>
-#include <cuda_fp16.h>
+#include <cuda/float16.hpp>
 #endif
 
 namespace CUDA {
