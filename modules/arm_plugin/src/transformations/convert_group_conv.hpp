@@ -8,8 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertGroupConvolution: public ngraph::pass::MatcherPass {
+class ConvertGroupConvolution: public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertGroupConvolution();
 };
 }  // namespace pass

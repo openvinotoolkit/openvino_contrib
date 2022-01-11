@@ -8,29 +8,35 @@
 
 namespace ArmPlugin {
 namespace pass {
+
 class ConvertLogicalBase : public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     template <class T>
     ngraph::matcher_pass_callback convert_logical();
 };
 
 class ConvertLogicalNot: public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLogicalNot();
 };
 
 class ConvertLogicalAnd: public ConvertLogicalBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLogicalAnd();
 };
 
 class ConvertLogicalOr: public ConvertLogicalBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLogicalOr();
 };
 
 class ConvertLogicalXor: public ConvertLogicalBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLogicalXor();
 };
 

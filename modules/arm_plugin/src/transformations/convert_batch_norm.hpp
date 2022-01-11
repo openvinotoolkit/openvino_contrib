@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertBatchNormInference: public ngraph::pass::MatcherPass {
+
+class ConvertBatchNormInference: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertBatchNormInference();
 };
 }  // namespace pass

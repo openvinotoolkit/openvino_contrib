@@ -10,7 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertTile, "ConvertTile", 0);
 ArmPlugin::pass::ConvertTile::ConvertTile() {
     auto tile = ngraph::pattern::wrap_type<opset::Tile>();
 

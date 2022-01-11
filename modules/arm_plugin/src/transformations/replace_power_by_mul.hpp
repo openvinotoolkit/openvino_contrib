@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ReplacePowerByMul: public ngraph::pass::MatcherPass {
+
+class ReplacePowerByMul: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ReplacePowerByMul();
 };
 }  // namespace pass

@@ -8,7 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertSplit: public ngraph::pass::MatcherPass {
+class ConvertSplit: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertSplit();
 };
 }  // namespace pass

@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertRound: public ngraph::pass::MatcherPass {
+
+class ConvertRound: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertRound();
 };
 }  // namespace pass

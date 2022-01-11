@@ -8,10 +8,14 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertDFT: public ngraph::pass::MatcherPass {
+class ConvertDFT: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertDFT();
 };
-struct ConvertIDFT: public ngraph::pass::MatcherPass {
+class ConvertIDFT: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertIDFT();
 };
 }  // namespace pass

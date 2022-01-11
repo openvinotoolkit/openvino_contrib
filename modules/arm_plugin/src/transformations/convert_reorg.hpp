@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertReorgYolo: public ngraph::pass::MatcherPass {
+
+class ConvertReorgYolo: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertReorgYolo();
 };
 }  // namespace pass

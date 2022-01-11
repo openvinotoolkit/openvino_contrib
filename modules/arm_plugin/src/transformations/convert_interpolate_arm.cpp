@@ -24,7 +24,7 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
     auto& coord_mode = attrs.coordinate_transformation_mode;
     auto& nearest_mode = attrs.nearest_mode;
 
-    if (coord_mode == Transform_mode::asymmetric && nearest_mode == Nearest_mode::FLOOR) {
+    if (coord_mode == Transform_mode::ASYMMETRIC && nearest_mode == Nearest_mode::FLOOR) {
         return is_upsample;
     }
 
@@ -65,7 +65,7 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
     return false;
 }
 
-
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertInterpolate, "ConvertInterpolate", 0);
 ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
     auto interp = ngraph::pattern::wrap_type<opset::Interpolate>();
 

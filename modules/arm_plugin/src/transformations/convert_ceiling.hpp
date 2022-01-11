@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct ConvertCeiling: public ngraph::pass::MatcherPass {
+
+class ConvertCeiling: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertCeiling();
 };
 }  // namespace pass

@@ -6,6 +6,7 @@
 #include "store_result_name.hpp"
 #include "transformations/utils/utils.hpp"
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::StoreResultName, "StoreResultName", 0);
 bool ArmPlugin::pass::StoreResultName::run_on_function(std::shared_ptr<ngraph::Function> f) {
     for (auto&& node : f->get_results()) {
         IE_ASSERT(node->inputs().size() == 1);

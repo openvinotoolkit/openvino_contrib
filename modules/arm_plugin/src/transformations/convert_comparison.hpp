@@ -11,37 +11,44 @@ namespace pass {
 
 class ConvertComparisionBase : public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     template <class T>
     ngraph::matcher_pass_callback convert_comparision();
 };
 
 class ConvertEqual: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertEqual();
 };
 
 class ConvertNotEqual: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertNotEqual();
 };
 
 class ConvertGreater: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertGreater();
 };
 
 class ConvertGreaterEqual: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertGreaterEqual();
 };
 
 class ConvertLess: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLess();
 };
 
 class ConvertLessEqual: public ConvertComparisionBase {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertLessEqual();
 };
 

@@ -8,6 +8,8 @@
 
 using namespace ArmPlugin;
 
+NGRAPH_RTTI_DEFINITION(pass::ConvertBatchNormInferenceV0toV5, "ConvertBatchNormInferenceV0toV5", 0);
+
 pass::ConvertBatchNormInferenceV0toV5::ConvertBatchNormInferenceV0toV5() {
     register_matcher(
         std::make_shared<ngraph::pattern::Matcher>(

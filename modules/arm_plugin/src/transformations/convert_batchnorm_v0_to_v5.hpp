@@ -7,6 +7,7 @@
 
 namespace ArmPlugin {
 namespace pass {
+
 class ConvertBatchNormInferenceV0toV5;
 
 } // namespace pass
@@ -14,5 +15,6 @@ class ConvertBatchNormInferenceV0toV5;
 
 class ArmPlugin::pass::ConvertBatchNormInferenceV0toV5 : public ngraph::pass::MatcherPass {
 public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertBatchNormInferenceV0toV5();
 };

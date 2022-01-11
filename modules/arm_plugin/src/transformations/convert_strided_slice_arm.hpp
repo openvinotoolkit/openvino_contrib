@@ -8,7 +8,9 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertStridedSliceToArm: public ngraph::pass::MatcherPass {
+class ConvertStridedSliceToArm: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertStridedSliceToArm();
 };
 }  // namespace pass

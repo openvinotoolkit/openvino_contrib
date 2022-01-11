@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct BroadcastPRelu: public ngraph::pass::MatcherPass {
+
+class BroadcastPRelu: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     BroadcastPRelu();
 };
 }  // namespace pass

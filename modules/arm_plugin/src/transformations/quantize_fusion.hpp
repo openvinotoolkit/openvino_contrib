@@ -10,27 +10,39 @@
 namespace ArmPlugin {
 namespace pass {
 
-struct ConvertQuantize: public ngraph::pass::MatcherPass {
+class ConvertQuantize: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertQuantize();
 };
 
-struct ConvolutionQuantizeFusion : public ngraph::pass::MatcherPass {
+class ConvolutionQuantizeFusion : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvolutionQuantizeFusion();
 };
 
-struct MeanQuantizeFusion : public ngraph::pass::MatcherPass {
+class MeanQuantizeFusion : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     MeanQuantizeFusion();
 };
 
-struct DequantizeInputFusion : public ngraph::pass::MatcherPass{
+class DequantizeInputFusion : public ngraph::pass::MatcherPass{
+public:
+    NGRAPH_RTTI_DECLARATION;
     DequantizeInputFusion();
 };
 
-struct AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
+class AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     AddDequantizeOnInputs();
 };
 
-struct ConvertBiasToI32: public ngraph::pass::MatcherPass {
+class ConvertBiasToI32: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     ConvertBiasToI32();
 };
 

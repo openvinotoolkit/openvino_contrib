@@ -10,6 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMaxPool1D, "ConvertMaxPool1D", 0);
 ArmPlugin::pass::ConvertMaxPool1D::ConvertMaxPool1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
         ngraph::pattern::wrap_type<opset::MaxPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
@@ -51,6 +52,7 @@ ArmPlugin::pass::ConvertMaxPool1D::ConvertMaxPool1D() {
     });
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertAvgPool1D, "ConvertAvgPool1D", 0);
 ArmPlugin::pass::ConvertAvgPool1D::ConvertAvgPool1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::AvgPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},

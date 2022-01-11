@@ -9,6 +9,7 @@
 
 using namespace ArmPlugin;
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertReduceMultiAxisBase, "ConvertReduceMultiAxisBase", 0);
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertReduceMultiAxisBase::convert_reduce() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -46,6 +47,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertReduceMultiAxisBase::conve
     };
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertReduceProd, "ConvertReduceProd", 0);
 ArmPlugin::pass::ConvertReduceProd::ConvertReduceProd() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::ReduceProd>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -54,6 +56,7 @@ ArmPlugin::pass::ConvertReduceProd::ConvertReduceProd() {
     register_matcher(m, convert_reduce<opset::ReduceProd>());
 }
 
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertReduceMin, "ConvertReduceMin", 0);
 ArmPlugin::pass::ConvertReduceMin::ConvertReduceMin() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::ReduceMin>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

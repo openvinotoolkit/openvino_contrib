@@ -7,7 +7,10 @@
 
 namespace ArmPlugin {
 namespace pass {
-struct NormalizeL2Fusion: public ngraph::pass::MatcherPass {
+
+class NormalizeL2Fusion: public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
     NormalizeL2Fusion();
 };
 }  // namespace pass
