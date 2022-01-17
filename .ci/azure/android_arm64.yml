@@ -48,12 +48,11 @@ jobs:
       df
       lsblk -o NAME,HCTL,SIZE,MOUNTPOINT | grep -i "sd"
       free -h
-    displayName: 'System info'
+    displayName: 'System information'
 
   - script: |
       rm -rf $(WORK_DIR)      ; mkdir $(WORK_DIR)
       rm -rf $(BUILD_DIR)     ; mkdir $(BUILD_DIR)
-      rm -rf $(OPENCV_SDK)    ; mkdir $(OPENCV_SDK)
       rm -rf $(ANDROID_TOOLS) ; mkdir $(ANDROID_TOOLS)
     displayName: 'Make dir'
 
@@ -73,8 +72,7 @@ jobs:
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install scons crossbuild-essential-arm64 
-      sudo apt --assume-yes install libprotoc-dev protobuf-compiler default-jdk
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler default-jdk
       # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
@@ -100,7 +98,6 @@ jobs:
         -DENABLE_OPENCV=OFF
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
-        -DENABLE_CLDNN=OFF
         -DENABLE_INTEL_VPU=OFF
         -DBUILD_java_api=ON
         -DTHREADING=SEQ
@@ -113,9 +110,9 @@ jobs:
     displayName: 'Build IE ARM plugin for Android ARM64'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List bin files'
+    displayName: 'List binary files'
 
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: '$(OPENVINO_REPO_DIR)/bin/'
-      artifactName: android_openvino_bin
+      artifactName: openvino_android_arm64
