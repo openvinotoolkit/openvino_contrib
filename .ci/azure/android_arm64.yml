@@ -73,7 +73,13 @@ jobs:
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
+      sudo apt --assume-yes install \ 
+          scons \
+          crossbuild-essential-arm64 \
+          libprotoc-dev \
+          protobuf-compiler \
+          default-jdk \
+          libusb-1.0-0-dev
       # Download OpenCV SDK
       wget https://github.com/opencv/opencv/releases/download/4.5.5/opencv-4.5.5-android-sdk.zip
       unzip opencv-4.5.5-android-sdk.zip -d $(OPENCV_SDK)
@@ -85,9 +91,7 @@ jobs:
       wget https://dl.google.com/android/repository/commandlinetools-linux-7583922_latest.zip
       unzip commandlinetools-linux-7583922_latest.zip
       yes | ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --licenses
-      ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "ndk-bundle"
-      ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platform-tools"
-      ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platforms;android-$(ANDROID_SDK_VERSION)"
+      ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "ndk-bundle" "platform-tools" "platforms;android-$(ANDROID_SDK_VERSION)"
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
