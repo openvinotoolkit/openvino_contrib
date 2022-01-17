@@ -1,0 +1,152 @@
+resources:
+  repositories:
+  - repository: openvino
+    type: github
+    endpoint: openvinotoolkit
+    name: openvinotoolkit/openvino
+
+jobs:
+- job: android_arm64
+  # About 150% of total time
+  timeoutInMinutes: 120
+
+  pool:
+    name: LIN_VMSS_VENV_F16S_U20_WU2
+
+  variables:
+    system.debug: true
+    VSTS_HTTP_RETRY: 5
+    VSTS_HTTP_TIMEOUT: 200
+    BUILD_TYPE: Release
+    REPO_DIR: $(Build.Repository.LocalPath)
+    OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
+    OPENCV_REPO_DIR: $(REPO_DIR)/../opencv
+    WORK_DIR: $(Pipeline.Workspace)/_w
+    BUILD_DIR: $(WORK_DIR)/build
+    BUILD_DIR_ARM: $(WORK_DIR)/build_arm
+    BUILD_DIR_OPENCV: $(WORK_DIR)/build_opencv
+    ANDROID_TOOLS: $(WORK_DIR)/android_tools
+    ANDROID_SDK_VERSION: 29
+    ANDROID_ABI_CONFIG: arm64-v8a
+
+  steps:
+  - script: |
+      curl -H Metadata:true --noproxy "*" "http://169.254.169.254/metadata/instance?api-version=2019-06-01"
+      whoami
+      uname -a
+      echo Python3 info ; which python3 ; python3 --version
+      echo Python info ; which python ; python --version
+      echo Java info ; which java ; java -version
+      echo gcc info ; which gcc ; gcc --version
+      echo cmake info ; which cmake ; cmake --version
+      lsb_release
+      env
+      cat /proc/cpuinfo
+      cat /proc/meminfo
+      cat /etc/fstab
+      vmstat -s
+      df
+      lsblk -o NAME,HCTL,SIZE,MOUNTPOINT | grep -i "sd"
+      free -h
+    displayName: 'System info'
+
+  - script: |
+      rm -rf $(WORK_DIR)      ; mkdir $(WORK_DIR)
+      rm -rf $(BUILD_DIR)     ; mkdir $(BUILD_DIR)
+      rm -rf $(ANDROID_TOOLS) ; mkdir $(ANDROID_TOOLS)
+    displayName: 'Make dir'
+
+  - checkout: self
+    clean: true
+    lfs: false
+    submodules: recursive
+    path: openvino_contrib
+
+  - checkout: openvino
+    clean: true
+    lfs: false
+    submodules: recursive
+    path: openvino
+
+  - script: |
+      set -e
+      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      # Move into contrib install_build_dependencies.sh
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
+      # OpenCV should provide install_build_dependencies.sh as well
+      # Move into resources
+      git clone https://github.com/opencv/opencv.git --depth 1 $(OPENCV_REPO_DIR)
+      # Speed up build
+      wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
+      unzip ninja-linux.zip
+      sudo cp -v ninja /usr/local/bin/
+      # Install Android SDK, NDK and TOOLS
+      wget https://dl.google.com/android/repository/commandlinetools-linux-7583922_latest.zip
+      unzip commandlinetools-linux-7583922_latest.zip
+      yes | ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --licenses
+      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "ndk-bundle"
+      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platform-tools"
+      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platforms;android-$(ANDROID_SDK_VERSION)"
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install dependencies'
+
+  - task: CMake@1
+    inputs:
+      cmakeArgs: >
+        -GNinja
+        -DVERBOSE_BUILD=ON
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DCMAKE_TOOLCHAIN_FILE=$(ANDROID_TOOLS)/ndk-bundle/build/cmake/android.toolchain.cmake
+        -DANDROID_SDK_ROOT=$(ANDROID_TOOLS)/platforms/android-$(ANDROID_SDK_VERSION)
+        -DANDROID_SDK_TOOLS=$(ANDROID_TOOLS)/platform-tools
+        -DBUILD_ANDROID_PROJECTS=OFF
+        -DANDROID_ABI=$(ANDROID_ABI_CONFIG) 
+        -DANDROID_STL=c++_shared
+        -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
+        $(OPENCV_REPO_DIR)
+      workingDirectory: $(BUILD_DIR_OPENCV)
+
+  - script: ninja
+    workingDirectory: $(BUILD_DIR_OPENCV)
+    displayName: 'Build OpenCV Android ARM64'
+
+  - script: ninja install
+    workingDirectory: $(BUILD_DIR_OPENCV)
+    displayName: 'Install OpenCV Android ARM64'
+
+  - task: CMake@1
+    inputs:
+      cmakeArgs: >
+        -GNinja
+        -DVERBOSE_BUILD=ON
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DCMAKE_TOOLCHAIN_FILE=$(ANDROID_TOOLS)/ndk-bundle/build/cmake/android.toolchain.cmake
+        -DANDROID_ABI=$(ANDROID_ABI_CONFIG)
+        -DANDROID_STL=c++_shared
+        -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
+        -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/sdk/native/jni
+        -DENABLE_OPENCV=OFF
+        -DENABLE_MYRIAD=OFF
+        -DENABLE_TESTS=ON
+        -DENABLE_SAMPLES=ON
+        -DENABLE_CLDNN=OFF
+        -DENABLE_VPU=OFF
+        -DENABLE_GNA=OFF
+        -DENABLE_MYRIAD=OFF
+        -DTHREADING=SEQ
+        -DBUILD_java_api=ON
+        -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
+        $(OPENVINO_REPO_DIR)
+      workingDirectory: $(BUILD_DIR)
+
+  - script: ninja
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Build IE ARM plugin for Android ARM64'
+
+  - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
+    displayName: 'List bin files'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: '$(OPENVINO_REPO_DIR)/bin/'
+      artifactName: android_openvino_bin
