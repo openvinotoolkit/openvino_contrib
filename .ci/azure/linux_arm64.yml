@@ -107,7 +107,7 @@ jobs:
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
         -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/lib/cmake/opencv4
         -DENABLE_OPENCV=OFF
-        -DENABLE_MYRIAD=OFF
+        -DENABLE_INTEL_VPU=OFF
         -DENABLE_TESTS=ON
         -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
         $(OPENVINO_REPO_DIR)

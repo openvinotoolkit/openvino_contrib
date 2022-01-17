@@ -73,16 +73,8 @@ jobs:
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install \ 
-          scons \
-          crossbuild-essential-arm64 \
-          libprotoc-dev \
-          protobuf-compiler \
-          default-jdk \
-          libusb-1.0-0-dev
-      # Download OpenCV SDK
-      wget https://github.com/opencv/opencv/releases/download/4.5.5/opencv-4.5.5-android-sdk.zip
-      unzip opencv-4.5.5-android-sdk.zip -d $(OPENCV_SDK)
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 
+      sudo apt --assume-yes install libprotoc-dev protobuf-compiler default-jdk
       # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
@@ -105,17 +97,13 @@ jobs:
         -DANDROID_ABI=$(ANDROID_ABI_CONFIG)
         -DANDROID_STL=c++_shared
         -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
-        -DOpenCV_DIR=$(OPENCV_SDK)/OpenCV-android-sdk/sdk/native/jni
         -DENABLE_OPENCV=OFF
-        -DENABLE_MYRIAD=OFF
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
         -DENABLE_CLDNN=OFF
-        -DENABLE_VPU=OFF
-        -DENABLE_GNA=OFF
-        -DENABLE_MYRIAD=OFF
-        -DTHREADING=SEQ
+        -DENABLE_INTEL_VPU=OFF
         -DBUILD_java_api=ON
+        -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
