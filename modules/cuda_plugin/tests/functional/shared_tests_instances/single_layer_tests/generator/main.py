@@ -19,6 +19,7 @@ import ops.clamp as clamp
 import ops.swish as swish
 import ops.maxpool as maxpool
 import ops.avgpool as avgpool
+import ops.group_convolution as group_convolution
 
 import ops.convolution_backprop_data_add as convolution_backprop_data_add
 import ops.convolution_backprop_data as convolution_backprop_data
@@ -33,6 +34,7 @@ tests_to_generate = [
     swish.TestTraits(),
     maxpool.TestTraits(),
     avgpool.TestTraits(),
+    group_convolution.TestTraits(),
 
     # The following test gerators require models with applied graph transformations.
     # If you don't have such models some tests will be dropped (including ones for fused operators).

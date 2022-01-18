@@ -28,10 +28,6 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
 
-    InferPadding(node);
-
-    if (input_shape_.size() == CONV_1D_DIMS_NUMBER) ConvertConv1DToConv2D();
-
     if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolution>) {
         groups_ = node.get_input_shape(1)[0];
         Expects(input_shape_[1] % groups_ == 0);
@@ -39,6 +35,10 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     }
     Expects(groups_ >= 1U);
     filter_shape_[0] *= groups_;
+
+    InferPadding(node);
+
+    if (input_shape_.size() == CONV_1D_DIMS_NUMBER) ConvertConv1DToConv2D();
 
     const size_t dims_number = NumberOfDims();
     Ensures(input_shape_.size() == dims_number);
