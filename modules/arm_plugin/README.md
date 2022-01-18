@@ -32,7 +32,7 @@ Parameter name  | Parameter values  | Default  | Description
 `KEY_CPU_THREADS_NUM` | positiv integer values| Limit `#threads` that are used by Inference Engine for inference on the CPU
 
 ## Supported Layers and Limitations
-The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [arm_opset.md](docs/arm_opset.md).
+The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined [here](https://github.com/openvinotoolkit/openvino_contrib/wiki/ARM-plugin-operation-set-specification).
 
 ## Supported Model Formats
 * FP32 – Supported and preferred
