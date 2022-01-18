@@ -3,7 +3,7 @@
 //
 
 #include "convert.cuh"
-#include "elementwise.cuh"
+#include "elementwise_binary.cuh"
 #include "power.hpp"
 #include "tensor_helpers.hpp"
 
@@ -47,8 +47,8 @@ void Power::operator()(cudaStream_t stream,
         Type_t::u32,
         Type_t::u64>;
     using Switcher = ElementwiseBinary<SupportedElementTypes, PowerOpImpl>;
-    Switcher switcher{element_type_, max_threads_per_block_};
-    switcher(stream, in0, in0_num_elements, in1, in1_num_elements, out);
+    Switcher switcher{element_type_, max_threads_per_block_, in0_num_elements, in1_num_elements};
+    switcher(stream, in0, in1, out);
 }
 
 }  // namespace kernel
