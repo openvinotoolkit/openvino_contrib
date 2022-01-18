@@ -59,15 +59,15 @@ private:
     const int64_t num_iterations_;
     std::vector<OperationInfo> inputs_info_;
     std::vector<OperationInfo> outputs_info_;
-    mutable std::unordered_map<uint64_t, uint64_t> inputs_parameters_map_;
+    std::unordered_map<uint64_t, uint64_t> inputs_parameters_map_;
     std::vector<uint64_t> invariant_inputs_;
-    mutable std::unordered_map<uint64_t, PortMap> portmap_inputs_;
-    mutable std::unordered_map<uint64_t, kernel::Slice> kernelmap_inputs_;
-    mutable std::unordered_map<uint64_t, uint64_t> results_outputs_map_;
-    mutable std::unordered_map<uint64_t, std::vector<uint64_t>> iterations_results_map_;
-    mutable std::unordered_map<uint64_t, PortMap> portmap_outputs_;
-    mutable std::unordered_map<uint64_t, kernel::Insert> kernelmap_outputs_;
-    mutable std::unordered_map<uint64_t, uint64_t> results_parameters_map_;
+    std::unordered_map<uint64_t, PortMap> portmap_inputs_;
+    std::unordered_map<uint64_t, kernel::Slice> kernelmap_inputs_;
+    std::unordered_map<uint64_t, uint64_t> results_outputs_map_;
+    std::unordered_map<uint64_t, std::vector<uint64_t>> iterations_results_map_;
+    std::unordered_map<uint64_t, PortMap> portmap_outputs_;
+    std::unordered_map<uint64_t, kernel::Insert> kernelmap_outputs_;
+    std::unordered_map<uint64_t, uint64_t> results_parameters_map_;
 };
 
 }  // namespace CUDAPlugin

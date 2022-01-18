@@ -132,14 +132,6 @@ std::vector<BufferID> OperationBuffersExtractor::immutableBuffersIds() const {
     return result;
 }
 
-std::size_t OperationBuffersExtractor::GetTensorByteSize(const ngraph::Output<ngraph::Node>& input) {
-    return input.get_element_type().size() * shape_size(input.get_shape());
-}
-
-std::size_t OperationBuffersExtractor::GetTensorByteSize(const ngraph::Input<ngraph::Node>& input) {
-    return input.get_element_type().size() * shape_size(input.get_shape());
-}
-
 void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, int node_idx) {
     std::vector<std::pair<std::string, TensorID::Ptr>> mergedTensors;
     mergedTensors.reserve(node->inputs().size());
