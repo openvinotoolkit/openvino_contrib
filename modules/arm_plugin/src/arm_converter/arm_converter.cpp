@@ -180,6 +180,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, con
         Register<ngraph::op::v8::NV12toRGB>();
         Register<ngraph::op::v8::I420toBGR>();
         Register<ngraph::op::v8::I420toRGB>();
+        Register<ngraph::op::v8::MaxPool>();
     }
     Register<opset::Result>();
     for (auto&& node : function->get_ordered_ops()) {
