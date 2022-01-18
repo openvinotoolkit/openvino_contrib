@@ -6,7 +6,7 @@ resources:
     name: openvinotoolkit/openvino
 
 jobs:
-- job: Lin_arm64
+- job: linux_arm64
   # About 150% of total time
   timeoutInMinutes: 120
 
@@ -23,7 +23,6 @@ jobs:
     OPENCV_REPO_DIR: $(REPO_DIR)/../opencv
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
-    BUILD_DIR_ARM: $(WORK_DIR)/build_arm
     BUILD_DIR_OPENCV: $(WORK_DIR)/build_opencv
 
   steps:
@@ -45,12 +44,12 @@ jobs:
       df
       lsblk -o NAME,HCTL,SIZE,MOUNTPOINT | grep -i "sd"
       free -h
-    displayName: 'System info'
+    displayName: 'System information'
 
   - script: |
       rm -rf $(WORK_DIR) ; mkdir $(WORK_DIR)
       rm -rf $(BUILD_DIR) ; mkdir $(BUILD_DIR)
-    displayName: 'Make dir'
+    displayName: 'Make directory'
 
   - checkout: self
     clean: true
@@ -92,11 +91,11 @@ jobs:
 
   - script: ninja
     workingDirectory: $(BUILD_DIR_OPENCV)
-    displayName: 'Build OpenCV Lin ARM64'
+    displayName: 'Build OpenCV Linux ARM64'
 
   - script: ninja install
     workingDirectory: $(BUILD_DIR_OPENCV)
-    displayName: 'Install OpenCV Lin ARM64'
+    displayName: 'Install OpenCV Linux ARM64'
 
   - task: CMake@1
     inputs:
@@ -107,30 +106,23 @@ jobs:
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
         -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/lib/cmake/opencv4
         -DENABLE_OPENCV=OFF
-        -DENABLE_MYRIAD=OFF
         -DENABLE_TESTS=ON
-        -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
+        -DENABLE_SAMPLES=ON
+        -DBUILD_java_api=OFF
+        -DENABLE_INTEL_VPU=OFF
+        -DTHREADING=SEQ
+        -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
-  - script: ninja ie_dev_targets
-    workingDirectory: $(BUILD_DIR)
-    displayName: 'Build IE Lin ARM64'
-
-  - task: CMake@1
-    inputs:
-      cmakeArgs: >
-        -GNinja
-        -DVERBOSE_BUILD=ON
-        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_DIR)
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
-        $(REPO_DIR)/modules/arm_plugin
-      workingDirectory: $(BUILD_DIR_ARM)
-
   - script: ninja
-    workingDirectory: $(BUILD_DIR_ARM)
-    displayName: 'Build ARM plugin for ARM64'
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Build IE ARM plugin for Linux ARM64'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List bin files'
+    displayName: 'List binary files'
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: '$(OPENVINO_REPO_DIR)/bin/'
+      artifactName: openvino_linux_arm64

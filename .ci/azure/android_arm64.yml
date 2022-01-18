@@ -24,7 +24,7 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
     BUILD_DIR_ARM: $(WORK_DIR)/build_arm
-    BUILD_DIR_OPENCV: $(WORK_DIR)/build_opencv
+    OPENCV_SDK: $(WORK_DIR)/opencv_sdk
     ANDROID_TOOLS: $(WORK_DIR)/android_tools
     ANDROID_SDK_VERSION: 29
     ANDROID_ABI_CONFIG: arm64-v8a
@@ -48,7 +48,7 @@ jobs:
       df
       lsblk -o NAME,HCTL,SIZE,MOUNTPOINT | grep -i "sd"
       free -h
-    displayName: 'System info'
+    displayName: 'System information'
 
   - script: |
       rm -rf $(WORK_DIR)      ; mkdir $(WORK_DIR)
@@ -72,10 +72,7 @@ jobs:
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
-      # OpenCV should provide install_build_dependencies.sh as well
-      # Move into resources
-      git clone https://github.com/opencv/opencv.git --depth 1 $(OPENCV_REPO_DIR)
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler default-jdk
       # Speed up build
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
@@ -83,36 +80,10 @@ jobs:
       # Install Android SDK, NDK and TOOLS
       wget https://dl.google.com/android/repository/commandlinetools-linux-7583922_latest.zip
       unzip commandlinetools-linux-7583922_latest.zip
-      yes | ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --licenses
-      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "ndk-bundle"
-      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platform-tools"
-      ./cmdline-tools/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "platforms;android-$(ANDROID_SDK_VERSION)"
+      yes | ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --licenses
+      ./cmdline-tools/bin/sdkmanager --sdk_root=$(ANDROID_TOOLS) --install "ndk-bundle" "platform-tools" "platforms;android-$(ANDROID_SDK_VERSION)"
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
-
-  - task: CMake@1
-    inputs:
-      cmakeArgs: >
-        -GNinja
-        -DVERBOSE_BUILD=ON
-        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-        -DCMAKE_TOOLCHAIN_FILE=$(ANDROID_TOOLS)/ndk-bundle/build/cmake/android.toolchain.cmake
-        -DANDROID_SDK_ROOT=$(ANDROID_TOOLS)/platforms/android-$(ANDROID_SDK_VERSION)
-        -DANDROID_SDK_TOOLS=$(ANDROID_TOOLS)/platform-tools
-        -DBUILD_ANDROID_PROJECTS=OFF
-        -DANDROID_ABI=$(ANDROID_ABI_CONFIG) 
-        -DANDROID_STL=c++_shared
-        -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
-        $(OPENCV_REPO_DIR)
-      workingDirectory: $(BUILD_DIR_OPENCV)
-
-  - script: ninja
-    workingDirectory: $(BUILD_DIR_OPENCV)
-    displayName: 'Build OpenCV Android ARM64'
-
-  - script: ninja install
-    workingDirectory: $(BUILD_DIR_OPENCV)
-    displayName: 'Install OpenCV Android ARM64'
 
   - task: CMake@1
     inputs:
@@ -124,17 +95,12 @@ jobs:
         -DANDROID_ABI=$(ANDROID_ABI_CONFIG)
         -DANDROID_STL=c++_shared
         -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
-        -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/sdk/native/jni
         -DENABLE_OPENCV=OFF
-        -DENABLE_MYRIAD=OFF
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
-        -DENABLE_CLDNN=OFF
-        -DENABLE_VPU=OFF
-        -DENABLE_GNA=OFF
-        -DENABLE_MYRIAD=OFF
-        -DTHREADING=SEQ
+        -DENABLE_INTEL_VPU=OFF
         -DBUILD_java_api=ON
+        -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
@@ -144,9 +110,9 @@ jobs:
     displayName: 'Build IE ARM plugin for Android ARM64'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List bin files'
+    displayName: 'List binary files'
 
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: '$(OPENVINO_REPO_DIR)/bin/'
-      artifactName: android_openvino_bin
+      artifactName: openvino_android_arm64
