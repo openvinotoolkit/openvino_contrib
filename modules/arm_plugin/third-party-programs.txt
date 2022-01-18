@@ -15,7 +15,7 @@ terms are listed below.
 -------------------------------------------------------------
 
 1. ComputeLibrary
-   Copyright (c) 2017-2021 Arm Limited
+   Copyright (c) 2017-2022 Arm Limited
 
 MIT License
 
