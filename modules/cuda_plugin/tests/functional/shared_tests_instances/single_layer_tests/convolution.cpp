@@ -115,7 +115,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingSymmetric2,
                                            ::testing::Values(std::vector<size_t>({1, 3, 30})),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric1,
                                            ::testing::ValuesIn(netPrecisions),
@@ -126,7 +126,7 @@ INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric1,
                                            ::testing::Values(std::vector<size_t>({1, 3, 30})),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution1D_ExplicitPaddingAsymmetric2,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution1D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv1DParams_ExplicitPaddingAsymmetric2,
                                            ::testing::ValuesIn(netPrecisions),
@@ -233,7 +233,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingSymmetric2,
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric1,
                                            ::testing::ValuesIn(netPrecisions),
@@ -245,7 +245,7 @@ INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric1,
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution2D_ExplicitPaddingAsymmetric2,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric2,
                                            ::testing::ValuesIn(netPrecisions),
@@ -339,7 +339,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingSymmetric2,
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingAsymmetric1,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric1,
                                            ::testing::ValuesIn(netPrecisions),
@@ -351,7 +351,7 @@ INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric1,
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         ConvolutionLayerThresholdTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(DISABLED_smoke_Convolution3D_ExplicitPaddingAsymmetric2,
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_ExplicitPaddingAsymmetric2,
                         ConvolutionLayerThresholdTest,
                         ::testing::Combine(conv3DParams_ExplicitPaddingAsymmetric2,
                                            ::testing::ValuesIn(netPrecisions),
@@ -1918,7 +1918,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 52, 52)
 // Operators: 'yolo-v3-tf:opid59' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v3_tf_opid59,
+    autogen_Convolution_yolo_v3_tf_opid59,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -1944,7 +1944,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 76, 76)
 // Operators: 'yolo-v4-tf:opid92' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid92,
+    autogen_Convolution_yolo_v4_tf_opid92,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -1970,7 +1970,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 256, 38, 38)
 // Operators: 'yolo-v4-tf:opid540' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid540,
+    autogen_Convolution_yolo_v4_tf_opid540,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -1996,7 +1996,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 512, 19, 19)
 // Operators: 'yolo-v4-tf:opid588' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid588,
+    autogen_Convolution_yolo_v4_tf_opid588,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2022,7 +2022,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 512, 26, 26)
 // Operators: 'yolo-v3-tf:opid169' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v3_tf_opid169,
+    autogen_Convolution_yolo_v3_tf_opid169,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2048,7 +2048,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 512, 38, 38)
 // Operators: 'yolo-v4-tf:opid212' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid212,
+    autogen_Convolution_yolo_v4_tf_opid212,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2074,7 +2074,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 64, 208, 208)
 // Operators: 'yolo-v3-tf:opid8' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v3_tf_opid8,
+    autogen_Convolution_yolo_v3_tf_opid8,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2100,7 +2100,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 64, 304, 304)
 // Operators: 'yolo-v4-tf:opid7' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid7,
+    autogen_Convolution_yolo_v4_tf_opid7,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2126,7 +2126,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 1024, 13, 13)
 // Operators: 'yolo-v3-tf:opid279' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v3_tf_opid279,
+    autogen_Convolution_yolo_v3_tf_opid279,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2152,7 +2152,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 1024, 19, 19)
 // Operators: 'yolo-v4-tf:opid332' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid332,
+    autogen_Convolution_yolo_v4_tf_opid332,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2178,7 +2178,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 128, 104, 104)
 // Operators: 'yolo-v3-tf:opid27' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v3_tf_opid27,
+    autogen_Convolution_yolo_v3_tf_opid27,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -2204,7 +2204,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 128, 152, 152)
 // Operators: 'yolo-v4-tf:opid44' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_yolo_v4_tf_opid44,
+    autogen_Convolution_yolo_v4_tf_opid44,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -9094,7 +9094,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (100, 90, 15, 15)
 // Operators: 'mask_rcnn_inception_v2_coco:opid578' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_mask_rcnn_inception_v2_coco_opid578,
+    autogen_Convolution_mask_rcnn_inception_v2_coco_opid578,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -9172,7 +9172,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 160, 50, 86)
 // Operators: 'mask_rcnn_inception_v2_coco:opid104' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_mask_rcnn_inception_v2_coco_opid104,
+    autogen_Convolution_mask_rcnn_inception_v2_coco_opid104,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -9198,7 +9198,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 32, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid6' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_ssd_mobilenet_v2_coco_opid6,
+    autogen_Convolution_ssd_mobilenet_v2_coco_opid6,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -9224,7 +9224,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 32, 320, 320)
 // Operators: 'efficientdet-d1-tf:opid6' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_efficientdet_d1_tf_opid6,
+    autogen_Convolution_efficientdet_d1_tf_opid6,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(
@@ -9250,7 +9250,7 @@ INSTANTIATE_TEST_CASE_P(
 // Out:    (1, 96, 50, 86)
 // Operators: 'mask_rcnn_inception_v2_coco:opid119' [FP16, FP32]
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_autogen_Convolution_mask_rcnn_inception_v2_coco_opid119,
+    autogen_Convolution_mask_rcnn_inception_v2_coco_opid119,
     ConvolutionLayerThresholdTest,
     ::testing::Combine(
         ::testing::Combine(

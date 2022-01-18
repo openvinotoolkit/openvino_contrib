@@ -13,6 +13,7 @@
 #include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
 #include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
 #include <transformations/op_conversions/convert_ti_to_sequences.hpp>
+#include <transformer/convolution_asym_padding_transformation.hpp>
 #include <transformer/fuse_conv_biasadd_activation.hpp>
 
 #include "bidirectional_lstm_sequence_composition.hpp"
@@ -46,15 +47,18 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
         manager.register_pass<ngraph::pass::ConvertPrecision>(
             ngraph::element::i8, isHalfSupported(device) ? ngraph::element::f16 : ngraph::element::f32);
     }
+
+    if (!cfg.disabled_tensoriterator_transform) {
+        manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
+    }
+    manager.register_pass<ngraph::pass::ConvolutionAsymPaddingTransformation>();
+    manager.register_pass<ngraph::pass::GroupConvolutionAsymPaddingTransformation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
     // TODO: Enable when FusedGroupConvolutionOp is ready
     // manager.register_pass<ngraph::pass::CudaFuseGroupConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
     manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
-    if (!cfg.disabled_tensoriterator_transform) {
-        manager.register_pass<ngraph::pass::BidirectionalSequenceComposition>(passConfig);
-    }
     manager.register_pass<ngraph::pass::ConcatTransformation>();
 
     manager.run_passes(transformed_function);
