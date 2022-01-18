@@ -79,10 +79,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                                                                        | Supported     |
 | [IDFT](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/signals/IDFT_7.md)                                                                                               | Supported**   |
 | [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                                                                   | Supported*    |
-| [I420toBGR](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toBGR_8.md)                                                                                
-| Supported**   |
-| [I420toRGB](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toRGB_8.md)                                                                                
-| Supported**   |
+| [I420toBGR](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toBGR_8.md)                                                                                | Supported**   |
+| [I420toRGB](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/I420toRGB_8.md)                                                                                | Supported**   |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                                                            | Supported*    |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                                                                  | Supported*    |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                                                              | Supported     |
@@ -96,7 +94,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [LSTMCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMCell_1.md)                                                                                      | Supported     |
 | [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                                                              | Supported**   |
 | [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                                                            | Supported     |
-| [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                                                                         | Supported***  |
+| [MaxPool-1](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                                                                         | Supported*  |
+| [MaxPool-8](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_8.md)                                                                                         | Supported**    |
 | [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                                                                      | Supported     |
 | [Minimum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Minimum_1.md)                                                                                      | Supported     |
 | [Mish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Mish_4.md)                                                                                            | Supported     |
@@ -197,6 +196,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 * `'Less'` doesn't support `broadcast` for inputs.
 * `'LessEqual'` doesn't support `broadcast` for inputs.
 * `'LRN'` layer is supported `axes = {1}` or `axes = {2, 3}` only.
+* `'MaxPool-1'` layer is supported via arm_compute library for 4D input tensor and via reference implementation for another cases.
 * `'Mod'` layer is supported for FP32 only.
 * `'MVN'` layer is supported via arm_compute library for 2D inputs and `false` value of `'normalize_variance'` and `false` value of `'across_channels'`, for another cases layer is implemented via `ngraph::reference`.
 * `'Normalize'` layer is supported via arm_compute library with `MAX` value of `'eps_mode'` and `axes = {2 | 3}`, and for `ADD` value of `'eps_mode'` layer uses `'DecomposeNormalizeL2Add'`, for another cases layer is implemented via `ngraph::reference`.
