@@ -24,18 +24,12 @@ import openvino.tools.mo as mo
 from openvino.tools.mo.main import main, print_argv
 from openvino.tools.mo.utils.cli_parser import get_common_cli_parser
 
-from openvino.tools.mo.utils.versions_checker import check_python_version
 from openvino.tools.mo.utils.cli_parser import get_placeholder_shapes, parse_tuple_pairs, \
     get_mean_scale_dictionary, get_freeze_placeholder_values
 from openvino.tools.mo.front.common.replacement import FrontReplacementOp, FrontReplacementPattern, FrontReplacementSubgraph
 from openvino.tools.mo.front.extractor import FrontExtractorOp
 from openvino.tools.mo.utils import import_extensions
 from openvino.tools.mo.pipeline.unified import unified_pipeline
-
-
-ret_code = check_python_version()
-if ret_code:
-    sys.exit(ret_code)
 
 
 def get_front_classes():
