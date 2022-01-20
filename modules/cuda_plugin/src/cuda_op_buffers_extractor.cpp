@@ -174,6 +174,7 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         tensor->SetParent(parentTensor, totalSize);
         totalSize += mutable_tensor_sizes_.at(tensor->GetId());
     }
+    mutable_tensor_sizes_[parentTensor->GetId()] = totalSize;
     Expects(mergedTensorByteSize == totalSize);
 }
 
