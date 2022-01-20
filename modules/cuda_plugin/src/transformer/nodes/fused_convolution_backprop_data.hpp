@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -15,6 +15,7 @@
 
 namespace CUDAPlugin::nodes {
 
+// TODO: Try to use BasicFusedConvolution or derive from ngraph::op::v1::ConvolutionBackpropData
 class FusedConvBackpropData : public ngraph::op::Op {
 public:
     explicit FusedConvBackpropData(const ngraph::Output<Node>& data_batch,
