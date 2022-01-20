@@ -1,11 +1,11 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <ngraph/pass/graph_rewrite.hpp>
-#include <transformations_visibility.hpp>
+#include <ngraph/node.hpp>
 
 namespace ngraph::pass {
 
@@ -15,10 +15,22 @@ public:
     FuseConvolutionWithBiasAdd();
 };
 
-class FuseConvolutionWithBiasaddAdd : public ngraph::pass::MatcherPass {
+class FuseGroupConvolutionWithBiasAdd : public ngraph::pass::MatcherPass {
 public:
     NGRAPH_RTTI_DECLARATION;
-    FuseConvolutionWithBiasaddAdd();
+    FuseGroupConvolutionWithBiasAdd();
+};
+
+class FuseConvolutionWithBiasAddAdd : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    FuseConvolutionWithBiasAddAdd();
+};
+
+class FuseGroupConvolutionWithBiasAddAdd : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    FuseGroupConvolutionWithBiasAddAdd();
 };
 
 class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
@@ -49,6 +61,12 @@ class CudaFuseConvBiasAddActivation : public ngraph::pass::GraphRewrite {
 public:
     NGRAPH_RTTI_DECLARATION;
     CudaFuseConvBiasAddActivation();
+};
+
+class CudaFuseGroupConvBiasAddActivation : public ngraph::pass::GraphRewrite {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    CudaFuseGroupConvBiasAddActivation();
 };
 
 class CudaFuseConvBackpropDataAdd : public ngraph::pass::MatcherPass {
