@@ -1,75 +1,144 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <array>
+#include <gsl/gsl_assert>
+#include <ngraph/node.hpp>
 #include <ngraph/op/convolution.hpp>
+#include <ngraph/op/group_conv.hpp>
+#include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <type_traits>
 
 #include "cuda_plugin_custom_node_types.hpp"
-#include "ngraph/attribute_adapter.hpp"
-#include "ngraph/ngraph_visibility.hpp"
-#include "ngraph/type.hpp"
 
 namespace CUDAPlugin::nodes {
 
-class FusedConvolution : public ngraph::op::Op {
+namespace {
+
+template <typename TBaseConvolution>
+inline constexpr const char* conv_name;
+
+template <>
+inline constexpr const char* conv_name<ngraph::op::v1::Convolution> = "FusedConvolution";
+
+template <>
+inline constexpr const char* conv_name<ngraph::op::v1::GroupConvolution> = "FusedGroupConvolution";
+
+}  // namespace
+
+template <typename TBaseConvolution>
+class BasicFusedConvolution : public TBaseConvolution {
+    static_assert(std::is_same_v<TBaseConvolution, ngraph::op::v1::Convolution> ||
+                      std::is_same_v<TBaseConvolution, ngraph::op::v1::GroupConvolution>,
+                  "TBaseConvolution should be either ngraph::op::v1::Convolution or ngraph::op::v1::GroupConvolution");
+
 public:
-    explicit FusedConvolution(const ngraph::Output<Node>& data_batch,
-                              const ngraph::Output<Node>& filters,
-                              const ngraph::Output<Node>& bias,
-                              const ngraph::Strides& strides,
-                              const ngraph::CoordinateDiff& pads_begin,
-                              const ngraph::CoordinateDiff& pads_end,
-                              const ngraph::Strides& dilations,
-                              const ngraph::op::PadType& auto_pad,
-                              ActivationMode activation);
-    explicit FusedConvolution(const ngraph::Output<Node>& data_batch,
-                              const ngraph::Output<Node>& filters,
-                              const ngraph::Output<Node>& bias,
-                              const ngraph::Output<Node>& addArgNode,
-                              const ngraph::Strides& strides,
-                              const ngraph::CoordinateDiff& pads_begin,
-                              const ngraph::CoordinateDiff& pads_end,
-                              const ngraph::Strides& dilations,
-                              const ngraph::op::PadType& auto_pad,
-                              ActivationMode activation);
+    using BaseConvolution = TBaseConvolution;
 
-    inline static constexpr type_info_t type_info{"FusedConvolution", 0};
-    const type_info_t& get_type_info() const override { return type_info; }
+    explicit BasicFusedConvolution(const ngraph::Output<ngraph::Node>& data_batch,
+                                   const ngraph::Output<ngraph::Node>& filters,
+                                   const ngraph::Output<ngraph::Node>& bias,
+                                   const ngraph::Strides& strides,
+                                   const ngraph::CoordinateDiff& pads_begin,
+                                   const ngraph::CoordinateDiff& pads_end,
+                                   const ngraph::Strides& dilations,
+                                   const ngraph::op::PadType& auto_pad,
+                                   ActivationMode activation)
+        : TBaseConvolution(data_batch, filters, strides, pads_begin, pads_end, dilations, auto_pad),
+          bias_shape_{bias.get_shape()},
+          bias_type_{bias.get_element_type()},
+          has_add_node_{false},
+          activation_{activation} {
+        TBaseConvolution::set_arguments({bias});
+        TBaseConvolution::constructor_validate_and_infer_types();
+    }
 
-    bool visit_attributes(ngraph::AttributeVisitor& visitor) override;
+    explicit BasicFusedConvolution(const ngraph::Output<ngraph::Node>& data_batch,
+                                   const ngraph::Output<ngraph::Node>& filters,
+                                   const ngraph::Output<ngraph::Node>& bias,
+                                   const ngraph::Output<ngraph::Node>& add_node,
+                                   const ngraph::Strides& strides,
+                                   const ngraph::CoordinateDiff& pads_begin,
+                                   const ngraph::CoordinateDiff& pads_end,
+                                   const ngraph::Strides& dilations,
+                                   const ngraph::op::PadType& auto_pad,
+                                   ActivationMode activation)
+        : TBaseConvolution(data_batch, filters, strides, pads_begin, pads_end, dilations, auto_pad),
+          bias_shape_{bias.get_shape()},
+          bias_type_{bias.get_element_type()},
+          has_add_node_{true},
+          activation_{activation} {
+        TBaseConvolution::set_arguments({bias, add_node});
+        TBaseConvolution::constructor_validate_and_infer_types();
+    }
 
-    std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
+    inline static constexpr ngraph::Node::type_info_t type_info{conv_name<TBaseConvolution>, 0};
 
-    void validate_and_infer_types() override;
-    void conv_validate_and_infer_types();
+    const ngraph::Node::type_info_t& get_type_info() const override { return type_info; }
 
-    bool has_add_node() const;
+    std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override {
+        ngraph::check_new_args_count(this, new_args);
+        if (new_args.size() == 3) {
+            return std::make_shared<BasicFusedConvolution<TBaseConvolution>>(new_args.at(0),
+                                                                             new_args.at(1),
+                                                                             new_args.at(2),
+                                                                             TBaseConvolution::m_strides,
+                                                                             TBaseConvolution::m_pads_begin,
+                                                                             TBaseConvolution::m_pads_end,
+                                                                             TBaseConvolution::m_dilations,
+                                                                             TBaseConvolution::m_auto_pad,
+                                                                             activation_);
+        } else {
+            return std::make_shared<BasicFusedConvolution<TBaseConvolution>>(new_args.at(0),
+                                                                             new_args.at(1),
+                                                                             new_args.at(2),
+                                                                             new_args.at(3),
+                                                                             TBaseConvolution::m_strides,
+                                                                             TBaseConvolution::m_pads_begin,
+                                                                             TBaseConvolution::m_pads_end,
+                                                                             TBaseConvolution::m_dilations,
+                                                                             TBaseConvolution::m_auto_pad,
+                                                                             activation_);
+        }
+    }
 
-    void set_activation(ActivationMode act);
-    ActivationMode get_activation() const;
+    void validate_and_infer_types() override {
+        TBaseConvolution::validate_and_infer_types();
+        const auto& conv_out_shape = TBaseConvolution::get_output_shape(0);
+        const auto& element_type = TBaseConvolution::get_output_element_type(0);
 
-    const auto& get_strides() const { return strides_; }
-    const auto& get_dilations() const { return dilations_; }
-    const auto& get_pads_begin() const { return pads_begin_; }
-    const auto& get_pads_end() const { return pads_end_; }
-    const auto& get_auto_pad() const { return auto_pad_; }
+        const size_t num_spatial_dims = conv_out_shape.size() - 2;
+        const size_t nchw_channel_dim_offset = num_spatial_dims + 1;
+        constexpr size_t conv_output_rank_max{5};
+        constexpr size_t conv_bias_rank_min{3};
+        Expects(conv_out_shape.size() <= conv_output_rank_max);
+        Expects(bias_shape_.size() >= conv_bias_rank_min);
+        const size_t conv_channel_dim_size = conv_out_shape.at(conv_out_shape.size() - nchw_channel_dim_offset);
+        const size_t bias_channel_dim_size = bias_shape_.at(bias_shape_.size() - nchw_channel_dim_offset);
+
+        Expects(conv_channel_dim_size == bias_channel_dim_size);
+        Expects(bias_type_ == element_type);
+
+        TBaseConvolution::set_output_type(0, element_type, conv_out_shape);
+    }
+
+    bool has_add_node() const { return has_add_node_; }
+
+    void set_activation(ActivationMode mode) { activation_ = mode; }
+
+    ActivationMode get_activation() const { return activation_; }
 
 private:
-    /// Used for the shape validation
-    ngraph::Strides strides_;
-    ngraph::CoordinateDiff pads_begin_;
-    ngraph::CoordinateDiff pads_end_;
-    ngraph::Strides dilations_;
-    ngraph::op::PadType auto_pad_;
     ngraph::Shape bias_shape_;
     ngraph::element::Type bias_type_;
-
-    bool has_add_node_ = false;
+    bool has_add_node_;
     ActivationMode activation_;
-};
+};  // class TBaseConvolution
+
+using FusedConvolution = BasicFusedConvolution<ngraph::op::v1::Convolution>;
+using FusedGroupConvolution = BasicFusedConvolution<ngraph::op::v1::GroupConvolution>;
 
 }  // namespace CUDAPlugin::nodes

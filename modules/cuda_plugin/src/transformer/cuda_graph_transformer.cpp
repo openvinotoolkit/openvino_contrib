@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -47,6 +47,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
             ngraph::element::i8, isHalfSupported(device) ? ngraph::element::f16 : ngraph::element::f32);
     }
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
+    // TODO: Enable when FusedGroupConvolutionOp is ready
+    // manager.register_pass<ngraph::pass::CudaFuseGroupConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
     manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
