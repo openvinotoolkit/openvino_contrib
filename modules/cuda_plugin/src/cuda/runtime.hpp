@@ -155,6 +155,8 @@ public:
 
     ~Handle() { destroy(); }
 
+    operator bool() const { return native_ != Native{}; }
+
     const Native& get() const noexcept { return native_; }
 
 protected:
