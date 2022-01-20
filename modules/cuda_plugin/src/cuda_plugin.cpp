@@ -22,6 +22,7 @@
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
+#include "cuda_operation_registry.hpp"
 using namespace CUDAPlugin;
 
 Plugin::Plugin() {
@@ -137,14 +138,13 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     // So we need store as supported either unsupported node sets
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
-    auto opset = ngraph::get_opset6();
     for (auto&& node : transformedFunction->get_ops()) {
+        const bool isOpSupported = isOperationSupported(node);
         // Extract transformation history from transformed node as list of nodes
         for (auto&& fusedLayerName : ngraph::getFusedNamesVector(node)) {
             // Filter just nodes from original operation set
-            // TODO: fill with actual decision rules based on whether kernel is supported by backend
             if (InferenceEngine::details::contains(originalOps, fusedLayerName)) {
-                if (opset.contains_type(friendlyNameToType[fusedLayerName])) {
+                if (isOpSupported) {
                     supported.emplace(fusedLayerName);
                 } else {
                     unsupported.emplace(fusedLayerName);
@@ -196,6 +196,22 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     }
 
     return res;
+}
+
+bool Plugin::isOperationSupported(const std::shared_ptr<ngraph::Node>& node) const {
+    bool isOpSupported = false;
+    if (OperationRegistry::getInstance().hasOperation(node)) {
+        const TensorID dummyTensorID{0};
+        const CreationContext context{CUDA::Device{_cfg.deviceId}, false};
+        const std::vector<TensorID> inIds(node->get_input_size(), dummyTensorID);
+        const std::vector<TensorID> outIds(node->get_output_size(), dummyTensorID);
+        try {
+            OperationRegistry::getInstance().createOperation(context, node, inIds, outIds);
+            isOpSupported = true;
+        } catch (...) {
+        }
+    }
+    return isOpSupported;
 }
 
 void Plugin::SetConfig(const ConfigMap& config) { _cfg = Configuration{config, _cfg}; }
