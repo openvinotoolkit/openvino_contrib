@@ -29,7 +29,9 @@ private:
     std::vector<std::size_t> in_strides_;
     std::vector<std::size_t> out_strides_;
     std::vector<float> scales_;
-    bool is_upscale_;
+    std::vector<std::size_t> in_shape_;
+    std::vector<std::size_t> out_shape_;
+    bool can_use_upscale_optimizing_;
 
     std::optional<kernel::Interpolate> interpolate_;
 };
