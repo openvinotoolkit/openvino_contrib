@@ -42,6 +42,16 @@ const std::vector<std::vector<size_t>> efficientdetShapes = {
     {1, 88, 80, 80},
 };
 
+const std::vector<std::vector<size_t>> yolov5From20To40Shape = {
+    {1, 256, 20, 20},
+    {1, 256, 40, 40},
+};
+
+const std::vector<std::vector<size_t>> yolov5From40To80Shape = {
+    {1, 128, 40, 40},
+    {1, 128, 80, 80},
+};
+
 // TODO only nearest mode supported now
 const std::vector<ngraph::op::v4::Interpolate::InterpolateMode> nearestMode = {
     ngraph::op::v4::Interpolate::InterpolateMode::nearest,
@@ -49,31 +59,29 @@ const std::vector<ngraph::op::v4::Interpolate::InterpolateMode> nearestMode = {
 
 const std::vector<ngraph::op::v4::Interpolate::CoordinateTransformMode> coordinateTransformModes = {
     ngraph::op::v4::Interpolate::CoordinateTransformMode::asymmetric,
+    ngraph::op::v4::Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn,
     // TODO CoordinateTransform mode not supported yet
-    //        ngraph::op::v4::Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn,
-    //        ngraph::op::v4::Interpolate::CoordinateTransformMode::pytorch_half_pixel,
-    //        ngraph::op::v4::Interpolate::CoordinateTransformMode::half_pixel,
-    //        ngraph::op::v4::Interpolate::CoordinateTransformMode::align_corners,
+    // ngraph::op::v4::Interpolate::CoordinateTransformMode::pytorch_half_pixel,
+    // ngraph::op::v4::Interpolate::CoordinateTransformMode::half_pixel,
+    // ngraph::op::v4::Interpolate::CoordinateTransformMode::align_corners,
 };
 
 const std::vector<ngraph::op::v4::Interpolate::ShapeCalcMode> shapeCalculationMode = {
     ngraph::op::v4::Interpolate::ShapeCalcMode::sizes,
-    // TODO shapeCalculationMode mode not supported yet
-    // ngraph::op::v4::Interpolate::ShapeCalcMode::scales,
+    ngraph::op::v4::Interpolate::ShapeCalcMode::scales,
 };
 
 const std::vector<ngraph::op::v4::Interpolate::NearestMode> nearestModes = {
-    ngraph::op::v4::Interpolate::NearestMode::simple,
+    ngraph::op::v4::Interpolate::NearestMode::simple, ngraph::op::v4::Interpolate::NearestMode::floor,
     // TODO nearest modes not supported yet
-    //        ngraph::op::v4::Interpolate::NearestMode::round_prefer_floor,
-    //        ngraph::op::v4::Interpolate::NearestMode::floor,
-    //        ngraph::op::v4::Interpolate::NearestMode::ceil,
-    //        ngraph::op::v4::Interpolate::NearestMode::round_prefer_ceil,
+    // ngraph::op::v4::Interpolate::NearestMode::round_prefer_floor,
+    // ngraph::op::v4::Interpolate::NearestMode::ceil,
+    // ngraph::op::v4::Interpolate::NearestMode::round_prefer_ceil,
 };
 
 const std::vector<std::vector<size_t>> pads = {
     // TODO only zero padding is supported now
-    {0},
+    {0, 0, 0, 0},
 };
 
 const std::vector<bool> antialias = {
@@ -103,27 +111,8 @@ const auto nearestModeParams = ::testing::Combine(::testing::ValuesIn(nearestMod
                                                   ::testing::ValuesIn(defaultAxes),
                                                   ::testing::ValuesIn(defaultScales));
 
-class CUDNNInterpolateLayerTest : public UnsymmetricalComparer<InterpolateLayerTest> {
-public:
-    void SetUp() {
-        InterpolateLayerTest::SetUp();
-        threshold = 0.01f;
-        constexpr float up_to = 1.0f;
-        constexpr float start_from = -1.0f;
+class CUDNNInterpolateLayerTest : public UnsymmetricalComparer<InterpolateLayerTest> {};
 
-        const auto& ops = function->get_ordered_ops();
-        int seed = 1;
-        for (const auto& op : ops) {
-            if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                if (op->get_element_type() == ngraph::element::Type_t::f32) {
-                    const auto constant = ngraph::builder::makeConstant(
-                        op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
-                    function->replace_node(op, constant);
-                }
-            }
-        }
-    }
-};
 TEST_P(CUDNNInterpolateLayerTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
     Run();
@@ -190,6 +179,38 @@ const auto efficientdetCombinations = ::testing::Combine(nearestModeParams,
 INSTANTIATE_TEST_CASE_P(efficientdetInterpolateCombinationTests,
                         CUDNNInterpolateLayerTest,
                         efficientdetCombinations,
+                        InterpolateLayerTest::getTestCaseName);
+
+const auto yolov5InterpolateFrom20To40Shape =
+    ::testing::Combine(nearestModeParams,
+                       ::testing::ValuesIn(netPrecisions),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(yolov5From20To40Shape),
+                       ::testing::ValuesIn(yolov5From20To40Shape),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(additional_config));
+INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom20To40ShapeTests,
+                        CUDNNInterpolateLayerTest,
+                        yolov5InterpolateFrom20To40Shape,
+                        InterpolateLayerTest::getTestCaseName);
+
+const auto yolov5InterpolateFrom40To80Shape =
+    ::testing::Combine(nearestModeParams,
+                       ::testing::ValuesIn(netPrecisions),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(yolov5From40To80Shape),
+                       ::testing::ValuesIn(yolov5From40To80Shape),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(additional_config));
+INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom40To80ShapeTests,
+                        CUDNNInterpolateLayerTest,
+                        yolov5InterpolateFrom40To80Shape,
                         InterpolateLayerTest::getTestCaseName);
 
 namespace benchmark {
