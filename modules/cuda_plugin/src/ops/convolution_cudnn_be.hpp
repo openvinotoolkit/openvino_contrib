@@ -4,13 +4,13 @@
 
 #pragma once
 
+#include <atomic>
 #include <ngraph/node.hpp>
 #include <vector>
-#include <atomic>
 
+#include "convolution_components/convolution_components.hpp"
 #include "cuda/dnn_be.hpp"
 #include "cuda_operation_base.hpp"
-#include "convolution_components.hpp"
 
 namespace CUDAPlugin {
 
@@ -41,13 +41,13 @@ private:
                         void* workbuffer,
                         const CUDA::DnnBEExecutionPlanDescriptor& plan) const;
 
-    static CUDA::DnnBETensorDescriptor
-        MakeTensorDescriptor(int64_t id, cudnnDataType_t element_type,
-                             const ngraph::Shape& shape);
+    static CUDA::DnnBETensorDescriptor MakeTensorDescriptor(int64_t id,
+                                                            cudnnDataType_t element_type,
+                                                            const ngraph::Shape& shape);
 
 private:
     mutable std::atomic<int64_t> exec_plan_index_hint_ = 0;
     std::vector<CUDA::DnnBEExecutionPlanDescriptor> exec_plans_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin
