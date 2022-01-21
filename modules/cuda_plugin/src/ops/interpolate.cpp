@@ -7,36 +7,52 @@
 
 #include "converters.hpp"
 #include "cuda_operation_registry.hpp"
+#include "ngraph/op/constant.hpp"
 #include "ngraph/shape.hpp"
+#include "ngraph/validation_util.hpp"
 
 namespace CUDAPlugin {
 
 namespace {
 
-std::vector<float> getScalesVector(const std::vector<size_t>& input_shape, const std::vector<size_t>& output_shape) {
-    size_t num_of_axes = input_shape.size();
-    std::vector<float> scales(input_shape.size(), 1.0f);
-    for (size_t i = 0; i < num_of_axes; ++i) {
-        float scale = output_shape[i] == input_shape[i]
-                          ? 1.0f
-                          : static_cast<float>(output_shape[i]) / static_cast<float>(input_shape[i]);
-        scales[i] = scale;
+std::vector<float> getScalesVector(const CUDAPlugin::InterpolateOp::NodeOp& node) {
+    // for calculation scale for nearest mode see
+    // https://docs.openvino.ai/2021.1/openvino_docs_ops_image_Interpolate_4.html
+    Expects(node.get_attrs().mode == ngraph::op::v4::Interpolate::InterpolateMode::nearest);
+
+    const auto scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
+    const auto axis = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<int64_t>();
+
+    const auto& input_shape = node.get_input_shape(0);
+    const auto& output_shape = node.get_output_shape(0);
+
+    std::vector<float> result_scales(node.get_output_shape(0).size(), 1.0f);
+    for (size_t i = 0; i < axis.size(); ++i) {
+        using ShapeCalcMode = ngraph::op::v4::Interpolate::ShapeCalcMode;
+        if (node.get_attrs().shape_calculation_mode == ShapeCalcMode::scales) {
+            result_scales[axis[i]] = scales[i];
+        } else {
+            float scale = output_shape[i] == input_shape[i]
+                              ? 1.0f
+                              : static_cast<float>(output_shape[i]) / static_cast<float>(input_shape[i]);
+            result_scales[i] = scale;
+        }
     }
-    return scales;
+    return result_scales;
 }
 
-bool isUpscale(const std::vector<float>& scales) {
+bool canApplyUpscaleOptimizing(const std::vector<float>& scales) {
     bool is_downscale = false;
-    bool is_upscale = false;
+    bool can_be_optimized = false;
     for (const auto s : scales) {
         if (s < 1.0) {
             is_downscale = true;
             break;
-        } else if (s > 1.0) {
-            is_upscale = true;
+        } else if (s > 1.0 && s - std::floor(s) == 0.f) {
+            can_be_optimized = true;
         }
     }
-    return is_upscale && !is_downscale;
+    return can_be_optimized && !is_downscale;
 }
 
 void checkLimitations(const InterpolateOp::NodeOp& node) {
@@ -50,17 +66,23 @@ void checkLimitations(const InterpolateOp::NodeOp& node) {
                                      node.get_attrs().mode,
                                      Interpolate::InterpolateMode::nearest));
     }
-    if (node.get_attrs().shape_calculation_mode != Interpolate::ShapeCalcMode::sizes) {
-        throwIEException(fmt::format(
-            "Unsupported calculation mode ({}). Interpolate operation supports only sizes calculation mode({})",
-            node.get_attrs().shape_calculation_mode,
-            Interpolate::ShapeCalcMode::sizes));
-    }
-    if (node.get_attrs().nearest_mode != Interpolate::NearestMode::simple) {
+    if (node.get_attrs().nearest_mode != Interpolate::NearestMode::simple &&
+        node.get_attrs().nearest_mode != Interpolate::NearestMode::floor) {
         throwIEException(
-            fmt::format("Unsupported nearest mode ({}). Interpolate operation supports only simple nearest mode({})",
+            fmt::format("Unsupported nearest mode ({}). Interpolate operation supports only simple ({}), floor({}) and "
+                        "round_prefer_floor({}) modes",
                         node.get_attrs().nearest_mode,
-                        Interpolate::NearestMode::simple));
+                        Interpolate::NearestMode::simple,
+                        Interpolate::NearestMode::floor));
+    }
+    if (node.get_attrs().coordinate_transformation_mode != Interpolate::CoordinateTransformMode::asymmetric &&
+        node.get_attrs().coordinate_transformation_mode != Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn) {
+        throwIEException(
+            fmt::format("Unsupported coordinate transfrom mode ({}). Interpolate operation asymmetric ({}) and "
+                        "tf_half_pixel_for_nn ({}) modes",
+                        node.get_attrs().coordinate_transformation_mode,
+                        Interpolate::CoordinateTransformMode::asymmetric,
+                        Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn));
     }
     if (node.get_attrs().antialias != false) {
         throwIEException(
@@ -87,18 +109,27 @@ InterpolateOp::InterpolateOp(const CreationContext& context,
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
       in_strides_{ngraph::row_major_strides(node.get_input_shape(0))},
       out_strides_{ngraph::row_major_strides(node.get_output_shape(0))},
-      scales_{getScalesVector(node.get_input_shape(0), node.get_output_shape(0))},
-      is_upscale_{isUpscale(scales_)} {
+      scales_{getScalesVector(node)},
+      in_shape_{node.get_input_shape(0)},
+      out_shape_{node.get_output_shape(0)},
+      can_use_upscale_optimizing_{canApplyUpscaleOptimizing(scales_)} {
     checkLimitations(node);
 
     const auto& prop = context.device().props();
     const auto max_threads_per_block = prop.maxThreadsPerBlock;
-    const auto strides = is_upscale_ ? in_strides_[0] : out_strides_[0];
+    // is_upscale_ = false;
+    const auto strides = can_use_upscale_optimizing_ ? in_strides_[0] : out_strides_[0];
     const auto blocks_number = 1 + strides / max_threads_per_block;
     const auto threads_per_block = (blocks_number == 1) ? strides : max_threads_per_block;
     const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
 
-    interpolate_.emplace(blocks_number, threads_per_block, element_type, is_upscale_);
+    interpolate_.emplace(
+        blocks_number,
+        threads_per_block,
+        element_type,
+        can_use_upscale_optimizing_,
+        static_cast<kernel::Interpolate::NearestMode>(node.get_attrs().nearest_mode),
+        static_cast<kernel::Interpolate::TransformMode>(node.get_attrs().coordinate_transformation_mode));
 }
 
 void InterpolateOp::Execute(const InferenceRequestContext& context,
@@ -113,6 +144,8 @@ void InterpolateOp::Execute(const InferenceRequestContext& context,
                     static_cast<const size_t*>(workbuffers.immutable_buffers[0].get()),
                     static_cast<const size_t*>(workbuffers.immutable_buffers[1].get()),
                     static_cast<const float*>(workbuffers.immutable_buffers[2].get()),
+                    static_cast<const size_t*>(workbuffers.immutable_buffers[3].get()),
+                    static_cast<const size_t*>(workbuffers.immutable_buffers[4].get()),
                     dst);
 }
 
@@ -128,13 +161,15 @@ static void uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, const std:
 }
 
 WorkbufferRequest InterpolateOp::GetWorkBufferRequest() const {
-    return {{size_in_bytes(in_strides_), size_in_bytes(out_strides_), size_in_bytes(scales_)}, {}};
+    return {{size_in_bytes(in_strides_), size_in_bytes(out_strides_), size_in_bytes(scales_),size_in_bytes(in_shape_), size_in_bytes(out_shape_)}, {}};
 }
 
 void InterpolateOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     uploadDataToWorkbuffer(buffers[0], in_strides_);
     uploadDataToWorkbuffer(buffers[1], out_strides_);
     uploadDataToWorkbuffer(buffers[2], scales_);
+    uploadDataToWorkbuffer(buffers[3], in_shape_);
+    uploadDataToWorkbuffer(buffers[4], out_shape_);
 }
 
 OPERATION_REGISTER(InterpolateOp, Interpolate);
