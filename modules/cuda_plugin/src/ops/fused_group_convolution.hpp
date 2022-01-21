@@ -5,28 +5,26 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <memory>
 #include <transformer/nodes/fused_convolution.hpp>
 
-#include "convolution_components/convolution_components.hpp"
+#include "fused_convolution.hpp"
 
 namespace CUDAPlugin {
 
-class FusedConvolutionOp : public OperationCuDnn {
+class FusedGroupConvolutionOp : public OperationCuDnn {
 public:
-    using NodeOp = nodes::FusedConvolution;
+    using NodeOp = nodes::FusedGroupConvolution;
 
-    template <typename TOperation>
-    FusedConvolutionOp(const CreationContext& context,
-                       const TOperation& node,
-                       IndexCollection&& inputIds,
-                       IndexCollection&& outputIds);
+    FusedGroupConvolutionOp(const CreationContext& context,
+                            const NodeOp& op,
+                            IndexCollection&& inputIds,
+                            IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
-    
+
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override {}
@@ -36,8 +34,7 @@ public:
     using ArgIndices = Convolution::Details::FusedConvolutionIndices;
 
 private:
-    void CreateImpl(const CreationContext& context, const ngraph::Node& node);
-    std::unique_ptr<IOperationExec> impl_;
+    FusedConvolutionOp fused_conv_;
 };
 
 }  // namespace CUDAPlugin

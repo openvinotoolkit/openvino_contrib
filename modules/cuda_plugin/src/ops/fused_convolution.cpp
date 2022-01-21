@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -6,29 +6,52 @@
 
 #include <fmt/format.h>
 
+#include <error.hpp>
+#include <exception>
 #include <gsl/gsl_assert>
-#include <sstream>
+#include <memory>
 
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
+#include "fused_group_convolution.hpp"
 
 namespace CUDAPlugin {
 
+template <typename TOperation>
 FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
-                                       const NodeOp& node,
+                                       const TOperation& op,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds)
-    : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)) {
-    const auto element_type = node.get_input_element_type(ArgIndices::input);
-    Expects(element_type == node.get_input_element_type(ArgIndices::filter));
-    Expects(element_type == node.get_input_element_type(ArgIndices::bias));
-    Expects(element_type == node.get_output_element_type(ArgIndices::output));
-    const bool includesOnlyBiasAdd = node.inputs().size() == 3;
-    const bool includesSecondAddition = node.inputs().size() == 4;
+    : OperationCuDnn(context, op, std::move(inputIds), std::move(outputIds)) {
+    const auto element_type = op.get_input_element_type(ArgIndices::input);
+    Expects(element_type == op.get_input_element_type(ArgIndices::filter));
+    Expects(element_type == op.get_input_element_type(ArgIndices::bias));
+    Expects(element_type == op.get_output_element_type(ArgIndices::output));
+    const bool includesOnlyBiasAdd = op.inputs().size() == 3;
+    const bool includesSecondAddition = op.inputs().size() == 4;
     Expects(includesOnlyBiasAdd || includesSecondAddition);  // Conv input, filters, Bias and optional Add
 
-    CreateImpl(context, node);
+    Convolution::Details::FusedConvolutionParams params{op};
+    try {
+        impl_ = std::make_unique<FusedConvolutionCuDnn>(context, params);
+    } catch (const std::exception& e) {
+        throwIEException(
+            fmt::format("unsupported `{}` node: Failed to create "
+                        "FusedConvolutionCuDnn impl: {}",
+                        op.get_type_info().name,
+                        e.what()));
+    }
 }
+
+template FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
+                                                const nodes::FusedConvolution& op,
+                                                IndexCollection&& inputIds,
+                                                IndexCollection&& outputIds);
+
+template FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
+                                                const nodes::FusedGroupConvolution& op,
+                                                IndexCollection&& inputIds,
+                                                IndexCollection&& outputIds);
 
 void FusedConvolutionOp::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
@@ -45,18 +68,6 @@ IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(Workbuffer
     return impl_->SetWorkbufferIds(std::move(workbufferIds));
 }
 
-void FusedConvolutionOp::CreateImpl(const CreationContext& context, const NodeOp& node) {
-    const Convolution::Details::FusedConvolutionParams params{node};
-    try {
-        impl_ = std::make_unique<FusedConvolutionCuDnn>(context, params);
-    } catch (const std::exception& e) {
-        throwIEException(
-            fmt::format("unsupported `{}` node: Failed to create "
-                        "FusedConvolutionCuDnn impl: {}",
-                        node.get_type_info().name,
-                        e.what()));
-    }
-}
-
 OPERATION_REGISTER(FusedConvolutionOp, FusedConvolution);
+
 }  // namespace CUDAPlugin

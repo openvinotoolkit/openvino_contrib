@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
+#include <ops/converters.hpp>
 
-#include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {

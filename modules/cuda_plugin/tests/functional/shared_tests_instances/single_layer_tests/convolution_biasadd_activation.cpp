@@ -1,164 +1,26 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <fmt/format.h>
+#include "convolution_biasadd_activation.hpp"
 
+#include <gtest/gtest-param-test.h>
+#include <ie_common.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <cuda_test_constants.hpp>
+#include <functional_test_utils/skip_tests_config.hpp>
+#include <ie_precision.hpp>
+#include <limits>
+#include <ngraph/op/util/attr_types.hpp>
+#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <tuple>
 #include <vector>
 
-#include "common_test_utils/test_constants.hpp"
-#include "cuda_test_constants.hpp"
-#include "details/ie_exception.hpp"
 #include "finite_comparer.hpp"
-#include "ngraph_functions/builders.hpp"
-#include "shared_test_classes/single_layer/activation.hpp"
-#include "shared_test_classes/single_layer/convolution.hpp"
-
-namespace {
-std::string activationString(ngraph::helpers::ActivationTypes type) {
-    switch (type) {
-        case ngraph::helpers::ActivationTypes::None:
-            return "None";
-        default:
-            return LayerTestsDefinitions::activationNames[type];
-    }
-}
-}  // namespace
 
 namespace LayerTestsDefinitions {
-
-// TODO: Consider to add bias shape in here too, instead of deriving it in test class.
-//       That would allow test generator to use bias shape from model
-typedef std::tuple<convLayerTestParamsSet,
-                   ngraph::helpers::ActivationTypes  // Activation
-                   >
-    convBiasAddActivationTestParamsSet;
-
-class ConvolutionBiasAddActivationLayerTest : public testing::WithParamInterface<convBiasAddActivationTestParamsSet>,
-                                              virtual public LayerTestsUtils::LayerTestsCommon {
-public:
-    static std::string getTestCaseName(testing::TestParamInfo<convBiasAddActivationTestParamsSet> obj) {
-        convLayerTestParamsSet convParamSet;
-        ngraph::helpers::ActivationTypes activation;
-        std::tie(convParamSet, activation) = obj.param;
-
-        std::ostringstream result;
-        result << ConvolutionLayerTest::getTestCaseName(
-                      testing::TestParamInfo<convLayerTestParamsSet>{convParamSet, obj.index})
-               << "_";
-        result << "Activation=" << activationString(activation);
-        return result.str();
-    }
-
-protected:
-    void SetUp() override {
-        convLayerTestParamsSet convParamSet;
-        ngraph::helpers::ActivationTypes activation;
-        std::tie(convParamSet, activation) = this->GetParam();
-
-        ngraph::element::Type ngNetPrc = ngraph::element::Type_t::undefined;
-        ngraph::ParameterVector params;
-        std::shared_ptr<ngraph::opset1::Convolution> convLayer;
-        std::tie(ngNetPrc, params, convLayer) = SetUpConvolutionTestParams(convParamSet);
-
-        auto biasShape = convLayer->get_output_shape(0);
-        constexpr size_t channel_dim_index = 1;
-        for (size_t i = 0; i < biasShape.size(); ++i) {
-            if (i != channel_dim_index) biasShape[i] = 1;
-        }
-        auto biasLayer =
-            ngraph::builder::makeInputLayer(ngNetPrc, ngraph::helpers::InputLayerType::CONSTANT, biasShape);
-
-        auto addLayer = ngraph::builder::makeEltwise(convLayer, biasLayer, ngraph::helpers::EltwiseTypes::ADD);
-
-        std::shared_ptr<ngraph::Node> lastNode;
-        if (activation == ngraph::helpers::ActivationTypes::None) {
-            lastNode = addLayer;
-        } else {
-            lastNode = ngraph::builder::makeActivation(addLayer, ngNetPrc, activation);
-        }
-
-        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(lastNode)};
-        function = std::make_shared<ngraph::Function>(results, params, "Conv_BiasAdd_Activation");
-    }
-
-    std::tuple<ngraph::element::Type, ngraph::ParameterVector, std::shared_ptr<ngraph::opset1::Convolution>>
-    SetUpConvolutionTestParams(const convLayerTestParamsSet& convParamsSet) {
-        convSpecificParams convParams;
-        std::vector<size_t> inputShape;
-        auto netPrecision = InferenceEngine::Precision::UNSPECIFIED;
-        std::tie(convParams, netPrecision, inPrc, outPrc, inLayout, outLayout, inputShape, targetDevice) =
-            convParamsSet;
-        ngraph::op::PadType padType;
-        InferenceEngine::SizeVector kernel, stride, dilation;
-        std::vector<ptrdiff_t> padBegin, padEnd;
-        size_t convOutChannels{};
-        std::tie(kernel, stride, padBegin, padEnd, dilation, convOutChannels, padType) = convParams;
-        auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ngraph::op::Parameter>(params));
-        std::vector<float> filter_weights;
-        auto conv =
-            std::dynamic_pointer_cast<ngraph::opset1::Convolution>(ngraph::builder::makeConvolution(paramOuts[0],
-                                                                                                    ngPrc,
-                                                                                                    kernel,
-                                                                                                    stride,
-                                                                                                    padBegin,
-                                                                                                    padEnd,
-                                                                                                    dilation,
-                                                                                                    padType,
-                                                                                                    convOutChannels,
-                                                                                                    false,
-                                                                                                    filter_weights));
-        return std::make_tuple(ngPrc, params, conv);
-    }
-};
-
-class ConvolutionBiasAddAddActivationLayerTest : public ConvolutionBiasAddActivationLayerTest,
-                                                 virtual public LayerTestsUtils::LayerTestsCommon {
-protected:
-    void SetUp() override {
-        convLayerTestParamsSet convParamSet;
-        ngraph::helpers::ActivationTypes activation;
-        std::tie(convParamSet, activation) = this->GetParam();
-
-        ngraph::element::Type ngNetPrc = ngraph::element::Type_t::undefined;
-        ngraph::ParameterVector params;
-        std::shared_ptr<ngraph::opset1::Convolution> convLayer;
-        std::tie(ngNetPrc, params, convLayer) = SetUpConvolutionTestParams(convParamSet);
-
-        auto biasShape = convLayer->get_output_shape(0);
-        constexpr size_t channel_dim_index = 1;
-        for (size_t i = 0; i < biasShape.size(); ++i) {
-            if (i != channel_dim_index) biasShape[i] = 1;
-        }
-        auto biasLayer =
-            ngraph::builder::makeInputLayer(ngNetPrc, ngraph::helpers::InputLayerType::CONSTANT, biasShape);
-
-        auto add0Layer = ngraph::builder::makeEltwise(convLayer, biasLayer, ngraph::helpers::EltwiseTypes::ADD);
-        std::shared_ptr<ngraph::opset3::Parameter> addParam;
-        if (std::get<1>(convParamSet).getPrecVal() == InferenceEngine::Precision::FP16) {
-            addParam =
-                std::make_shared<ngraph::opset3::Parameter>(ngraph::element::f16, ngraph::Shape{1, 128, 112, 112});
-        } else {
-            addParam =
-                std::make_shared<ngraph::opset3::Parameter>(ngraph::element::f32, ngraph::Shape{1, 128, 112, 112});
-        }
-        params.push_back(addParam);
-        auto add1Layer = ngraph::builder::makeEltwise(add0Layer, addParam, ngraph::helpers::EltwiseTypes::ADD);
-
-        std::shared_ptr<ngraph::Node> lastNode;
-        if (activation == ngraph::helpers::ActivationTypes::None) {
-            lastNode = add1Layer;
-        } else {
-            lastNode = ngraph::builder::makeActivation(add1Layer, ngNetPrc, activation);
-        }
-
-        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(lastNode)};
-        function = std::make_shared<ngraph::Function>(results, params, "Conv_BiasAdd_Activation");
-    }
-};
 
 class ConvolutionBiasAddActivationLayerFiniteComparerTest
     : public FiniteComparer<ConvolutionBiasAddActivationLayerTest> {
@@ -1117,6 +979,11 @@ INSTANTIATE_TEST_CASE_P(
 //
 // Test generation for CUDA Fused Convolutions requires transformed models
 // These tests cover only 2d_unet and 3d_unet
+//
+// WARNING: Currently the fusing of 3D Convolution is disabled in
+// openvino_cuda_plugin/modules/cuda_plugin/src/transformer/fuse_conv_biasadd_activation.cpp
+// so the the following tests for 3d_unet run on graphs without FusedConvolution nodes
+//
 // =============================================================================
 // clang-format off
 // {AUTOGENERATED_TESTS_BEGIN_TAG}

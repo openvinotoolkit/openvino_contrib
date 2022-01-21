@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -101,7 +101,8 @@ struct FusedConvolutionIndices {
  *  - `CUDAPlugin::nodes::FusedConvolution`
  */
 struct FusedConvolutionParams {
-    FusedConvolutionParams(const CUDAPlugin::nodes::FusedConvolution& node);
+    template <typename TConvNode>
+    FusedConvolutionParams(const TConvNode& node);
 
     ConvolutionParams conv_;
     ngraph::Shape bias_shape_;

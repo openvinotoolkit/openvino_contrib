@@ -12,8 +12,8 @@
 #include <gsl/span_ext>
 #include <ngraph/op/constant.hpp>
 #include <ngraph/opsets/opset1.hpp>
+#include <ops/converters.hpp>
 
-#include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 #include "fused_convolution.hpp"
 

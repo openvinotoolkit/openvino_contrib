@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -28,7 +28,8 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
 
-    if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolution>) {
+    if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolution> ||
+                  std::is_same_v<TConvNode, nodes::FusedGroupConvolution>) {
         groups_ = node.get_input_shape(1)[0];
         Expects(input_shape_[1] % groups_ == 0);
         filter_shape_.erase(filter_shape_.begin());
@@ -57,6 +58,7 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
 template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::GroupConvolution& node);
 template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node);
 template ConvolutionParams::ConvolutionParams(const nodes::FusedConvolution& node);
+template ConvolutionParams::ConvolutionParams(const nodes::FusedGroupConvolution& node);
 
 template <typename TConvNode>
 void ConvolutionParams::InferPadding(const TConvNode& node) {
@@ -151,7 +153,8 @@ void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {
     pads_end_.insert(pads_end_.begin(), 0);
 }
 
-FusedConvolutionParams::FusedConvolutionParams(const CUDAPlugin::nodes::FusedConvolution& node)
+template <typename TConvNode>
+FusedConvolutionParams::FusedConvolutionParams(const TConvNode& node)
     : conv_{node},
       bias_shape_{node.get_input_shape(FusedConvolutionIndices::bias)},
       activation_{node.get_activation()} {
@@ -169,6 +172,8 @@ FusedConvolutionParams::FusedConvolutionParams(const CUDAPlugin::nodes::FusedCon
         add_shape_->insert(add_shape_->begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     }
 }
+template FusedConvolutionParams::FusedConvolutionParams(const nodes::FusedConvolution& node);
+template FusedConvolutionParams::FusedConvolutionParams(const nodes::FusedGroupConvolution& node);
 
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
     const CUDAPlugin::nodes::FusedConvBackpropData& node)

@@ -11,8 +11,7 @@
 #include <cuda_config.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/util.hpp>
-
-#include "converters.hpp"
+#include <ops/converters.hpp>
 
 namespace CUDAPlugin::Convolution::Details {
 
