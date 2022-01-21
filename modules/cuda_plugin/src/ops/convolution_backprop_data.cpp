@@ -6,7 +6,7 @@
 
 #include <cuda_operation_registry.hpp>
 
-#include "convolution_components.hpp"
+#include "convolution_components/convolution_components.hpp"
 #include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {

@@ -8,8 +8,8 @@
 
 #include <ngraph/op/group_conv.hpp>
 
+#include "convolution_cudnn.hpp"
 #include "cuda_operation_base.hpp"
-#include "ops/convolution_cudnn.hpp"
 
 namespace CUDAPlugin {
 
