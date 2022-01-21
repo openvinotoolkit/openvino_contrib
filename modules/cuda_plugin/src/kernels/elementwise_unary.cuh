@@ -60,7 +60,7 @@ public:
     }
 
     template <typename T, typename... Args>
-    void default_(T t, cudaStream_t, const void*, void*, size_t, Args...) const noexcept {
+    void default_(T t, cudaStream_t, const void*, void*, Args...) const noexcept {
         throwIEException(fmt::format("Element type = {} is not supported.", t));
     }
 

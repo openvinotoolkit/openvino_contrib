@@ -3390,5 +3390,22 @@ INSTANTIATE_TEST_CASE_P(
 // clang-format on
 // =============================================================================
 
+// Yolov5s Floor parameters
+const std::initializer_list<std::initializer_list<std::size_t>> Floor_shapes = {{4}};
+
+INSTANTIATE_TEST_CASE_P(
+    Floor_Yolov5s,
+    ActivationLayerTest,
+    ::testing::Combine(::testing::Values(std::pair<ngraph::helpers::ActivationTypes, float>{ngraph::helpers::Floor, 0}),
+                       ::testing::ValuesIn(std::vector<InferenceEngine::Precision>({InferenceEngine::Precision::FP32,
+                                                                                    InferenceEngine::Precision::FP16})),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(listToVectors(Floor_shapes)),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+    ActivationLayerTest::getTestCaseName);
+
 }  // namespace
 }  // namespace LayerTestsDefinitions
