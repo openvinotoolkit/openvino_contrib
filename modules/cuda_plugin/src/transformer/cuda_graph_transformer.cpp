@@ -55,8 +55,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::ConvolutionAsymPaddingTransformation>();
     manager.register_pass<ngraph::pass::GroupConvolutionAsymPaddingTransformation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
-    // TODO: Enable when FusedGroupConvolutionOp is ready
-    // manager.register_pass<ngraph::pass::CudaFuseGroupConvBiasAddActivation>();
+    manager.register_pass<ngraph::pass::CudaFuseGroupConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
     manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
