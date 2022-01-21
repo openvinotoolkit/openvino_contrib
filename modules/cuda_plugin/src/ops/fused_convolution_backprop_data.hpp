@@ -7,7 +7,7 @@
 #include <ngraph/node.hpp>
 #include <transformer/nodes/fused_convolution_backprop_data.hpp>
 
-#include "convolution_cudnn_components.hpp"
+#include "convolution_components/convolution_cudnn_components.hpp"
 #include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
 
