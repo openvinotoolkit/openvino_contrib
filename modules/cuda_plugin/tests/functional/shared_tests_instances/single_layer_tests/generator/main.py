@@ -24,6 +24,7 @@ import ops.group_convolution as group_convolution
 import ops.convolution_backprop_data_add as convolution_backprop_data_add
 import ops.convolution_backprop_data as convolution_backprop_data
 import ops.convolution_biasadd_activation as convolution_biasadd_activation
+import ops.group_convolution_biasadd_activation as group_convolution_biasadd_activation
 
 tests_to_generate = [
     convolution.TestTraits(),
@@ -35,6 +36,7 @@ tests_to_generate = [
     maxpool.TestTraits(),
     avgpool.TestTraits(),
     group_convolution.TestTraits(),
+    group_convolution_biasadd_activation.TestTraits(),
 
     # The following test gerators require models with applied graph transformations.
     # If you don't have such models some tests will be dropped (including ones for fused operators).

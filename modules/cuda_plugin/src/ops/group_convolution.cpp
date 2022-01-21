@@ -6,7 +6,7 @@
 #include <cuda_operation_registry.hpp>
 #include <ngraph/partial_shape.hpp>
 
-#include "ops/convolution_components.hpp"
+#include "convolution_components/convolution_components.hpp"
 
 namespace CUDAPlugin {
 

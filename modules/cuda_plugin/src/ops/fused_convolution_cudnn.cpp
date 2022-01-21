@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,10 +8,9 @@
 
 #include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
+#include <ops/converters.hpp>
 
-#include "converters.hpp"
 #include "cuda/constant_factory.hpp"
-#include "fused_convolution.hpp"
 
 namespace CUDAPlugin {
 
@@ -29,7 +28,7 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                     Inputs inputs,
                                     Outputs outputs,
                                     const Workbuffers& workbuffers) const {
-    using ArgIndices = FusedConvolutionOp::ArgIndices;
+    using ArgIndices = Convolution::Details::FusedConvolutionIndices;
 
     const bool includesOnlyBiasAdd = inputs.size() == 3;
     const bool includesSecondAddition = inputs.size() == 4;
