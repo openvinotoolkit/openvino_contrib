@@ -77,20 +77,6 @@ INSTANTIATE_TEST_SUITE_P(
         smoke_OVClassGetConfigTest, OVClassGetConfigTest,
         ::testing::Values("CPU"));
 
-//////////////////////////////////////////////////////////////////////////////////////////
-
-TEST(OVClassBasicTest, smoke_SetConfigAfterCreatedThrow) {
-    ov::runtime::Core ie;
-    std::string value = {};
-
-    ASSERT_NO_THROW(ie.set_config({{KEY_CPU_THREADS_NUM, "1"}}, "CPU"));
-    ASSERT_NO_THROW(value = ie.get_config("CPU", KEY_CPU_THREADS_NUM).as<std::string>());
-    ASSERT_EQ("1", value);
-
-    ASSERT_NO_THROW(ie.set_config({{KEY_CPU_THREADS_NUM, "4"}}, "CPU"));
-    ASSERT_NO_THROW(value = ie.get_config("CPU", KEY_CPU_THREADS_NUM).as<std::string>());
-    ASSERT_EQ("4", value);
-}
 
 // IE Class Query network
 
