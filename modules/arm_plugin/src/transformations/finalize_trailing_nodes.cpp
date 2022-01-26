@@ -19,9 +19,11 @@ bool ArmPlugin::pass::FinalizeTrailingNodes::run_on_function(std::shared_ptr<ngr
             auto inputs = out.get_target_inputs();
             if (inputs.empty() && !std::dynamic_pointer_cast<opset::Result>(node)) {
                 auto result = std::make_shared<opset::Result>(out);
-                result->set_friendly_name(ngraph::op::util::get_ie_output_name(out));
-                f->add_results({result});
-                is_modified = true;
+                if (result) {
+                    result->set_friendly_name(ngraph::op::util::get_ie_output_name(out));
+                    f->add_results({result});
+                    is_modified = true;
+                }
             }
         }
     }
