@@ -150,12 +150,16 @@ mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
       -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE="/opt/python3.7_arm/bin/python3.7m" \
-      -DPYTHON_INCLUDE_PATH=/opt/python3.7_arm/include/python3.7m \
+      -DPYTHON_INCLUDE_DIRS=/opt/python3.7_arm/include/python3.7m \
       -DPYTHON_LIBRARIES=/opt/python3.7_arm/lib \
+      -DPYTHON_MODULE_EXTENSION=".so" \
+      -DPYBIND11_FINDPYTHON=OFF \
+      -DPYBIND11_NOPYTHON=OFF \
+      -DPYTHONLIBS_FOUND=TRUE \
       -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
-      $OPENVINO_HOME/inference-engine/ie_bridges/python && \
+      $OPENVINO_HOME/src/bindings/python && \
 make -j$BUILD_JOBS && \
 cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR -P cmake_install.cmake && \
 cd $DEV_HOME || fail 13 "OpenVINO python bindings build failed. Stopping"
