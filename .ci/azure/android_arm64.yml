@@ -124,15 +124,13 @@ jobs:
         -DANDROID_ABI=$(ANDROID_ABI_CONFIG)
         -DANDROID_STL=c++_shared
         -DANDROID_PLATFORM=$(ANDROID_SDK_VERSION)
-        -DANDROID_CCACHE=ccache
+        -DANDROID_CCACHE=/usr/local/bin/ccache
         -DENABLE_OPENCV=OFF
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=ON
         -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache
         -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
         $(OPENVINO_REPO_DIR)
@@ -141,7 +139,7 @@ jobs:
   - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
     displayName: 'List temp SDKs'
 
-  - script: ccache --zero-stats --max-size=50G --show-config
+  - script: /usr/local/bin/ccache --zero-stats --max-size=50G --show-config
     displayName: 'Clean ccache stats'
 
   - script: |
@@ -150,13 +148,12 @@ jobs:
       export CCACHE_BASEDIR=$(Pipeline.Workspace)
       export CCACHE_MAXSIZE=50G
       export USE_CCACHE=1
-      export NDK_CCACHE=/usr/local/bin/ccache
       export CCACHE_EXEC=/usr/local/bin/ccache
       ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Android ARM plugin'
 
-  - script: ccache --show-stats
+  - script: /usr/local/bin/ccache --show-stats
     displayName: 'Show ccache stats'
 
   - script: ninja install

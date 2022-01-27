@@ -114,6 +114,7 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
                         OPENVINO_ASSERT(dqNode, "Failed to create ArmDequantize node for per channel requantization");
                         dqNode->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_dequantize_prescale");
                         ngraph::copy_runtime_info(fakeQuantize, dqNode);
+                        dqNode->get_rt_info()["QuantizationInfo"] = arm_compute::QuantizationInfo{1, 0};
                         fInput = dqNode;
                     }
 

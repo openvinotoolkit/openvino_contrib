@@ -17,27 +17,28 @@ jobs:
     system.debug: true
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
+    PYTHON_ARM_VERSION: "3.9.10"
+    NUM_PROC: 1
     BUILD_TYPE: Release
     REPO_CONTRIB: $(Build.Repository.LocalPath)
-    OPENVINO_REPO_DIR: $(REPO_CONTRIB)/../openvino
+    OPENVINO_REPO: $(REPO_CONTRIB)/../openvino
     REPO_OPENCV: $(REPO_CONTRIB)/../opencv
     BUILD_OPENCV: $(WORK_DIR)/build_opencv
+    INSTALL_OPENCV: $(WORK_DIR)/install_opencv
     BUILD_OMZ: $(WORK_DIR)/build_omz
     INSTALL_OMZ: $(WORK_DIR)/install_omz
     REPO_OMZ: $(REPO_CONTRIB)/../open_model_zoo
-    INSTALL_OPENCV: $(WORK_DIR)/install_opencv
-    INSTALL_OPENVINO: $(WORK_DIR)/install_openvino
-    WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_OPENVINO: $(WORK_DIR)/build
+    INSTALL_OPENVINO: $(WORK_DIR)/install_openvino
+    BUILD_PYTHON: $(WORK_DIR)/build_python 
     INSTALL_PYTHON: $(WORK_DIR)/install_python 
-    BUILD_PAYTHON: $(WORK_DIR)/build_python 
+    BUILD_OPENVINO_PYTHON: $(WORK_DIR)/build_openvino_python 
+    WORK_DIR: $(Pipeline.Workspace)/_w
     TMP_DIR: /mnt/tmp
     OCV_TMP_DIR: /mnt/tmp_ocv
     SHARE_DIR: /mount/cinfsshare/onnxtestdata
     OV_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_contrib
     OCV_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_ocv_contrib
-    NUM_PROC: 1
-    PYTHON_ARM_VERSION: "3.9.10"
 
   steps:
   - script: |
@@ -64,12 +65,13 @@ jobs:
 
   - script: |
       rm -rf $(WORK_DIR) ; mkdir $(WORK_DIR)
-      rm -rf $(BUILD_OPENVINO) ; mkdir $(BUILD_OPENVINO)
-      rm -rf $(INSTALL_OPENVINO) ; mkdir $(INSTALL_OPENVINO)
+      rm -rf $(BUILD_PYTHON) ; mkdir $(BUILD_PYTHON)
+      rm -rf $(INSTALL_PYTHON) ; mkdir $(INSTALL_PYTHON)
       rm -rf $(BUILD_OPENCV) ; mkdir $(BUILD_OPENCV)
       rm -rf $(INSTALL_OPENCV) ; mkdir $(INSTALL_OPENCV)
-      rm -rf $(BUILD_PAYTHON) ; mkdir $(BUILD_PAYTHON)
-      rm -rf $(INSTALL_PYTHON) ; mkdir $(INSTALL_PYTHON)
+      rm -rf $(BUILD_OPENVINO) ; mkdir $(BUILD_OPENVINO)
+      rm -rf $(INSTALL_OPENVINO) ; mkdir $(INSTALL_OPENVINO)
+      rm -rf $(BUILD_OPENVINO_PYTHON) ; mkdir $(BUILD_OPENVINO_PYTHON)
       rm -rf $(BUILD_OMZ) ; mkdir $(BUILD_OMZ)
       rm -rf $(INSTALL_OMZ) ; mkdir $(INSTALL_OMZ)
       sudo rm -rf $(TMP_DIR) ; sudo mkdir $(TMP_DIR) ; sudo chmod 777 -R $(TMP_DIR)
@@ -79,7 +81,7 @@ jobs:
       sudo mount -vvv -t nfs cinfsshare.file.core.windows.net:/cinfsshare/onnxtestdata $(SHARE_DIR) -o vers=4,minorversion=1,sec=sys
       mkdir -p $(OV_CCACHE_DIR)
       mkdir -p $(OCV_CCACHE_DIR)
-    displayName: 'Make directory'
+    displayName: 'Make directories'
 
   - checkout: self
     clean: true
@@ -95,7 +97,7 @@ jobs:
 
   - script: |
       set -e
-      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      $(OPENVINO_REPO)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
       sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
       sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
@@ -111,6 +113,7 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: |
+      #### Build python for host 
       wget https://www.python.org/ftp/python/$(PYTHON_ARM_VERSION)/Python-$(PYTHON_ARM_VERSION).tgz
       tar -xzf Python-$(PYTHON_ARM_VERSION).tgz
       mv Python-$(PYTHON_ARM_VERSION) Python-$(PYTHON_ARM_VERSION)-host
@@ -118,13 +121,11 @@ jobs:
       ./configure --enable-optimizations
       make -j $(NUM_PROC) python Parser/pgen
       sudo make -j $(NUM_PROC) install
-      cp python $(BUILD_PAYTHON)
-      cp -r Parser/pgen $(BUILD_PAYTHON)
+      cp python $(BUILD_PYTHON)
+      cp -r Parser/pgen $(BUILD_PYTHON)
+      curl https://bootstrap.pypa.io/get-pip.py | $(BUILD_PYTHON)/python - --no-cache-dir numpy cython
       cd ..
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Build Python Host'
-
-  - script: |
+      #### Build python for ARM 
       wget https://www.python.org/ftp/python/$(PYTHON_ARM_VERSION)/Python-$(PYTHON_ARM_VERSION).tgz
       tar -xzf Python-$(PYTHON_ARM_VERSION).tgz
       cd Python-$(PYTHON_ARM_VERSION)
@@ -140,14 +141,14 @@ jobs:
           --disable-ipv6 ac_cv_file__dev_ptmx=no ac_cv_file__dev_ptc=no ac_cv_have_long_long_format=yes \
           --enable-shared
       make -j $(NUM_PROC) \
-          HOSTPYTHON=$(BUILD_PAYTHON)/python \
-          HOSTPGEN=$(BUILD_PAYTHON)/Parser/pgen \
+          HOSTPYTHON=$(BUILD_PYTHON)/python \
+          HOSTPGEN=$(BUILD_PYTHON)/Parser/pgen \
           CROSS-COMPILE=aarch64-linux-gnu- CROSS_COMPILE_TARGET=yes HOSTARCH=aarch64-linux BUILDARCH=aarch64-linux-gnu
       make -j $(NUM_PROC) install
       cd ..
-      sudo /usr/local/bin/python3.9 -m pip install numpy cython
+      sudo /usr/local/bin/python3.9 -m pip install numpy cython 
     workingDirectory: $(WORK_DIR)
-    displayName: 'Build Python ARM64'
+    displayName: 'Build python for ARM'
 
   - task: CMake@1
     inputs:
@@ -174,7 +175,7 @@ jobs:
         -D OPENCV_DOC_INSTALL_PATH=doc 
         -D OPENCV_OTHER_INSTALL_PATH=etc 
         -D OPENCV_LICENSES_INSTALL_PATH=etc/licenses 
-        -D CMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake 
+        -D CMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
         -D WITH_GTK_2_X=OFF 
         -D OPENCV_ENABLE_PKG_CONFIG=ON 
         -D ENABLE_CCACHE=ON
@@ -218,7 +219,7 @@ jobs:
         -DENABLE_DATA=OFF 
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$(INSTALL_OPENCV)/lib 
         -DTHREADING=SEQ -DENABLE_LTO=ON 
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake 
+        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
@@ -229,15 +230,9 @@ jobs:
         -DCMAKE_C_COMPILER_LAUNCHER=ccache
         -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPENVINO)
-        $(OPENVINO_REPO_DIR)
+        $(OPENVINO_REPO)
       workingDirectory: $(BUILD_OPENVINO)
     displayName: 'CMake OpenVINO ARM plugin'
-
-  - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
-    displayName: 'List temp SDKs'
-
-  - script: ccache --zero-stats --max-size=50G --show-config
-    displayName: 'Clean ccache stats'
 
   - script: |
       export CCACHE_DIR=$(OV_CCACHE_DIR)
@@ -253,19 +248,36 @@ jobs:
     workingDirectory: $(BUILD_OPENVINO)
     displayName: 'Install OpenVINO ARM plugin'
 
-  - script: |
-      zip -r $(INSTALL_OPENVINO)/openvino_install_files.zip $(INSTALL_OPENVINO) \ 
-             $(INSTALL_OPENCV) $(INSTALL_PYTHON) $(BUILD_OPENCV) $(BUILD_OPENVINO)
-      ls -alR $(INSTALL_OPENVINO)
-      ls -alR $(INSTALL_OPENCV)
-      ls -alR $(INSTALL_PYTHON)
-    displayName: 'Zip & List install files (w/o OMZ)'
-
-  - task: PublishBuildArtifacts@1
+  - task: CMake@1
     inputs:
-      pathToPublish: '$(INSTALL_OPENVINO)/openvino_install_files.zip'
-      artifactName: openvino_arm_install_without_omz
-    displayName: 'Publish install archive (w/o OMZ)'
+      cmakeArgs: >
+        -GNinja
+        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_OPENVINO)
+        -DENABLE_PYTHON=ON 
+        -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.9 
+        -DPYTHON_INCLUDE_DIRS=$(INSTALL_PYTHON)/include/python3.9 
+        -DPYTHON_LIBRARIES=$(INSTALL_PYTHON)/lib
+        -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/python3.9/site-packages/numpy/core/include 
+        -DPYTHON_MODULE_EXTENSION=".so"
+        -DPYBIND11_FINDPYTHON=OFF
+        -DPYBIND11_NOPYTHON=OFF
+        -DPYTHONLIBS_FOUND=TRUE
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DENABLE_DATA=OFF
+        -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$(INSTALL_OPENCV)/lib 
+        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
+        -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPENVINO)
+        $(OPENVINO_REPO)/src/bindings/python
+      workingDirectory: $(BUILD_OPENVINO_PYTHON)
+    displayName: 'CMake OpenVINO python binding'
+
+  - script: ninja
+    workingDirectory: $(BUILD_OPENVINO_PYTHON)
+    displayName: 'Build OpenVINO python binding'
+
+  - script: ninja install
+    workingDirectory: $(BUILD_OPENVINO_PYTHON)
+    displayName: 'Install OpenVINO python binding'
 
   - task: CMake@1
     inputs:
@@ -273,11 +285,10 @@ jobs:
         -GNinja
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) 
         -DENABLE_PYTHON=ON 
-        -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.9 
+        -DPYTHON_EXECUTABLE=/usr/local/bin/python3.9
         -DPYTHON_INCLUDE_DIR=$(INSTALL_PYTHON)/include/python3.9 
         -DPYTHON_LIBRARY=$(INSTALL_PYTHON)/lib
-        -DPYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/python3.9/site-packages/numpy/core/include 
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
+        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake
         -DInferenceEngine_DIR=$(BUILD_OPENVINO)
         -DOpenCV_DIR=$(INSTALL_OPENCV)/cmake 
         -Dngraph_DIR=$(BUILD_OPENVINO)/src/core
@@ -285,21 +296,21 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OMZ)
         $(REPO_OMZ)/demos
       workingDirectory: $(BUILD_OMZ)
-    displayName: 'CMake OMZ Demo ARM plugin'
+    displayName: 'CMake Open Model Zoo demos'
 
   - script: ninja
     workingDirectory: $(BUILD_OMZ)
-    displayName: 'Build OMZ Demo ARM plugin'
+    displayName: 'Build Open Model Zoo demos'
 
   - script: ninja install
     workingDirectory: $(BUILD_OMZ)
-    displayName: 'Install OMZ Demo ARM plugin'
+    displayName: 'Install Open Model Zoo demos'
 
   - script: |
-      zip -r $(INSTALL_OPENVINO)/openvino_install_files.zip $(INSTALL_OPENVINO) $(INSTALL_OPENCV) $(INSTALL_PYTHON) $(INSTALL_OMZ)
-      ls -alR $(INSTALL_OPENVINO)
-      ls -alR $(INSTALL_OPENCV)
+      zip -r $(INSTALL_OPENVINO)/openvino_install_files.zip $(INSTALL_PYTHON) $(INSTALL_OPENCV) $(INSTALL_OPENVINO) $(INSTALL_OMZ)
       ls -alR $(INSTALL_PYTHON)
+      ls -alR $(INSTALL_OPENCV)
+      ls -alR $(INSTALL_OPENVINO)
       ls -alR $(INSTALL_OMZ)
     displayName: 'Zip & List install files'
 
