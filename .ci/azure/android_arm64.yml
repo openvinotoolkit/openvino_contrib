@@ -28,7 +28,7 @@ jobs:
     ANDROID_ABI_CONFIG: arm64-v8a
     TMP_DIR: /mnt/tmp
     SHARE_DIR: /mount/cinfsshare/onnxtestdata
-    CCACHE_DIR: $(SHARE_DIR)/ccache/master/android_arm64_contrib
+    CCACHE_DIR: $(SHARE_DIR)/ccache/master/ov_contrib_android_arm64
     NUM_PROC: 1
 
   steps:
@@ -128,6 +128,7 @@ jobs:
         -DENABLE_OPENCV=OFF
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
+        -DENABLE_INTEL_VPU=OFF
         -DBUILD_java_api=ON
         -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
@@ -135,9 +136,6 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
-
-  - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
-    displayName: 'List temp SDKs'
 
   - script: /usr/local/bin/ccache --zero-stats --max-size=50G --show-config
     displayName: 'Clean ccache stats'
@@ -148,7 +146,9 @@ jobs:
       export CCACHE_BASEDIR=$(Pipeline.Workspace)
       export CCACHE_MAXSIZE=50G
       export USE_CCACHE=1
+      export NDK_CCACHE=/usr/local/bin/ccache
       export CCACHE_EXEC=/usr/local/bin/ccache
+      export CCACHE_CPP2=1
       ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Android ARM plugin'
