@@ -4,6 +4,10 @@ resources:
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+  - repository: open_model_zoo
+    type: github
+    endpoint: openvinotoolkit
+    name: openvinotoolkit/open_model_zoo
 
 jobs:
 - job: linux_arm64
@@ -18,25 +22,28 @@ jobs:
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
     PYTHON_ARM_VERSION: "3.9.10"
+    OPENVINO_ARCH: 'aarch64'
     NUM_PROC: 1
     BUILD_TYPE: Release
+    REPO_OPENVINO: $(REPO_CONTRIB)/../openvino
     REPO_CONTRIB: $(Build.Repository.LocalPath)
-    OPENVINO_REPO: $(REPO_CONTRIB)/../openvino
     REPO_OPENCV: $(REPO_CONTRIB)/../opencv
-    BUILD_OPENCV: $(WORK_DIR)/build_opencv
-    INSTALL_OPENCV: $(WORK_DIR)/install_opencv
-    BUILD_OMZ: $(WORK_DIR)/build_omz
-    INSTALL_OMZ: $(WORK_DIR)/install_omz
     REPO_OMZ: $(REPO_CONTRIB)/../open_model_zoo
-    BUILD_OPENVINO: $(WORK_DIR)/build
-    INSTALL_OPENVINO: $(WORK_DIR)/install_openvino
     BUILD_PYTHON: $(WORK_DIR)/build_python 
-    INSTALL_PYTHON: $(WORK_DIR)/install_python 
+    BUILD_OPENVINO: $(WORK_DIR)/build
     BUILD_OPENVINO_PYTHON: $(WORK_DIR)/build_openvino_python 
+    BUILD_OPENCV: $(WORK_DIR)/build_opencv
+    BUILD_OMZ: $(WORK_DIR)/build_omz
+    INSTALL_PYTHON: $(WORK_DIR)/install_python 
+    INSTALL_OPENCV: $(WORK_DIR)/install_opencv
+    INSTALL_OPENVINO: $(WORK_DIR)/install_openvino
+    INSTALL_OMZ: $(WORK_DIR)/install_omz
+    FULL_PACKAGE: $(WORK_DIR)/full_package
+    RUNTIME_OPENVINO: $(WORK_DIR)/runtime_openvino
     WORK_DIR: $(Pipeline.Workspace)/_w
+    SHARE_DIR: /mount/cinfsshare/onnxtestdata
     TMP_DIR: /mnt/tmp
     OCV_TMP_DIR: /mnt/tmp_ocv
-    SHARE_DIR: /mount/cinfsshare/onnxtestdata
     OV_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_contrib
     OCV_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_ocv_contrib
 
@@ -65,15 +72,17 @@ jobs:
 
   - script: |
       rm -rf $(WORK_DIR) ; mkdir $(WORK_DIR)
-      rm -rf $(BUILD_PYTHON) ; mkdir $(BUILD_PYTHON)
-      rm -rf $(INSTALL_PYTHON) ; mkdir $(INSTALL_PYTHON)
       rm -rf $(BUILD_OPENCV) ; mkdir $(BUILD_OPENCV)
-      rm -rf $(INSTALL_OPENCV) ; mkdir $(INSTALL_OPENCV)
       rm -rf $(BUILD_OPENVINO) ; mkdir $(BUILD_OPENVINO)
-      rm -rf $(INSTALL_OPENVINO) ; mkdir $(INSTALL_OPENVINO)
       rm -rf $(BUILD_OPENVINO_PYTHON) ; mkdir $(BUILD_OPENVINO_PYTHON)
+      rm -rf $(BUILD_PYTHON) ; mkdir $(BUILD_PYTHON)
       rm -rf $(BUILD_OMZ) ; mkdir $(BUILD_OMZ)
+      rm -rf $(INSTALL_PYTHON) ; mkdir $(INSTALL_PYTHON)
+      rm -rf $(INSTALL_OPENCV) ; mkdir $(INSTALL_OPENCV)
+      rm -rf $(INSTALL_OPENVINO) ; mkdir $(INSTALL_OPENVINO)
       rm -rf $(INSTALL_OMZ) ; mkdir $(INSTALL_OMZ)
+      rm -rf $(FULL_PACKAGE) ; mkdir $(FULL_PACKAGE)
+      rm -rf $(RUNTIME_OPENVINO) ; mkdir $(RUNTIME_OPENVINO)
       sudo rm -rf $(TMP_DIR) ; sudo mkdir $(TMP_DIR) ; sudo chmod 777 -R $(TMP_DIR)
       sudo rm -rf $(OCV_TMP_DIR) ; sudo mkdir $(OCV_TMP_DIR) ; sudo chmod 777 -R $(OCV_TMP_DIR)
       sudo mkdir -p $(SHARE_DIR)
@@ -95,9 +104,15 @@ jobs:
     submodules: recursive
     path: openvino
 
+  - checkout: open_model_zoo
+    clean: true
+    lfs: false
+    submodules: recursive
+    path: open_model_zoo
+
   - script: |
       set -e
-      $(OPENVINO_REPO)/install_build_dependencies.sh
+      $(REPO_OPENVINO)/install_build_dependencies.sh
       # Move into contrib install_build_dependencies.sh
       sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
       sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
@@ -108,7 +123,6 @@ jobs:
       # OpenCV should provide install_build_dependencies.sh as well
       # Move into resources
       git clone https://github.com/opencv/opencv.git --depth 1 $(REPO_OPENCV)
-      git clone --recurse-submodules -j $(NUM_PROC) https://github.com/openvinotoolkit/open_model_zoo.git $(REPO_OMZ)
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
@@ -175,7 +189,7 @@ jobs:
         -D OPENCV_DOC_INSTALL_PATH=doc 
         -D OPENCV_OTHER_INSTALL_PATH=etc 
         -D OPENCV_LICENSES_INSTALL_PATH=etc/licenses 
-        -D CMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
+        -D CMAKE_TOOLCHAIN_FILE=$(REPO_OPENVINO)/cmake/arm64.toolchain.cmake 
         -D WITH_GTK_2_X=OFF 
         -D OPENCV_ENABLE_PKG_CONFIG=ON 
         -D ENABLE_CCACHE=ON
@@ -219,7 +233,7 @@ jobs:
         -DENABLE_DATA=OFF 
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$(INSTALL_OPENCV)/lib 
         -DTHREADING=SEQ -DENABLE_LTO=ON 
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
+        -DCMAKE_TOOLCHAIN_FILE=$(REPO_OPENVINO)/cmake/arm64.toolchain.cmake 
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
@@ -230,7 +244,7 @@ jobs:
         -DCMAKE_C_COMPILER_LAUNCHER=ccache
         -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPENVINO)
-        $(OPENVINO_REPO)
+        $(REPO_OPENVINO)
       workingDirectory: $(BUILD_OPENVINO)
     displayName: 'CMake OpenVINO ARM plugin'
 
@@ -241,6 +255,7 @@ jobs:
       export CCACHE_MAXSIZE=50G
       export USE_CCACHE=1
       ninja
+      cp -r $(REPO_OPENVINO)/bin/$(OPENVINO_ARCH)/$(BUILD_TYPE)/* $(RUNTIME_OPENVINO)/
     workingDirectory: $(BUILD_OPENVINO)
     displayName: 'Build OpenVINO ARM plugin'
 
@@ -265,9 +280,9 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_DATA=OFF
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$(INSTALL_OPENCV)/lib 
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake 
+        -DCMAKE_TOOLCHAIN_FILE=$(REPO_OPENVINO)/cmake/arm64.toolchain.cmake 
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPENVINO)
-        $(OPENVINO_REPO)/src/bindings/python
+        $(REPO_OPENVINO)/src/bindings/python
       workingDirectory: $(BUILD_OPENVINO_PYTHON)
     displayName: 'CMake OpenVINO python binding'
 
@@ -288,7 +303,7 @@ jobs:
         -DPYTHON_EXECUTABLE=/usr/local/bin/python3.9
         -DPYTHON_INCLUDE_DIR=$(INSTALL_PYTHON)/include/python3.9 
         -DPYTHON_LIBRARY=$(INSTALL_PYTHON)/lib
-        -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO)/cmake/arm64.toolchain.cmake
+        -DCMAKE_TOOLCHAIN_FILE=$(REPO_OPENVINO)/cmake/arm64.toolchain.cmake
         -DInferenceEngine_DIR=$(BUILD_OPENVINO)
         -DOpenCV_DIR=$(INSTALL_OPENCV)/cmake 
         -Dngraph_DIR=$(BUILD_OPENVINO)/src/core
@@ -307,15 +322,17 @@ jobs:
     displayName: 'Install Open Model Zoo demos'
 
   - script: |
-      zip -r $(INSTALL_OPENVINO)/openvino_install_files.zip $(INSTALL_PYTHON) $(INSTALL_OPENCV) $(INSTALL_OPENVINO) $(INSTALL_OMZ)
-      ls -alR $(INSTALL_PYTHON)
-      ls -alR $(INSTALL_OPENCV)
-      ls -alR $(INSTALL_OPENVINO)
-      ls -alR $(INSTALL_OMZ)
-    displayName: 'Zip & List install files'
+      mkdir openvino && cp -r $(INSTALL_OPENVINO)/* openvino/
+      mkdir -p openvino/bin && cp -r $(RUNTIME_OPENVINO)/* openvino/bin/
+      mkdir -p openvino/extras/opencv && cp -r $(INSTALL_OPENCV)/*  openvino/extras/opencv/
+      mkdir -p openvino/extras/open_model_zoo && cp -r $(BUILD_OMZ)/$(OPENVINO_ARCH)/$(BUILD_TYPE)/* openvino/extras/open_model_zoo/
+      mkdir -p openvino/extras/python && cp -r $(INSTALL_PYTHON)/*  openvino/extras/python/
+      zip -9 -r openvino_arm64_linux.zip openvino
+    workingDirectory: $(FULL_PACKAGE)
+    displayName: 'Create OpenVINO ARM64 linux package'
 
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: '$(INSTALL_OPENVINO)/openvino_install_files.zip'
-      artifactName: openvino_arm_install
-    displayName: 'Publish install archive'
+      pathToPublish: '$(FULL_PACKAGE)/openvino_arm64_linux.zip'
+      artifactName: 'openvino_arm64_linux'
+    displayName: 'Publish OpenVINO ARM64 linux package'
