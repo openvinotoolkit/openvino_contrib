@@ -21,6 +21,7 @@
 #include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
+#include "noop_broadcast_transformation.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 
 using namespace CUDAPlugin;
@@ -60,6 +61,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     manager.register_pass<ngraph::pass::ConcatTransformation>();
+    manager.register_pass<ngraph::pass::NoopBroadcastTransformation>();
 
     manager.run_passes(transformed_function);
 

@@ -7,6 +7,7 @@
 #include <cuda_runtime_api.h>
 
 #include <cuda/float16.hpp>
+#include <limits>
 #include <type_traits>
 
 namespace CUDAPlugin {
