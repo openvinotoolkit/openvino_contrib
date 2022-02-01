@@ -79,17 +79,12 @@ RUN cd Python-3.7.9 && make distclean && \
         ac_cv_file__dev_ptc=no && \
     make -j4 && make altinstall
 
-RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.4.tar.gz && \
-    tar xf cmake-3.13.4.tar.gz && \
-    (cd cmake-3.13.4 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
-    rm -rf cmake-3.13.4 cmake-3.13.4.tar.gz
-
 # Replace exceptional Python version. It's used in case of failed test check which we
 # have in our case because CMake tries to run cross-compiled python to detect version.
-RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
+RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake
 
 RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
 RUN rm /usr/bin/lsb_release
