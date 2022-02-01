@@ -64,7 +64,7 @@ def _prepare_ir(argv, old_api=False):
 
     argv.output = argv.output.split(',') if argv.output else None
 
-    argv.placeholder_shapes, argv.placeholder_data_types, _ = get_placeholder_shapes(argv.input, argv.input_shape,
+    _, argv.placeholder_shapes, argv.placeholder_data_types = get_placeholder_shapes(argv.input, argv.input_shape,
                                                                                      argv.batch)
 
     mean_values = parse_tuple_pairs(argv.mean_values)
