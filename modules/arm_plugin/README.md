@@ -11,6 +11,7 @@ Host  | OS
 Raspberry Pi* 4 Model B   | Debian* 9 (32-bit)
 Raspberry Pi* 4 Model B   | Debian* 10.3 (32-bit)
 Raspberry Pi* 4 Model B   | Ubuntu* 18.04 (64-bit)
+Raspberry Pi* 4 Model B   | Ubuntu* 20.04 (64-bit)
 Apple* Mac mini with M1   | macOS 11.1 (64-bit)
 
 ## Distribution

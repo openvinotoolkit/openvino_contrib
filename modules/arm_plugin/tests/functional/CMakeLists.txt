@@ -9,7 +9,7 @@ addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-                armPlugin IE::lptNgraphFunctions
+                openvino_arm_cpu_plugin IE::lptNgraphFunctions
         LINK_LIBRARIES
                 IE::funcSharedTests IE::lptNgraphFunctions
         INCLUDES

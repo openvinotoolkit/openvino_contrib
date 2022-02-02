@@ -4,9 +4,9 @@
 
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-project(InferenceEngineArmPlugin)
+project(openvino_arm_cpu_plugin)
 
-set(IE_MAIN_ARM_PLUGIN_SOURCE_DIR ${InferenceEngineArmPlugin_SOURCE_DIR})
+set(IE_MAIN_ARM_PLUGIN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(InferenceEngineDeveloperPackage REQUIRED)
 
