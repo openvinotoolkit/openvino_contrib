@@ -115,40 +115,43 @@ jobs:
   - task: CMake@1
     inputs:
       cmakeArgs: >
-      -GNinja
-      -DCMAKE_SYSTEM_NAME=Android
-      -DCMAKE_SYSTEM_VERSION=29
-      -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
-      -DCMAKE_ANDROID_NDK=$(ANDROID_TOOLS)/ndk-bundle
-      -DCMAKE_ANDROID_STL_TYPE=c++_shared
-      -DCMAKE_CXX_COMPILER_LAUNCHER=/usr/local/bin/ccache
-      -DCMAKE_C_COMPILER_LAUNCHER=/usr/local/bin/ccache
-      -DVERBOSE_BUILD=ON
-      -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-      -DENABLE_OPENCV=OFF
-      -DENABLE_TESTS=ON
-      -DENABLE_SAMPLES=ON
-      -DENABLE_INTEL_MYRIAD=OFF
-      -DBUILD_java_api=ON
-      -DTHREADING=SEQ
-      -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
-      -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
-      -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
-      $(OPENVINO_REPO_DIR)
-    workingDirectory: $(BUILD_DIR)
+        -GNinja
+        -DCMAKE_SYSTEM_NAME=Android
+        -DCMAKE_SYSTEM_VERSION=29
+        -DCMAKE_ANDROID_ARCH_ABI=arm64-v8a
+        -DCMAKE_ANDROID_NDK=$(ANDROID_TOOLS)/ndk-bundle
+        -DCMAKE_ANDROID_STL_TYPE=c++_shared
+        -DCMAKE_CXX_COMPILER_LAUNCHER=/usr/local/bin/ccache
+        -DCMAKE_C_COMPILER_LAUNCHER=/usr/local/bin/ccache
+        -DVERBOSE_BUILD=ON
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+        -DENABLE_OPENCV=OFF
+        -DENABLE_TESTS=ON
+        -DENABLE_SAMPLES=ON
+        -DENABLE_INTEL_MYRIAD=OFF
+        -DENABLE_INTEL_VPU=OFF
+        -DBUILD_java_api=ON
+        -DTHREADING=SEQ
+        -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
+        -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
+        -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
+        $(OPENVINO_REPO_DIR)
+      workingDirectory: $(BUILD_DIR)
 
   - script: /usr/local/bin/ccache --zero-stats --max-size=50G --show-config
     displayName: 'Clean ccache stats'
 
-  - script: |
-      export CCACHE_DIR=$(CCACHE_DIR)
-      export CCACHE_TEMPDIR=$(TMP_DIR)/ccache
-      export CCACHE_BASEDIR=$(Pipeline.Workspace)
-      export CCACHE_MAXSIZE=50G
-      export USE_CCACHE=1
-      export NDK_CCACHE=/usr/local/bin/ccache
-      export CCACHE_EXEC=/usr/local/bin/ccache
-      export CCACHE_CPP2=1
+  - script: | 
+      CC=$(ANDROID_TOOLS)/ndk-bundle/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
+      CXX=$(ANDROID_TOOLS)/ndk-bundle/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
+      CCACHE_DIR=$(CCACHE_DIR) \
+      CCACHE_TEMPDIR=$(TMP_DIR)/ccache \
+      CCACHE_BASEDIR=$(Pipeline.Workspace) \
+      CCACHE_MAXSIZE=50G \
+      USE_CCACHE=1 \
+      NDK_CCACHE=/usr/local/bin/ccache \
+      CCACHE_EXEC=/usr/local/bin/ccache \
+      CCACHE_CPP2=1 \
       ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Android ARM plugin'

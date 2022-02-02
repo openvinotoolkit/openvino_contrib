@@ -109,7 +109,7 @@ jobs:
         -DENABLE_TESTS=ON
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
-        -DENABLE_INTEL_VPU=OFF
+        -DENABLE_INTEL_MYRIAD=OFF
         -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)

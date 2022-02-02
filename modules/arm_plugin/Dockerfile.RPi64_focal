@@ -1,28 +1,28 @@
 #This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
 #https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV PAKAGE_UPDATES_OF 20210215
+ENV PAKAGE_UPDATES_OF 20220126
 
 #Prerequisite installation
 RUN apt-get update && \
     apt-get -y upgrade && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic main restricted > /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates main restricted >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-updates multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ bionic-backports main restricted universe multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security main restricted >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security universe >> /etc/apt/sources.list && \
-    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ bionic-security multiverse >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic main >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic universe >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic-updates main >> /etc/apt/sources.list && \
-    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ bionic-security main >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted > /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates main restricted >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-backports main restricted universe multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security main restricted >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security universe >> /etc/apt/sources.list && \
+    echo deb [arch=amd64] http://security.ubuntu.com/ubuntu/ focal-security multiverse >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal main >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal universe >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-updates main >> /etc/apt/sources.list && \
+    echo deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ focal-security main >> /etc/apt/sources.list && \
     dpkg --add-architecture arm64 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -76,17 +76,12 @@ RUN cd Python-3.7.9 && make distclean && \
         ac_cv_file__dev_ptc=no && \
     make -j4 && make altinstall
 
-RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.4.tar.gz && \
-    tar xf cmake-3.13.4.tar.gz && \
-    (cd cmake-3.13.4 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
-    rm -rf cmake-3.13.4 cmake-3.13.4.tar.gz
-
 # Replace exceptional Python version. It's used in case of failed test check which we
 # have in our case because CMake tries to run cross-compiled python to detect version.
-RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
+RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake
 
 RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
 RUN rm /usr/bin/lsb_release

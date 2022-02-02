@@ -1,9 +1,6 @@
 #This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
 #https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
 
-#Some pieces of Dokerfile are taken from OpenVINO CI image:
-#https://github.com/intel-innersource/frameworks.ai.openvino.qa.dockerfiles/blob/master/dldt_build/debian_9_arm/Dockerfile
-
 FROM debian:9
 
 ENV DEBIAN_FRONTEND noninteractive

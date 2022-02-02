@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET_NAME "armPlugin")
+set(TARGET_NAME "openvino_arm_cpu_plugin")
 
 set(CMAKE_CXX_STANDARD 14)
 
