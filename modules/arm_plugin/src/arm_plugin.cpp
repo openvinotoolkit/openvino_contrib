@@ -209,5 +209,5 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
     }
 }
 
-static const Version version = {{2, 1}, CI_BUILD_NUMBER, "armPlugin"};
+static const Version version = {{2, 1}, CI_BUILD_NUMBER, "openvino_arm_cpu_plugin"};
 IE_DEFINE_PLUGIN_CREATE_FUNCTION(Plugin, version)

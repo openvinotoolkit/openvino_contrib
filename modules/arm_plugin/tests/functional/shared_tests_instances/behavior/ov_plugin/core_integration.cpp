@@ -15,7 +15,7 @@ namespace {
 
 INSTANTIATE_TEST_SUITE_P(
         smoke_OVClassCommon, OVClassBasicTestP,
-        ::testing::Values(std::make_pair("armPlugin", "CPU")));
+        ::testing::Values(std::make_pair("openvino_arm_cpu_plugin", "CPU")));
 
 INSTANTIATE_TEST_SUITE_P(
         smoke_OVClassNetworkTestP, OVClassNetworkTestP,
