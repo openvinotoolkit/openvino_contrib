@@ -8,6 +8,7 @@
 #include <thread>
 
 #include <ie_plugin_config.hpp>
+#include <openvino/runtime/properties.hpp>
 
 #include "arm_config.hpp"
 
@@ -29,7 +30,7 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
              std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key))) {
             _streamsExecutorConfig.SetConfig(key, value);
             _streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
-        } else if (CONFIG_KEY(PERF_COUNT) == key) {
+        } else if (ov::enable_profiling == key) {
             _perfCount = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
@@ -52,16 +53,16 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     if ((streamExecutorConfigKeys.end() !=
              std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
         return _streamsExecutorConfig.GetConfig(name);
-    } else if (name == CONFIG_KEY(PERF_COUNT)) {
-        return {_perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
+    } else if (ov::enable_profiling == name) {
+        return decltype(ov::enable_profiling)::value_type{_perfCount};
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
     } else if (name == CONFIG_KEY_INTERNAL(USE_REF_IMPL)) {
-        return {_ref ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
+        return {_ref};
     } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
-        return {_lpt ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
+        return {_lpt};
     } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
-        return {_dump ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)};
+        return {_dump};
     }  else {
         IE_THROW(NotFound) << ": " << name;
     }
