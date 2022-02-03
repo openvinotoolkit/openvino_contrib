@@ -175,12 +175,14 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
     if (METRIC_KEY(SUPPORTED_METRICS) == name) {
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, std::vector<std::string>{
             METRIC_KEY(SUPPORTED_METRICS),
-            METRIC_KEY(SUPPORTED_CONFIG_KEYS)});
+            METRIC_KEY(SUPPORTED_CONFIG_KEYS),
+            ov::range_for_async_infer_requests.name(),
+            ov::range_for_streams.name()});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            ov::enable_profiling.name(),
             CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE),
-            CONFIG_KEY_INTERNAL(DUMP_GRAPH)};
+            CONFIG_KEY_INTERNAL(DUMP_GRAPH),
+            ov::enable_profiling.name()};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);
@@ -190,13 +192,13 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         std::vector<ov::PropertyName> supported_properties{
             {METRIC_KEY(SUPPORTED_METRICS), ov::PropertyMutability::RO},
             {METRIC_KEY(SUPPORTED_CONFIG_KEYS), ov::PropertyMutability::RO},
+            {ov::enable_profiling.name(), ov::PropertyMutability::RW},
             {ov::supported_properties.name(), ov::PropertyMutability::RO},
             {ov::available_devices.name(), ov::PropertyMutability::RO},
             {ov::device::full_name.name(), ov::PropertyMutability::RO},
             {ov::device::capabilities.name(), ov::PropertyMutability::RO},
-            {ov::range_for_async_infer_request.name(), ov::PropertyMutability::RO},
-            {ov::range_for_streams.name(), ov::PropertyMutability::RO},
-            {ov::enable_profiling.name(), ov::PropertyMutability::RW}};
+            {ov::range_for_async_infer_requests.name(), ov::PropertyMutability::RO},
+            {ov::range_for_streams.name(), ov::PropertyMutability::RO}};
         for (auto&& configKey : IStreamsExecutor::Config{}.SupportedKeys()) {
             supported_properties.emplace_back(configKey, ov::PropertyMutability::RW);
         }
@@ -205,10 +207,12 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
         return decltype(ov::available_devices)::value_type{"NEON"};
     } else if (ov::device::full_name == name) {
         return decltype(ov::device::full_name)::value_type{"arm_compute::NEON"};
-    } else if (ov::range_for_async_infer_request == name) {
-        return decltype(ov::range_for_async_infer_request)::value_type{1u, std::thread::hardware_concurancy(), 1u};
+    } else if (ov::range_for_async_infer_requests == name) {
+        return decltype(ov::range_for_async_infer_requests)::value_type{
+            std::make_tuple(1u, std::thread::hardware_concurrency(), 1u)};
     } else if (ov::range_for_streams == name) {
-        return decltype(ov::range_for_streams)::value_type{1u, std::thread::hardware_concurancy()};
+        return decltype(ov::range_for_streams)::value_type{
+            std::make_tuple(1u, std::thread::hardware_concurrency())};
     } else if (ov::device::capabilities == name) {
         return decltype(ov::device::capabilities)::value_type{
 #ifdef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC

@@ -54,7 +54,7 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
              std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
         return _streamsExecutorConfig.GetConfig(name);
     } else if (ov::enable_profiling == name) {
-        return decltype(ov::enable_profiling)::value_type{_perfCount};
+        return _perfCount ? InferenceEngine::PluginConfigParams::YES : InferenceEngine::PluginConfigParams::NO;
     } else if (name == CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS)) {
         return {_exclusiveAsyncRequests};
     } else if (name == CONFIG_KEY_INTERNAL(USE_REF_IMPL)) {

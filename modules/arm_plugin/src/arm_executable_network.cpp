@@ -72,10 +72,12 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetConfig(const std::st
 InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::string& name) const {
     if (METRIC_KEY(SUPPORTED_METRICS) == name) {
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, std::vector<std::string>{
-            METRIC_KEY(NETWORK_NAME),
+            ov::model_name.name(),
             METRIC_KEY(SUPPORTED_METRICS),
             METRIC_KEY(SUPPORTED_CONFIG_KEYS),
             ov::supported_properties.name(),
+            ov::inference_num_threads.name(),
+            ov::streams::num.name(),
             METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys;
@@ -85,7 +87,6 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             {ov::model_name.name(), ov::PropertyMutability::RO},
             {ov::supported_properties.name(), ov::PropertyMutability::RO},
             {ov::optimal_number_of_infer_requests.name(), ov::PropertyMutability::RO},
-            {ov::hint::num_requests.name(), ov::PropertyMutability::RO},
             {ov::streams::num.name(), ov::PropertyMutability::RO},
             {ov::inference_num_threads.name(), ov::PropertyMutability::RO}};
     } else if (ov::model_name == name) {
