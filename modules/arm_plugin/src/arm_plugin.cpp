@@ -21,6 +21,8 @@
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <low_precision/low_precision.hpp>
 
+#include <openvino/runtime/properties.hpp>
+
 #include <ie_parallel.hpp>
 #include "arm_ie_scheduler.hpp"
 #include "arm_compute/runtime/CPP/CPPScheduler.h"
@@ -171,40 +173,53 @@ InferenceEngine::Parameter Plugin::GetConfig(const std::string& name, const std:
 
 InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& options) const {
     if (METRIC_KEY(SUPPORTED_METRICS) == name) {
-        std::vector<std::string> supportedMetrics = {
-            METRIC_KEY(AVAILABLE_DEVICES),
+        IE_SET_METRIC_RETURN(SUPPORTED_METRICS, std::vector<std::string>{
             METRIC_KEY(SUPPORTED_METRICS),
             METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-            METRIC_KEY(FULL_DEVICE_NAME),
-            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
-            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS),
-            METRIC_KEY(RANGE_FOR_STREAMS)};
-        IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
+            ov::range_for_async_infer_requests.name(),
+            ov::range_for_streams.name()});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(PERF_COUNT),
             CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE),
-            CONFIG_KEY_INTERNAL(DUMP_GRAPH)};
+            CONFIG_KEY_INTERNAL(DUMP_GRAPH),
+            ov::enable_profiling.name()};
         auto streamExecutorConfigKeys = IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
-    } else if (METRIC_KEY(AVAILABLE_DEVICES) == name) {
-        std::vector<std::string> availableDevices = { "NEON" };
-        IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
-    } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
-        std::string name = "arm_compute::NEON";
-        IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
-    } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
-        std::vector<std::string> capabilities = { METRIC_VALUE(FP32), METRIC_VALUE(FP16) };
-        IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
-    } else if (METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) == name) {
-        IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(1u, 1u, 1u));
-    } else if (METRIC_KEY(RANGE_FOR_STREAMS) == name) {
-        IE_SET_METRIC_RETURN(RANGE_FOR_STREAMS,
-            std::make_tuple(1u, static_cast<uint32_t>(std::thread::hardware_concurrency())));
-    } else  {
+    } else if (ov::supported_properties == name) {
+        std::vector<ov::PropertyName> supported_properties{
+            {METRIC_KEY(SUPPORTED_METRICS), ov::PropertyMutability::RO},
+            {METRIC_KEY(SUPPORTED_CONFIG_KEYS), ov::PropertyMutability::RO},
+            {ov::enable_profiling.name(), ov::PropertyMutability::RW},
+            {ov::supported_properties.name(), ov::PropertyMutability::RO},
+            {ov::available_devices.name(), ov::PropertyMutability::RO},
+            {ov::device::full_name.name(), ov::PropertyMutability::RO},
+            {ov::device::capabilities.name(), ov::PropertyMutability::RO},
+            {ov::range_for_async_infer_requests.name(), ov::PropertyMutability::RO},
+            {ov::range_for_streams.name(), ov::PropertyMutability::RO}};
+        for (auto&& configKey : IStreamsExecutor::Config{}.SupportedKeys()) {
+            supported_properties.emplace_back(configKey, ov::PropertyMutability::RW);
+        }
+        return decltype(ov::supported_properties)::value_type{supported_properties};
+    } else if (ov::available_devices == name) {
+        return decltype(ov::available_devices)::value_type{"NEON"};
+    } else if (ov::device::full_name == name) {
+        return decltype(ov::device::full_name)::value_type{"arm_compute::NEON"};
+    } else if (ov::range_for_async_infer_requests == name) {
+        return decltype(ov::range_for_async_infer_requests)::value_type{
+            std::make_tuple(1u, std::thread::hardware_concurrency(), 1u)};
+    } else if (ov::range_for_streams == name) {
+        return decltype(ov::range_for_streams)::value_type{
+            std::make_tuple(1u, std::thread::hardware_concurrency())};
+    } else if (ov::device::capabilities == name) {
+        return decltype(ov::device::capabilities)::value_type{
+#ifdef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
+            ov::device::capability::FP16,
+#endif
+            ov::device::capability::FP32};
+    } else {
         IE_THROW() << "Unsupported device metric: " << name;
     }
 }
