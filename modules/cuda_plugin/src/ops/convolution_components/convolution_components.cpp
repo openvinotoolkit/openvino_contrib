@@ -6,8 +6,8 @@
 
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
-#include <ngraph/validation_util.hpp>
 #include <ngraph/op/group_conv.hpp>
+#include <ngraph/validation_util.hpp>
 
 namespace CUDAPlugin::Convolution::Details {
 
@@ -66,6 +66,7 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
     switch (pad_type) {
         case ngraph::op::PadType::EXPLICIT:
             break;
+        // TODO: potentially it can be removed, because paddings are assigned in ngraph operation
         case ngraph::op::PadType::SAME_LOWER:
         case ngraph::op::PadType::SAME_UPPER: {
             const ngraph::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
@@ -73,7 +74,7 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
             padding_before_.clear();
             padding_after_.clear();
             ngraph::infer_auto_padding(
-                input_shape_, filter_spatial_shape, strides_, dilations_, pad_type, padding_before_, padding_after_);
+                input_shape_, filter_spatial_shape, strides_, dilations_, pad_type, padding_after_, padding_before_);
         } break;
         case ngraph::op::PadType::VALID: {
             size_t spatial_dims_number = NumberOfSpatialDims();
