@@ -76,10 +76,46 @@ static inline __global__ void pad_const_mode(const T* src,
     }
 }
 
+template <typename T>
+static inline __global__ void nchw_pad_const_mode(const T* src,
+                                                  T* dst,
+                                                  const std::size_t pad_begin[4],
+                                                  const std::size_t src_shape[4],
+                                                  const std::size_t dst_shape[4],
+                                                  const T* pad_value,
+                                                  const size_t max_element_number) {
+    const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= max_element_number) return;
+    enum { N, C, H, W };
+    const int output_width = idx % dst_shape[W];
+    int nc_index = idx / dst_shape[W];
+    const int output_height = nc_index % dst_shape[H];
+    nc_index /= dst_shape[H];
+
+    int input_height = output_height - pad_begin[H];
+    int input_width = output_width - pad_begin[W];
+
+    dst[idx] = (input_height < 0 || input_width < 0 || input_height >= src_shape[H] || input_width >= src_shape[W])
+                   ? *pad_value
+                   : src[(nc_index * src_shape[H] + input_height) * src_shape[W] + input_width];
+}
+
 ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
                            ngraph::element::Type_t dtype,
-                           std::size_t outputRank)
-    : kernel_exec_attrs_{std::move(kernelExecAttrs)}, dtype_{dtype}, output_rank_{outputRank} {}
+                           std::size_t outputRank,
+                           int maxElementsPerThread,
+                           size_t elementsNumber,
+                           bool nchw_conv_padding)
+    : kernel_exec_attrs_{std::move(kernelExecAttrs)},
+      dtype_{dtype},
+      output_rank_{outputRank},
+      max_elements_per_thread_{maxElementsPerThread},
+      elements_number_{elementsNumber},
+      nchw_conv_padding_{nchw_conv_padding} {
+    const auto elements = static_cast<int>(elements_number_);
+    blocks_number_ = 1 + elements / max_elements_per_thread_;
+    threads_per_block_ = (blocks_number_ == 1) ? elements : max_elements_per_thread_;
+}
 
 void ConstModePad::operator()(cudaStream_t stream,
                               const void* src,
@@ -135,7 +171,10 @@ void ConstModePad::callKernel(cudaStream_t stream,
             callKernel<T, 3>(stream, src, dst, begin, srcShape, dstShape, padValue);
             break;
         case 4:
-            callKernel<T, 4>(stream, src, dst, begin, srcShape, dstShape, padValue);
+            if (nchw_conv_padding_)
+                callNCHWFormatConvKernel<T>(stream, src, dst, begin, srcShape, dstShape, padValue);
+            else
+                callKernel<T, 4>(stream, src, dst, begin, srcShape, dstShape, padValue);
             break;
         case 5:
             callKernel<T, 5>(stream, src, dst, begin, srcShape, dstShape, padValue);
@@ -158,6 +197,23 @@ void ConstModePad::callKernel(cudaStream_t stream,
                                                                            srcShape,
                                                                            dstShape,
                                                                            static_cast<const T*>(padValue));
+}
+
+template <typename T>
+void ConstModePad::callNCHWFormatConvKernel(cudaStream_t stream,
+                                            const void* src,
+                                            void* dst,
+                                            const void* begin,
+                                            const std::size_t* srcShape,
+                                            const std::size_t* dstShape,
+                                            const void* padValue) const {
+    nchw_pad_const_mode<T><<<blocks_number_, threads_per_block_, 0, stream>>>(static_cast<const T*>(src),
+                                                                              static_cast<T*>(dst),
+                                                                              static_cast<const size_t*>(begin),
+                                                                              srcShape,
+                                                                              dstShape,
+                                                                              static_cast<const T*>(padValue),
+                                                                              elements_number_);
 }
 
 }  // namespace kernel
