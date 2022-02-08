@@ -3,6 +3,7 @@
 //
 
 #include "single_layer_tests/pad.hpp"
+#include "benchmark.hpp"
 
 #include <cuda_test_constants.hpp>
 #include <vector>
@@ -129,5 +130,31 @@ const auto padPrecesionParams = testing::Combine(testing::ValuesIn(padsBegin2D),
                                                  testing::Values(CommonTestUtils::DEVICE_CUDA));
 
 INSTANTIATE_TEST_CASE_P(smoke_PadPrecesionParams, PadLayerTest, padPrecesionParams, PadLayerTest::getTestCaseName);
+
+struct NCHWFormatPadBenchmarkTest : BenchmarkLayerTest<PadLayerTest> {};
+
+TEST_P(NCHWFormatPadBenchmarkTest, DISABLED_benchmark) {
+    SKIP_IF_CURRENT_TEST_IS_DISABLED()
+    Run("Pad", std::chrono::milliseconds(2000), 200);
+}
+
+const auto benchmarkShapes = std::vector<std::vector<size_t>>{
+    {1, 96, 320, 320}, {1, 3, 640, 640}, {1, 672, 40, 40}, {1, 240, 80, 80}, {1, 144, 160, 160}};
+const auto pad4DBenchmarkParams =
+    testing::Combine(testing::ValuesIn(std::vector<std::vector<int64_t>>{{0, 0, 1, 1}, {0, 0, 3, 3}}),
+                     testing::ValuesIn(std::vector<std::vector<int64_t>>{{0, 0, 0, 0}}),
+                     testing::ValuesIn({0.f}),
+                     testing::Values(ngraph::helpers::PadMode::CONSTANT),
+                     testing::ValuesIn(netPrecisions),
+                     testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                     testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                     testing::Values(InferenceEngine::Layout::ANY),
+                     testing::ValuesIn(benchmarkShapes),
+                     testing::Values(CommonTestUtils::DEVICE_CUDA));
+
+INSTANTIATE_TEST_CASE_P(Benchmark4DPadOperation,
+                        NCHWFormatPadBenchmarkTest,
+                        pad4DBenchmarkParams,
+                        PadLayerTest::getTestCaseName);
 
 }  // namespace
