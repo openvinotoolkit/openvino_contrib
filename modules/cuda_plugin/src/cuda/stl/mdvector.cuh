@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -31,8 +31,10 @@ public:
      * @param extents Dimensions of MDVector
      */
     template <typename... TExtents>
-    __host__ __device__ explicit MDSpan(size_t capacity, void* data, TExtents... extents)
-        : capacity_{capacity}, sizes_{data, extents...}, data_{data + sizes_.size_bytes(), extents..., capacity} {}
+    __host__ explicit MDSpan(cudaStream_t stream, size_t capacity, void* data, TExtents... extents)
+        : capacity_{capacity}, sizes_{data, extents...}, data_{data + sizes_.size_bytes(), extents..., capacity} {
+        cudaMemsetAsync(sizes_.data(), 0, sizes_.size_bytes(), stream);
+    }
 
     /**
      * @brief Returns number of data that referred by Span class

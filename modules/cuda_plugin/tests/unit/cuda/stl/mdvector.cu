@@ -72,7 +72,7 @@ TEST_F(MDVectorTest, MDVector_PushBack) {
     CUDA::Stream stream{};
     auto src = stream.malloc(VectorTestType::size_of(kVectorCapacity, 2, 8));
     stream.memset(src, 0, VectorTestType::size_of(kVectorCapacity, 2, 8));
-    auto vec = VectorTestType(stream, kVectorCapacity, src.get(), 2, 8);
+    auto vec = VectorTestType(stream.get(), kVectorCapacity, src.get(), 2, 8);
     push_back<kVectorCapacity><<<1, 1, 0, stream.get()>>>(vec);
     verify_push_back<kVectorCapacity><<<1, 1, 0, stream.get()>>>(vec);
     ASSERT_NO_THROW(stream.synchronize());
@@ -86,7 +86,7 @@ TEST_F(MDVectorTest, MDVector_Erase) {
     CUDA::Stream stream{};
     auto src = stream.malloc(VectorTestType::size_of(kVectorCapacity, 2, 8));
     stream.memset(src, 0, VectorTestType::size_of(kVectorCapacity, 2, 8));
-    auto vec = VectorTestType(stream, kVectorCapacity, src.get(), 2, 8);
+    auto vec = VectorTestType(stream.get(), kVectorCapacity, src.get(), 2, 8);
     push_back<kVectorCapacity><<<1, 1, 0, stream.get()>>>(vec);
     verify_push_back<kVectorCapacity><<<1, 1, 0, stream.get()>>>(vec);
     erase<kVectorCapacity><<<1, 1, 0, stream.get()>>>(vec);
