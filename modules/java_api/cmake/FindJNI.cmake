@@ -46,7 +46,6 @@ The following cache variables are also available to set or use:
   the include path to jawt.h
 #]=======================================================================]
 
-message("~~~~~~~~~~~~~~~~~~~~~111111")
 # Expand {libarch} occurrences to java_libarch subdirectory(-ies) and set ${_var}
 macro(java_append_library_directories _var)
     # Determine java arch-specific library subdir

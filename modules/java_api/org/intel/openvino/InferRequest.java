@@ -1,55 +1,28 @@
 package org.intel.openvino;
 
-import java.util.Map;
-
-public class InferRequest extends IEWrapper {
-
+public class InferRequest extends Wrapper {
     protected InferRequest(long addr) {
         super(addr);
     }
 
-    public void Infer() {
+    public void infer() {
         Infer(nativeObj);
     }
 
-    public Blob GetBlob(String name) {
-        return new Blob(GetBlob(nativeObj, name));
+    public void set_input_tensor(Tensor input) {
+        SetInputTensor(nativeObj, input.nativeObj);
     }
 
-    public void SetBlob(String name, Blob blob) {
-        SetBlob(nativeObj, name, blob.getNativeObjAddr());
-    }
-
-    public void StartAsync() {
-        StartAsync(nativeObj);
-    }
-
-    public StatusCode Wait(WaitMode waitMode) {
-        return StatusCode.valueOf(Wait(nativeObj, waitMode.getValue()));
-    }
-
-    public void SetCompletionCallback(Runnable runnable) {
-        SetCompletionCallback(nativeObj, runnable);
-    }
-
-    public Map<String, InferenceEngineProfileInfo> GetPerformanceCounts() {
-        return GetPerformanceCounts(nativeObj);
+    public Tensor get_output_tensor() {
+        return new Tensor(GetOutputTensor(nativeObj));
     }
 
     /*----------------------------------- native methods -----------------------------------*/
     private static native void Infer(long addr);
 
-    private static native void StartAsync(long addr);
+    private static native void SetInputTensor(long addr, long tensorAddr);
 
-    private static native int Wait(long addr, int wait_mode);
-
-    private static native void SetCompletionCallback(long addr, Runnable runnable);
-
-    private static native long GetBlob(long addr, String name);
-
-    private static native void SetBlob(long addr, String name, long blobAddr);
-
-    private static native Map<String, InferenceEngineProfileInfo> GetPerformanceCounts(long addr);
+    private static native long GetOutputTensor(long addr);
 
     @Override
     protected native void delete(long nativeObj);

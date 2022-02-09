@@ -51,7 +51,7 @@ sourceSets {
     test {
         java {
             srcDirs = ["."]
-            include "tests/*.java"
+            include "tests/compatibility/*.java", "tests/*.java"
         }
     }
 }
