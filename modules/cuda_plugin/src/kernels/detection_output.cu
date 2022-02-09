@@ -984,7 +984,7 @@ DetectionOutput::DetectionOutput(const Type_t element_type,
       result_size_{result_size} {}
 
 template <typename TDataType>
-std::vector<size_t> DetectionOutput::getMutableWorkbufferSize() const {
+std::vector<size_t> DetectionOutput::getMutableWorkbufferSizes() const {
     const auto locationsSize = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>::size_of(
         attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors);
     const auto confPredsSize =
@@ -1008,7 +1008,6 @@ std::vector<size_t> DetectionOutput::getMutableWorkbufferSize() const {
         attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors);
 
     std::vector<size_t> workbuffers(arm_location_size_ > 0 ? kNumOptionalWB : kNumRequiredWB);
-    workbuffers.at(kDetectionOutputAttrsWBIdx) = sizeof(DetectionOutput::Attrs);
     workbuffers.at(kLocationsWBIdx) = locationsSize;
     workbuffers.at(kConfPredsWBIdx) = confPredsSize;
     workbuffers.at(kPriorBboxesWBIdx) = priorBboxesSize;
@@ -1025,18 +1024,18 @@ std::vector<size_t> DetectionOutput::getMutableWorkbufferSize() const {
     return std::move(workbuffers);
 }
 
-std::vector<size_t> DetectionOutput::getMutableWorkbufferSize() const {
+std::vector<size_t> DetectionOutput::getMutableWorkbufferSizes() const {
     switch (element_type_) {
 #ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
-            return getMutableWorkbufferSize<__nv_bfloat16>();
+            return getMutableWorkbufferSizes<__nv_bfloat16>();
 #endif
         case Type_t::f16:
-            return getMutableWorkbufferSize<__half>();
+            return getMutableWorkbufferSizes<__half>();
         case Type_t::f32:
-            return getMutableWorkbufferSize<float>();
+            return getMutableWorkbufferSizes<float>();
         case Type_t::f64:
-            return getMutableWorkbufferSize<double>();
+            return getMutableWorkbufferSizes<double>();
         default:
             throwIEException(
                 fmt::format("Input element type = {} is not supported by Split operation "
@@ -1045,29 +1044,36 @@ std::vector<size_t> DetectionOutput::getMutableWorkbufferSize() const {
     }
 }
 
-void DetectionOutput::operator()(const cudaStream_t stream,
-                                 const void* locationPtr,
-                                 const void* confidencePtr,
-                                 const void* priorsPtr,
-                                 const void* armLocationPtr,
-                                 const void* armConfidencePtr,
-                                 void* const* workbuffers,
-                                 void* result) const {
+std::vector<size_t> DetectionOutput::getImmutableWorkbufferSizes() const { return {sizeof(attrs_)}; }
+
+void DetectionOutput::initSharedImmutableWorkbuffers(const Buffers& buffers) {
+    CUDA::DefaultStream::stream().upload(buffers.at(0), &attrs_, sizeof(attrs_));
+    dattrs_ptr_ = static_cast<Attrs*>(buffers.at(0).get());
+}
+
+void DetectionOutput::operator()(const CUDA::Stream& stream,
+                                 CUDA::DevicePointer<const void*> location,
+                                 CUDA::DevicePointer<const void*> confidence,
+                                 CUDA::DevicePointer<const void*> priors,
+                                 const void* armLocation,
+                                 const void* armConfidence,
+                                 std::vector<CUDA::DevicePointer<void*>> mutableWorkbuffers,
+                                 CUDA::DevicePointer<void*> result) const {
     switch (element_type_) {
 #ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return call<__nv_bfloat16>(
-                stream, locationPtr, confidencePtr, priorsPtr, armLocationPtr, armConfidencePtr, workbuffers, result);
+                stream, location, confidence, priors, armLocation, armConfidence, mutableWorkbuffers, result);
 #endif
         case Type_t::f16:
             return call<__half>(
-                stream, locationPtr, confidencePtr, priorsPtr, armLocationPtr, armConfidencePtr, workbuffers, result);
+                stream, location, confidence, priors, armLocation, armConfidence, mutableWorkbuffers, result);
         case Type_t::f32:
             return call<float>(
-                stream, locationPtr, confidencePtr, priorsPtr, armLocationPtr, armConfidencePtr, workbuffers, result);
+                stream, location, confidence, priors, armLocation, armConfidence, mutableWorkbuffers, result);
         case Type_t::f64:
             return call<double>(
-                stream, locationPtr, confidencePtr, priorsPtr, armLocationPtr, armConfidencePtr, workbuffers, result);
+                stream, location, confidence, priors, armLocation, armConfidence, mutableWorkbuffers, result);
         default:
             throwIEException(
                 fmt::format("Input element type = {} is not supported by Split operation "
@@ -1077,59 +1083,61 @@ void DetectionOutput::operator()(const cudaStream_t stream,
 }
 
 template <typename TDataType>
-void DetectionOutput::call(const cudaStream_t stream,
-                           const void* locationPtr,
-                           const void* confidencePtr,
-                           const void* priorsPtr,
-                           const void* armConfidencePtr,
-                           const void* armLocationPtr,
-                           void* const* workbuffersPtrs,
-                           void* resultPtr) const {
-    auto locData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(locationPtr), location_size_);
-    auto confData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(confidencePtr), confidence_size_);
-    auto priorData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(priorsPtr), priors_size_);
+void DetectionOutput::call(const CUDA::Stream& stream,
+                           CUDA::DevicePointer<const void*> location,
+                           CUDA::DevicePointer<const void*> confidence,
+                           CUDA::DevicePointer<const void*> priors,
+                           const void* armConfidence,
+                           const void* armLocation,
+                           std::vector<CUDA::DevicePointer<void*>> mutableWorkbuffers,
+                           CUDA::DevicePointer<void*> result) const {
+    auto locData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(location.get()), location_size_);
+    auto confData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(confidence.get()), confidence_size_);
+    auto priorData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(priors.get()), priors_size_);
     auto results = CUDA::Span<DetectionOutputResult<TDataType>>(
         static_cast<DetectionOutputResult<TDataType>*>(result.get()), result_size_);
 
-    auto& dattrs = *static_cast<Attrs*>(workbuffersPtrs[kDetectionOutputAttrsWBIdx]);
-    cudaMemcpyAsync(
-        workbuffersPtrs[kDetectionOutputAttrsWBIdx], &attrs_, sizeof(attrs_), cudaMemcpyHostToDevice, stream);
+    auto& dattrs = *dattrs_ptr_;
 
     Expects(location_size_ / (4 * attrs_.num_images * (attrs_.share_location ? 1 : attrs_.num_classes)) ==
             attrs_.num_priors);
     auto locPreds = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>{
-        workbuffersPtrs[kLocationsWBIdx], attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
+        mutableWorkbuffers[kLocationsWBIdx].get(), attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
     Expects(confidence_size_ / (attrs_.num_images * attrs_.num_classes) == attrs_.num_priors);
     auto confPreds = CUDA::MDSpan<TDataType, CUDA::DExtents<3>>{
-        workbuffersPtrs[kConfPredsWBIdx], attrs_.num_images, attrs_.num_classes, attrs_.num_priors};
+        mutableWorkbuffers[kConfPredsWBIdx].get(), attrs_.num_images, attrs_.num_classes, attrs_.num_priors};
     auto priorBboxes = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<2>>{
-        workbuffersPtrs[kPriorBboxesWBIdx], attrs_.num_images, attrs_.num_priors};
+        mutableWorkbuffers[kPriorBboxesWBIdx].get(), attrs_.num_images, attrs_.num_priors};
     auto priorVariances = CUDA::MDSpan<CUDA::Array<TDataType, 4>, CUDA::DExtents<2>>{
-        workbuffersPtrs[kPriorVariancesWBIdx], attrs_.num_images, attrs_.num_priors};
+        mutableWorkbuffers[kPriorVariancesWBIdx].get(), attrs_.num_images, attrs_.num_priors};
     auto decodeBboxes = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>{
-        workbuffersPtrs[kDecodeBboxesWBIdx], attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
+        mutableWorkbuffers[kDecodeBboxesWBIdx].get(), attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
     auto tempDecodeBboxes = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>{
-        workbuffersPtrs[kTempDecodeBboxesWBIdx], attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
-    auto numDets = CUDA::Span<CUDA::DeviceAtomic<unsigned>>{workbuffersPtrs[kNumDetectionsWBIdx], attrs_.num_images};
+        mutableWorkbuffers[kTempDecodeBboxesWBIdx].get(), attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
+    auto numDets =
+        CUDA::Span<CUDA::DeviceAtomic<unsigned>>{mutableWorkbuffers[kNumDetectionsWBIdx].get(), attrs_.num_images};
     auto tempScorePerClassPrioIdxs0 = CUDA::MDVector<CUDA::Pair<TDataType, CUDA::Pair<int, int>>, 2>{
         stream,
         attrs_.num_priors,
-        workbuffersPtrs[kTempScorePerClassPrioIdxs0WBIdx],
+        mutableWorkbuffers[kTempScorePerClassPrioIdxs0WBIdx].get(),
         attrs_.num_images,
         attrs_.num_classes};
     auto tempScorePerClassPrioIdxs1 = CUDA::MDVector<CUDA::Pair<TDataType, CUDA::Pair<int, int>>, 1>{
         stream,
         attrs_.num_classes * attrs_.num_priors,
-        workbuffersPtrs[kTempScorePerClassPrioIdxs1WBIdx],
+        mutableWorkbuffers[kTempScorePerClassPrioIdxs1WBIdx].get(),
         attrs_.num_images};
-    auto prioBoxIdxsByClass = CUDA::MDVector<int, 2>{
-        stream, attrs_.num_priors, workbuffersPtrs[kPrioBoxIdxsByClassWBIdx], attrs_.num_images, attrs_.num_classes};
+    auto prioBoxIdxsByClass = CUDA::MDVector<int, 2>{stream,
+                                                     attrs_.num_priors,
+                                                     mutableWorkbuffers[kPrioBoxIdxsByClassWBIdx].get(),
+                                                     attrs_.num_images,
+                                                     attrs_.num_classes};
 
     const unsigned num_blocks = (attrs_.num_images % max_threads_per_block_ == 0)
                                     ? (attrs_.num_images / max_threads_per_block_)
                                     : (attrs_.num_images / max_threads_per_block_ + 1);
     const unsigned threads_per_block = (num_blocks == 1) ? attrs_.num_images : max_threads_per_block_;
-    detection_output_initialization<TDataType><<<num_blocks, threads_per_block, 0, stream>>>(numDets);
+    detection_output_initialization<TDataType><<<num_blocks, threads_per_block, 0, stream.get()>>>(numDets);
 
     const unsigned num_blocks_priors = (attrs_.num_priors % max_threads_per_block_ == 0)
                                            ? (attrs_.num_priors / max_threads_per_block_)
@@ -1138,79 +1146,78 @@ void DetectionOutput::call(const cudaStream_t stream,
 
     if (arm_confidence_size_ > 0) {
         auto armConfData =
-            CUDA::Span<const TDataType>(static_cast<const TDataType*>(armConfidencePtr), arm_confidence_size_);
-        auto armLocData =
-            CUDA::Span<const TDataType>(static_cast<const TDataType*>(armLocationPtr), arm_location_size_);
+            CUDA::Span<const TDataType>(static_cast<const TDataType*>(armConfidence), arm_confidence_size_);
+        auto armLocData = CUDA::Span<const TDataType>(static_cast<const TDataType*>(armLocation), arm_location_size_);
         auto armLocPreds = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>{
-            workbuffersPtrs[kArmLocationsWBIdx], attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
+            mutableWorkbuffers[kArmLocationsWBIdx].get(), attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
         detection_output_stage_0_os_confidence_scores<<<dim3(attrs_.num_images, attrs_.num_classes, num_blocks_priors),
                                                         threads_per_block_priors,
                                                         0,
-                                                        stream>>>(dattrs, confData, armConfData, confPreds);
+                                                        stream.get()>>>(dattrs, confData, armConfData, confPreds);
         detection_output_stage_0_get_loc_predictions_with_arm<<<
             dim3(attrs_.num_images, attrs_.num_loc_classes, num_blocks_priors),
             threads_per_block_priors,
             0,
-            stream>>>(dattrs, locData, armLocData, locPreds, armLocPreds);
+            stream.get()>>>(dattrs, locData, armLocData, locPreds, armLocPreds);
         detection_output_stage_0_get_prior_bboxes<<<dim3(attrs_.num_images, 1, num_blocks_priors),
                                                     threads_per_block_priors,
                                                     0,
-                                                    stream>>>(dattrs, priorData, priorBboxes, priorVariances);
+                                                    stream.get()>>>(dattrs, priorData, priorBboxes, priorVariances);
         detection_output_stage_0_cas_decode_bboxes_all<<<
             dim3(attrs_.num_images, attrs_.num_loc_classes, num_blocks_priors),
             threads_per_block_priors,
             0,
-            stream>>>(dattrs, locPreds, priorBboxes, priorVariances, armLocPreds, tempDecodeBboxes, decodeBboxes);
+            stream.get()>>>(dattrs, locPreds, priorBboxes, priorVariances, armLocPreds, tempDecodeBboxes, decodeBboxes);
     } else {
         detection_output_stage_0_confidence_scores<<<dim3(attrs_.num_images, attrs_.num_classes, num_blocks_priors),
                                                      threads_per_block_priors,
                                                      0,
-                                                     stream>>>(dattrs, confData, confPreds);
+                                                     stream.get()>>>(dattrs, confData, confPreds);
         detection_output_stage_0_get_loc_predictions<<<
             dim3(attrs_.num_images, attrs_.num_loc_classes, num_blocks_priors),
             threads_per_block_priors,
             0,
-            stream>>>(dattrs, locData, locPreds);
+            stream.get()>>>(dattrs, locData, locPreds);
         detection_output_stage_0_get_prior_bboxes<<<dim3(attrs_.num_images, 1, num_blocks_priors),
                                                     threads_per_block_priors,
                                                     0,
-                                                    stream>>>(dattrs, priorData, priorBboxes, priorVariances);
+                                                    stream.get()>>>(dattrs, priorData, priorBboxes, priorVariances);
         detection_output_stage_0_decode_bboxes_all<<<dim3(attrs_.num_images, attrs_.num_loc_classes, num_blocks_priors),
                                                      threads_per_block_priors,
                                                      0,
-                                                     stream>>>(
+                                                     stream.get()>>>(
             dattrs, locPreds, priorBboxes, priorVariances, decodeBboxes);
     }
 
 #ifdef CUDA_KERNEL_PRINT_LOG
-    debug::detection_output_stage_0_debug<<<1, 1, 0, stream>>>(
+    debug::detection_output_stage_0_debug<<<1, 1, 0, stream.get()>>>(
         dattrs, confPreds, locPreds, priorBboxes, priorVariances, decodeBboxes);
 #endif
 
     if (!attrs_.decrease_label_id) {
-        detection_output_stage_1_caffe_nms<<<dim3(attrs_.num_images, attrs_.num_classes, 1), 1, 0, stream>>>(
+        detection_output_stage_1_caffe_nms<<<dim3(attrs_.num_images, attrs_.num_classes, 1), 1, 0, stream.get()>>>(
             dattrs, decodeBboxes, confPreds, tempScorePerClassPrioIdxs0, prioBoxIdxsByClass, numDets);
     } else {
-        detection_output_stage_1_mxnet_nms<<<dim3(attrs_.num_images), 1, 0, stream>>>(
+        detection_output_stage_1_mxnet_nms<<<dim3(attrs_.num_images), 1, 0, stream.get()>>>(
             dattrs, decodeBboxes, confPreds, tempScorePerClassPrioIdxs1, prioBoxIdxsByClass, numDets);
     }
 
 #ifdef CUDA_KERNEL_PRINT_LOG
-    debug::detection_output_stage_1_debug<TDataType><<<1, 1, 0, stream>>>(dattrs, prioBoxIdxsByClass, numDets);
+    debug::detection_output_stage_1_debug<TDataType><<<1, 1, 0, stream.get()>>>(dattrs, prioBoxIdxsByClass, numDets);
 #endif
 
-    detection_output_stage_1_keep_top_scores<<<dim3(attrs_.num_images), 1, 0, stream>>>(
+    detection_output_stage_1_keep_top_scores<<<dim3(attrs_.num_images), 1, 0, stream.get()>>>(
         dattrs, confPreds, tempScorePerClassPrioIdxs1, prioBoxIdxsByClass, numDets);
 
 #ifdef CUDA_KERNEL_PRINT_LOG
-    debug::detection_output_stage_1_debug<TDataType><<<1, 1, 0, stream>>>(dattrs, prioBoxIdxsByClass, numDets);
+    debug::detection_output_stage_1_debug<TDataType><<<1, 1, 0, stream.get()>>>(dattrs, prioBoxIdxsByClass, numDets);
 #endif
 
-    detection_output_stage_2_results<<<dim3(attrs_.num_images), 1, 0, stream>>>(
+    detection_output_stage_2_results<<<dim3(attrs_.num_images), 1, 0, stream.get()>>>(
         dattrs, confPreds, decodeBboxes, prioBoxIdxsByClass, numDets, results);
 
 #ifdef CUDA_KERNEL_PRINT_LOG
-    debug::detection_output_stage_2_debug<TDataType><<<1, 1, 0, stream>>>(dattrs, result, numDets);
+    debug::detection_output_stage_2_debug<TDataType><<<1, 1, 0, stream.get()>>>(dattrs, resultData, numDets);
 #endif
 }
 

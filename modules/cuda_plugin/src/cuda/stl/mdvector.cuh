@@ -31,9 +31,9 @@ public:
      * @param extents Dimensions of MDVector
      */
     template <typename... TExtents>
-    __host__ explicit MDSpan(cudaStream_t stream, size_t capacity, void* data, TExtents... extents)
+    __host__ explicit MDSpan(const CUDA::Stream& stream, size_t capacity, void* data, TExtents... extents)
         : capacity_{capacity}, sizes_{data, extents...}, data_{data + sizes_.size_bytes(), extents..., capacity} {
-        cudaMemsetAsync(sizes_.data(), 0, sizes_.size_bytes(), stream);
+        stream.memset(CUDA::DevicePointer<void*>{sizes_.data()}, 0, sizes_.size_bytes());
     }
 
     /**

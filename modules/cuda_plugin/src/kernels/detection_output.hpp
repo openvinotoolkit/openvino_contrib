@@ -29,6 +29,8 @@ struct __align__(1) DetectionOutputResult {
 
 class DetectionOutput {
 public:
+    using Buffers = std::vector<CUDA::DevicePointer<void*>>;
+
     struct Attrs {
         enum CodeType {
             Caffe_PriorBoxParameter_CORNER = 0,
@@ -62,8 +64,7 @@ public:
     };
 
     enum {
-        kDetectionOutputAttrsWBIdx = 0,
-        kLocationsWBIdx,
+        kLocationsWBIdx = 0,
         kConfPredsWBIdx,
         kPriorBboxesWBIdx,
         kPriorVariancesWBIdx,
@@ -88,19 +89,21 @@ public:
                     size_t result_size,
                     Attrs attrs);
 
-    void operator()(cudaStream_t stream,
-                    const void* locationPtr,
-                    const void* confidencePtr,
-                    const void* priorsPtr,
-                    const void* armLocationPtr,
-                    const void* armConfidencePtr,
-                    void* const* _workbuffers,
-                    void* result) const;
-    std::vector<size_t> getMutableWorkbufferSize() const;
+    void operator()(const CUDA::Stream& stream,
+                    CUDA::DevicePointer<const void*> location,
+                    CUDA::DevicePointer<const void*> confidence,
+                    CUDA::DevicePointer<const void*> priors,
+                    const void* armLocation,
+                    const void* armConfidence,
+                    std::vector<CUDA::DevicePointer<void*>> mutableWorkbuffers,
+                    CUDA::DevicePointer<void*> result) const;
+    std::vector<size_t> getMutableWorkbufferSizes() const;
+    std::vector<size_t> getImmutableWorkbufferSizes() const;
+    void initSharedImmutableWorkbuffers(const Buffers& buffers);
 
 protected:
     template <typename TDataType>
-    std::vector<size_t> getMutableWorkbufferSize() const;
+    std::vector<size_t> getMutableWorkbufferSizes() const;
     template <typename TDataType>
     void call(const CUDA::Stream& stream,
               CUDA::DevicePointer<const void*> location,
@@ -114,6 +117,7 @@ protected:
 private:
     Type_t element_type_{};
     Attrs attrs_;
+    Attrs* dattrs_ptr_ = nullptr;
 
     size_t max_threads_per_block_;
 

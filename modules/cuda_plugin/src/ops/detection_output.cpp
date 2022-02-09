@@ -81,24 +81,32 @@ void DetectionOutputOp::Execute(const InferenceRequestContext& context,
                                 const Workbuffers& workbuffers) const {
     const auto& stream = context.getThreadContext().stream();
     if (inputTensors.size() == 5) {
-        (*kernel_)(stream.get(),
-                   inputTensors[0].get(),
-                   inputTensors[1].get(),
-                   inputTensors[2].get(),
+        (*kernel_)(stream,
+                   inputTensors[0],
+                   inputTensors[1],
+                   inputTensors[2],
                    inputTensors[3].get(),
                    inputTensors[4].get(),
-                   reinterpret_cast<void* const*>(workbuffers.mutable_buffers.data()),
-                   outputTensors[0].get());
+                   workbuffers.mutable_buffers,
+                   outputTensors[0]);
     } else {
-        (*kernel_)(stream.get(),
-                   inputTensors[0].get(),
-                   inputTensors[1].get(),
-                   inputTensors[2].get(),
+        (*kernel_)(stream,
+                   inputTensors[0],
+                   inputTensors[1],
+                   inputTensors[2],
                    nullptr,
                    nullptr,
-                   reinterpret_cast<void* const*>(workbuffers.mutable_buffers.data()),
-                   outputTensors[0].get());
+                   workbuffers.mutable_buffers,
+                   outputTensors[0]);
     }
+}
+
+void DetectionOutputOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
+    kernel_.value().initSharedImmutableWorkbuffers(buffers);
+}
+
+WorkbufferRequest DetectionOutputOp::GetWorkBufferRequest() const {
+    return {kernel_.value().getImmutableWorkbufferSizes(), kernel_.value().getMutableWorkbufferSizes()};
 }
 
 OPERATION_REGISTER(DetectionOutputOp, DetectionOutput);

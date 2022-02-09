@@ -24,9 +24,8 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    WorkbufferRequest GetWorkBufferRequest() const override {
-        return {{}, kernel_.value().getMutableWorkbufferSize()};  // Most operators do not need workbuffers
-    }
+    void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
+    WorkbufferRequest GetWorkBufferRequest() const override;
 
 private:
     const ngraph::element::Type element_type_;
