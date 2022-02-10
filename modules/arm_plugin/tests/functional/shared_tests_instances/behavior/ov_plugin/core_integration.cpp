@@ -18,7 +18,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(std::make_pair("openvino_arm_cpu_plugin", "CPU")));
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassNetworkTestP, OVClassNetworkTestP,
+        smoke_OVClassNetworkTestP, CoreWithModelTest_Param,
         ::testing::Values("CPU"));
 
 INSTANTIATE_TEST_SUITE_P(
@@ -30,39 +30,35 @@ INSTANTIATE_TEST_SUITE_P(
 //
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_SUPPORTED_CONFIG_KEYS,
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_SUPPORTED_PROPERTIES,
         ::testing::Values("CPU", "MULTI", "HETERO", "AUTO"));
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_SUPPORTED_METRICS,
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_AVAILABLE_DEVICES,
+        ::testing::Values("CPU"));
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_FULL_DEVICE_NAME,
         ::testing::Values("CPU", "MULTI", "HETERO", "AUTO"));
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_AVAILABLE_DEVICES,
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_OPTIMIZATION_CAPABILITIES,
         ::testing::Values("CPU"));
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_FULL_DEVICE_NAME,
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
+        ::testing::Values("CPU"));
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_RANGE_FOR_STREAMS,
+        ::testing::Values("CPU"));
+
+INSTANTIATE_TEST_SUITE_P(
+        smoke_OVClassGetMetricTest, OVClassPropertyTest_ThrowUnsupported,
         ::testing::Values("CPU", "MULTI", "HETERO", "AUTO"));
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_OPTIMIZATION_CAPABILITIES,
-        ::testing::Values("CPU"));
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
-        ::testing::Values("CPU"));
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_RANGE_FOR_STREAMS,
-        ::testing::Values("CPU"));
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetMetricTest, OVClassGetMetricTest_ThrowUnsupported,
-        ::testing::Values("CPU", "MULTI", "HETERO", "AUTO"));
-
-INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetConfigTest, OVClassGetConfigTest_ThrowUnsupported,
+        smoke_OVClassGetConfigTest, OVClassGetPropertyTest_ThrowUnsupported ,
         ::testing::Values("CPU", "MULTI", "HETERO", "AUTO"));
 
 INSTANTIATE_TEST_SUITE_P(
@@ -74,14 +70,14 @@ INSTANTIATE_TEST_SUITE_P(
 //
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassGetConfigTest, OVClassGetConfigTest,
+        smoke_OVClassGetConfigTest, OVClassGetPropertyTest,
         ::testing::Values("CPU"));
 
 
 // IE Class Query network
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassQueryNetworkTest, OVClassQueryNetworkTest,
+        smoke_OVClassQueryNetworkTest, CoreQueryModelTest_Param,
         ::testing::Values("CPU"));
 
 // IE Class Load network
