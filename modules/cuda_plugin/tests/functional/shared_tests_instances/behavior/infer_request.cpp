@@ -401,7 +401,7 @@ TEST_F(InferenceRequestBasicTest, AsyncParameterResultCancel) {
     fillBlobs(inferRequest, inputsInfo, 1);
     ASSERT_NO_THROW(inferRequest.StartAsync());
     ASSERT_NO_THROW(inferRequest.Cancel());
-    ASSERT_NO_THROW(inferRequest.Wait(5000));
+    ASSERT_THROW(inferRequest.Wait(5000), std::exception);
 }
 
 TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {
@@ -420,6 +420,5 @@ TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {
     auto perfMap = request.GetPerformanceCounts();
     ASSERT_NE(perfMap.size(), 0);
 }
-
 
 }  // namespace
