@@ -1,0 +1,15 @@
+name: Continuous benchmarking CUDA
+on:
+  push:
+    branches:
+      - releases/2021/4
+jobs:
+  benchmark:
+    runs-on: continuous-benchmarking
+    steps:
+    - name: fetch
+      run: git -C ~/Projects/openvino_contrib fetch
+    - name: checkout
+      run: git -C ~/Projects/openvino_contrib checkout develop
+    - name: trigger
+      run: pushd ~/openvino_contrib_benchmarking/ && python3 ./client.py --trigger && popd
