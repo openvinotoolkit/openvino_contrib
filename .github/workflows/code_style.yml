@@ -1,9 +1,13 @@
 name: Code Style
 on:
   push:
-    paths: '**.java'
+    paths:
+      - '**'
+      - '!modules/cuda_plugin/**'
   pull_request:
-    paths: '**.java'
+    paths:
+      - '**'
+      - '!modules/cuda_plugin/**'
 
 jobs:
   Java:
