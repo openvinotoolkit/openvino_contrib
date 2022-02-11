@@ -7,6 +7,6 @@ jobs:
     - name: fetch
       run: git -C ~/runner/openvino_contrib fetch
     - name: rebased
-      run: git -C ~/runner/openvino_contrib merge-base --is-ancestor origin/develop $GITHUB_SHA
+      run: git -C ~/runner/openvino_contrib merge-base --is-ancestor origin/releases/2021/4 $GITHUB_SHA
     - name: autosquashed
-      run: "! git -C ~/runner/openvino_contrib rev-list --pretty=oneline  -E --grep '^(fixup|squash|amend)!' origin/develop..$GITHUB_SHA | fgrep !"
+      run: "! git -C ~/runner/openvino_contrib rev-list --pretty=oneline  -E --grep '^(fixup|squash|amend)!' origin/releases/2021/4..$GITHUB_SHA | fgrep !"
