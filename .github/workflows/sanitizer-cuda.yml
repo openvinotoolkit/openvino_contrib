@@ -1,0 +1,22 @@
+name: cuda sanitizer
+on:
+  push:
+    branches:
+      - releases/2021/4
+  workflow_dispatch:
+
+jobs:
+  cuda-compute-sanitizer:
+    runs-on: lohika-ci
+    timeout-minutes: 60
+    steps:
+    - name: fetch
+      run: git -C ~/runner/openvino_contrib fetch
+    - name: checkout
+      run: git -C ~/runner/openvino_contrib checkout $GITHUB_SHA
+    - name: CMake
+      run: env -C ~/runner ./configure_cuda_sanitizer-2021.4.sh
+    - name: ninja
+      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/build_cuda_sanitizer-2021.4 -v CudaFuncTests CudaUnitTests' | make -j`nproc` -f-
+    - name: functional tests
+      run: env -C ~/runner PATH=/usr/local/cuda-11.2/bin:$PATH ./openvino_contrib/modules/cuda_plugin/utils/cuda-sanitizer.sh ./build_cuda_sanitizer-2021.4/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*Hetero*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*
