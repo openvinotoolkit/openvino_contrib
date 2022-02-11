@@ -51,7 +51,7 @@ namespace {
 
     const std::vector<ov::AnyMap> configSetPrc = {
             {},
-            {ov::streams::num(ov::streams::AUTO)}
+            {ov::num_streams(ov::NumStreams::AUTO)}
     };
 
     const std::vector<ov::AnyMap> AutoConfigsSetPrc = {
@@ -60,6 +60,6 @@ namespace {
 
     const std::vector<ov::AnyMap> MultiConfigsSetPrc = {
             {ov::device::priorities(CommonTestUtils::DEVICE_CPU)},
-            {ov::device::priorities(CommonTestUtils::DEVICE_CPU), ov::streams::num(ov::streams::AUTO)}
+            {ov::device::priorities(CommonTestUtils::DEVICE_CPU), ov::num_streams(ov::NumStreams::AUTO)}
     };
 }  // namespace
