@@ -10,6 +10,6 @@ jobs:
     - name: fetch
       run: git -C ~/Projects/openvino_contrib fetch
     - name: checkout
-      run: git -C ~/Projects/openvino_contrib checkout develop
+      run: git -C ~/Projects/openvino_contrib checkout releases/2021/4
     - name: trigger
       run: pushd ~/openvino_contrib_benchmarking/ && python3 ./client.py --trigger && popd

@@ -9,6 +9,7 @@ So, all the new modules should be developed separately, and published in the `op
 This list gives an overview of all modules available inside the contrib repository.
 
 * [**arm_plugin**](./modules/arm_plugin): ARM CPU Plugin -- allows to perform deep neural networks inference on ARM CPUs, using OpenVINO API.
+* [**cuda_plugin**](./modules/cuda_plugin): CUDA GPU Plugin -- allows to perform deep neural networks inference on NVIDIA GPUs using CUDA, using OpenVINO API.
 * [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
 * [**mo_pytorch**](./modules/mo_pytorch): PyTorch extensions for Model Optimizer -- native PyTorch to OpenVINO IR converter
 * [**optimum**](./modules/optimum): Optimum OpenVINO -- Python extension for Hugging Face [Transformers](https://github.com/huggingface/transformers) including runtime and NNCF quantization.
@@ -34,6 +35,7 @@ $ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_java_api=OFF <open
 Additional build instructions are available for the following modules:
 
 * [**arm_plugin**](./modules/arm_plugin/README.md)
+* [**cuda_plugin**](./modules/cuda_plugin/README.md)
 * [**ovms_ai_extension**](./modules/ovms_ai_extension/README.md)
 
 ## Update the repository documentation
