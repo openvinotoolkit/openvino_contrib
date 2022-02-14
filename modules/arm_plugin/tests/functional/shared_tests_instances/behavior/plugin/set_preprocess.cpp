@@ -5,7 +5,7 @@
 #include "base/behavior_test_utils.hpp"
 #include "multi-device/multi_device_config.hpp"
 
-#include "behavior/preprocessing/set_preprocess.hpp"
+#include "behavior/plugin/set_preprocess.hpp"
 
 using namespace BehaviorTestsDefinitions;
 
