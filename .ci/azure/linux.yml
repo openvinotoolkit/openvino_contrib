@@ -12,8 +12,7 @@ resources:
 
 jobs:
 - job: Lin
-  # About 150% of total time
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
 
   pool:
     name: LIN_VMSS_VENV_F16S_U20_WU2
