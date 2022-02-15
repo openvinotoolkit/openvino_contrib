@@ -62,7 +62,7 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     IE_ASSERT(_executableNetwork->_executor != nullptr);
     _executableNetwork->_executor->runAndWait({
         [&] {
-            layers = Converter{_executableNetwork->_function, _executableNetwork->_cfg}.Configure(_memoryManager, *_memoryGroup);
+            layers = Converter{_executableNetwork->_model, _executableNetwork->_cfg}.Configure(_memoryManager, *_memoryGroup);
         }
     });
     auto allocateMemory = [] (const auto& blobName, const auto& blobDataMap, auto& blobs, auto tensor, auto output) {
@@ -102,12 +102,12 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
         }
         return networkBlob;
     };
-    for (auto&& node : _executableNetwork->_function->get_parameters()) {
+    for (auto&& node : _executableNetwork->_model->get_parameters()) {
         auto nodeName = node->get_friendly_name();
         IE_ASSERT(node->outputs().size() == 1);
         for (auto&& output : node->outputs()) {
             auto tensor = layers.at(node->get_instance_id())._outputs.at(output)._tensor.get();
-            auto str = _executableNetwork->_function->get_friendly_name() + "_" +
+            auto str = _executableNetwork->_model->get_friendly_name() + "_" +
                      requestID + "_preprocessing_" +
                      node->get_friendly_name() + "_" +
                      std::to_string(node->get_instance_id());
@@ -125,13 +125,13 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
         }
     }
 
-    for (auto&& node : _executableNetwork->_function->get_results()) {
+    for (auto&& node : _executableNetwork->_model->get_results()) {
         IE_ASSERT(node->inputs().size() == 1);
         auto outputName = node->get_rt_info().at("ResultName").as<std::string>();
         auto input = node->input(0);
         auto sourceOutput = input.get_source_output();
         auto tensor = layers.at(node->get_instance_id())._inputs.at(input)->_tensor.get();
-        auto str = _executableNetwork->_function->get_friendly_name() + "_" +
+        auto str = _executableNetwork->_model->get_friendly_name() + "_" +
                    requestID + "_postprocessing_" +
                    outputName + "_" +
                    std::to_string(node->get_instance_id());
@@ -150,13 +150,13 @@ void ArmInferRequest::InitArmInferRequest(const std::shared_ptr<ArmPlugin::Execu
     IE_ASSERT(!_outputInfo.empty());
     _memoryManager->populate(_allocator, 1);
     _memoryGroupScope = std::make_unique<arm_compute::MemoryGroupResourceScope>(*_memoryGroup);
-    for (auto&& node : _executableNetwork->_function->get_ordered_ops()) {
+    for (auto&& node : _executableNetwork->_model->get_ordered_ops()) {
         auto& layer = layers.at(node->get_instance_id());
         auto execType = layer._execType;
         _layers.emplace_back(LayerInfo{
             std::move(layer),
             node.get(),
-            openvino::itt::handle(_executableNetwork->_function->get_friendly_name() + "_" +
+            openvino::itt::handle(_executableNetwork->_model->get_friendly_name() + "_" +
                                   requestID + "_" +
                                   node->get_friendly_name() + "_" +
                                   std::to_string(node->get_instance_id())),

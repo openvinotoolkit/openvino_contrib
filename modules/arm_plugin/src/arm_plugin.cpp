@@ -58,13 +58,13 @@ Plugin::~Plugin() {
     ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
 }
 
-std::shared_ptr<ngraph::Function> Plugin::Transform(const std::shared_ptr<const ngraph::Function>& function,
-                                                    const Configuration& config) const {
-    auto transformedFunction = ngraph::clone_function(*function);
+std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Model>& model,
+                                             const Configuration& config) const {
+    auto transformedModel = ov::clone_model(*model);
     ngraph::pass::Manager passManager;
     passManager.register_pass<pass::ArmOptimizations>(config._lpt, config._dump);
-    passManager.run_passes(transformedFunction);
-    return transformedFunction;
+    passManager.run_passes(transformedModel);
+    return transformedModel;
 }
 
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
@@ -73,32 +73,32 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
     InferenceEngine::OutputsDataMap networkOutputs = network.getOutputsInfo();
 
-    auto function = network.getFunction();
-    if (function == nullptr) {
+    auto model = network.getFunction();
+    if (model == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
-    auto transformedFunction = Transform(function, cfg);
-    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(function);
-    return std::make_shared<ExecutableNetwork>(transformedFunction, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
+    auto transformedModel = Transform(model, cfg);
+    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(model);
+    return std::make_shared<ExecutableNetwork>(transformedModel, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
 QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigMap& config) const {
     QueryNetworkResult res;
     Configuration cfg{config, _cfg, false};
-    auto function = network.getFunction();
-    if (function == nullptr) {
+    auto model = network.getFunction();
+    if (model == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
     std::unordered_set<std::string> originalOps;
-    for (auto&& node : function->get_ops()) {
+    for (auto&& node : model->get_ops()) {
         originalOps.emplace(node->get_friendly_name());
     }
-    auto transformedFunction = Transform(function, cfg);
+    auto transformedModel = Transform(model, cfg);
     std::unordered_set<std::string> supported;
     std::unordered_set<std::string> unsupported;
-    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(function);
-    Converter converter{transformedFunction, cfg};
-    for (auto&& node : transformedFunction->get_ops()) {
+    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(model);
+    Converter converter{transformedModel, cfg};
+    for (auto&& node : transformedModel->get_ops()) {
         auto itConversion = converter._conversions.find(node->get_type_info());
         bool nodeIsSupported = false;
         if (itConversion != converter._conversions.end()) {
@@ -129,7 +129,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     for (auto&& unsupportedNode : unsupported) {
         supported.erase(unsupportedNode);
     }
-    for (auto&& node : function->get_ops()) {
+    for (auto&& node : model->get_ops()) {
         if (contains(supported, node->get_friendly_name())) {
             for (auto&& inputNodeOutput : node->input_values()) {
                 if (ngraph::op::is_constant(inputNodeOutput.get_node()) || ngraph::op::is_parameter(inputNodeOutput.get_node())) {
@@ -145,7 +145,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
             }
         }
     }
-    for (auto&& node : function->get_ops()) {
+    for (auto&& node : model->get_ops()) {
         if (ngraph::op::is_constant(node) || ngraph::op::is_parameter(node)) {
             if (!contains(supported, node->output(0).get_target_inputs().begin()->get_node()->get_friendly_name())) {
                 supported.erase(node->get_friendly_name());
