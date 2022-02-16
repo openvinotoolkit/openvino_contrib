@@ -4,37 +4,35 @@
 
 #include "fused_group_convolution.hpp"
 
-#include <fmt/format.h>
-
 #include <gsl/gsl_assert>
-#include <optional>
 
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
 
 namespace CUDAPlugin {
 
-FusedGroupConvolutionOp::FusedGroupConvolutionOp(const CreationContext& context,
-                                                 const NodeOp& op,
-                                                 IndexCollection&& inputIds,
-                                                 IndexCollection&& outputIds)
-    : OperationCuDnn(context, op, std::move(inputIds), std::move(outputIds)), fused_conv_{context, op, {}, {}} {}
+FusedGroupConvolutionCuDnnOp::FusedGroupConvolutionCuDnnOp(const CreationContext& context,
+                                                           const NodeOp& node,
+                                                           IndexCollection&& inputIds,
+                                                           IndexCollection&& outputIds)
+    : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
+      fused_conv_{context, node, {}, {}, Convolution::Details::FusedConvolutionParams{node}} {}
 
-void FusedGroupConvolutionOp::Execute(const InferenceRequestContext& context,
-                                      Inputs inputs,
-                                      Outputs outputs,
-                                      const Workbuffers& workbuffers) const {
+void FusedGroupConvolutionCuDnnOp::Execute(const InferenceRequestContext& context,
+                                           Inputs inputs,
+                                           Outputs outputs,
+                                           const Workbuffers& workbuffers) const {
     fused_conv_.Execute(context, inputs, outputs, workbuffers);
 }
 
-WorkbufferRequest FusedGroupConvolutionOp::GetWorkBufferRequest() const { return fused_conv_.GetWorkBufferRequest(); }
+WorkbufferRequest FusedGroupConvolutionCuDnnOp::GetWorkBufferRequest() const { return fused_conv_.GetWorkBufferRequest(); }
 
-const WorkbufferIds& FusedGroupConvolutionOp::GetWorkbufferIds() const { return fused_conv_.GetWorkbufferIds(); }
+const WorkbufferIds& FusedGroupConvolutionCuDnnOp::GetWorkbufferIds() const { return fused_conv_.GetWorkbufferIds(); }
 
-IOperationExec::WorkbufferStatus FusedGroupConvolutionOp::SetWorkbufferIds(WorkbufferIds&& workbufferIds) {
+IOperationExec::WorkbufferStatus FusedGroupConvolutionCuDnnOp::SetWorkbufferIds(WorkbufferIds&& workbufferIds) {
     return fused_conv_.SetWorkbufferIds(std::move(workbufferIds));
 }
 
-OPERATION_REGISTER(FusedGroupConvolutionOp, FusedGroupConvolution);
+OPERATION_REGISTER(FusedGroupConvolutionCuDnnOp, FusedGroupConvolution);
 
 }  // namespace CUDAPlugin

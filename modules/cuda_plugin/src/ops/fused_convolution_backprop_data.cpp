@@ -7,15 +7,11 @@
 #include <cudnn.h>
 
 #include <cuda_operation_registry.hpp>
-#include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
 #include <ngraph/op/constant.hpp>
-#include <ngraph/opsets/opset1.hpp>
-#include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
-#include "fused_convolution.hpp"
 
 namespace CUDAPlugin {
 
