@@ -5,8 +5,8 @@
 #pragma once
 
 #include <gsl/span>
-#include <ngraph/op/lstm_cell.hpp>
 #include <ngraph/op/gru_cell.hpp>
+#include <ngraph/op/lstm_cell.hpp>
 
 namespace CUDAPlugin::RNN::Details {
 

@@ -7,9 +7,9 @@
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
 
-#include "lstm_sequence_components.hpp"
-#include "lstm_sequence_cudnn_components.hpp"
-#include "rnn_sequence_components.hpp"
+#include "rnn_components/lstm_sequence_components.hpp"
+#include "rnn_components/lstm_sequence_cudnn_components.hpp"
+#include "rnn_components/rnn_sequence_components.hpp"
 
 namespace CUDAPlugin {
 

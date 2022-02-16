@@ -6,8 +6,7 @@
 
 #include <error.hpp>
 #include <gsl/gsl_assert>
-
-#include "converters.hpp"
+#include <ops/converters.hpp>
 
 namespace CUDAPlugin::RNN::Details {
 

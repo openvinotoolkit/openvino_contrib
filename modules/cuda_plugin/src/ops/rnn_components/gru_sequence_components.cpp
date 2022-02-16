@@ -4,15 +4,14 @@
 
 #include "gru_sequence_components.hpp"
 
+#include <cuda_op_buffers_extractor.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/op/constant.hpp>
+#include <ngraph/op/reshape.hpp>
+#include <ngraph/op/squeeze.hpp>
+#include <ngraph/op/unsqueeze.hpp>
 #include <typeinfo>
-
-#include "cuda_op_buffers_extractor.hpp"
-#include "ngraph/op/reshape.hpp"
-#include "ngraph/op/squeeze.hpp"
-#include "ngraph/op/unsqueeze.hpp"
 
 namespace CUDAPlugin::RNN::Details {
 

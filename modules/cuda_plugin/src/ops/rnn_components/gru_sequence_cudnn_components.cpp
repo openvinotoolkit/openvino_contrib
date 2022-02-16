@@ -6,8 +6,7 @@
 
 #include <error.hpp>
 #include <gsl/gsl_assert>
-
-#include "converters.hpp"
+#include <ops/converters.hpp>
 
 namespace CUDAPlugin::RNN::Details {
 
@@ -130,12 +129,12 @@ void GRUSequenceDescriptorsCuDnn::createXDescriptor() {
 void GRUSequenceDescriptorsCuDnn::createYDescriptor() {
     const auto y_vector_size = params_.numDirections() * params_.projSize();
     y_desc_.set(params_.element_type_,
-                                         config_.rnn_data_layout,
-                                         params_.max_seq_length_,
-                                         params_.batch_size_,
-                                         y_vector_size,
-                                         params_.seq_length_array_.data(),
-                                         nullptr);
+                config_.rnn_data_layout,
+                params_.max_seq_length_,
+                params_.batch_size_,
+                y_vector_size,
+                params_.seq_length_array_.data(),
+                nullptr);
 }
 
 void GRUSequenceDescriptorsCuDnn::createHDescriptor() {
