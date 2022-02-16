@@ -1,11 +1,11 @@
 // Copyright (C) 2021 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include "group_convolution.hpp"
 
 #include <cuda_operation_registry.hpp>
 #include <ngraph/partial_shape.hpp>
 
+#include "group_convolution.hpp"
 #include "convolution_components/convolution_components.hpp"
 
 namespace CUDAPlugin {
@@ -15,7 +15,7 @@ GroupConvolutionOp::GroupConvolutionOp(const CreationContext &context,
                                        IndexCollection &&inputIds,
                                        IndexCollection &&outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
-      convolution_(context, node, move(inputIds), move(outputIds), Convolution::Details::ConvolutionParams{node}) {}
+      convolution_(context, node, {}, {}, Convolution::Details::ConvolutionParams{node}) {}
 
 void GroupConvolutionOp::Execute(const InferenceRequestContext &context,
                                  Inputs inputTensors,

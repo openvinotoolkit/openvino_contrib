@@ -38,6 +38,6 @@ static OperationBase::Ptr convolutionFactory(const CreationContext& context,
     throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
-OPERATION_REGISTER_FACTORY(convolutionFactory, Convolution)
+OPERATION_REGISTER_FACTORY(convolutionFactory, Convolution);
 
 }  // namespace CUDAPlugin

@@ -7,18 +7,18 @@
 #include <cuda_operation_base.hpp>
 #include <transformer/nodes/fused_convolution.hpp>
 
-#include "fused_convolution.hpp"
+#include "fused_convolution_cudnn.hpp"
 
 namespace CUDAPlugin {
 
-class FusedGroupConvolutionOp : public OperationCuDnn {
+class FusedGroupConvolutionCuDnnOp : public OperationCuDnn {
 public:
     using NodeOp = nodes::FusedGroupConvolution;
 
-    FusedGroupConvolutionOp(const CreationContext& context,
-                            const NodeOp& op,
-                            IndexCollection&& inputIds,
-                            IndexCollection&& outputIds);
+    FusedGroupConvolutionCuDnnOp(const CreationContext& context,
+                                 const NodeOp& op,
+                                 IndexCollection&& inputIds,
+                                 IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -31,10 +31,8 @@ public:
     const WorkbufferIds& GetWorkbufferIds() const override;
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override;
 
-    using ArgIndices = Convolution::Details::FusedConvolutionIndices;
-
 private:
-    FusedConvolutionOp fused_conv_;
+    FusedConvolutionCuDnn fused_conv_;
 };
 
 }  // namespace CUDAPlugin

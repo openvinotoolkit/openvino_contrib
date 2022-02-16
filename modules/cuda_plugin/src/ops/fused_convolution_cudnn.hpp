@@ -12,9 +12,13 @@
 
 namespace CUDAPlugin {
 
-class FusedConvolutionCuDnn : public IOperationExec {
+class FusedConvolutionCuDnn : public OperationCuDnn {
 public:
-    FusedConvolutionCuDnn(const CreationContext& context, const Convolution::Details::FusedConvolutionParams& params);
+    FusedConvolutionCuDnn(const CreationContext& context,
+                          const ngraph::Node& node,
+                          IndexCollection&& inputIds,
+                          IndexCollection&& outputIds,
+                          Convolution::Details::FusedConvolutionParams params);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
