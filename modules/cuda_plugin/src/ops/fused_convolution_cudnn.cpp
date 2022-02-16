@@ -2,21 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "fused_convolution_cudnn.hpp"
-
 #include <cudnn.h>
 
 #include <details/ie_exception.hpp>
 #include <gsl/gsl_assert>
 #include <ops/converters.hpp>
 
+#include "fused_convolution_cudnn.hpp"
 #include "cuda/constant_factory.hpp"
 
 namespace CUDAPlugin {
 
 FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
-                                             const Convolution::Details::FusedConvolutionParams& params)
-    : conv_descs_{context, params.conv_},
+                                             const ngraph::Node& node,
+                                             IndexCollection&& inputIds,
+                                             IndexCollection&& outputIds,
+                                             Convolution::Details::FusedConvolutionParams params)
+    : OperationCuDnn{context, node, std::move(inputIds), std::move(outputIds)},
+      conv_descs_{context, params.conv_},
       bias_desc_{MakeBiasDescriptor(params.bias_shape_, params.conv_.element_type_)},
       activation_desc_{MakeActivationDescriptor(params.activation_)} {
     if (params.add_shape_) {
