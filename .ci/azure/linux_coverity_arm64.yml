@@ -6,7 +6,7 @@ resources:
     name: openvinotoolkit/openvino
   - repository: opencv
     type: github
-    endpoint: opencv
+    endpoint: openvinotoolkit
     name: opencv/opencv
 
 jobs:
