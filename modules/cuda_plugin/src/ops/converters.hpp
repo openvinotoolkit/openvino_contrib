@@ -258,8 +258,25 @@ inline constexpr std::size_t elementSize(cudnnDataType_t type) {
 }
 
 /**
- * @brief Converts cuda plugin activation mode to cuDNN activation mode
+ * @brief Converts cuda plugin activation mode to cuDNN Backend API activation mode
  */
+inline constexpr cudnnPointwiseMode_t convertActivationModeToBE(const nodes::ActivationMode& mode) {
+    switch (mode) {
+        case nodes::ActivationMode::SIGMOID:
+            return CUDNN_POINTWISE_SIGMOID_FWD;
+        case nodes::ActivationMode::RELU:
+            return CUDNN_POINTWISE_RELU_FWD;
+        case nodes::ActivationMode::TANH:
+            return CUDNN_POINTWISE_TANH_FWD;
+        case nodes::ActivationMode::ELU:
+            return CUDNN_POINTWISE_GELU_FWD;
+        case nodes::ActivationMode::SWISH:
+            return CUDNN_POINTWISE_SWISH_FWD;
+        default:
+            throwIEException(fmt::format("Unsupported activation: {}", mode));
+    }
+}
+
 inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::ActivationMode& mode) {
     switch (mode) {
         case nodes::ActivationMode::SIGMOID:

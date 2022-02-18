@@ -11,13 +11,6 @@ namespace CUDAPlugin::nodes {
  *
  * Mirrors the cuDNN cudnnActivationMode_t enum
  */
-enum class ActivationMode {
-    SIGMOID,
-    RELU,
-    TANH,
-    CLIPPED_RELU,
-    ELU,
-    NO_ACTIVATION
-};
+enum class ActivationMode { SIGMOID, RELU, TANH, CLIPPED_RELU, ELU, SWISH, NO_ACTIVATION };
 
-} // namespace CUDAPlugin::nodes
+}  // namespace CUDAPlugin::nodes
