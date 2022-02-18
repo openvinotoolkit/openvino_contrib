@@ -91,7 +91,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 
 const std::vector<ngraph::helpers::ActivationTypes> netActivations = {
     ngraph::helpers::ActivationTypes::None,
-    ngraph::helpers::ActivationTypes::Relu
+    ngraph::helpers::ActivationTypes::Relu,
 };
 
 /* ============= 2D Convolution ============= */

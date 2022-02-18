@@ -9,6 +9,7 @@
 #include <functional>
 #include <cuda/device_pointers.hpp>
 #include <error.hpp>
+#include <atomic>
 
 #include "props.hpp"
 
@@ -43,16 +44,16 @@ toNative(T t) noexcept {
 }
 
 template <typename T, typename R, typename... Args>
-T createFirstArg(R (*creator)(T*, Args... args), Args... args) {
+auto createFirstArg(R (*creator)(T*, Args... args), Args... args) {
     T t;
-    throwIfError(creator(&t, args...));
+    throwIfError(creator(&t, toNative(std::forward<Args>(args))...));
     return t;
 }
 
-template <typename R, typename... NativeArgs, typename... Args>
-auto createLastArg(R (*creator)(NativeArgs...), Args&&... args) {
+template <typename R, typename... ConArgs, typename... Args>
+auto createLastArg(R (*creator)(ConArgs...), Args... args) {
     using LastType = typename std::remove_pointer<
-        typename std::tuple_element<sizeof...(NativeArgs) - 1, std::tuple<NativeArgs...>>::type>::type;
+        typename std::tuple_element<sizeof...(ConArgs) - 1, std::tuple<ConArgs...>>::type>::type;
     LastType t;
     throwIfError(creator(toNative(std::forward<Args>(args))..., &t));
     return t;
@@ -71,6 +72,7 @@ public:
         throwIfError(cudaSetDevice(id));
         return *this;
     }
+    void synchronize() { throwIfError(::cudaDeviceSynchronize()); }
 };
 
 constexpr auto memoryAlignment = 256;
@@ -135,78 +137,62 @@ template <typename T>
 class Handle {
 public:
     using Native = T;
+    using Shared = std::shared_ptr<Native>;
 
     template <typename R, typename... Args>
     using Construct = R (*)(T*, Args... args);
 
-    template <typename R, typename... Args>
-    using Destruct = R (*)(T);
+    template <typename R>
+    using Destruct = R (*)(Native);
 
-    Handle(const Handle&) = delete;
-    Handle& operator=(const Handle&) = delete;
+    virtual ~Handle() = 0;
 
-    Handle(Handle&& handle) { operator=(std::move(handle)); }
-    Handle& operator=(Handle&& handle) {
-        destroy();
-        std::swap(native_, handle.native_);
-        destructor_ = std::move(handle.destructor_);
-        return *this;
-    }
+    explicit operator bool() const { return native_.operator bool(); }
 
-    ~Handle() { destroy(); }
-
-    operator bool() const { return native_ != Native{}; }
-
-    const Native& get() const noexcept { return native_; }
+    const Native& get() const noexcept { return *native_; }
+    const Shared& get_shared() const noexcept { return native_; }
 
 protected:
     template <typename R, typename... Args>
     Handle(Construct<R, Args...> constructor, Destruct<R> destructor, Args... args) {
-        native_ = Native{createFirstArg(constructor, args...)};
-        if (destructor) {
-            destructor_ = [destructor](const Native& native) { logIfError(destructor(native)); };
+        auto native = Native{createFirstArg(constructor, args...)};
+        try {
+            native_ =
+                std::shared_ptr<Native>(std::make_unique<Native>(native).release(), [destructor](const Native* native) {
+                    if (destructor) {
+                        logIfError(destructor(*native));
+                    }
+                    delete native;
+                });
+        } catch (...) {
+            if (destructor) {
+                logIfError(destructor(native));
+            }
+            throw;
         }
     }
 
     template <typename R, typename... Args>
     Handle(Construct<R, Args...> constructor, std::nullptr_t, Args... args) {
-        native_ = Native{createFirstArg(constructor, args...)};
+        auto native = Native{createFirstArg(constructor, args...)};
+        native_ = std::shared_ptr<Native>(std::make_unique<Native>(native).release());
     }
 
 private:
-    void destroy() {
-        if (destructor_) {
-            destructor_(native_);
-            destructor_ = nullptr;
-            native_ = Native{};
-        }
-    }
-
-    Native native_{};
-    std::function<void(const Native&)> destructor_;
+    std::shared_ptr<Native> native_;
 };
 
-class Allocation {
-    class Deleter {
-        cudaStream_t stream;  // no raii, fixme?
-        // maybe deallocation stream could be different, i.e. maybe we could have
-        // setStream method?
-        auto freeImpl(void* p) const noexcept {
-#if CUDART_VERSION >= 11020
-            return cudaFreeAsync(p, stream);
-#else
-            return cudaFree(p);
-#endif
-        }
+template <typename T>
+inline Handle<T>::~Handle() {}
 
-    public:
-        Deleter(cudaStream_t stream) noexcept : stream{stream} {}
-        void operator()(void* p) const noexcept { logIfError(freeImpl(p)); }
+class DefaultAllocation {
+    struct Deleter {
+        void operator()(void* p) const noexcept { logIfError(cudaFree(p)); }
     };
-    std::unique_ptr<void, Deleter> p;
+    std::shared_ptr<void> p;
 
 public:
-    Allocation(void* p, cudaStream_t stream) noexcept : p{p, Deleter{stream}} {}
+    explicit DefaultAllocation(void* p) noexcept : p{p, Deleter{}} {}
     void* get() const noexcept { return p.get(); }
     template <typename T, typename std::enable_if<std::is_void<T>::value>::type* = nullptr>
     operator DevicePointer<T*>() const noexcept {
@@ -214,14 +200,27 @@ public:
     }
 };
 
-class DefaultAllocation {
-    struct Deleter {
-        void operator()(void* p) const noexcept { logIfError(cudaFree(p)); }
+class Allocation {
+    class Deleter {
+        Handle<cudaStream_t>::Shared stream;
+
+        auto freeImpl(void* p) const noexcept {
+#if CUDART_VERSION >= 11020
+            return cudaFreeAsync(p, *stream);
+#else
+            return cudaFree(p);
+#endif
+        }
+
+    public:
+        Deleter(const Handle<cudaStream_t>& stream) noexcept : stream{stream.get_shared()} {}
+        void operator()(void* p) const noexcept { logIfError(freeImpl(p)); }
     };
-    std::unique_ptr<void, Deleter> p;
+
+    std::shared_ptr<void> p;
 
 public:
-    explicit DefaultAllocation(void* p) noexcept : p{p} {}
+    Allocation(void* p, const Handle<cudaStream_t>& stream) noexcept : p{p, Deleter{stream}} {}
     void* get() const noexcept { return p.get(); }
     template <typename T, typename std::enable_if<std::is_void<T>::value>::type* = nullptr>
     operator DevicePointer<T*>() const noexcept {
@@ -231,9 +230,9 @@ public:
 
 class Stream : public Handle<cudaStream_t> {
 public:
-    Stream() : Handle(cudaStreamCreate, cudaStreamDestroy) {}
+    Stream() : Handle((cudaStreamCreate), cudaStreamDestroy) {}
 
-    Allocation malloc(std::size_t size) const { return {mallocImpl(size), get()}; }
+    Allocation malloc(std::size_t size) const { return {mallocImpl(size), *this}; }
     void upload(CUDA::DevicePointer<void*> dst, const void* src, std::size_t count) const {
         uploadImpl(dst.get(), src, count);
     }
@@ -307,12 +306,16 @@ public:
     void upload(DevicePointer<void*> dst, const void* src, std::size_t count) const {
         uploadImpl(dst.get(), src, count);
     }
-    void upload(const Allocation& dst, const void* src, std::size_t count) const { uploadImpl(dst.get(), src, count); }
-    void download(void* dst, const Allocation& src, std::size_t count) const { downloadImpl(dst, src.get(), count); }
+    void upload(const DefaultAllocation& dst, const void* src, std::size_t count) const {
+        uploadImpl(dst.get(), src, count);
+    }
+    void download(void* dst, const DefaultAllocation& src, std::size_t count) const {
+        downloadImpl(dst, src.get(), count);
+    }
     void download(void* dst, DevicePointer<const void*> src, std::size_t count) const {
         downloadImpl(dst, src.get(), count);
     }
-    void memset(const Allocation& dst, int value, std::size_t count) const { memsetImpl(dst.get(), value, count); }
+    void memset(const DefaultAllocation& dst, int value, std::size_t count) const { memsetImpl(dst.get(), value, count); }
     void memset(CUDA::DevicePointer<void*> dst, int value, std::size_t count) const {
         memsetImpl(dst.get(), value, count);
     }

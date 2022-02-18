@@ -6,8 +6,8 @@
 
 #include <ie_layouts.h>
 
-#include <cuda_creation_context.hpp>
 #include <cuda/device_pointers.hpp>
+#include <cuda_creation_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <memory>
 #include <memory_manager/model/cuda_memory_model.hpp>
@@ -15,8 +15,8 @@
 #include <string_view>
 #include <vector>
 
-#include "memory_manager/cuda_workbuffers.hpp"
 #include "cuda_inference_request_context.hpp"
+#include "memory_manager/cuda_workbuffers.hpp"
 
 namespace ngraph {
 
