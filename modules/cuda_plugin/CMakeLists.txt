@@ -16,6 +16,9 @@ endif()
 if (CUDA_KERNEL_PRINT_LOG)
     add_definitions(-DCUDA_KERNEL_PRINT_LOG)
 endif()
+if (ENABLE_CUDNN_BACKEND_API)
+    add_definitions(-DENABLE_CUDNN_BACKEND_API)
+endif()
 
 set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
 

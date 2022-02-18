@@ -52,33 +52,32 @@ namespace CUDA {
 
 class DnnOpTensorDescriptor : public Handle<cudnnOpTensorDescriptor_t> {
 public:
-    DnnOpTensorDescriptor() : Handle(cudnnCreateOpTensorDescriptor, cudnnDestroyOpTensorDescriptor) {}
-    auto&& set(cudnnOpTensorOp_t opTensorOp, cudnnDataType_t opTensorCompType, cudnnNanPropagation_t opTensorNanOpt) {
+    DnnOpTensorDescriptor() : Handle((cudnnCreateOpTensorDescriptor), cudnnDestroyOpTensorDescriptor) {}
+    auto& set(cudnnOpTensorOp_t opTensorOp, cudnnDataType_t opTensorCompType, cudnnNanPropagation_t opTensorNanOpt) {
         throwIfError(cudnnSetOpTensorDescriptor(get(), opTensorOp, opTensorCompType, opTensorNanOpt));
-        return std::move(*this);
+        return *this;
     }
 };
 
-class DnnTensorDescriptor
-    : public Handle<cudnnTensorDescriptor_t> {
+class DnnTensorDescriptor : public Handle<cudnnTensorDescriptor_t> {
 public:
     using CRef = std::reference_wrapper<const DnnTensorDescriptor>;
 
-    DnnTensorDescriptor() : Handle(cudnnCreateTensorDescriptor, cudnnDestroyTensorDescriptor) {}
+    DnnTensorDescriptor() : Handle((cudnnCreateTensorDescriptor), cudnnDestroyTensorDescriptor) {}
 
-    auto&& set(cudnnDataType_t dataType, int nbDims, const int dimA[], const int strideA[]) {
+    auto& set(cudnnDataType_t dataType, int nbDims, const int dimA[], const int strideA[]) {
         throwIfError(cudnnSetTensorNdDescriptor(get(), dataType, nbDims, dimA, strideA));
-        return std::move(*this);
+        return *this;
     }
 
-    auto&& set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int nbDims, const int dimA[]) {
+    auto& set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int nbDims, const int dimA[]) {
         throwIfError(cudnnSetTensorNdDescriptorEx(get(), format, dataType, nbDims, dimA));
-        return std::move(*this);
+        return *this;
     }
 
-    auto&& set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
+    auto& set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
         throwIfError(cudnnSetTensor4dDescriptor(get(), format, dataType, n, c, h, w));
-        return std::move(*this);
+        return *this;
     }
 
     void getTensorNdDescriptor(int nbDimsRequested, cudnnDataType_t& dataType, int& nbDims, int dimA[], int strideA[]) {
@@ -94,10 +93,10 @@ public:
 
 class DnnActivationDescriptor : public Handle<cudnnActivationDescriptor_t> {
 public:
-    DnnActivationDescriptor() : Handle(cudnnCreateActivationDescriptor, cudnnDestroyActivationDescriptor) {}
-    auto&& set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
+    DnnActivationDescriptor() : Handle((cudnnCreateActivationDescriptor), cudnnDestroyActivationDescriptor) {}
+    auto& set(cudnnActivationMode_t mode, cudnnNanPropagation_t reluNanOpt, double coef) {
         throwIfError(cudnnSetActivationDescriptor(get(), mode, reluNanOpt, coef));
-        return std::move(*this);
+        return *this;
     }
 };
 
@@ -125,76 +124,75 @@ public:
 
 class DnnPoolingDescriptor : public Handle<cudnnPoolingDescriptor_t> {
 public:
-    DnnPoolingDescriptor() : Handle(cudnnCreatePoolingDescriptor, cudnnDestroyPoolingDescriptor) {}
-    auto&& set(const cudnnPoolingMode_t mode,
-               const cudnnNanPropagation_t nanPropagation,
-               int nbDims,
-               const int windowDimA[],
-               const int paddingA[],
-               const int strideA[]) {
+    DnnPoolingDescriptor() : Handle((cudnnCreatePoolingDescriptor), cudnnDestroyPoolingDescriptor) {}
+    auto& set(const cudnnPoolingMode_t mode,
+              const cudnnNanPropagation_t nanPropagation,
+              int nbDims,
+              const int windowDimA[],
+              const int paddingA[],
+              const int strideA[]) {
         throwIfError(cudnnSetPoolingNdDescriptor(get(), mode, nanPropagation, nbDims, windowDimA, paddingA, strideA));
-        return std::move(*this);
+        return *this;
     }
 };
 
 class DnnFilterDescriptor : public Handle<cudnnFilterDescriptor_t> {
 public:
-    DnnFilterDescriptor() : Handle(cudnnCreateFilterDescriptor, cudnnDestroyFilterDescriptor) {}
-    auto&& set(cudnnDataType_t dataType, cudnnTensorFormat_t format, int nbDims, const int filterDimA[]) {
+    DnnFilterDescriptor() : Handle((cudnnCreateFilterDescriptor), cudnnDestroyFilterDescriptor) {}
+    auto& set(cudnnDataType_t dataType, cudnnTensorFormat_t format, int nbDims, const int filterDimA[]) {
         throwIfError(cudnnSetFilterNdDescriptor(get(), dataType, format, nbDims, filterDimA));
-        return std::move(*this);
+        return *this;
     }
 };
 
-class DnnRnnDataDescriptor
-    : public Handle<cudnnRNNDataDescriptor_t> {
+class DnnRnnDataDescriptor : public Handle<cudnnRNNDataDescriptor_t> {
 public:
-    DnnRnnDataDescriptor() : Handle(cudnnCreateRNNDataDescriptor, cudnnDestroyRNNDataDescriptor) {}
-    auto&& set(cudnnDataType_t dataType,
-               cudnnRNNDataLayout_t layout,
-               int maxSeqLength,
-               int batchSize,
-               int vectorSize,
-               const int seqLengthArray[],
-               void* paddingFill) {
+    DnnRnnDataDescriptor() : Handle((cudnnCreateRNNDataDescriptor), cudnnDestroyRNNDataDescriptor) {}
+    auto& set(cudnnDataType_t dataType,
+              cudnnRNNDataLayout_t layout,
+              int maxSeqLength,
+              int batchSize,
+              int vectorSize,
+              const int seqLengthArray[],
+              void* paddingFill) {
         throwIfError(cudnnSetRNNDataDescriptor(
             get(), dataType, layout, maxSeqLength, batchSize, vectorSize, seqLengthArray, paddingFill));
-        return std::move(*this);
+        return *this;
     }
 };
 
 class DnnConvolutionDescriptor : public Handle<cudnnConvolutionDescriptor_t> {
 public:
-    DnnConvolutionDescriptor() : Handle(cudnnCreateConvolutionDescriptor, cudnnDestroyConvolutionDescriptor) {}
-    auto&& set(int arrayLength,
-               const int padA[],
-               const int filterStrideA[],
-               const int dilationA[],
-               cudnnConvolutionMode_t mode,
-               cudnnDataType_t dataType) {
+    DnnConvolutionDescriptor() : Handle((cudnnCreateConvolutionDescriptor), cudnnDestroyConvolutionDescriptor) {}
+    auto& set(int arrayLength,
+              const int padA[],
+              const int filterStrideA[],
+              const int dilationA[],
+              cudnnConvolutionMode_t mode,
+              cudnnDataType_t dataType) {
         throwIfError(
             cudnnSetConvolutionNdDescriptor(get(), arrayLength, padA, filterStrideA, dilationA, mode, dataType));
-        return std::move(*this);
+        return *this;
     }
 };
 
 class DnnRnnDescriptor : public Handle<cudnnRNNDescriptor_t> {
 public:
-    DnnRnnDescriptor() : Handle(cudnnCreateRNNDescriptor, cudnnDestroyRNNDescriptor) {}
-    auto&& set(cudnnRNNAlgo_t algo,
-               cudnnRNNMode_t cellMode,
-               cudnnRNNBiasMode_t biasMode,
-               cudnnDirectionMode_t dirMode,
-               cudnnRNNInputMode_t inputMode,
-               cudnnDataType_t dataType,
-               cudnnDataType_t mathPrec,
-               cudnnMathType_t mathType,
-               int32_t inputSize,
-               int32_t hiddenSize,
-               int32_t projSize,
-               int32_t numLayers,
-               cudnnDropoutDescriptor_t dropoutDesc,
-               uint32_t auxFlags) {
+    DnnRnnDescriptor() : Handle((cudnnCreateRNNDescriptor), cudnnDestroyRNNDescriptor) {}
+    auto& set(cudnnRNNAlgo_t algo,
+              cudnnRNNMode_t cellMode,
+              cudnnRNNBiasMode_t biasMode,
+              cudnnDirectionMode_t dirMode,
+              cudnnRNNInputMode_t inputMode,
+              cudnnDataType_t dataType,
+              cudnnDataType_t mathPrec,
+              cudnnMathType_t mathType,
+              int32_t inputSize,
+              int32_t hiddenSize,
+              int32_t projSize,
+              int32_t numLayers,
+              cudnnDropoutDescriptor_t dropoutDesc,
+              uint32_t auxFlags) {
         throwIfError(cudnnSetRNNDescriptor_v8(get(),
                                               algo,
                                               cellMode,
@@ -210,26 +208,26 @@ public:
                                               numLayers,
                                               dropoutDesc,
                                               auxFlags));
-        return std::move(*this);
+        return *this;
     }
-    auto&& setClip(cudnnRNNClipMode_t clipMode, cudnnNanPropagation_t clipNanOpt, double lclip, double rclip) {
+    auto& setClip(cudnnRNNClipMode_t clipMode, cudnnNanPropagation_t clipNanOpt, double lclip, double rclip) {
         throwIfError(cudnnRNNSetClip_v8(get(), clipMode, clipNanOpt, lclip, rclip));
-        return std::move(*this);
+        return *this;
     }
 };
 
 class DnnReduceTensorDescriptor : public Handle<cudnnReduceTensorDescriptor_t> {
 public:
     DnnReduceTensorDescriptor()
-        : Handle<cudnnReduceTensorDescriptor_t>(cudnnCreateReduceTensorDescriptor, cudnnDestroyReduceTensorDescriptor) {
+        : Handle<cudnnReduceTensorDescriptor_t>((cudnnCreateReduceTensorDescriptor), cudnnDestroyReduceTensorDescriptor) {
     }
-    auto&& set(cudnnReduceTensorOp_t op,
-               cudnnDataType_t compType,
-               cudnnNanPropagation_t nanOpt,
-               cudnnReduceTensorIndices_t indices,
-               cudnnIndicesType_t indicesType) {
+    auto& set(cudnnReduceTensorOp_t op,
+              cudnnDataType_t compType,
+              cudnnNanPropagation_t nanOpt,
+              cudnnReduceTensorIndices_t indices,
+              cudnnIndicesType_t indicesType) {
         throwIfError(cudnnSetReduceTensorDescriptor(get(), op, compType, nanOpt, indices, indicesType));
-        return std::move(*this);
+        return *this;
     }
 };
 
@@ -280,8 +278,13 @@ public:
 
 class DnnHandle : public Handle<cudnnHandle_t> {
 public:
-    DnnHandle() : Handle(cudnnCreate, cudnnDestroy) {}
+    DnnHandle() : Handle((cudnnCreate), cudnnDestroy) {}
     void setStream(const Stream& stream) { throwIfError(cudnnSetStream(get(), stream.get())); }
+    auto getStream() const {
+        cudaStream_t stream = nullptr;
+        throwIfError(::cudnnGetStream(get(), &stream));
+        return stream;
+    }
     void opTensor(const DnnOpTensorDescriptor& opTensorDesc,
                   const void* alpha1,
                   const DnnTensorDescriptor& aDesc,

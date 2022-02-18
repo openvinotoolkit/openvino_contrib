@@ -12,6 +12,7 @@
 #include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
+#include "cuda/dnn_be_algo.hpp"
 
 namespace CUDAPlugin {
 
@@ -28,7 +29,7 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds,
                                        const Convolution::Details::ConvolutionParams& params)
-    : OperationCuDnn{context, node, move(inputIds), move(outputIds)} {
+    : OperationCuDnn{context, node, move(inputIds), move(outputIds)}, params_{params} {
     const cudnnDataType_t tensor_element_type = convertDataType<cudnnDataType_t>(params.element_type_);
 
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should
@@ -40,75 +41,84 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
     Expects(arrayLength == params.padding_before_.size());
     Expects(arrayLength == params.padding_after_.size());
 
-    CUDA::DnnBETensorDescriptor input_desc =
-        MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, params.input_shape_);
-    CUDA::DnnBETensorDescriptor filter_desc =
-        MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, params.filter_shape_);
-    CUDA::DnnBETensorDescriptor output_desc =
-        MakeTensorDescriptor(DnnTensorID::output, tensor_element_type, params.output_shape_);
+    auto input_desc = MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, params.input_shape_);
+    auto filter_desc = MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, params.filter_shape_);
+    auto output_desc = MakeTensorDescriptor(DnnTensorID::output, tensor_element_type, params.output_shape_);
 
-    CUDA::DnnBEConvolutionDescriptor conv_desc;
-    conv_desc.setMode(CUDNN_CROSS_CORRELATION);
-    conv_desc.setComputeType(tensor_element_type);
-    conv_desc.setNumberOfSpatialDimensions(arrayLength);
-    conv_desc.setPrePaddings(params.padding_before_);
-    conv_desc.setPostPaddings(params.padding_after_);
-    conv_desc.setDilations(params.dilations_);
-    conv_desc.setFilterStrides(params.strides_);
-    conv_desc.finalize();
+    auto conv_desc = CUDA::DnnBEConvolutionDescriptorBuilder()
+                         .setMode(CUDNN_CROSS_CORRELATION)
+                         .setComputeType(tensor_element_type)
+                         .setNumberOfSpatialDimensions(arrayLength)
+                         .setPrePaddings(params.padding_before_)
+                         .setPostPaddings(params.padding_after_)
+                         .setDilations(params.dilations_)
+                         .setFilterStrides(params.strides_)
+                         .build();
 
-    CUDA::DnnBEOperationConvolutionForwardDescriptor conv_op_desc;
-    conv_op_desc.setX(input_desc);
-    conv_op_desc.setW(filter_desc);
-    conv_op_desc.setY(output_desc);
-    conv_op_desc.setConv(conv_desc);
+    auto conv_op_desc_builder = CUDA::DnnBEOperationConvolutionForwardDescriptorBuilder()
+                                    .setXDesc(input_desc)
+                                    .setWDesc(filter_desc)
+                                    .setYDesc(output_desc)
+                                    .setConvDesc(conv_desc);
     if (tensor_element_type == CUDNN_DATA_DOUBLE) {
-        conv_op_desc.setScalingParams<CUDNN_TYPE_DOUBLE>(1, 0);
+        conv_op_desc_builder.setScalingParams<CUDNN_TYPE_DOUBLE>(1, 0);
     } else {
-        conv_op_desc.setScalingParams<CUDNN_TYPE_FLOAT>(1, 0);
+        conv_op_desc_builder.setScalingParams<CUDNN_TYPE_FLOAT>(1, 0);
     }
-    conv_op_desc.finalize();
+    auto conv_op_desc = conv_op_desc_builder.build();
 
-    CUDA::DnnHandle dnnHandle{};
+    auto dnnHandle = std::make_shared<CUDA::DnnHandle>();
 
-    CUDA::DnnBEOperationGraphDescriptor graph;
-    graph.setDnnHandle(dnnHandle);
-    std::array<cudnnBackendDescriptor_t, 1> ops{conv_op_desc.get()};
-    graph.setOperations(ops);
-    graph.finalize();
+    std::array<cudnnBackendDescriptor_t, 1> ops{conv_op_desc->get()};
+    CUDA::DnnBEOperationGraphDescriptorBuilder graphBuilder;
+    graphBuilder.setDnnHandle(dnnHandle);
+    graphBuilder.setOperations(ops);
+    auto graph = graphBuilder.build();
 
-    CUDA::DnnBEEngineheurDescriptor heuristics;
-    heuristics.setOpGraph(graph);
-    heuristics.setMode(CUDNN_HEUR_MODE_INSTANT);
-    heuristics.finalize();
-
-    std::vector<CUDA::DnnBEEngineConfigDescriptor> configs = heuristics.getEngineConfigs();
-    for (const auto& config : configs) {
-        CUDA::DnnBEExecutionPlanDescriptor plan;
-        plan.setDnnHandle(dnnHandle);
-        plan.setEngineConfig(config);
-        try {
-            plan.finalize();
-        } catch (const InferenceEngine::Exception&) {
-            continue;
-        }
-        exec_plans_.emplace_back(std::move(plan));
-    }
-
-    if (exec_plans_.empty())
+    auto plans = CUDA::getAllExecutionPlansFromHeuristics(graph, *dnnHandle);
+    if (plans.empty()) {
         throwIEException("cuDNN BE API: Unsupported convolution");
+    }
+
+    std::shared_ptr<CUDA::DnnBEExecutionPlan> plan;
+    if (context.opBenchOption()) {
+        plan = performBenchmarks(context.dnnHandle(), plans);
+    } else {
+        plan = std::move(plans[0]);
+    }
+
+    engine_config_ = plan->getConfigDesc();
+    workspace_size_ = plan->getWorkspaceSize();
+}
+
+std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
+    const CUDA::DnnHandle& dnnHandle, std::vector<std::shared_ptr<CUDA::DnnBEExecutionPlan>>& plans) {
+    auto input = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
+                                                      ngraph::shape_size(params_.input_shape_));
+    auto filter = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
+                                                       ngraph::shape_size(params_.filter_shape_));
+    auto output = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
+                                                       ngraph::shape_size(params_.output_shape_));
+    auto variantPackBuilder = CUDA::DnnBEVariantPackBuilder();
+    std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
+    std::array<const void*, 3> data_ptrs = {input.get(), filter.get(), output.get()};
+    variantPackBuilder.setTensorPointers(uids, data_ptrs);
+
+    constexpr const size_t kNumBenchmarks = 100;
+    return CUDA::performBenchmarks<kNumBenchmarks>(dnnHandle, plans, variantPackBuilder);
 }
 
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
-    int64_t size{};
-    // Finding the max memory size needed
-    for (const auto& plan : exec_plans_) {
-        size = std::max(size, plan.getWorkspaceSize());
+    Expects(engine_config_);
+    if (workspace_size_ < 0) {
+        CUDAPlugin::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
-    if (size > 0)
-        return {{}, {static_cast<size_t>(size)}};
-    else
+    const size_t size = std::max(0l, workspace_size_);
+    if (size > 0) {
+        return {{}, {size}};
+    } else {
         return {};
+    }
 }
 
 void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
@@ -117,55 +127,40 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
                                  const Workbuffers& workbuffers) const {
     Expects(inputs.size() == 2);
     Expects(outputs.size() == 1);
+
+    auto dnnHandle = context.getThreadContext().dnnHandle();
     auto workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
-    for (size_t planIndex = exec_plan_index_hint_; planIndex < exec_plans_.size(); ++planIndex) {
-        if (TryExecutePlan(context, inputs, outputs, workbuffer, exec_plans_[planIndex])) {
-            exec_plan_index_hint_ = planIndex;
-            return;
-        }
-    }
+    std::array<const void*, 3> dataPtrs = {inputs[Convolution::Details::FusedConvolutionIndices::input].get(),
+                                           inputs[Convolution::Details::FusedConvolutionIndices::filter].get(),
+                                           outputs[Convolution::Details::FusedConvolutionIndices::output].get()};
+    const std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
+    auto variantPackBuilder = CUDA::DnnBEVariantPackBuilder();
+    variantPackBuilder.setTensorPointers(uids, dataPtrs);
+    variantPackBuilder.setWorkspase(workbuffer);
+    const auto variantPack = variantPackBuilder.build();
 
-    throwIEException("cuDNN BE API: Unsupported convolution");
+    const auto plan = CUDA::DnnBEExecutionPlanBuilder()
+                          .setDnnHandle(context.getThreadContext().dnnHandle())
+                          .setEngineConfig(engine_config_)
+                          .build();
+
+    throwIfError(::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan->get(), variantPack->get()));
 }
 
-bool ConvolutionCuDnnBE::TryExecutePlan(const InferenceRequestContext& context,
-                                        Inputs inputs,
-                                        Outputs outputs,
-                                        void* workbuffer,
-                                        const CUDA::DnnBEExecutionPlanDescriptor& plan) const {
-    CUDA::DnnBEVariantPackDescriptor variantPack;
-    std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
-    std::array<void*, 3> data_ptrs = {const_cast<void*>(inputs[Convolution::Details::ConvArgIndices::input].get()),
-                                      const_cast<void*>(inputs[Convolution::Details::ConvArgIndices::filter].get()),
-                                      outputs[Convolution::Details::ConvArgIndices::output].get()};
-    variantPack.setTensorPointers(uids, data_ptrs);
-
-    variantPack.setWorkspase(workbuffer);
-    variantPack.finalize();
-
-    cudnnStatus_t status =
-        ::cudnnBackendExecute(context.getThreadContext().dnnHandle().get(), plan.get(), variantPack.get());
-    if (status != CUDNN_STATUS_NOT_SUPPORTED) {
-        logIfError(status);
-    }
-    return (status == CUDNN_STATUS_SUCCESS);
-}
-
-CUDA::DnnBETensorDescriptor ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id, cudnnDataType_t element_type,
-                                                                     const ngraph::Shape& shape) {
+std::shared_ptr<CUDA::DnnBETensorDescriptor> ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
+                                                                                      cudnnDataType_t element_type,
+                                                                                      const ngraph::Shape& shape) {
     const int nbDims = shape.size();
     if (nbDims < 4 || nbDims > 5)
         throwIEException(fmt::format("Unexpected number of dimensions for Convolution input/output: {}", nbDims));
 
-    CUDA::DnnBETensorDescriptor desc;
-    desc.setUniqueId(id);
-    desc.setDataType(element_type);
-    desc.setShape(shape);
-    desc.setStrides(ngraph::row_major_strides(shape));
-    desc.setAlignment(CUDA::memoryAlignment);
-    desc.setIsVirtual(false);
-    desc.finalize();
-    return desc;
+    return CUDA::DnnBETensorDescriptorBuilder()
+        .setUniqueId(id)
+        .setDataType(element_type)
+        .setShape(shape)
+        .setStrides(ngraph::row_major_strides(shape))
+        .setAlignment(CUDA::memoryAlignment)
+        .setIsVirtual(false)
+        .build();
 }
-
 }  // namespace CUDAPlugin
