@@ -14,6 +14,9 @@
 #include "fused_convolution_cudnn.hpp"
 #include "fused_convolution_cudnn_decomposed.hpp"
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#ifdef ENABLE_CUDNN_BACKEND_API
+#include "fused_convolution_cudnn_be.hpp"
+#endif  // ENABLE_CUDNN_BACKEND_API
 
 namespace CUDAPlugin {
 
@@ -22,6 +25,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
                                            OperationBase::IndexCollection&& inputIds,
                                            OperationBase::IndexCollection&& outputIds) {
     using ArgIndices = Convolution::Details::FusedConvolutionIndices;
+    using IndexCollection = OperationBase::IndexCollection;
     const auto element_type = node->get_input_element_type(ArgIndices::input);
     Expects(element_type == node->get_input_element_type(ArgIndices::filter));
     Expects(element_type == node->get_input_element_type(ArgIndices::bias));
@@ -37,6 +41,23 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
 
     const auto params = fused_conv ? Convolution::Details::FusedConvolutionParams{*fused_conv}
                                    : Convolution::Details::FusedConvolutionParams{*fused_group_conv};
+
+#ifdef ENABLE_CUDNN_BACKEND_API
+    const bool should_try_backend = node->get_type_name() == std::string("FusedConvolution");
+    if (should_try_backend) {
+        try {
+            return std::make_shared<FusedConvolutionCuDnnBE>(
+                context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
+        } catch (const std::exception& e) {
+            exception_msg << fmt::format(
+                "unsupported `{}` node: Failed to create "
+                "FusedConvolutionCuDnnBE impl: {}",
+                node->get_type_info().name,
+                e.what());
+        }
+    }
+#endif  // ENABLE_CUDNN_BACKEND_API
+
     const auto conv_descs{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_)};
     const auto bias_desc{Convolution::Details::MakeFusedAddDescriptor(params.bias_shape_, params.conv_.element_type_)};
     const auto activation_desc{Convolution::Details::MakeFusedActivationDescriptor(params.activation_)};
@@ -54,10 +75,10 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
 
     if (should_decompose) {
         try {
-            return std::make_unique<FusedConvolutionCuDnnDecomposed>(context,
+            return std::make_shared<FusedConvolutionCuDnnDecomposed>(context,
                                                                      *node,
-                                                                     std::move(inputIds),
-                                                                     std::move(outputIds),
+                                                                     IndexCollection{inputIds},
+                                                                     IndexCollection{outputIds},
                                                                      conv_descs,
                                                                      bias_desc,
                                                                      add_desc,
@@ -72,21 +93,22 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
     }
 
     try {
-        return std::make_unique<FusedConvolutionCuDnn>(context,
+        return std::make_shared<FusedConvolutionCuDnn>(context,
                                                        *node,
-                                                       std::move(inputIds),
-                                                       std::move(outputIds),
+                                                       IndexCollection{inputIds},
+                                                       IndexCollection{outputIds},
                                                        conv_descs,
                                                        bias_desc,
                                                        add_desc,
                                                        activation_desc);
     } catch (const std::exception& e) {
-        throwIEException(
-            fmt::format("unsupported `{}` node: Failed to create "
-                        "FusedConvolutionCuDnn impl: {}",
-                        node->get_type_info().name,
-                        e.what()));
+        exception_msg << fmt::format(
+            "unsupported `{}` node: Failed to create "
+            "FusedConvolutionCuDnn impl: {}",
+            node->get_type_info().name,
+            e.what());
     }
+
     throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
