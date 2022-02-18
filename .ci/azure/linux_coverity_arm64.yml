@@ -79,6 +79,7 @@ jobs:
   - script: |
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
       # Speed up build
