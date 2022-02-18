@@ -4,21 +4,20 @@
 
 #pragma once
 
-#include "runtime.hpp"
 #include <cutensor.h>
 
-inline void throwIfError(cutensorStatus_t err,
-                         const std::experimental::source_location& location =
-                             std::experimental::source_location::current()) {
-    if (err != CUTENSOR_STATUS_SUCCESS)
-        CUDAPlugin::throwIEException(cutensorGetErrorString(err), location);
+#include "runtime.hpp"
+
+inline void throwIfError(
+    cutensorStatus_t err,
+    const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (err != CUTENSOR_STATUS_SUCCESS) CUDAPlugin::throwIEException(cutensorGetErrorString(err), location);
 }
 
-inline void logIfError(cutensorStatus_t err,
-                       const std::experimental::source_location& location =
-                           std::experimental::source_location::current()) {
-    if (err != CUTENSOR_STATUS_SUCCESS)
-        CUDAPlugin::logError(cutensorGetErrorString(err), location);
+inline void logIfError(
+    cutensorStatus_t err,
+    const std::experimental::source_location& location = std::experimental::source_location::current()) {
+    if (err != CUTENSOR_STATUS_SUCCESS) CUDAPlugin::logError(cutensorGetErrorString(err), location);
 }
 
 namespace CUDA {

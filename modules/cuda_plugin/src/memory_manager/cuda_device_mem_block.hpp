@@ -17,45 +17,44 @@ namespace CUDAPlugin {
  * to map tensor offsets to device side pointers.
  */
 class DeviceMemBlock {
-   public:
-       using Ptr = std::shared_ptr<DeviceMemBlock>;
+public:
+    using Ptr = std::shared_ptr<DeviceMemBlock>;
 
-       /**
-        * @throws InferenceEngineException if device memory block allocation
-        * failed.
-        */
-       DeviceMemBlock(MemoryModel::Ptr model);
+    /**
+     * @throws InferenceEngineException if device memory block allocation
+     * failed.
+     */
+    DeviceMemBlock(MemoryModel::Ptr model);
 
-       /**
-        * Provides buffer memory address if any.
-        *
-        * @param [in] id Buffer identifier.
-        * @returns device memory pointer if buffer is located within the blob
-        * or nullptr otherwise.
-        */
-       void* deviceBufferPtr(const BufferID& id) const;
+    /**
+     * Provides buffer memory address if any.
+     *
+     * @param [in] id Buffer identifier.
+     * @returns device memory pointer if buffer is located within the blob
+     * or nullptr otherwise.
+     */
+    void* deviceBufferPtr(const BufferID& id) const;
 
-       /**
-        * Provides tensor memory address if any.
-        *
-        * @param [in] id Tensor identifier.
-        * @returns device memory pointer if tensor is located within the blob
-        * or nullptr otherwise.
-        */
-       void* deviceTensorPtr(const TensorID& id) const;
+    /**
+     * Provides tensor memory address if any.
+     *
+     * @param [in] id Tensor identifier.
+     * @returns device memory pointer if tensor is located within the blob
+     * or nullptr otherwise.
+     */
+    void* deviceTensorPtr(const TensorID& id) const;
 
-       CUDA::DeviceBuffer<uint8_t> view() const {
-           return {static_cast<uint8_t*>(device_mem_ptr_.get()), model_->deviceMemoryBlockSize()};
-       }
+    CUDA::DeviceBuffer<uint8_t> view() const {
+        return {static_cast<uint8_t*>(device_mem_ptr_.get()), model_->deviceMemoryBlockSize()};
+    }
 
-       const std::vector<BufferID>& bufferIds() const { return model_->bufferIds(); }
+    const std::vector<BufferID>& bufferIds() const { return model_->bufferIds(); }
 
-       MemoryModel::Ptr memoryModel() const { return model_; }
+    MemoryModel::Ptr memoryModel() const { return model_; }
 
-   private:
+private:
     MemoryModel::Ptr model_;
-    CUDA::DefaultAllocation device_mem_ptr_ =
-        CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
+    CUDA::DefaultAllocation device_mem_ptr_ = CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
 };
 
 }  // namespace CUDAPlugin
