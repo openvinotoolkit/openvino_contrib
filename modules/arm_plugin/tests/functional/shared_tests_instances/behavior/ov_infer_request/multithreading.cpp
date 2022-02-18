@@ -12,8 +12,8 @@ namespace {
 
 const std::vector<ov::AnyMap> configs = {
         {},
-        {ov::num_streams(ov::NumStreams::AUTO)},
-        {ov::num_streams(0), ov::inference_num_threads(1)}
+        {ov::streams::num(ov::streams::AUTO)},
+        {ov::streams::num(0), ov::inference_num_threads(1)}
 };
 
 const std::vector<ov::AnyMap> Multiconfigs = {

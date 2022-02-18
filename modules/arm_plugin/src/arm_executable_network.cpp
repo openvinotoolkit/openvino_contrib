@@ -77,7 +77,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             METRIC_KEY(SUPPORTED_CONFIG_KEYS),
             ov::supported_properties.name(),
             ov::inference_num_threads.name(),
-            ov::num_streams.name(),
+            ov::streams::num.name(),
             METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys;
@@ -87,7 +87,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             {ov::model_name.name(), ov::PropertyMutability::RO},
             {ov::supported_properties.name(), ov::PropertyMutability::RO},
             {ov::optimal_number_of_infer_requests.name(), ov::PropertyMutability::RO},
-            {ov::num_streams.name(), ov::PropertyMutability::RO},
+            {ov::streams::num.name(), ov::PropertyMutability::RO},
             {ov::inference_num_threads.name(), ov::PropertyMutability::RO}};
     } else if (ov::model_name == name) {
         return decltype(ov::model_name)::value_type{_model->get_friendly_name()};
@@ -97,8 +97,8 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
     } else if (ov::inference_num_threads == name) {
         return decltype(ov::inference_num_threads)::value_type(
             _cfg._streamsExecutorConfig._threads);
-    } else if (ov::num_streams == name) {
-        return decltype(ov::num_streams)::value_type{
+    } else if (ov::streams::num == name) {
+        return decltype(ov::streams::num)::value_type{
             _cfg._streamsExecutorConfig._streams};
     }  else {
         IE_THROW() << "Unsupported ExecutableNetwork metric: " << name;
