@@ -1,0 +1,39 @@
+diff --git a/examples/pytorch/audio-classification/run_audio_classification.py b/examples/pytorch/audio-classification/run_audio_classification.py
+index cfd2efe..bbd6177 100644
+--- a/examples/pytorch/audio-classification/run_audio_classification.py
++++ b/examples/pytorch/audio-classification/run_audio_classification.py
+@@ -25,6 +25,8 @@ import datasets
+ import numpy as np
+ from datasets import DatasetDict, load_dataset
+
++from optimum.intel.nncf import NNCFAutoConfig
++
+ import transformers
+ from transformers import (
+     AutoConfig,
+@@ -52,7 +54,7 @@ def random_subsample(wav: np.ndarray, max_length: float, sample_rate: int = 1600
+     """Randomly sample chunks of `max_length` seconds from the input audio"""
+     sample_length = int(round(sample_rate * max_length))
+     if len(wav) <= sample_length:
+-        return wav
++        return np.pad(wav, (0, sample_length - len(wav)))
+     random_offset = randint(0, len(wav) - sample_length - 1)
+     return wav[random_offset : random_offset + sample_length]
+
+@@ -321,6 +323,8 @@ def main():
+         # Set the validation transforms
+         raw_datasets["eval"].set_transform(val_transforms, output_all_columns=False)
+
++    nncf_config = NNCFAutoConfig.from_json(training_args.nncf_config)
++
+     # Initialize our trainer
+     trainer = Trainer(
+         model=model,
+@@ -329,6 +333,7 @@ def main():
+         eval_dataset=raw_datasets["eval"] if training_args.do_eval else None,
+         compute_metrics=compute_metrics,
+         tokenizer=feature_extractor,
++        nncf_config=nncf_config,
+     )
+
+     # Training
