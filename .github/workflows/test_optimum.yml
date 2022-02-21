@@ -5,7 +5,7 @@ on: [pull_request]
 
 jobs:
   check_code_style:
-    name: "Test codestyle"
+    name: "Codestyle"
 
     runs-on: ubuntu-18.04
     steps:
@@ -29,7 +29,7 @@ jobs:
 
 
   test_runtime:
-    name: "Test runtime"
+    name: "Runtime"
 
     runs-on: ubuntu-18.04
     strategy:
@@ -70,13 +70,12 @@ jobs:
 
 
   test_nncf:
-    name: "Test NNCF"
+    name: "NNCF"
 
     runs-on: ubuntu-18.04
     strategy:
       matrix:
         transformers-version: [
-          "transformers[torch]==4.9.1",
           "transformers[torch]==4.11.0",
           "transformers[torch]",
         ]
