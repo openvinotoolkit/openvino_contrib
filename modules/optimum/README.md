@@ -89,3 +89,5 @@ pip install optimum-openvino[nncf]
 ## POT
 
 TBD
+
+See [Changelog](https://github.com/openvinotoolkit/openvino_contrib/wiki/Optimum-OpenVINO-Changelog) page for details about module development.

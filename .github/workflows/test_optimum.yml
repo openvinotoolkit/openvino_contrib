@@ -1,7 +1,13 @@
 name: Test Optimum
 
-# on: [push, pull_request]
-on: [pull_request]
+on:
+  push:
+  pull_request:
+    paths:
+      - "modules/optimum/**"
+      - ".github/workflows/test_optimum.yml"
+  schedule:
+    - cron: "00 9 * * 6"  # Run every saturday on 9:00 UTC
 
 jobs:
   check_code_style:
