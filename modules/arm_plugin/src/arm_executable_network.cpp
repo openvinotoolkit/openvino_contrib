@@ -26,11 +26,11 @@ using namespace InferenceEngine;
 using namespace ArmPlugin;
 using namespace InferenceEngine::PluginConfigParams;
 
-ArmPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ngraph::Function>&  function,
-                                                const Configuration&                            cfg,
-                                                const ArmPlugin::Plugin::Ptr&                   plugin):
+ArmPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ov::Model>&  model,
+                                                const Configuration&                     cfg,
+                                                const ArmPlugin::Plugin::Ptr&            plugin):
     ExecutableNetworkThreadSafeDefault{nullptr, nullptr},
-    _function{function},
+    _model{model},
     _cfg{cfg},
     _plugin{plugin} {
     InitExecutor();
@@ -77,7 +77,7 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             METRIC_KEY(SUPPORTED_CONFIG_KEYS),
             ov::supported_properties.name(),
             ov::inference_num_threads.name(),
-            ov::num_streams.name(),
+            ov::streams::num.name(),
             METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys;
@@ -87,29 +87,29 @@ InferenceEngine::Parameter ArmPlugin::ExecutableNetwork::GetMetric(const std::st
             {ov::model_name.name(), ov::PropertyMutability::RO},
             {ov::supported_properties.name(), ov::PropertyMutability::RO},
             {ov::optimal_number_of_infer_requests.name(), ov::PropertyMutability::RO},
-            {ov::num_streams.name(), ov::PropertyMutability::RO},
+            {ov::streams::num.name(), ov::PropertyMutability::RO},
             {ov::inference_num_threads.name(), ov::PropertyMutability::RO}};
     } else if (ov::model_name == name) {
-        return decltype(ov::model_name)::value_type{_function->get_friendly_name()};
+        return decltype(ov::model_name)::value_type{_model->get_friendly_name()};
     } else if (ov::optimal_number_of_infer_requests == name) {
         return decltype(ov::optimal_number_of_infer_requests)::value_type(
             _cfg._streamsExecutorConfig._streams);
     } else if (ov::inference_num_threads == name) {
         return decltype(ov::inference_num_threads)::value_type(
             _cfg._streamsExecutorConfig._threads);
-    } else if (ov::num_streams == name) {
-        return decltype(ov::num_streams)::value_type{
+    } else if (ov::streams::num == name) {
+        return decltype(ov::streams::num)::value_type{
             _cfg._streamsExecutorConfig._streams};
     }  else {
         IE_THROW() << "Unsupported ExecutableNetwork metric: " << name;
     }
 }
 
-std::shared_ptr<ngraph::Function> ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
-    for (auto&& node : _function->get_ops()) {
+std::shared_ptr<ov::Model> ArmPlugin::ExecutableNetwork::GetExecGraphInfo() {
+    for (auto&& node : _model->get_ops()) {
         auto& rtInfo = node->get_rt_info();
         rtInfo.emplace("layerType", node->get_type_name());
         rtInfo.emplace("runtimePrecision", InferenceEngine::details::convertPrecision(node->output(0).get_element_type()).name());
     }
-    return std::const_pointer_cast<ngraph::Function>(_function);
+    return std::const_pointer_cast<ov::Model>(_model);
 }

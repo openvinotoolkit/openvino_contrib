@@ -10,14 +10,14 @@ from detectron2 import model_zoo
 
 import cv2 as cv
 
-from openvino.inference_engine import IECore
+from openvino.runtime import Core
 import mo_pytorch
 
 class TestModels(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
-        self.ie = IECore()
+        self.ie = Core()
         self.test_img = cv.imread(os.path.join(os.environ['MODELS_PATH'],
                                                'validation_set',
                                                '512x512',
@@ -93,9 +93,8 @@ class TestModels(unittest.TestCase):
         mo_pytorch.convert(model, input_shape=inp_size, model_name='model')
 
         # Run model with OpenVINO and compare outputs
-        net = self.ie.read_network('model.xml', 'model.bin')
-        exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input': inp.detach().numpy()})
+        net = self.ie.compile_model('model.xml', 'CPU')
+        out = net.infer_new_request({'input': inp.detach().numpy()})
 
         if isinstance(ref, torch.Tensor):
             ref = {'': ref}
@@ -144,9 +143,8 @@ class TestModels(unittest.TestCase):
         mo_pytorch.convert(model, input_shape=[1, 3, height, width], model_name='model')
 
         # Get OpenVINO prediction
-        net = self.ie.read_network('model.xml')
-        exec_net = self.ie.load_network(net, 'CPU')
-        outs = exec_net.infer({'input': inp.reshape(1, 3, height, width)})
+        net = self.ie.compile_model('model.xml', 'CPU')
+        outs = net.infer_new_request({'input': inp.reshape(1, 3, height, width)})
         ie_detections = next(iter(outs.values()))
         ie_detections = ie_detections.reshape(-1, 7)
 
@@ -195,9 +193,8 @@ class TestModels(unittest.TestCase):
         mo_pytorch.convert(pt_model, input_shape=list(inp.shape), model_name='model')
 
         # Run model with OpenVINO and compare outputs
-        net = self.ie.read_network('model.xml', 'model.bin')
-        exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input': inp.detach().numpy()})
+        net = self.ie.compile_model('model.xml', 'CPU')
+        out = net.infer_new_request({'input': inp.detach().numpy()})
         out = next(iter(out.values()))
 
         diff = np.max(np.abs(out - ref))
@@ -225,11 +222,10 @@ class TestModels(unittest.TestCase):
                            input_shape='[1, {}],[{}],[1, {}]'.format(seq_len, seq_len, seq_len))
 
         # Run model with OpenVINO and compare outputs
-        net = self.ie.read_network('model.xml', 'model.bin')
-        exec_net = self.ie.load_network(net, 'CPU')
-        out = exec_net.infer({'input_ids': input_ids,
-                              'position_ids': np.arange(seq_len),
-                              'attention_mask': np.ones((1, seq_len), np.float32)})
+        net = self.ie.compile_model('model.xml', 'CPU')
+        out = net.infer_new_request({'input_ids': input_ids,
+                                     'position_ids': np.arange(seq_len),
+                                     'attention_mask': np.ones((1, seq_len), np.float32)})
         out = next(iter(out.values()))
 
         ref = result[0].detach().numpy()
@@ -260,8 +256,9 @@ class TestModels(unittest.TestCase):
                            is_dynamic=is_dynamic)
 
         # Do inference
-        net = self.ie.load_network('model.xml', 'CPU')
-        out = net.infer({'input': inp})
+        net = self.ie.compile_model('model.xml', 'CPU')
+        req = net.create_infer_request()
+        out = req.infer({'input': inp})
         detections, masks, _ = out.values()
 
         # Test boxes
@@ -294,7 +291,7 @@ class TestModels(unittest.TestCase):
 
         if is_dynamic:
             # Forward zero input to check zero dimensions behavior
-            out = net.infer({'input': torch.zeros_like(inp)})
+            out = req.infer({'input': torch.zeros_like(inp)})
 
     def test_mask_rcnn(self):
         self.run_mask_rcnn(is_dynamic=False)
