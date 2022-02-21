@@ -6,7 +6,7 @@ resources:
     name: openvinotoolkit/openvino
   - repository: opencv
     type: github
-    endpoint: opencv
+    endpoint: openvinotoolkit
     name: opencv/opencv
 
 jobs:
@@ -78,7 +78,8 @@ jobs:
 
   - script: |
       set -e
-      $(REPO_DIR)/install_build_dependencies.sh
+      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
       # Speed up build
@@ -133,7 +134,7 @@ jobs:
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
-        -DnferenceEngineDeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
+        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
         $(REPO_DIR)/modules/arm_plugin
       workingDirectory: $(BUILD_DIR_ARM_PLUGIN)
 
