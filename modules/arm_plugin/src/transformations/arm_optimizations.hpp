@@ -13,9 +13,9 @@ class ArmOptimizations: public ngraph::pass::FunctionPass {
 public:
     NGRAPH_RTTI_DECLARATION;
     ArmOptimizations(const bool lpt, const bool dump) : _lpt{lpt}, _dump{dump} {}
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+    bool run_on_function(std::shared_ptr<ov::Model> m) override;
 
-    void Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix);
+    void Dump(const std::shared_ptr<ov::Model>& m, const std::string& postfix);
 
     bool _lpt = false;
     bool _dump = false;

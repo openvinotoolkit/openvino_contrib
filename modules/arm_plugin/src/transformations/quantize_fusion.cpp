@@ -258,6 +258,9 @@ ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
         [=](ngraph::pattern::Matcher& m) {
             auto pattern_map = m.get_pattern_value_map();
             auto node = pattern_map[node_pattern].get_node_shared_ptr();
+            if (ngraph::is_type<opset::AvgPool>(node) && node->get_input_shape(0).size() == 5) {
+                return false;
+            }
             auto fakeQuantize = safe_cast<opset::FakeQuantize>(pattern_map[fq_pattern].get_node_shared_ptr());
             auto realType = node->get_output_element_type(0);
             auto quantizedType = fakeQuantize->get_output_element_type(0);
@@ -360,6 +363,12 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
                 return false;
             }
 
+            auto node = output->output(0).get_target_inputs().begin()->get_node()->shared_from_this();
+            if (ngraph::is_type<opset::AvgPool>(node) && (node->get_input_shape(0).size() == 5) &&
+                node->get_output_element_type(0).is_quantized()) {
+                    return false;
+                }
+
             float scale = 1.f;
             std::int32_t offset = 0;
             if (itPostMul != pattern_map.end() || itMul != pattern_map.end()) {
@@ -387,7 +396,6 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
                 }
             }
 
-            auto node = output->output(0).get_target_inputs().begin()->get_node()->shared_from_this();
             std::shared_ptr<ngraph::Node> newNode;
             std::shared_ptr<ngraph::Node> nodeToReplace;
             if ((ngraph::is_type<opset::ArmConvolution>(node) ||

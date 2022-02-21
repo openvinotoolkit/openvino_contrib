@@ -97,9 +97,9 @@
 #include "arm_optimizations.hpp"
 
 NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ArmOptimizations, "ArmOptimizations", 0);
-void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Function>& f, const std::string& postfix) {
+void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ov::Model>& m, const std::string& postfix) {
     if (_dump) {
-        ngraph::pass::VisualizeTree{f->get_friendly_name() + "_" + postfix +
+        ngraph::pass::VisualizeTree{m->get_friendly_name() + "_" + postfix +
         (_lpt ? std::string{"_lpt"} : std::string{""}) + ".dot",
         [&] (const ngraph::Node& node, std::vector<std::string>& attributes) {
             auto& rt_info = node.get_rt_info();
@@ -131,16 +131,16 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ngraph::Funct
                 itLabel->pop_back();
                 (*itLabel) += strm.str() + '\"';
             }
-        }}.run_on_model(f);
+        }}.run_on_model(m);
     }
 }
 
-bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::Function> f) {
-    auto quantized = _lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(f);
+bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Model> m) {
+    auto quantized = _lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(m);
     {
         ov::pass::Manager manager;
 
-        Dump(f, "initial");
+        Dump(m, "initial");
 
         if (quantized) {
             manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::DisableConvertConstantFoldingOnConstPath>(
@@ -202,12 +202,12 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
             });
         }
 
-        manager.run_passes(f);
+        manager.run_passes(m);
     }
 
     using namespace ngraph::pass::low_precision;
     if (quantized) {
-        Dump(f, "before_common");
+        Dump(m, "before_common");
         auto supportedPrecisions = std::vector<OperationPrecisionRestriction>({
             OperationPrecisionRestriction::create<ngraph::opset1::Convolution>({
                 {0, {ngraph::element::u8, ngraph::element::i8}},
@@ -237,11 +237,11 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         pass_config->disable<ngraph::pass::low_precision::FuseConvertTransformation>();
         pass_config->disable<ngraph::pass::low_precision::FuseSubtractToFakeQuantizeTransformation>();
         pass_config->disable<ngraph::pass::low_precision::FuseMultiplyToFakeQuantizeTransformation>();
-        lptManager.run_passes(f);
+        lptManager.run_passes(m);
     }
 
     {
-        Dump(f, "before_arm_specific_transformations");
+        Dump(m, "before_arm_specific_transformations");
         ov::pass::Manager manager;
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::LogSoftmaxDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGRN>();
@@ -306,11 +306,11 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
         manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::AlignNodePrecision>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.run_passes(f);
+        manager.run_passes(m);
     }
 
     if (quantized) {
-        Dump(f, "before_arm");
+        Dump(m, "before_arm");
         ov::pass::Manager manager;
         {
             auto pass = manager.register_pass<ov::pass::GraphRewrite>();
@@ -328,10 +328,10 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ngraph::
             pass->add_matcher<pass::ConvertQuantize>();
         }
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.run_passes(f);
+        manager.run_passes(m);
     }
 
-    Dump(f, "final");
+    Dump(m, "final");
 
     return false;
 }
