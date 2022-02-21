@@ -45,7 +45,7 @@ std::vector<std::string> disabledTestPatterns() {
         ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
 #ifdef __arm__
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
-        ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*CPU_THROUGHPUT_STREAMS_CPU_THROUGHPUT_AUTO.*",
+        ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
 #endif
     };
 }
