@@ -46,7 +46,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     keywords="transformers, quantization, pruning, training, intel, openvino",
-    url="https://github.com/dkurt/optimum-openvino",
+    url="https://github.com/openvinotoolkit/openvino_contrib/",
     author="Intel Corporation",
     author_email="openvino_pushbot@intel.com",
     license="Apache",
