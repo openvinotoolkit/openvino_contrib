@@ -253,7 +253,6 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
             _layers.at(nodeID)._outputs.begin()->second._tensor->allocator()->import_memory(const_cast<void*>(constNode->get_data_ptr()));
         } else if (!ngraph::op::is_parameter(node) && !ngraph::op::is_output(node)) {
             auto conversion = _conversions.at(node->get_type_info())(*node);
-            _layers.at(nodeID)._execType = conversion->ExecType();
             for (auto&& output : node->outputs()) {
                 auto targetInputs = output.get_target_inputs();
                 bool isNetworkOutput = std::any_of(std::begin(targetInputs), std::end(targetInputs), [] (auto& targetInput) {
@@ -265,6 +264,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
                 }
             }
             if (conversion != nullptr) {
+                _layers.at(nodeID)._execType = conversion->ExecType();
                 conversion->Configure(memoryManager);
             }
 
