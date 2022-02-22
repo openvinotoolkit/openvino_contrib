@@ -33,6 +33,7 @@ jobs:
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
+    GRADLE_VER: 7.1.1
 
   steps:
   - script: |
@@ -76,6 +77,8 @@ jobs:
       rem Speed up build
       powershell -command "Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip -OutFile ninja-win.zip"
       powershell -command "Expand-Archive -Force ninja-win.zip"
+      powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
+      powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
@@ -104,7 +107,7 @@ jobs:
 
   - script: |
       call $(SETUPVARS)
-      gradle clean build --info
-      gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
+      $(WORK_DIR)/gradle-$(GRADLE_VER)/bin/gradle clean build --info
+      $(WORK_DIR)/gradle-$(GRADLE_VER)/bin/gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
     workingDirectory: $(REPO_DIR)\modules\java_api
     displayName: 'Java tests'
