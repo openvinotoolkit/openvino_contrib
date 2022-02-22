@@ -6,34 +6,40 @@ This guide describes how to run the benchmark applications.
 
 Upon start-up, the application reads command-line parameters and loads a network to the Inference Engine plugin, which is chosen depending on a specified device. The number of infer requests and execution approach depend on the mode defined with the `-api` command-line parameter.
 
-## Build
-Create an environment variable with Inference Engine installation path:
+## Build OpenVINO Java bindings
+Set environment OpenVINO variables:
 ```bash
-export IE_PATH=/path/to/openvino/bin/intel64/Release/lib
+source <openvino_install>/setupvars.sh
 ```
 
-To create java library and java samples for Inference Engine add `-DIE_EXTRA_MODULES` flag in cmake command while building `openvino`:
-
+Use Gradle to build `java_api.jar` file with OpenVINO Java bindings:
 ```bash
-cd /openvino/build
-cmake -DCMAKE_BUILD_TYPE=Release -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DENABLE_SAMPLES=ON -DENABLE_OPENCV=OFF ..
-make
+cd openvino_contrib/modules/java_api
+gradle build
+```
+
+## Build Java samples
+Create an environment variable with path to directory with the `java_api.jar` file:
+```bash
+export OV_JAVA_DIR=/path/to/openvino_contrib/modules/java_api/build/libs
+```
+
+Build samples:
+```bash
+cd /modules/java_api/samples
+mkdir build && cd build
+cmake .. && make
 ```
 
 ## Running
-Add library path for openvino java library before running:
-```bash
-export LD_LIBRARY_PATH=${IE_PATH}:$LD_LIBRARY_PATH
-```
-
 To get `benchmark_app` help use:
 ```bash
-java -cp ".:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/benchmark_app.jar" Main --help
+java -cp ".:${OV_JAVA_DIR}/java_api.jar:jars/benchmark_app.jar" Main --help
 ```
 
 To run `benchmark_app` use:
 ```bash
-java -cp ".:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/benchmark_app.jar" Main -m /path/to/model
+java -cp ".:${OV_JAVA_DIR}/java_api.jar:jars/benchmark_app.jar" Main -m /path/to/model
 ```
 
 ## Application Output
@@ -75,23 +81,25 @@ Add library path for opencv library and for openvino java library before running
 
 * For OpenCV installation path
 ```bash
-export LD_LIBRARY_PATH=${OpenCV_DIR}/share/java/opencv4/:/${IE_PATH}:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${OpenCV_DIR}/share/java/opencv4/:$LD_LIBRARY_PATH
 ```
 To run sample use:
 ```bash
-java -cp ".:${OpenCV_DIR}/share/java/opencv4/*:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/sample_name.jar" Main -m /path/to/model -i /path/to/image
+java -cp ".:${OpenCV_DIR}/share/java/opencv4/*:${OV_JAVA_DIR}/java_api.jar:jars/sample_name.jar" Main -m /path/to/model -i /path/to/image
 ```
 
 * For OpenCV build path
 ```bash
-export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:/${IE_PATH}:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:$LD_LIBRARY_PATH
 ```
 To run sample use:
 ```bash
-java -cp ".:${OpenCV_DIR}/bin/*:${IE_PATH}/inference_engine_java_api.jar:${IE_PATH}/sample_name.jar" Main -m /path/to/model -i /path/to/image
+java -cp ".:${OpenCV_DIR}/bin/*:${OV_JAVA_DIR}/java_api.jar:jars/sample_name.jar" Main -m /path/to/model -i /path/to/image
 ```
 
 ## Sample Output
+### For ```face_detection_api_2.0_sample```
+The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
 
 ### For ```face_detection_java_sample```
 The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.

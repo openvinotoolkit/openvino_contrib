@@ -1,47 +1,29 @@
 package org.intel.openvino;
 
-public class InputInfo extends IEWrapper {
+public class InputInfo extends Wrapper {
 
     public InputInfo(long addr) {
         super(addr);
     }
 
-    public PreProcessInfo getPreProcess() {
-        return new PreProcessInfo(getPreProcess(nativeObj));
+    public PreProcessSteps preprocess() {
+        return new PreProcessSteps(preprocess(nativeObj));
     }
 
-    public void setLayout(Layout layout) {
-        SetLayout(nativeObj, layout.getValue());
+    public InputTensorInfo tensor() {
+        return new InputTensorInfo(tensor(nativeObj));
     }
 
-    public Layout getLayout() {
-        return Layout.valueOf(getLayout(nativeObj));
-    }
-
-    public void setPrecision(Precision precision) {
-        SetPrecision(nativeObj, precision.getValue());
-    }
-
-    public Precision getPrecision() {
-        return Precision.valueOf(getPrecision(nativeObj));
-    }
-
-    public TensorDesc getTensorDesc() {
-        return new TensorDesc(GetTensorDesc(nativeObj));
+    public InputModelInfo model() {
+        return new InputModelInfo(model(nativeObj));
     }
 
     /*----------------------------------- native methods -----------------------------------*/
-    private static native long getPreProcess(long addr);
+    private static native long preprocess(long addr);
 
-    private static native void SetLayout(long addr, int layout);
+    private static native long model(long addr);
 
-    private static native int getLayout(long addr);
-
-    private static native void SetPrecision(long addr, int precision);
-
-    private static native int getPrecision(long addr);
-
-    private native long GetTensorDesc(long addr);
+    private static native long tensor(long addr);
 
     @Override
     protected native void delete(long nativeObj);
