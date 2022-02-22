@@ -89,22 +89,27 @@ jobs:
   - script: |
       set -e 
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
-      export CCACHE_DIR=$(OPENCV_CCACHE_DIR)
-      export CCACHE_TEMPDIR=$(TMP_DIR)/ccache
-      export CCACHE_BASEDIR=$(Pipeline.Workspace)
-      export CCACHE_MAXSIZE=50G
-      export USE_CCACHE=1
-      export PYTHON_ARM_VERSION=$(PYTHON_ARM_VERSION)
-      export NUM_PROC=$(NUM_PROC)
-      export BUILD_PYTHON=$(BUILD_PYTHON)
-      export WORK_DIR=$(WORK_DIR)
-      export INSTALL_PYTHON=$(INSTALL_PYTHON)
-      export BUILD_TYPE=$(BUILD_TYPE)
-      export OPENVINO_REPO_DIR=$(OPENVINO_REPO_DIR)
-      export INSTALL_OPENCV=$(INSTALL_OPENCV)
-      sudo $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
     workingDirectory: $(WORK_DIR)
-    displayName: 'Install dependencies'
+    displayName: 'Install dependencies OpenVINO'
+
+  - task: Bash@3
+    inputs:
+      filePath: $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
+    env:
+      CCACHE_DIR: $(OPENCV_CCACHE_DIR)
+      CCACHE_TEMPDIR: $(TMP_DIR)/ccache
+      CCACHE_BASEDIR: $(Pipeline.Workspace)
+      CCACHE_MAXSIZE: 50G
+      USE_CCACHE: 1
+      PYTHON_ARM_VERSION: $(PYTHON_ARM_VERSION)
+      NUM_PROC: $(NUM_PROC)
+      BUILD_PYTHON: $(BUILD_PYTHON)
+      WORK_DIR: $(WORK_DIR)
+      INSTALL_PYTHON: $(INSTALL_PYTHON)
+      BUILD_TYPE: $(BUILD_TYPE)
+      OPENVINO_REPO_DIR: $(OPENVINO_REPO_DIR)
+      INSTALL_OPENCV: $(INSTALL_OPENCV)
+    displayName: 'Install dependencies OpenVINO Contrib'
 
   - task: CMake@1
     inputs:
