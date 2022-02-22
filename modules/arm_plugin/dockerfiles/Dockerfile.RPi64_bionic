@@ -96,10 +96,10 @@ RUN git config --global user.name "Your Name" && \
 
 ENV ARCH_NAME aarch64-linux-gnu
 ENV TOOLCHAIN_DEFS arm64.toolchain.cmake
-COPY armplg_build.sh /armplg_build.sh
+COPY ../scripts/arm_cpu_plugin_build.sh /arm_cpu_plugin_build.sh
 
 #configure paths
-RUN mkdir -p /armcpu_plugin
-WORKDIR /armcpu_plugin/
+RUN mkdir -p /arm_cpu_plugin
+WORKDIR /arm_cpu_plugin/
 
-CMD ["sh", "/armplg_build.sh"]
+CMD ["sh", "/arm_cpu_plugin_build.sh"]
