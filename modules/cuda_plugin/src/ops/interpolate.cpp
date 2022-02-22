@@ -29,13 +29,14 @@ std::vector<float> getScalesVector(const CUDAPlugin::InterpolateOp::NodeOp& node
     std::vector<float> result_scales(node.get_output_shape(0).size(), 1.0f);
     for (size_t i = 0; i < axis.size(); ++i) {
         using ShapeCalcMode = ngraph::op::v4::Interpolate::ShapeCalcMode;
+        const auto idx = axis[i];
         if (node.get_attrs().shape_calculation_mode == ShapeCalcMode::scales) {
-            result_scales[axis[i]] = scales[i];
+            result_scales[idx] = scales[i];
         } else {
-            float scale = output_shape[i] == input_shape[i]
+            float scale = output_shape[idx] == input_shape[idx]
                               ? 1.0f
-                              : static_cast<float>(output_shape[i]) / static_cast<float>(input_shape[i]);
-            result_scales[i] = scale;
+                              : static_cast<float>(output_shape[idx]) / static_cast<float>(input_shape[idx]);
+            result_scales[idx] = scale;
         }
     }
     return result_scales;
@@ -118,12 +119,12 @@ InterpolateOp::InterpolateOp(const CreationContext& context,
     const auto& prop = context.device().props();
     const auto max_threads_per_block = prop.maxThreadsPerBlock;
     // is_upscale_ = false;
-    const auto strides = can_use_upscale_optimizing_ ? in_strides_[0] : out_strides_[0];
+    const auto strides = can_use_upscale_optimizing_ ? in_shape_[0] * in_strides_[0] : out_shape_[0] * out_strides_[0];
     const auto blocks_number = 1 + strides / max_threads_per_block;
     const auto threads_per_block = (blocks_number == 1) ? strides : max_threads_per_block;
     const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
 
-    interpolate_.emplace(
+    interpolate_ = kernel::Interpolate(
         blocks_number,
         threads_per_block,
         element_type,
