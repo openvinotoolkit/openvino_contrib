@@ -24,6 +24,11 @@ namespace LayerTestsDefinitions {
 
 class ConvolutionBiasAddActivationLayerFiniteComparerTest
     : public FiniteComparer<ConvolutionBiasAddActivationLayerTest> {
+public:
+    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override {
+        return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 20, -10, 1, 1);
+    }
+
 protected:
     void SetUp() override {
         ConvolutionBiasAddActivationLayerTest::SetUp();
@@ -39,6 +44,11 @@ protected:
 
 class ConvolutionBiasAddAddActivationLayerFiniteComparerTest
     : public FiniteComparer<ConvolutionBiasAddAddActivationLayerTest> {
+public:
+    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override {
+        return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 20, -10, 1, 1);
+    }
+
 protected:
     void SetUp() override {
         ConvolutionBiasAddAddActivationLayerTest::SetUp();
@@ -81,7 +91,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 
 const std::vector<ngraph::helpers::ActivationTypes> netActivations = {
     ngraph::helpers::ActivationTypes::None,
-    ngraph::helpers::ActivationTypes::Relu,
+    ngraph::helpers::ActivationTypes::Relu
 };
 
 /* ============= 2D Convolution ============= */
@@ -213,6 +223,27 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                        ::testing::ValuesIn(netActivations)),
+    ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_Convolution2DBiasAddActivation_Negative_CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING,
+    ConvolutionBiasAddActivationLayerFiniteComparerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::Combine(::testing::Values(std::vector<size_t>({1, 1})),     // kernel
+                                              ::testing::Values(std::vector<size_t>({1, 1})),     // strides
+                                              ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_begin
+                                              ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
+                                              ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
+                                              ::testing::Values(88),                              // Num out channels
+                                              ::testing::Values(ngraph::op::PadType::VALID)),     // Padding type
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precisions
+                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
+                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
+                           ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
+                           ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
+                           ::testing::Values(std::vector<size_t>({1, 88, 10, 10})),               // Input shape
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(ngraph::helpers::ActivationTypes::None)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
 /* ============= resnet50/vgg16 Convolutions ============= */
