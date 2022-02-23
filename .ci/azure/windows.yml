@@ -12,8 +12,7 @@ resources:
 
 jobs:
 - job: Win
-  # About 150% of total time
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
 
   pool:
     name: WIN_VMSS_VENV_F8S_WU2
