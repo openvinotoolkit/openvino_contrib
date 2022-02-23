@@ -5,7 +5,6 @@
 
 set -e
 
-
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
 sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
@@ -48,21 +47,20 @@ make -j "$NUM_PROC" \
     CROSS-COMPILE=aarch64-linux-gnu- CROSS_COMPILE_TARGET=yes HOSTARCH=aarch64-linux BUILDARCH=aarch64-linux-gnu
 make -j "$NUM_PROC" install
 cd "$WORK_DIR" || exit
-sudo /usr/local/bin/python3.8 -m pip install numpy cython
+sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
+sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
 # OpenCV install
-git clone https://github.com/opencv/opencv.git
-cd opencv || exit
-mkdir build && (cd build || exit)
+git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
 cmake -G Ninja \
       -D CMAKE_BUILD_TYPE="$BUILD_TYPE" \
       -D BUILD_opencv_python2=OFF \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
       -D PYTHON3_LIMITED_API=ON \
-      -D PYTHON3_INCLUDE_PATH="$INSTALL_PYTHON"/include/python3.8 \
+      -D PYTHON3_INCLUDE_PATH="$INSTALL_PYTHON"/include/"$PYTHON_EXEC" \
       -D PYTHON3_LIBRARIES="$INSTALL_PYTHON"/lib \
-      -D PYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/python3.8/site-packages/numpy/core/include \
+      -D PYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/"$PYTHON_EXEC"/site-packages/numpy/core/include \
       -D CMAKE_USE_RELATIVE_PATHS=ON \
       -D CMAKE_SKIP_INSTALL_RPATH=ON \
       -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
@@ -83,7 +81,12 @@ cmake -G Ninja \
       -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
       -D CMAKE_C_COMPILER_LAUNCHER=ccache \
       -D PKG_CONFIG_EXECUTABLE=/usr/bin/aarch64-pkg-config \
-      -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" ..
-ninja
-ninja install
-cd "$WORK_DIR" || exit
+      -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" \
+      -S "$OPENCV_REPO_DIR" \
+      -B "$BUILD_OPENCV"
+ninja -C "$BUILD_OPENCV"
+ninja -C "$BUILD_OPENCV" install
+echo export OpenCV_DIR=\$INSTALLDIR/opencv/cmake > "$INSTALL_OPENVINO"/opencv/setupvars.sh
+echo export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
+mkdir -p "$INSTALL_OPENVINO"/python/python3
+cp -r "$INSTALL_OPENVINO"/opencv/python/cv2 "$INSTALL_OPENVINO"/python/python3

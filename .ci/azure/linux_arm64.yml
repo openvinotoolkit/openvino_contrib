@@ -18,6 +18,7 @@ jobs:
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
     PYTHON_ARM_VERSION: "3.8.12"
+    PYTHON_EXEC: "python3.8"
     OPENVINO_ARCH: 'aarch64'
     NUM_PROC: 1
     BUILD_TYPE: Release
@@ -86,11 +87,10 @@ jobs:
     submodules: recursive
     path: openvino
 
-  - script: |
-      set -e 
-      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install dependencies OpenVINO'
+  - task: Bash@3
+    inputs:
+      filePath: $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+    displayName: 'Install OpenVINO dependencies'
 
   - task: Bash@3
     inputs:
@@ -101,15 +101,7 @@ jobs:
       CCACHE_BASEDIR: $(Pipeline.Workspace)
       CCACHE_MAXSIZE: 50G
       USE_CCACHE: 1
-      PYTHON_ARM_VERSION: $(PYTHON_ARM_VERSION)
-      NUM_PROC: $(NUM_PROC)
-      BUILD_PYTHON: $(BUILD_PYTHON)
-      WORK_DIR: $(WORK_DIR)
-      INSTALL_PYTHON: $(INSTALL_PYTHON)
-      BUILD_TYPE: $(BUILD_TYPE)
-      OPENVINO_REPO_DIR: $(OPENVINO_REPO_DIR)
-      INSTALL_OPENCV: $(INSTALL_OPENCV)
-    displayName: 'Install dependencies OpenVINO Contrib'
+    displayName: 'Install OpenVINO Contrib dependencies'
 
   - task: CMake@1
     inputs:
@@ -228,12 +220,12 @@ jobs:
 
   - script: |
       cp -r $(BUILD_OPEN_MODEL_ZOO)/$(OPENVINO_ARCH)/$(BUILD_TYPE)/* $(INSTALL_OPEN_MODEL_ZOO)/
-      zip -9 -r openvino_$(OPENVINO_ARCH)_linux.zip ./*
+      zip -9 -r $(Build.ArtifactStagingDirectory)/openvino_$(OPENVINO_ARCH)_linux.zip ./*
     workingDirectory: $(INSTALL_OPENVINO)
     displayName: 'Create OpenVINO ARM64 linux package'
 
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: '$(INSTALL_OPENVINO)/openvino_$(OPENVINO_ARCH)_linux.zip'
-      artifactName: 'openvino_arm64_linux'
-    displayName: 'Publish OpenVINO ARM64 linux package'
+      pathToPublish: $(Build.ArtifactStagingDirectory)
+      artifactName: 'openvino_aarch64_linux'
+    displayName: 'Publish OpenVINO AArch64 linux package'
