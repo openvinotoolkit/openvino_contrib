@@ -120,6 +120,8 @@ def get_data_loader_cls(args, train_dataset):
 
 
 class NNCFAutoConfig(NNCFConfig):
+    """Class providing automatic NNCF config setup and dataset loader adoptation."""
+
     def auto_register_extra_structs(self, args, train_dataset, data_collator):
         if self.get("log_dir") is None:
             self["log_dir"] = args.output_dir

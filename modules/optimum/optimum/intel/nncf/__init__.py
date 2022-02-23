@@ -27,6 +27,17 @@ def replace_code_of_module(module, new_source):
     exec(code, module.__dict__)
 
 
+"""
+This method behaves like "git apply" applying patch to Transformers source code.
+
+The changes are done in runtime replacing Python module source code.
+
+Parameters:
+    * module - Imported Python module
+    * patch_file - A name of patch file
+"""
+
+
 def patch(module, patch_file):
     def insert(dst, src, idx):
         return dst[:idx] + src + dst[idx:]

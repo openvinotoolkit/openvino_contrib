@@ -1,15 +1,19 @@
 # Quantize Wav2Vec2
 
-This guide demonstrates how to quantize a pre-trained `Wav2Vec2` model for audio classification. We also publihed ready to use quantized models:
+This guide demonstrates how to quantize a pre-trained `Wav2Vec2` model for audio classification. We also published ready to use quantized models:
 
 | Dataset | Pretrained Model | # transformer layers | Accuracy on eval (baseline) | Accuracy on eval (quantized) | Download |
 |---------|------------------|----------------------|-----------------------------|----------------------------------------|----------|
 | Keyword Spotting | [facebook/wav2vec2-base](https://huggingface.co/facebook/wav2vec2-base) | 12 | 0.9828 | 0.9553 (-0.0274) | [here](https://huggingface.co/dkurt/wav2vec2-base-ft-keyword-spotting-int8) |
 
 
-1. Download an example source code from https://github.com/huggingface/transformers/tree/v4.15.0/examples/pytorch/audio-classification. Install necessary requirements.
+1. Download the example source code from https://github.com/huggingface/transformers/tree/v4.15.0/examples/pytorch/audio-classification. Install necessary requirements.
 
 2. [Install](../README.md#NNCF) Optimum OpenVINO and apply the following patch to enable NNCF compression:
+
+```bash
+patch -p1 < run_audio_classification.patch
+```
 
 ```patch
 --- a/examples/pytorch/audio-classification/run_audio_classification.py
