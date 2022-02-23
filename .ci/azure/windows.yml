@@ -107,7 +107,7 @@ jobs:
 
   - script: |
       call $(SETUPVARS)
-      set PATH=$(WORK_DIR)\gradle-$(GRADLE_VER)\bin;%PATH%
+      set PATH=$(WORK_DIR)\gradle-$(GRADLE_VER)-bin\gradle-$(GRADLE_VER)\bin;%PATH%
       gradle clean build --info
       gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
     workingDirectory: $(REPO_DIR)\modules\java_api
