@@ -31,7 +31,7 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
-    GRADLE_VER: 6.5.1
+    GRADLE_VER: 7.1.1
 
   steps:
   - script: |
@@ -76,7 +76,6 @@ jobs:
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move jdk into contrib install_build_dependencies.sh
       sudo apt --assume-yes install default-jdk
-      # Fix tests for running with gradle 7.1.1
       wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
       unzip gradle-$(GRADLE_VER)-bin.zip
       # For opencv-python: python3-setuptools and pip upgrade
