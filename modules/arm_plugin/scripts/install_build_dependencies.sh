@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
-
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
 sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
@@ -86,7 +85,9 @@ cmake -G Ninja \
       -B "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
-echo export OpenCV_DIR=\$INSTALLDIR/opencv/cmake > "$INSTALL_OPENVINO"/opencv/setupvars.sh
-echo export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
+mkdir "$INSTALL_OPENVINO"/opencv
+touch "$INSTALL_OPENVINO"/opencv/setupvars.sh
+printf "export OpenCV_DIR=\$INSTALLDIR/opencv/cmake" >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
 mkdir -p "$INSTALL_OPENVINO"/python/python3
-cp -r "$INSTALL_OPENVINO"/opencv/python/cv2 "$INSTALL_OPENVINO"/python/python3
+cp -r "$INSTALL_OPENCV"/python/cv2 "$INSTALL_OPENVINO"/python/python3

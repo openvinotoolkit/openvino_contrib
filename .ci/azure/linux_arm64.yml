@@ -87,21 +87,30 @@ jobs:
     submodules: recursive
     path: openvino
 
-  - task: Bash@3
-    inputs:
-      filePath: $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
-    displayName: 'Install OpenVINO dependencies'
-
-  - task: Bash@3
-    inputs:
-      filePath: $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
-    env:
-      CCACHE_DIR: $(OPENCV_CCACHE_DIR)
-      CCACHE_TEMPDIR: $(TMP_DIR)/ccache
-      CCACHE_BASEDIR: $(Pipeline.Workspace)
-      CCACHE_MAXSIZE: 50G
-      USE_CCACHE: 1
-    displayName: 'Install OpenVINO Contrib dependencies'
+  - script: |
+      set -e
+      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      export CCACHE_DIR=$(OPENCV_CCACHE_DIR)
+      export CCACHE_TEMPDIR=$(TMP_DIR)/ccache
+      export CCACHE_BASEDIR=$(Pipeline.Workspace)
+      export CCACHE_MAXSIZE=50G
+      export USE_CCACHE=1
+      export PYTHON_ARM_VERSION=$(PYTHON_ARM_VERSION)
+      export NUM_PROC=$(NUM_PROC)
+      export BUILD_PYTHON=$(BUILD_PYTHON)
+      export WORK_DIR=$(WORK_DIR)
+      export INSTALL_PYTHON=$(INSTALL_PYTHON)
+      export BUILD_TYPE=$(BUILD_TYPE)
+      export OPENVINO_REPO_DIR=$(OPENVINO_REPO_DIR)
+      export INSTALL_OPENCV=$(INSTALL_OPENCV)
+      export PYTHON_EXEC=$(PYTHON_EXEC)
+      export OPENCV_REPO_DIR=$(OPENCV_REPO_DIR)
+      export BUILD_OPENCV=$(BUILD_OPENCV)
+      export INSTALL_OPENVINO=$(INSTALL_OPENVINO)
+      chmod +x $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
+      $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
+    workingDirectory: $(BUILD_OPENVINO)
+    displayName: 'Install dependencies'
 
   - task: CMake@1
     inputs:
@@ -203,7 +212,7 @@ jobs:
         -DOpenVINO_DIR=$(BUILD_OPENVINO)
         -DInferenceEngine_DIR=$(BUILD_OPENVINO)
         -DOpenCV_DIR=$(INSTALL_OPENCV)/cmake 
-        -Dngraph_DIR=$(BUILD_OPENVINO)/src/core
+        -Dngraph_DIR=$(BUILD_OPENVINO)
         -DIE_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPEN_MODEL_ZOO)
         $(OPENVINO_REPO_DIR)/thirdparty/open_model_zoo/demos
