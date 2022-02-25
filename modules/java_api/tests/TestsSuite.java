@@ -1,6 +1,7 @@
+package tests;
+
 import junit.framework.TestSuite;
 
-import org.intel.openvino.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.AllTests;
 
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.zip.*;
 
 @RunWith(AllTests.class)
-public class TestsSuite extends IETest {
+public class TestsSuite extends OVTest {
 
     public static TestSuite suite() {
         TestSuite suite = new TestSuite();
@@ -54,7 +55,7 @@ public class TestsSuite extends IETest {
                         && !name.contains("/")
                         && !name.equals("TestsSuite.class")
                         && !name.equals("OpenVinoTestRunner.class")
-                        && !name.equals("IETest.class")) {
+                        && !name.equals("OVTest.class")) {
                     classes.add(
                             Class.forName(name.substring(0, name.length() - ".class".length())));
                 }

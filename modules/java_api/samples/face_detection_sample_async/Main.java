@@ -1,4 +1,4 @@
-import org.intel.openvino.*;
+import org.intel.openvino.compatibility.*;
 import org.opencv.core.*;
 import org.opencv.highgui.HighGui;
 import org.opencv.imgcodecs.*;

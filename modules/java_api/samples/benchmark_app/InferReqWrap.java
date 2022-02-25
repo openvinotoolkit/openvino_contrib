@@ -1,4 +1,4 @@
-import org.intel.openvino.*;
+import org.intel.openvino.compatibility.*;
 
 import java.util.Map;
 

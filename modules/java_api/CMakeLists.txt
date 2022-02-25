@@ -28,12 +28,9 @@ add_library(${PROJECT_NAME} SHARED ${sources})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE ${InferenceEngine_LIBRARIES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${JNI_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 
 install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT java_api
         ARCHIVE DESTINATION ${IE_CPACK_ARCHIVE_PATH} COMPONENT java_api
         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH} COMPONENT java_api)
-
-# if(ENABLE_SAMPLES)
-#     add_subdirectory(samples)
-# endif()
