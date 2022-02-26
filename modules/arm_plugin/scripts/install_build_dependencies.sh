@@ -85,9 +85,8 @@ cmake -G Ninja \
       -B "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
-mkdir "$INSTALL_OPENVINO"/opencv
-touch "$INSTALL_OPENVINO"/opencv/setupvars.sh
-printf "export OpenCV_DIR=\$INSTALLDIR/opencv/cmake" >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
-printf "export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENVINO"/opencv/setupvars.sh
+touch "$INSTALL_OPENCV"/setupvars.sh
+printf "export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake;" >> "$INSTALL_OPENCV"/setupvars.sh
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/opencv/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENCV"/setupvars.sh
 mkdir -p "$INSTALL_OPENVINO"/python/python3
 cp -r "$INSTALL_OPENCV"/python/cv2 "$INSTALL_OPENVINO"/python/python3
