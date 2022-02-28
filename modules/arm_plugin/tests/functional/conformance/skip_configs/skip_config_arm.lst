@@ -12,5 +12,9 @@
 .*Broadcast_748166.*
 .*Convolution_80631.*
 .*ConvolutionBackpropData_1046455.*
+.*ROIPooling_1199827.*
+.*ConvolutionBackpropData_297803.*
+.*ConvolutionBackpropData_490864.*
 # Crash
 .*Interpolate_43113.*
+.*Interpolate_39446.*
