@@ -24,10 +24,30 @@ inline __device__ T exp(T x) {
     return ::exp(x);
 }
 
+template <typename T>
+inline __device__ T pow(T x, T y) {
+    return ::pow(x, y);
+}
+
+template <typename T>
+inline __device__ T sqrt(T a) {
+    return ::sqrt(a);
+}
+
+template <>
+inline __device__ __half pow<__half>(__half x, __half y) {
+    return powf(static_cast<float>(x), static_cast<float>(y));
+}
+
 #if defined(CUDA_HAS_HALF_MATH)
 template <>
 inline __device__ __half exp<__half>(__half x) {
     return ::hexp(x);
+}
+
+template <>
+inline __device__ __half sqrt<__half>(__half a) {
+    return ::hsqrt(a);
 }
 #else
 template <>
@@ -43,6 +63,11 @@ inline __device__ __half max<__half>(__half x, __half y) {
 template <>
 inline __device__ __half exp<__half>(__half x) {
     return exp(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __half sqrt<__half>(__half a) {
+    return ::sqrt(static_cast<float>(a));
 }
 #endif  // !defined (CUDA_HAS_HALF_MATH)
 
