@@ -1,10 +1,10 @@
 #This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
 #https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
 
-FROM debian:10
+FROM debian:9
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV PAKAGE_UPDATES_OF 20210505
+ENV PAKAGE_UPDATES_OF 20210215
 
 #Prerequisite installation
 RUN apt-get update && \
@@ -109,10 +109,10 @@ RUN git config --global user.name "Your Name" && \
 
 ENV ARCH_NAME arm-linux-gnueabihf
 ENV TOOLCHAIN_DEFS arm.toolchain.cmake
-COPY armplg_build.sh /armplg_build.sh
+COPY ../scripts/arm_cpu_plugin_build.sh /arm_cpu_plugin_build.sh
 
 #configure paths
-RUN mkdir -p /armcpu_plugin
-WORKDIR /armcpu_plugin/
+RUN mkdir -p /arm_cpu_plugin
+WORKDIR /arm_cpu_plugin/
 
-CMD ["sh", "/armplg_build.sh"]
+CMD ["sh", "/arm_cpu_plugin_build.sh"]
