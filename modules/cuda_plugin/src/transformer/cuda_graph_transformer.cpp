@@ -23,6 +23,7 @@
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
+#include "transformations/op_conversions/mvn6_decomposition.hpp"
 
 using namespace CUDAPlugin;
 
@@ -35,6 +36,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     ngraph::pass::Manager manager{passConfig};
 
     passConfig->enable<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
+    passConfig->disable<ngraph::pass::MVN6Decomposition>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();

@@ -68,6 +68,23 @@ struct one<__nv_bfloat16> {
 #endif
 
 template <class T>
+struct minusOne {
+    constexpr inline static AnyNumeric value{static_cast<T>(-1)};
+};
+
+template <>
+struct minusOne<__half> {
+    const inline static AnyNumeric value{__float2half(-1.0f)};
+};
+
+#ifdef CUDA_HAS_BF16_TYPE
+template <>
+struct minusOne<__nv_bfloat16> {
+    const inline static AnyNumeric value{__float2bfloat16(-1.0f)};
+};
+#endif
+
+template <class T>
 struct zero {
     constexpr inline static AnyNumeric value{static_cast<T>(0)};
 };
