@@ -244,6 +244,17 @@ public:
     }
 };
 
+class DnnReduceAvgDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceAvgDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_AVG,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
 class DnnScaleFactor {
 public:
     constexpr const void* get() const noexcept { return scaling_factor_; }
