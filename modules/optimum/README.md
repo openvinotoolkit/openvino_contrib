@@ -1,8 +1,8 @@
-# Optimum OpenVINO
+# OpenVINO&trade; Integration with Optimum*
 
 [![Test Optimum](https://github.com/dkurt/openvino_contrib/actions/workflows/test_optimum.yml/badge.svg?branch=master)](https://github.com/dkurt/openvino_contrib/actions/workflows/test_optimum.yml)
 
-Optimum OpenVINO is an extension for [Optimum](https://github.com/huggingface/optimum) library which brings [Intel OpenVINO](https://github.com/openvinotoolkit/openvino) backend for [Hugging Face Transformers](https://github.com/huggingface/transformers) :hugs:.
+This module is an extension for [Optimum*](https://github.com/huggingface/optimum) library which brings [OpenVINO&trade;](https://github.com/openvinotoolkit/openvino) backend for [Hugging Face Transformers*](https://github.com/huggingface/transformers) :hugs:.
 
 This project provides multiple APIs to enable different tools:
 * [OpenVINO Runtime](#openvino-runtime)
@@ -12,12 +12,12 @@ This project provides multiple APIs to enable different tools:
 
 Install only runtime:
 ```bash
-pip install optimum-openvino
+pip install openvino-optimum
 ```
 
 or with all dependencies (`nncf` and `openvino-dev`):
 ```bash
-pip install optimum-openvino[all]
+pip install openvino-optimum[all]
 ```
 
 ## OpenVINO Runtime
@@ -88,7 +88,9 @@ NNCF configs are published in [config](./optimum/intel/nncf/configs) folder. Add
 To use the NNCF component, install the package with `[nncf]` or `[all]` extras:
 
 ```bash
-pip install optimum-openvino[nncf]
+pip install openvino-optimum[nncf]
 ```
 
 See the [Changelog](https://github.com/openvinotoolkit/openvino_contrib/wiki/Optimum-OpenVINO-Changelog) page for details about module development.
+
+> *Other names and brands may be claimed as the property of others.

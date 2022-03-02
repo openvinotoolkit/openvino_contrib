@@ -30,7 +30,7 @@ folder = "optimum/intel/nncf/patches"
 data = [os.path.join(folder, name) for name in os.listdir(folder)]
 
 setup(
-    name="optimum-openvino",
+    name="openvino-optimum",
     version=__version__,
     description="Intel OpenVINO extension for Hugging Face Transformers",
     long_description=open("README.md", "r", encoding="utf-8").read(),

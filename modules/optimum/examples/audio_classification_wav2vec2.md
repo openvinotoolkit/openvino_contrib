@@ -65,7 +65,7 @@ python run_audio_classification.py \
     --remove_unused_columns False \
     --do_eval \
     --do_train \
-    --nncf_config optimum-openvino/optimum/intel/nncf/configs/nncf_wav2vec2_config.json \
+    --nncf_config optimum/intel/nncf/configs/nncf_wav2vec2_config.json \
     --learning_rate 3e-5 \
     --max_length_seconds 1 \
     --attention_mask False \
