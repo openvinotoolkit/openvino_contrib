@@ -226,9 +226,21 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                                                                                              [](float f) -> std::int8_t { return f < 0 ? -1 : 1; } );
                 std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), quantizationInfo.first.begin(),
                                                                                              [](float f) -> float { return f < 0 ? -f : f; } );
-                auto weightMultiply = std::make_shared<opset::Multiply>(node->input_value(1),
-                                                                        std::make_shared<opset::Constant>(node->get_input_element_type(1),
-                                                                                                          ngraph::Shape{negate.size(), 1, 1, 1}, negate));
+                std::shared_ptr<ngraph::Node> weightMultiply;
+                if (ngraph::is_type<opset::Constant>(node->input_value(1).get_node())) {
+                    std::vector<std::int8_t> weights = safe_cast<const opset::Constant>(node->input_value(1).get_node())->cast_vector<std::int8_t>();
+                    size_t step = weights.size() / negate.size();
+                    auto weightsIt = weights.begin();
+                    for (auto&& sign : negate) {
+                        std::transform(weightsIt, weightsIt + step, weightsIt, [&sign](std::int8_t w) -> std::int8_t { return w * sign; } );
+                        weightsIt += step;
+                    }
+                    weightMultiply = std::make_shared<opset::Constant>(node->get_input_element_type(1), node->get_input_shape(1), weights);
+                } else {
+                    weightMultiply = std::make_shared<opset::Multiply>(node->input_value(1),
+                                                                       std::make_shared<opset::Constant>(node->get_input_element_type(1),
+                                                                                                         ngraph::Shape{negate.size(), 1, 1, 1}, negate));
+                }
                 weightMultiply->set_friendly_name(node->input_value(1).get_node_shared_ptr()->get_friendly_name() + "_weights_negate");
                 ngraph::copy_runtime_info(node->input_value(1).get_node_shared_ptr(), weightMultiply);
                 newInputs[1] = ngraph::op::TemporaryReplaceOutputType{weightMultiply->output(0), ngraph::element::i8}.get();
