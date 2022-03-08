@@ -74,7 +74,7 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.5-openvino master
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.5-openvino 4.x
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2022.1 releases/2022/1
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git 2022.1 releases/2022/1
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
@@ -123,7 +123,7 @@ cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
 #Build OpenVINO
 mkdir -p $OPENVINO_HOME/build && \
 cd $OPENVINO_HOME/build && \
-cmake -DOpenCV_DIR=$STAGING_DIR/opencv/extras/cmake -DENABLE_OPENCV=OFF \
+cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
       -DPYTHON_INCLUDE_DIRS="/opt/python3.7_arm/include/python3.7m" \
       -DPYTHON_LIBRARY="/opt/python3.7_arm/lib/libpython3.7m.so" \
       -DENABLE_PYTHON=ON \
