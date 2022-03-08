@@ -74,7 +74,7 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git master
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.x
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
@@ -114,16 +114,16 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       -DPKG_CONFIG_EXECUTABLE=/usr/bin/${ARCH_NAME}-pkg-config \
       $OPENCV_HOME && \
 make -j$BUILD_JOBS && \
-cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/opencv -P cmake_install.cmake && \
-echo export OpenCV_DIR=\$INSTALLDIR/opencv/cmake > $STAGING_DIR/opencv/setupvars.sh && \
-echo export LD_LIBRARY_PATH=\$INSTALLDIR/opencv/lib:\$LD_LIBRARY_PATH >> $STAGING_DIR/opencv/setupvars.sh && \
-mkdir -p $STAGING_DIR/python/python3 && cp -r $STAGING_DIR/opencv/python/cv2 $STAGING_DIR/python/python3 && \
+cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/extras/opencv -P cmake_install.cmake && \
+echo export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake > $STAGING_DIR/extras/opencv/setupvars.sh && \
+echo export LD_LIBRARY_PATH=\$INSTALLDIR/extras/opencv/lib:\$LD_LIBRARY_PATH >> $STAGING_DIR/extras/opencv/setupvars.sh && \
+mkdir -p $STAGING_DIR/python/python3 && cp -r $STAGING_DIR/extras/opencv/python/cv2 $STAGING_DIR/python/python3 && \
 cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
 
 #Build OpenVINO
 mkdir -p $OPENVINO_HOME/build && \
 cd $OPENVINO_HOME/build && \
-cmake -DOpenCV_DIR=$STAGING_DIR/opencv/cmake -DENABLE_OPENCV=OFF \
+cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
       -DPYTHON_INCLUDE_DIRS="/opt/python3.7_arm/include/python3.7m" \
       -DPYTHON_LIBRARY="/opt/python3.7_arm/lib/libpython3.7m.so" \
       -DENABLE_PYTHON=ON \
@@ -175,9 +175,8 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
         -DPYTHON_INCLUDE_DIR="/opt/python3.7_arm/include/python3.7m" \
         -DPYTHON_LIBRARY="/opt/python3.7_arm/lib" \
         -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
-        -DInferenceEngine_DIR=$OPENVINO_HOME/build \
+        -DOpenVINO_DIR=$OPENVINO_HOME/build \
         -DOpenCV_DIR=$OPENCV_HOME/build \
-        -Dngraph_DIR=$OPENVINO_HOME/build/src/core \
         $OMZ_HOME/demos && \
   cmake --build $OMZ_DEMOS_BUILD -- -j$BUILD_JOBS && \
   cd $DEV_HOME || fail 16 "Open Model Zoo build failed. Stopping"
