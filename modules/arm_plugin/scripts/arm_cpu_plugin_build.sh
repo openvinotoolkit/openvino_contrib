@@ -115,7 +115,7 @@ cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi
       $OPENCV_HOME && \
 make -j$BUILD_JOBS && \
 cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/extras/opencv -P cmake_install.cmake && \
-echo export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake > $STAGING_DIR/opencv/setupvars.sh && \
+echo export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake > $STAGING_DIR/extras/opencv/setupvars.sh && \
 echo export LD_LIBRARY_PATH=\$INSTALLDIR/extras/opencv/lib:\$LD_LIBRARY_PATH >> $STAGING_DIR/extras/opencv/setupvars.sh && \
 mkdir -p $STAGING_DIR/python/python3 && cp -r $STAGING_DIR/extras/opencv/python/cv2 $STAGING_DIR/python/python3 && \
 cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
