@@ -38,7 +38,6 @@ ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
                                                                      maxpool->get_auto_pad(),
                                                                      ngraph::element::u32,
                                                                      maxpool->get_axis());
-                                                                     
         ngraph::Output<ngraph::Node> output_0 = new_maxpool->output(0);
         ngraph::Output<ngraph::Node> output_1_convert = new_maxpool->output(1);
 
