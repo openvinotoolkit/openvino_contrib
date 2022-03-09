@@ -21,7 +21,7 @@ namespace ArmPlugin {
 class Plugin;
 
 struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDefault {
-    ExecutableNetwork(const std::shared_ptr<const ngraph::Function>&  func,
+    ExecutableNetwork(const std::shared_ptr<const ov::Model>&  model,
                       const Configuration&           cfg,
                       const std::shared_ptr<Plugin>& plugin);
 
@@ -33,13 +33,11 @@ struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDe
                            const std::vector<std::shared_ptr<const ov::Node>>& outputs) override;
     InferenceEngine::Parameter GetMetric(const std::string& name) const override;
     InferenceEngine::Parameter GetConfig(const std::string& name) const override;
-    std::shared_ptr<ngraph::Function> GetExecGraphInfo() override;
+    std::shared_ptr<ov::Model> GetExecGraphInfo() override;
 
-    void RegistorTranslations();
-    void Translate(std::shared_ptr<const ngraph::Function> function);
     void InitExecutor();
 
-    std::shared_ptr<const ngraph::Function>                 _function;
+    std::shared_ptr<const ov::Model>                        _model;
     Configuration                                           _cfg;
     std::shared_ptr<Plugin>                                 _plugin;
     std::atomic_int                                         _requestId = {0};

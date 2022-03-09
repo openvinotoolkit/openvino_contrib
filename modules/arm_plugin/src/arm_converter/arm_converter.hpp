@@ -400,7 +400,7 @@ struct Converter {
         return std::make_unique<ConversionCallableImpl<Callable, Args...>>(*this, std::forward<Callable>(callable), std::forward<Args>(args)...);
     }
 
-    Converter(const std::shared_ptr<const ngraph::Function> function, const Configuration& cfg);
+    Converter(const std::shared_ptr<const ov::Model> model, const Configuration& cfg);
 
     Layer::Map Configure(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager,
                          arm_compute::MemoryGroup& memoryGroup);
@@ -421,7 +421,7 @@ struct Converter {
 
     const Configuration                             _cfg;
     std::map<ngraph::Node::type_info_t, ConvertFn>  _conversions;
-    std::shared_ptr<const ngraph::Function>         _function;
+    std::shared_ptr<const ov::Model>                _model;
     Layer::Map                                      _layers;
 };
 

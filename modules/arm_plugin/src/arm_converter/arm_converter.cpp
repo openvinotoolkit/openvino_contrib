@@ -41,8 +41,8 @@ std::size_t AxisCast(const std::size_t axis, const std::size_t shapeSize) {
     return shapeSize - axis - 1;
 }
 
-Converter::Converter(const std::shared_ptr<const ngraph::Function> function, const Configuration& cfg) :
-    _function{function}, _cfg{cfg} {
+Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configuration& cfg) :
+    _model{model}, _cfg{cfg} {
     Register<opset::Parameter>();
     Register<opset::Constant>();
     Register<opset::ArmConvolution>();
@@ -183,7 +183,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, con
         Register<ngraph::op::v8::MaxPool>();
     }
     Register<opset::Result>();
-    for (auto&& node : function->get_ordered_ops()) {
+    for (auto&& node : model->get_ordered_ops()) {
         auto& layer = _layers[node->get_instance_id()];
         for (auto&& input : node->inputs()) {
             auto sourceOutput = input.get_source_output();
@@ -216,7 +216,7 @@ Converter::Converter(const std::shared_ptr<const ngraph::Function> function, con
 
 Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManager>& memoryManager,
                                 arm_compute::MemoryGroup& memoryGroup) {
-    auto orderedOps = _function->get_ordered_ops();
+    auto orderedOps = _model->get_ordered_ops();
     std::string unsupported;
     for (auto&& node : orderedOps) {
         if (!contains(_conversions, node->get_type_info())) {
@@ -224,7 +224,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
         }
     }
     if (!unsupported.empty()) {
-        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported by plugin:\n" << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _model->get_friendly_name() << " are not supported by plugin:\n" << unsupported;
     }
     for (const auto& node : orderedOps) {
         Conversion::Ptr conversion;
@@ -243,7 +243,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
         }
     }
     if (!unsupported.empty()) {
-        IE_THROW() << "Arm Plugin: Nodes from " << _function->get_friendly_name() << " are not supported:\n" << unsupported;
+        IE_THROW() << "Arm Plugin: Nodes from " << _model->get_friendly_name() << " are not supported:\n" << unsupported;
     }
     std::map<ngraph::Output<ngraph::Node>, std::size_t> counter;
     for (auto&& node : orderedOps) {
@@ -253,7 +253,6 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
             _layers.at(nodeID)._outputs.begin()->second._tensor->allocator()->import_memory(const_cast<void*>(constNode->get_data_ptr()));
         } else if (!ngraph::op::is_parameter(node) && !ngraph::op::is_output(node)) {
             auto conversion = _conversions.at(node->get_type_info())(*node);
-            _layers.at(nodeID)._execType = conversion->ExecType();
             for (auto&& output : node->outputs()) {
                 auto targetInputs = output.get_target_inputs();
                 bool isNetworkOutput = std::any_of(std::begin(targetInputs), std::end(targetInputs), [] (auto& targetInput) {
@@ -265,6 +264,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
                 }
             }
             if (conversion != nullptr) {
+                _layers.at(nodeID)._execType = conversion->ExecType();
                 conversion->Configure(memoryManager);
             }
 

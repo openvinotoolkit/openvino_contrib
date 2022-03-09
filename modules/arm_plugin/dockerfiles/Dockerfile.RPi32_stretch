@@ -1,0 +1,118 @@
+#This Dockerfile is for x86 and should be used for OpenVINO ARM plugin cross-compilation
+#https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/arm_plugin#how-to-build
+
+FROM debian:9
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV PAKAGE_UPDATES_OF 20210215
+
+#Prerequisite installation
+RUN apt-get update && \
+    apt-get -y upgrade && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        lsb-release \
+        nano \
+        wget \
+        curl \
+        nano \
+        tar \
+        bzip2 \
+        unzip \
+        cpio \
+        cifs-utils \
+        locales \
+        rsync \
+        apt-transport-https \
+        debian-archive-keyring \
+        sudo \
+        openssh-client \
+        default-jre \
+        p7zip-full \
+        software-properties-common \
+        dirmngr \
+        gnupg \
+        netcat-openbsd \
+        dh-autoreconf \
+        libcurl4-gnutls-dev \
+        libexpat1-dev \
+        gettext \
+        libz-dev \
+        libssl-dev \
+        build-essential \
+        git \
+    && \
+    locale-gen en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN dpkg --add-architecture armhf && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends -f -o Dpkg::Options::="--force-confnew" \
+        build-essential \
+        libusb-1.0-0-dev:armhf \
+        software-properties-common \
+        crossbuild-essential-armhf \
+        zlib1g-dev \
+        libffi-dev \
+        libssl-dev \
+        chrpath \
+        libssl-dev \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        python3-dev \
+        libpython3-dev:armhf \
+        libgtk-3-dev:armhf \
+        libavcodec-dev:armhf \
+        libavformat-dev:armhf \
+        libswscale-dev:armhf \
+        # For ARM CPU plugin
+        scons \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# To cross-compile Python3.7 we need to first compile it for the host
+RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
+    tar -xf Python-3.7.9.tar.xz && \
+    cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
+    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython
+
+# Cross-compile Python3.7 for ARM
+RUN cd Python-3.7.9 && make distclean && \
+    ./configure \
+        --host=arm-linux-gnueabihf \
+        --build=x86_64-linux-gnu \
+        --disable-ipv6 \
+        --enable-shared \
+        --prefix=/opt/python3.7_arm \
+        ac_cv_file__dev_ptmx=no \
+        ac_cv_file__dev_ptc=no && \
+    make -j4 && make altinstall
+
+RUN wget https://www.cmake.org/files/v3.13/cmake-3.13.4.tar.gz && \
+    tar xf cmake-3.13.4.tar.gz && \
+    (cd cmake-3.13.4 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
+    rm -rf cmake-3.13.4 cmake-3.13.4.tar.gz
+
+# Replace exceptional Python version. It's used in case of failed test check which we
+# have in our case because CMake tries to run cross-compiled python to detect version.
+RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake && \
+    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/local/share/cmake-3.13/Modules/FindPythonInterp.cmake
+
+RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
+RUN rm /usr/bin/lsb_release
+
+RUN git config --global user.name "Your Name" && \
+    git config --global user.email "you@example.com"
+
+ENV ARCH_NAME arm-linux-gnueabihf
+ENV TOOLCHAIN_DEFS arm.toolchain.cmake
+COPY scripts/arm_cpu_plugin_build.sh /arm_cpu_plugin_build.sh
+
+#configure paths
+RUN mkdir -p /arm_cpu_plugin
+WORKDIR /arm_cpu_plugin/
+
+CMD ["sh", "/arm_cpu_plugin_build.sh"]

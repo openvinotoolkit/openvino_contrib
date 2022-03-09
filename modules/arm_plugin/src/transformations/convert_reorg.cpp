@@ -16,9 +16,11 @@ ArmPlugin::pass::ConvertReorgYolo::ConvertReorgYolo() {
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto reorg = std::dynamic_pointer_cast<opset::ReorgYolo>(m.get_match_root());
+        if (!reorg) {
+            return false;
+        }
         auto strides = reorg->get_strides();
-
-        if (!reorg || (strides[0] == 1 && strides[1] == 1)) {
+        if (strides[0] == 1 && strides[1] == 1) {
             return false;
         }
 

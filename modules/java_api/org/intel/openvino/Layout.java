@@ -1,47 +1,26 @@
 package org.intel.openvino;
 
-import java.util.HashMap;
-import java.util.Map;
+public class Layout extends Wrapper {
 
-public enum Layout {
-    ANY(0),
-    NCHW(1),
-    NHWC(2),
-    NCDHW(3),
-    NDHWC(4),
-
-    OIHW(64),
-
-    SCALAR(95),
-
-    C(96),
-
-    CHW(128),
-
-    HW(192),
-    NC(193),
-    CN(194),
-
-    BLOCKED(200);
-
-    private int value;
-    private static Map<Integer, Layout> map = new HashMap<Integer, Layout>();
-
-    static {
-        for (Layout layout : Layout.values()) {
-            map.put(layout.value, layout);
-        }
+    public Layout(String str) {
+        super(GetLayout(str));
     }
 
-    private Layout(int value) {
-        this.value = value;
+    public static int height_idx(Layout layout) {
+        return HeightIdx(layout.nativeObj);
     }
 
-    public int getValue() {
-        return value;
+    public static int width_idx(Layout layout) {
+        return WidthIdx(layout.nativeObj);
     }
 
-    static Layout valueOf(int value) {
-        return map.get(value);
-    }
+    /*----------------------------------- native methods -----------------------------------*/
+    private static native long GetLayout(String str);
+
+    private static native int HeightIdx(long layout);
+
+    private static native int WidthIdx(long layout);
+
+    @Override
+    protected native void delete(long nativeObj);
 }

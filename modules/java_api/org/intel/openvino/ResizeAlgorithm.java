@@ -1,9 +1,9 @@
 package org.intel.openvino;
 
 public enum ResizeAlgorithm {
-    NO_RESIZE(0),
-    RESIZE_BILINEAR(1),
-    RESIZE_AREA(2);
+    RESIZE_LINEAR(0),
+    RESIZE_CUBIC(1),
+    RESIZE_NEAREST(2);
 
     private int value;
 

@@ -6,6 +6,7 @@
 #include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEPoolingLayer.h>
 #include <ngraph/runtime/reference/max_pool.hpp>
+#include <ngraph/runtime/reference/avg_pool.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 
@@ -191,16 +192,37 @@ protected:
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& node) {
-    arm_compute::PoolingLayerInfo pool_info;
-    FillLayerInfo(node, pool_info);
-    pool_info.pool_type       = arm_compute::PoolingType::AVG;
-    pool_info.exclude_padding = node.get_exclude_pad();
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
     const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
                                                &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                                &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, iInfo, qInfo);
+    if (node.get_input_shape(0).size() == 4) {
+        arm_compute::PoolingLayerInfo pool_info;
+        FillLayerInfo(node, pool_info);
+        pool_info.pool_type       = arm_compute::PoolingType::AVG;
+        pool_info.exclude_padding = node.get_exclude_pad();
+        return MakeConversion<NEPoolingLayerQI>(node.input(0), node.output(0), pool_info, iInfo, qInfo);
+    } else if (!iInfo && !qInfo) {
+        auto make = [&] (auto refFunction) {
+        return this->MakeConversion(refFunction,
+                                    node.input(0),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_output_shape(0),
+                                    node.get_kernel(),
+                                    node.get_strides(),
+                                    node.get_pads_begin(),
+                                    node.get_pads_end(),
+                                    !node.get_exclude_pad());
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::avg_pool),
+            node.input(0), allTypes);
+    } else {
+        IE_THROW() << "AvgPool node doesn't support quantization for " << node.get_input_shape(0) << " input shape.";
+        return {};
+    }
 }
 }  // namespace ArmPlugin
