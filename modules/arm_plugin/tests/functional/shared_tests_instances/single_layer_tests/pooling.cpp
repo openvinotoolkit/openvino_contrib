@@ -227,7 +227,7 @@ const std::vector<std::vector<size_t >> padBegins3D = {{0, 0, 0}};
 const std::vector<std::vector<size_t >> padEnds3D = {{0, 0, 0}};
 
 /* ========== Explicit Pad Floor Rounding 5D input========== */
-const auto maxPool_ExplicitPad_FloorRounding_5Dinput_Params = ::testing::Combine(
+const auto maxPool3D_ExplicitPad_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(ngraph::helpers::PoolingTypes::MAX),
         ::testing::ValuesIn(kernel3D),
         ::testing::ValuesIn(strides3D),
@@ -238,9 +238,9 @@ const auto maxPool_ExplicitPad_FloorRounding_5Dinput_Params = ::testing::Combine
         ::testing::Values(false)  // placeholder value - exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_SUITE_P(smoke_MaxPool_ExplicitPad_FloorRounding_5Dinput, PoolingLayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_MaxPool3D_ExplicitPad_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
-                                maxPool_ExplicitPad_FloorRounding_5Dinput_Params,
+                                maxPool3D_ExplicitPad_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -251,7 +251,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MaxPool_ExplicitPad_FloorRounding_5Dinput, Poolin
                         PoolingLayerTest::getTestCaseName);
 
 /* ========== Same Upper Pad Floor Rounding 5D input========== */
-const auto maxPool_SameUpperPad_FloorRounding_5Dinput_Params = ::testing::Combine(
+const auto maxPool3D_SameUpperPad_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(ngraph::helpers::PoolingTypes::MAX),
         ::testing::ValuesIn(kernel3D),
         ::testing::ValuesIn(strides3D),
@@ -262,9 +262,9 @@ const auto maxPool_SameUpperPad_FloorRounding_5Dinput_Params = ::testing::Combin
         ::testing::Values(false)  // placeholder value - exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_SUITE_P(smoke_MaxPool_SameUpperPad_FloorRounding_5Dinput, PoolingLayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_MaxPool3D_SameUpperPad_FloorRounding, PoolingLayerTest,
                         ::testing::Combine(
-                                maxPool_SameUpperPad_FloorRounding_5Dinput_Params,
+                                maxPool3D_SameUpperPad_FloorRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -275,7 +275,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_MaxPool_SameUpperPad_FloorRounding_5Dinput, Pooli
                         PoolingLayerTest::getTestCaseName);
 
 /* ========== Same Lower Pad Ceil Rounding 5D input========== */
-const auto maxPool_SameLowerPad_CeilRounding_5Dinput_Params = ::testing::Combine(
+const auto maxPool3D_SameLowerPad_CeilRounding_Params = ::testing::Combine(
         ::testing::Values(ngraph::helpers::PoolingTypes::MAX),
         ::testing::ValuesIn(kernel3D),
         ::testing::ValuesIn(strides3D),
@@ -286,9 +286,9 @@ const auto maxPool_SameLowerPad_CeilRounding_5Dinput_Params = ::testing::Combine
         ::testing::Values(false)  // placeholder value - exclude pad not applicable for max pooling
 );
 
-INSTANTIATE_TEST_SUITE_P(smoke_MaxPool_SameLowerPad_CeilRounding_5Dinput, PoolingLayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_MaxPool3D_SameLowerPad_CeilRounding, PoolingLayerTest,
                         ::testing::Combine(
-                                maxPool_SameUpperPad_FloorRounding_5Dinput_Params,
+                                maxPool3D_SameLowerPad_CeilRounding_Params,
                                 ::testing::ValuesIn(netPrecisions),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                 ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -373,16 +373,13 @@ INSTANTIATE_TEST_SUITE_P(smoke_AvgPool_SameLowerPad_CeilRounding_5Dinput, Poolin
 
 //* ========== Max Pooling V8 ========== */
 
-const std::vector<std::vector<size_t >> kernels = {{3, 3},
-                                                          {3, 5}};
+const std::vector<std::vector<size_t >> kernels = {{3, 3}, {3, 5}, {2, 2}};
 const std::vector<std::vector<size_t>> strides = {{1, 1},
                                                   {1, 2},
                                                   {2, 1},
                                                   {2, 2}};
-const std::vector<std::vector<size_t >> padBegins = {{0, 0},
-                                                            {0, 2}};
-const std::vector<std::vector<size_t >> padEnds = {{0, 0},
-                                                          {0, 2}};
+const std::vector<std::vector<size_t >> padBegins = {{0, 0}};
+const std::vector<std::vector<size_t >> padEnds = {{0, 0}};
 const std::vector<ngraph::op::RoundingType> roundingTypes = {ngraph::op::RoundingType::CEIL,
                                                              ngraph::op::RoundingType::FLOOR};
 
@@ -402,7 +399,7 @@ const auto maxPoolv8_ExplicitPad_FloorRounding_Params = ::testing::Combine(
         ::testing::Values(ngraph::op::PadType::EXPLICIT)
 );
 
-INSTANTIATE_TEST_SUITE_P(smoke_MaxPoolV8_ExplicitPad_FloorRounding, MaxPoolingV8LayerTest,
+INSTANTIATE_TEST_SUITE_P(smoke_MaxPoolv8_ExplicitPad_FloorRounding, MaxPoolingV8LayerTest,
                          ::testing::Combine(
                                  maxPoolv8_ExplicitPad_FloorRounding_Params,
                                  ::testing::ValuesIn(netPrecisions),

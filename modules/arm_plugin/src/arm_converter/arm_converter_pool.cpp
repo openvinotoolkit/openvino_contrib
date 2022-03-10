@@ -30,11 +30,13 @@ static void FillLayerInfo(const Pool& node, arm_compute::PoolingLayerInfo& pool_
     pool_info.data_layout       = arm_compute::DataLayout::NCHW;
     pool_info.pool_size         = arm_compute::Size2D(kernel_w, kernel_h);
     pool_info.pad_stride_info   = arm_compute::PadStrideInfo(stride_x, stride_y, pad_left, pad_right, pad_top, pad_bottom, round);
+    if (node.get_auto_pad() != ngraph::op::PadType::EXPLICIT) {
+        pool_info.exclude_padding = true;
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& node) {
-    if ((node.get_input_shape(0).size() == 4) &&
-       (node.get_auto_pad() == ngraph::op::PadType::VALID)) {
+    if (node.get_input_shape(0).size() == 4) {
         arm_compute::PoolingLayerInfo pool_info;
         FillLayerInfo(node, pool_info);
         pool_info.pool_type = arm_compute::PoolingType::MAX;
@@ -58,24 +60,35 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& n
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::MaxPool& node) {
-    auto make = [&] (auto refFunction) {
-    return this->MakeConversion(refFunction,
-                                node.input(0),
-                                node.output(0),
-                                node.output(1),
-                                node.get_input_shape(0),
-                                node.get_output_shape(0),
-                                node.get_kernel(),
-                                node.get_strides(),
-                                node.get_dilations(),
-                                node.get_pads_begin(),
-                                node.get_pads_end(),
-                                node.get_axis());
-    };
-    return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::max_pool),
-        node.input(0), allTypes,
-        node.output(1), indexTypes);
+    if ((node.get_input_shape(0).size() == 4) &&
+       (node.get_output_element_type(1) == ngraph::element::u32) &&
+       (node.get_kernel() == ngraph::Shape{2, 2}) &&
+       (node.get_dilations() == ngraph::Strides{1, 1}) &&
+       (node.get_axis() == 0)) {
+        arm_compute::PoolingLayerInfo pool_info;
+        FillLayerInfo(node, pool_info);
+        pool_info.pool_type = arm_compute::PoolingType::MAX;
+        return MakeConversion<arm_compute::NEPoolingLayer>(node.input(0), node.output(0), pool_info, node.output(1));
+    } else {
+        auto make = [&] (auto refFunction) {
+        return this->MakeConversion(refFunction,
+                                    node.input(0),
+                                    node.output(0),
+                                    node.output(1),
+                                    node.get_input_shape(0),
+                                    node.get_output_shape(0),
+                                    node.get_kernel(),
+                                    node.get_strides(),
+                                    node.get_dilations(),
+                                    node.get_pads_begin(),
+                                    node.get_pads_end(),
+                                    node.get_axis());
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::max_pool),
+            node.input(0), allTypes,
+            node.output(1), indexTypes);
+    }
 }
 
 struct NEPoolingLayerQI final: public arm_compute::IFunction {

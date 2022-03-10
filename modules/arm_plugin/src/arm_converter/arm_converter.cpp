@@ -29,6 +29,7 @@ arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
         case ngraph::element::Type_t::i16   : return arm_compute::DataType::S16;
         case ngraph::element::Type_t::u16   : return arm_compute::DataType::U16;
         case ngraph::element::Type_t::i32   : return arm_compute::DataType::S32;
+        case ngraph::element::Type_t::u32   : return arm_compute::DataType::U32;
         case ngraph::element::Type_t::i64   : return arm_compute::DataType::S64;
         case ngraph::element::Type_t::f16   : return arm_compute::DataType::F16;
         case ngraph::element::Type_t::f32   : return arm_compute::DataType::F32;
