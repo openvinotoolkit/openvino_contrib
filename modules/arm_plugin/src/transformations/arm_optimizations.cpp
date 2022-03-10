@@ -15,6 +15,7 @@
 #include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/convert_gather_downgrade.hpp"
+#include "transformations/op_conversions/convert_softmax_downgrade.hpp"
 #include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
@@ -282,6 +283,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastSelect>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGather>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertGather8ToGather7>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertSoftMax8ToSoftMax1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertDFT>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertIDFT>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
