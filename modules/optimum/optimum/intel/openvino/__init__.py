@@ -10,6 +10,8 @@ from .modeling_ov_auto import (
     OVAutoModelForAudioClassification,
 )
 
+from .modeling_ov_mbart import OVMBartForConditionalGeneration
+
 __all__ = [
     "OVAutoModel",
     "OVAutoModelForMaskedLM",
@@ -17,4 +19,5 @@ __all__ = [
     "OVAutoModelForQuestionAnswering",
     "OVAutoModelForSequenceClassification",
     "OVAutoModelForAudioClassification",
+    "OVMBartForConditionalGeneration",
 ]
