@@ -321,11 +321,9 @@ from transformers import MBart50TokenizerFast, AutoConfig, MBartForConditionalGe
 class OVMBartForConditionalGenerationTest(unittest.TestCase):
     @require_torch
     def test_generate(self):
-        # model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50", use_cache=False)
-        model = OVMBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50", from_pt=True)
+        model = OVMBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50", use_cache=False, from_pt=True)
         tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
 
-        # TODO: replace a text
         article_hi = "संयुक्त राष्ट्र के प्रमुख का कहना है कि सीरिया में कोई सैन्य समाधान नहीं है"
         tokenizer.src_lang = "hi_IN"
         encoded_hi = tokenizer(article_hi, return_tensors="pt")
@@ -334,3 +332,11 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
             max_length=19,
             forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
         print(generated_tokens)
+
+
+        expected_tokens = np.array(
+            [[     2, 250008,      0,  44269,  20823,    287,  12923,    641,  93748,
+                   460,   1682,  13371,  44890,    421,  10207, 165095,  57854,   2191, 2]]
+        )
+
+        self.assertEqual(generated_tokens, expected_tokens)

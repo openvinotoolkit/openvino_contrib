@@ -65,25 +65,30 @@ def load_ov_model_from_pytorch(model, inputs=None):
         else:
             inputs = (dummy_input_ids, dummy_mask)
 
+        input_names = [model.main_input_name, "attention_mask"]
+    else:
+        input_names = [name for name, tensor in inputs.items() if tensor is not None]
+        inputs = tuple(inputs.values())
+
     if model.__class__.__name__.endswith("ForQuestionAnswering"):
         outputs = ["output_s", "output_e"]
     else:
         outputs = ["output"]
 
-    use_external_data_format = True
-    # with torch.no_grad():
-    #     for use_external_data_format in [True]:
-    #         # TODO: create "model" folder in cache
-    #         # try:
-    #         torch.onnx.export(
-    #             model,
-    #             inputs,
-    #             buf if not use_external_data_format else "model/model.onnx",
-    #             input_names=["attention_mask", "decoder_input_ids", "encoder_outputs"],
-    #             output_names=outputs,
-    #             opset_version=11,
-    #             use_external_data_format=use_external_data_format,
-    #         )
+    # use_external_data_format = True
+    with torch.no_grad():
+        for use_external_data_format in [True]:
+            # TODO: create "model" folder in cache
+            # try:
+            torch.onnx.export(
+                model,
+                inputs,
+                buf if not use_external_data_format else "model/model.onnx",
+                input_names=input_names,
+                output_names=outputs,
+                opset_version=11,
+                use_external_data_format=use_external_data_format,
+            )
     #         #     break
     #         # except:
     #         #     pass
@@ -208,7 +213,7 @@ class OVPreTrainedModel(GenerationMixin):
         self.use_dynamic_shapes = is_openvino_api_2
 
         self.main_input_name = None
-        for name in ["input_ids", "input_values"]:
+        for name in ["input_ids", "input_values", "decoder_input_ids"]:
             if name in self.input_names:
                 self.main_input_name = name
         if self.main_input_name is None:
@@ -417,10 +422,13 @@ class OVPreTrainedModel(GenerationMixin):
         inp_length = inputs[self.main_input_name].shape[1]
 
         # If <max_length> specified, pad inputs by zeros
+        print(self.max_length)
         if inp_length < self.max_length:
             pad = ((0, 0), (0, self.max_length - inp_length))
             for name in inputs:
-                inputs[name] = np.pad(inputs[name], pad)
+                print(name, inputs[name].shape)
+                if inputs[name].shape[1] != self.max_length:
+                    inputs[name] = np.pad(inputs[name], pad)
 
         # OpenVINO >= 2022.1 supports dynamic shapes input.
         if not is_openvino_api_2:
@@ -462,7 +470,7 @@ class OVPreTrainedModel(GenerationMixin):
             return ModelOutput(logits=torch.tensor(logits))
 
     def __call__(self, *args, **kwargs):
-        if self.main_input_name == "input_ids":
+        if self.main_input_name == "input_ids" or self.main_input_name == "decoder_input_ids":
             inputs = self._prepare_nlp_inputs(*args, **kwargs)
         elif self.main_input_name == "input_values":
             inputs = self._prepare_audio_inputs(*args, **kwargs)

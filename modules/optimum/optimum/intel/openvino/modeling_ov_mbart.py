@@ -20,27 +20,84 @@ class OVMBartEncoder(OVPreTrainedModel):
         return BaseModelOutput(last_hidden_state=torch.tensor(res[0]))
 
 
+def prepare_inputs_for_generation(
+    self,
+    decoder_input_ids,
+    past=None,
+    attention_mask=None,
+    head_mask=None,
+    decoder_head_mask=None,
+    cross_attn_head_mask=None,
+    use_cache=None,
+    encoder_outputs=None,
+    **kwargs
+):
+    # cut decoder_input_ids if past is used
+    if past is not None:
+        decoder_input_ids = decoder_input_ids[:, -1:]
+
+    return {
+        "input_ids": None,  # encoder_outputs is defined. input_ids not needed
+        "encoder_outputs": encoder_outputs,
+        "past_key_values": past,
+        "decoder_input_ids": decoder_input_ids,
+        "attention_mask": attention_mask,
+        "head_mask": head_mask,
+        "decoder_head_mask": decoder_head_mask,
+        "cross_attn_head_mask": cross_attn_head_mask,
+        "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
+    }
+
+def _prepare_nlp_inputs(
+    self,
+    input_ids=None,
+    attention_mask=None,
+    decoder_input_ids=None,
+    decoder_attention_mask=None,
+    head_mask=None,
+    decoder_head_mask=None,
+    cross_attn_head_mask=None,
+    encoder_outputs=None,
+    past_key_values=None,
+    inputs_embeds=None,
+    decoder_inputs_embeds=None,
+    labels=None,
+    use_cache=None,
+    output_attentions=None,
+    output_hidden_states=None,
+    return_dict=None,
+):
+    return {
+        "encoder_outputs": encoder_outputs.last_hidden_state,
+        "attention_mask": attention_mask,
+        "decoder_input_ids": decoder_input_ids,
+    }
+
+
 class OVMBartForConditionalGeneration(object):
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path)
 
-        # net = load_ov_model_from_pytorch(model.get_encoder())
-        # encoder = OVMBartEncoder(net, model.config)
-        inputs = (
-            None,  # input_ids
-            torch.zeros([5, 18], dtype=torch.int32),  # attention_mask
-            torch.zeros([5, 2], dtype=torch.int32),  # decoder_input_ids
-            None,  # decoder_attention_mask
-            None,  # head_mask
-            None,  # decoder_head_mask
-            None,  # cross_attn_head_mask
-            [torch.zeros([5, 18, 1024], dtype=torch.float32)]  # encoder_outputs
-        )
+        net = load_ov_model_from_pytorch(model.get_encoder())
+        encoder = OVMBartEncoder(net, model.config)
+
+        inputs = {
+            "input_ids": None,
+            "attention_mask": torch.zeros([1, 18], dtype=torch.int32),
+            "decoder_input_ids": torch.zeros([1, 18], dtype=torch.int32),
+            "decoder_attention_mask": None,
+            "head_mask": None,
+            "decoder_head_mask": None,
+            "cross_attn_head_mask": None,
+            "encoder_outputs": [torch.zeros([1, 18, 1024], dtype=torch.float32)],
+        }
 
         net = load_ov_model_from_pytorch(model, inputs)
         model = OVPreTrainedModel(net, model.config)
 
         model.get_encoder = lambda: encoder
+        model.prepare_inputs_for_generation = lambda *args, **kwargs: prepare_inputs_for_generation(model, *args, **kwargs)
+        model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(model, *args, **kwargs)
 
         return model
