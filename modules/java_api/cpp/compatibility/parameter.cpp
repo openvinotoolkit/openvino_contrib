@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <inference_engine.hpp>
 
 #include "openvino_java.hpp"
@@ -5,7 +8,7 @@
 
 using namespace InferenceEngine;
 
-JNIEXPORT jstring JNICALL Java_org_intel_openvino_compatibility_Parameter_asString(JNIEnv *env, jobject obj, jlong addr) 
+JNIEXPORT jstring JNICALL Java_org_intel_openvino_compatibility_Parameter_asString(JNIEnv *env, jobject obj, jlong addr)
 {
     static const char method_name[] = "asString";
     try
@@ -24,7 +27,7 @@ JNIEXPORT jstring JNICALL Java_org_intel_openvino_compatibility_Parameter_asStri
     return 0;
 }
 
-JNIEXPORT jint JNICALL Java_org_intel_openvino_compatibility_Parameter_asInt(JNIEnv *env, jobject obj, jlong addr) 
+JNIEXPORT jint JNICALL Java_org_intel_openvino_compatibility_Parameter_asInt(JNIEnv *env, jobject obj, jlong addr)
 {
     static const char method_name[] = "asInt";
     try

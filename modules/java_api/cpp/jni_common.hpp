@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <jni.h>   // JNI header provided by JDK
 #include <stdio.h> // C Standard IO Header
 
