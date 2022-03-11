@@ -38,7 +38,7 @@ The plugin supports IRv10 and higher. The list of supported layers and its limit
 ## Supported Model Formats
 * FP32 – Supported and preferred
 * FP16 – Supported
-* I8 – Not supported
+* I8 – Experimental support
 
 ## Supported Input Precision
 * FP32 - Supported
