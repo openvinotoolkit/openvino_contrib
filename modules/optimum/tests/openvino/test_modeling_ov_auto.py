@@ -48,7 +48,6 @@ from optimum.intel.openvino import (
 )
 
 
-
 class OVBertForQuestionAnsweringTest(unittest.TestCase):
     def check_model(self, model, tok):
         context = """
@@ -328,13 +327,31 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
         article_hi = "संयुक्त राष्ट्र के प्रमुख का कहना है कि सीरिया में कोई सैन्य समाधान नहीं है"
         tokenizer.src_lang = "hi_IN"
         encoded_hi = tokenizer(article_hi, return_tensors="pt")
-        generated_tokens = model.generate(
-            **encoded_hi,
-            max_length=19,
-            forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
-        print(generated_tokens)
+        generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
 
-        expected_tokens = [[     2, 250008,      0,  44269,  20823,    287,  12923,    641,  93748,
-                   460,   1682,  13371,  44890,    421,  10207, 165095,  57854,   2191, 2]]
+        expected_tokens = [
+            [
+                2,
+                250008,
+                0,
+                44269,
+                20823,
+                287,
+                12923,
+                641,
+                93748,
+                460,
+                1682,
+                13371,
+                44890,
+                421,
+                10207,
+                165095,
+                57854,
+                2191,
+                460,
+                2,
+            ]
+        ]
 
         self.assertListEqual(generated_tokens.tolist(), expected_tokens)

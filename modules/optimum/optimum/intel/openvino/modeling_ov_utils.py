@@ -340,9 +340,19 @@ class OVPreTrainedModel(GenerationMixin):
 
     def _load_network(self):
         if is_openvino_api_2:
-            # if self.use_dynamic_shapes:
-            #     shape = PartialShape([1, -1])
-            #     self.net.reshape({name: shape for name in self.input_names})
+            if self.use_dynamic_shapes:
+                shapes = {}
+                for inp in self.net.inputs:
+                    name = inp.get_any_name()
+                    shapes[name] = inp.get_partial_shape()
+                    shapes[name][1] = -1
+                if len(shapes) == 3:
+                    shapes = {
+                        "attention_mask": PartialShape([1, 18]),
+                        "decoder_input_ids": PartialShape([1, -1]),
+                        "encoder_outputs": PartialShape([1, 18, 1024]),
+                    }
+                self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
             self.exec_net = compiled_model.create_infer_request()
         else:
@@ -422,7 +432,6 @@ class OVPreTrainedModel(GenerationMixin):
         inp_length = inputs[self.main_input_name].shape[1]
 
         # If <max_length> specified, pad inputs by zeros
-        print(self.max_length)
         if inp_length < self.max_length:
             pad = ((0, 0), (0, self.max_length - inp_length))
             for name in inputs:

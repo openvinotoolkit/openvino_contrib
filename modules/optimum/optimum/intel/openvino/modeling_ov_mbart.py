@@ -94,6 +94,7 @@ class OVMBartForConditionalGeneration(object):
         }
 
         net = load_ov_model_from_pytorch(model, inputs)
+        net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))  # Fix for 2022.1 release
         model = OVPreTrainedModel(net, model.config)
 
         model.get_encoder = lambda: encoder
