@@ -6,7 +6,7 @@
 set -e
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
-sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
+sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev hwloc
 # Speed up build
 wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
 unzip ninja-linux.zip
@@ -49,10 +49,26 @@ cd "$WORK_DIR" || exit
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
+# TODO: Add hwloc to enable tbbbind
+# -DCMAKE_HWLOC_2_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/libhwloc.so \
+# -DCMAKE_HWLOC_2_INCLUDE_PATH=/usr/include/aarch64-linux-gnu/hwloc \
+# oneTBB install
+git clone https://github.com/oneapi-src/oneTBB.git --depth 1 "$ONETBB_REPO_DIR"
+cmake -D CMAKE_BUILD_TYPE=$BUILD_TYPE \
+      -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
+      -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENTBB" && \
+cmake --build . && \
+cmake --install . && \
+touch "$INSTALL_OPENTBB"/setupvars.sh
+printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/cmake/TBB;" >> "$INSTALL_OPENTBB"/setupvars.sh
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENTBB"/setupvars.sh
+cd $DEV_HOME || fail 11 "oneTBB build failed. Stopping"
+
 # OpenCV install
 git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
 cmake -G Ninja \
       -D CMAKE_BUILD_TYPE="$BUILD_TYPE" \
+      -D TBB_DIR="$INSTALLDIR"/extras/oneTBB/cmake/TBB \
       -D BUILD_opencv_python2=OFF \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
