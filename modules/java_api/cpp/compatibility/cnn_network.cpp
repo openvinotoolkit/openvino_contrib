@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <inference_engine.hpp>
 
 #include "openvino_java.hpp"
@@ -5,13 +8,13 @@
 
 using namespace InferenceEngine;
 
-JNIEXPORT jstring JNICALL Java_org_intel_openvino_compatibility_CNNNetwork_getName(JNIEnv *env, jobject, jlong addr) 
+JNIEXPORT jstring JNICALL Java_org_intel_openvino_compatibility_CNNNetwork_getName(JNIEnv *env, jobject, jlong addr)
 {
     static const char method_name[] = "getName";
     try
     {
         CNNNetwork *network = (CNNNetwork *)addr;
-        return env->NewStringUTF(network->getName().c_str()); 
+        return env->NewStringUTF(network->getName().c_str());
     }
     catch (const std::exception &e)
     {
@@ -174,7 +177,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_CNNNetwork_addOutpu
     try
     {
         CNNNetwork *network = (CNNNetwork *)addr;
-        
+
         std::string c_outputName = jstringToString(env, layerName);
         size_t c_outputIndex = static_cast<size_t>(outputIndex);
 
@@ -195,7 +198,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_CNNNetwork_addOutpu
     try
     {
         CNNNetwork *network = (CNNNetwork *)addr;
-        
+
         std::string c_outputName = jstringToString(env, layerName);
 
         network->addOutput(c_outputName);

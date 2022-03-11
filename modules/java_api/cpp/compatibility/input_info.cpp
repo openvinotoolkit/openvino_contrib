@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <jni.h>   // JNI header provided by JDK
 #include <stdio.h> // C Standard IO Header
 #include <inference_engine.hpp>
@@ -81,7 +84,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_InputInfo_SetPrecis
             throw std::runtime_error("No such precision value!");
 
         input_info->setPrecision(it->second);
-        
+
     } catch (const std::exception &e)
     {
         throwJavaException(env, &e, method_name);
