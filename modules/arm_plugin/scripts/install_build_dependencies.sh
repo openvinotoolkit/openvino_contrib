@@ -54,6 +54,7 @@ sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 # -DCMAKE_HWLOC_2_INCLUDE_PATH=/usr/include/aarch64-linux-gnu/hwloc \
 # oneTBB install
 git clone https://github.com/oneapi-src/oneTBB.git --depth 1 "$ONETBB_REPO_DIR"
+cd "$ONETBB_REPO_DIR"
 cmake -D CMAKE_BUILD_TYPE=$BUILD_TYPE \
       -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENTBB" && \
