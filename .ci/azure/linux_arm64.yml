@@ -42,6 +42,7 @@ jobs:
     TMP_DIR: /mnt/tmp
     OPENVINO_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64
     OPENCV_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_opencv
+    ONETBB_CCACHE_DIR: $(SHARE_DIR)/ccache/master/linux_arm64_onetbb
 
   steps:
   - script: |
@@ -76,6 +77,7 @@ jobs:
       sudo mount -vvv -t nfs cinfsshare.file.core.windows.net:/cinfsshare/onnxtestdata $(SHARE_DIR) -o vers=4,minorversion=1,sec=sys
       mkdir -p $(OPENVINO_CCACHE_DIR)
       mkdir -p $(OPENCV_CCACHE_DIR)
+      mkdir -p $(ONETBB_CCACHE_DIR)
     displayName: 'Make directories'
 
   - checkout: self
@@ -93,11 +95,12 @@ jobs:
   - script: |
       set -e
       $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
-      export CCACHE_DIR=$(OPENCV_CCACHE_DIR)
       export CCACHE_TEMPDIR=$(TMP_DIR)/ccache
       export CCACHE_BASEDIR=$(Pipeline.Workspace)
       export CCACHE_MAXSIZE=50G
       export USE_CCACHE=1
+      export OPENCV_CCACHE_DIR=$(OPENCV_CCACHE_DIR)
+      export ONETBB_CCACHE_DIR=$(ONETBB_CCACHE_DIR)
       export PYTHON_ARM_VERSION=$(PYTHON_ARM_VERSION)
       export NUM_PROC=$(NUM_PROC)
       export BUILD_PYTHON=$(BUILD_PYTHON)
