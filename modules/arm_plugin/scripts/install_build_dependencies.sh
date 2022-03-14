@@ -104,7 +104,7 @@ ninja -C $BUILD_ONETBB
 ninja -C $BUILD_ONETBB install
 
 touch "$INSTALL_ONETBB"/setupvars.sh
-printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/cmake/TBB;" >> "$INSTALL_ONETBB"/setupvars.sh
+printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/lib/cmake/TBB;" >> "$INSTALL_ONETBB"/setupvars.sh
 printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_ONETBB"/setupvars.sh
 cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
 
@@ -112,7 +112,7 @@ cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
 git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
 cmake -G Ninja \
       -D CMAKE_BUILD_TYPE="$BUILD_TYPE" \
-      -D TBB_DIR="$INSTALLDIR"/extras/oneTBB/cmake/TBB \
+      -D TBB_DIR="$INSTALL_ONETBB"/lib/cmake/TBB \
       -D BUILD_opencv_python2=OFF \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
