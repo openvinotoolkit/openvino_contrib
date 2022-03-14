@@ -7,7 +7,7 @@ import logging
 import numpy as np
 
 try:
-    from openvino.runtime import Core, PartialShape
+    from openvino.runtime import Core
 
     is_openvino_api_2 = True
 except ImportError:
@@ -103,6 +103,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
         else:
             net = ie.read_network(buf.getvalue(), b"", init_from_buffer=True)
     return net
+
 
 def load_ov_model_from_tf(model, tf_weights_path):
     import subprocess
@@ -351,9 +352,8 @@ class OVPreTrainedModel(GenerationMixin):
             if self.use_dynamic_shapes:
                 shapes = {}
                 for inp in self.net.inputs:
-                    name = inp.get_any_name()
-                    shapes[name] = inp.get_partial_shape()
-                    shapes[name][1] = -1
+                    shapes[inp] = inp.get_partial_shape()
+                    shapes[inp][1] = -1
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
             self.exec_net = compiled_model.create_infer_request()
@@ -441,13 +441,6 @@ class OVPreTrainedModel(GenerationMixin):
                     pad = np.zeros([len(shape), 2], dtype=np.int32)
                     pad[1, 1] = self.max_length - shape[1]
                     inputs[name] = np.pad(inputs[name], pad)
-                # shape = inputs[name].shape
-                # if shape[1] != self.max_length:
-                #     # if shape[1] != inp_length:
-                #     #     raise Exception(f"Cannot pad input of shape {shape} to max_length {self.max_length} because main input {self.main_input_name} has shape {inputs[self.main_input_name].shape}")
-                #     pad = np.zeros([len(shape), 2], dtype=np.int32)
-                #     pad[1, 1] = self.max_length - shape[1]
-                #     inputs[name] = np.pad(inputs[name], pad)
 
         # OpenVINO >= 2022.1 supports dynamic shapes input.
         if not is_openvino_api_2:
@@ -456,7 +449,6 @@ class OVPreTrainedModel(GenerationMixin):
             if inputs_info[self.main_input_name].input_data.shape[1] != input_ids.shape[1]:
                 # Use batch size 1 because we process batch sequently.
                 shapes = {key: [1] + list(inputs[key].shape[1:]) for key in inputs_info}
-                print(shapes)
                 logger.info(f"Reshape model to {shapes}")
                 self.net.reshape(shapes)
                 self.exec_net = None

@@ -44,7 +44,6 @@ from optimum.intel.openvino import (
     OVAutoModelForQuestionAnswering,
     OVAutoModelWithLMHead,
     OVAutoModelForAudioClassification,
-    OVMBartForConditionalGeneration,
 )
 
 
@@ -318,10 +317,14 @@ class OVAutoModelForAudioClassificationTest(unittest.TestCase):
 
 class OVMBartForConditionalGenerationTest(unittest.TestCase):
     @require_torch
+    @unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
     def test_generate(self):
+        from optimum.intel.openvino import OVMBartForConditionalGeneration
         from transformers import MBart50TokenizerFast
 
-        model = OVMBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50", from_pt=True)
+        model = OVMBartForConditionalGeneration.from_pretrained(
+            "facebook/mbart-large-50", use_cache=False, from_pt=True
+        )
         tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
 
         article_hi = "संयुक्त राष्ट्र के प्रमुख का कहना है कि सीरिया में कोई सैन्य समाधान नहीं है"
@@ -331,9 +334,26 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
 
         expected_tokens = [
             [
-2, 250008,      0,  44269,  20823,    287,  12923,    641,  93748,
-            460,   1682,  13371,  44890,    421,  10207, 165095,  57854,   2191,
-            460,      2
+                2,
+                250008,
+                0,
+                44269,
+                20823,
+                287,
+                12923,
+                641,
+                93748,
+                460,
+                1682,
+                13371,
+                44890,
+                421,
+                10207,
+                165095,
+                57854,
+                2191,
+                460,
+                2,
             ]
         ]
 

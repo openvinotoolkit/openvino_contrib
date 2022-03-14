@@ -11,6 +11,7 @@ from .modeling_ov_utils import (
     is_openvino_api_2,
 )
 
+
 class OVMBartEncoder(OVPreTrainedModel):
     def __init__(self, net, config):
         super().__init__(net, config)
@@ -49,6 +50,7 @@ def prepare_inputs_for_generation(
         "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
     }
 
+
 def _prepare_nlp_inputs(
     self,
     input_ids=None,
@@ -78,7 +80,10 @@ def _prepare_nlp_inputs(
 class OVMBartForConditionalGeneration(object):
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
-        model = MBartForConditionalGeneration.from_pretrained(model_name_or_path)
+        kwargs.pop("from_pt", None)
+        model = MBartForConditionalGeneration.from_pretrained(model_name_or_path, *model_args, **kwargs)
+        if model.config.use_cache:
+            raise NotImplementedError("MBart model with use_cache=True is not implemented for OpenVINO backend")
 
         # Origin model produces extra outputs. Return only logits.
         origin_forward = model.forward
@@ -108,7 +113,9 @@ class OVMBartForConditionalGeneration(object):
         model = OVPreTrainedModel(net, model.config)
 
         model.get_encoder = lambda: encoder
-        model.prepare_inputs_for_generation = lambda *args, **kwargs: prepare_inputs_for_generation(model, *args, **kwargs)
+        model.prepare_inputs_for_generation = lambda *args, **kwargs: prepare_inputs_for_generation(
+            model, *args, **kwargs
+        )
         model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(model, *args, **kwargs)
 
         return model
