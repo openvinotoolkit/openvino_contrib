@@ -25,35 +25,6 @@ class OVMBartEncoder(OVPreTrainedModel):
         return BaseModelOutput(last_hidden_state=torch.tensor(res[0]))
 
 
-def prepare_inputs_for_generation(
-    self,
-    decoder_input_ids,
-    past=None,
-    attention_mask=None,
-    head_mask=None,
-    decoder_head_mask=None,
-    cross_attn_head_mask=None,
-    use_cache=None,
-    encoder_outputs=None,
-    **kwargs
-):
-    # cut decoder_input_ids if past is used
-    if past is not None:
-        decoder_input_ids = decoder_input_ids[:, -1:]
-
-    return {
-        "input_ids": None,  # encoder_outputs is defined. input_ids not needed
-        "encoder_outputs": encoder_outputs,
-        "past_key_values": past,
-        "decoder_input_ids": decoder_input_ids,
-        "attention_mask": attention_mask,
-        "head_mask": head_mask,
-        "decoder_head_mask": decoder_head_mask,
-        "cross_attn_head_mask": cross_attn_head_mask,
-        "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
-    }
-
-
 def _prepare_nlp_inputs(
     self,
     input_ids=None,
@@ -113,12 +84,10 @@ class OVMBartForConditionalGeneration(object):
         if is_openvino_api_2:
             net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
 
-        model = OVPreTrainedModel(net, model.config)
+        ov_model = OVPreTrainedModel(net, model.config)
 
-        model.get_encoder = lambda: encoder
-        model.prepare_inputs_for_generation = lambda *args, **kwargs: prepare_inputs_for_generation(
-            model, *args, **kwargs
-        )
-        model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(model, *args, **kwargs)
+        ov_model.get_encoder = lambda: encoder
+        ov_model.prepare_inputs_for_generation = model.prepare_inputs_for_generation
+        ov_model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(model, *args, **kwargs)
 
-        return model
+        return ov_model
