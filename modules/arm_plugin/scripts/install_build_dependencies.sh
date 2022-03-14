@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
+
+export WORK_DIR=$(pwd)
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
 sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev hwloc
@@ -49,23 +51,60 @@ cd "$WORK_DIR" || exit
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
-# TODO: Add hwloc to enable tbbbind
-# -DCMAKE_HWLOC_2_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/libhwloc.so \
-# -DCMAKE_HWLOC_2_INCLUDE_PATH=/usr/include/aarch64-linux-gnu/hwloc \
+
+# hwloc install
+wget https://download.open-mpi.org/release/hwloc/v1.11/hwloc-1.11.13.tar.gz -P $WORK_DIR
+wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P $WORK_DIR
+
+tar -xzf $WORK_DIR/hwloc-1.11.13.tar.gz -C $WORK_DIR
+tar -xzf $WORK_DIR/hwloc-2.5.0.tar.gz -C $WORK_DIR
+
+git clone --recursive https://github.com/open-mpi/hwloc $WORK_DIR/hwloc
+$WORK_DIR/hwloc/autogen.sh
+
+declare -a StringArray=("hwloc" "hwloc-1.11.13" "hwloc-2.5.0")
+for HWLOC_VERSION in ${StringArray[@]}
+do
+   [ -d $WORK_DIR/install_hwloc/$HWLOC_VERSION ] || mkdir -p $WORK_DIR/install_hwloc/$HWLOC_VERSION
+
+   cd $WORK_DIR/$HWLOC_VERSION
+   CC=aarch64-linux-gnu-gcc \
+   CXX=aarch64-linux-gnu-g++ \
+   ./configure \
+        --host=aarch64 \
+        --prefix=$WORK_DIR/install_hwloc/$HWLOC_VERSION \
+        --with-pic=yes
+
+   make -j $(nproc --all)
+   make install
+
+   cd $WORK_DIR/install_hwloc/$HWLOC_VERSION/lib
+   aarch64-linux-gnu-ar -x libhwloc.a
+   aarch64-linux-gnu-g++ -shared *.o -o  libhwloc.so
+done
+cd $WORK_DIR || exit
+
 # oneTBB install
-git clone https://github.com/oneapi-src/oneTBB.git --depth 1 "$ONETBB_REPO_DIR"
+git clone --recursive https://github.com/oneapi-src/oneTBB.git $ONETBB_REPO_DIR
 cmake -GNinja \
-      -D CMAKE_BUILD_TYPE=$BUILD_TYPE \
+      -DCMAKE_HWLOC_1_11_LIBRARY_PATH=$WORK_DIR/install_hwloc/hwloc-1.11.13/lib/libhwloc.so \
+      -DCMAKE_HWLOC_1_11_INCLUDE_PATH=$WORK_DIR/install_hwloc/hwloc-1.11.13/include \
+      -DCMAKE_HWLOC_2_5_LIBRARY_PATH=$WORK_DIR/install_hwloc/hwloc-2.5.0/lib/libhwloc.so \
+      -DCMAKE_HWLOC_2_5_INCLUDE_PATH=$WORK_DIR/install_hwloc/hwloc-2.5.0/include \
+      -DCMAKE_HWLOC_2_LIBRARY_PATH=$WORK_DIR/install_hwloc/hwloc/lib/libhwloc.so \
+      -DCMAKE_HWLOC_2_INCLUDE_PATH=$WORK_DIR/install_hwloc/hwloc/include \
+      -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_ONETBB" \
       -S $ONETBB_REPO_DIR \
       -B $BUILD_ONETBB
 ninja -C $BUILD_ONETBB
 ninja -C $BUILD_ONETBB install
+
 touch "$INSTALL_ONETBB"/setupvars.sh
 printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/cmake/TBB;" >> "$INSTALL_ONETBB"/setupvars.sh
 printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_ONETBB"/setupvars.sh
-cd $DEV_HOME || fail 11 "oneTBB build failed. Stopping"
+cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
 
 # OpenCV install
 git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
@@ -102,6 +141,7 @@ cmake -G Ninja \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" \
       -S "$OPENCV_REPO_DIR" \
       -B "$BUILD_OPENCV"
+export CCACHE_DIR=$(OPENCV_CCACHE_DIR)
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
 touch "$INSTALL_OPENCV"/setupvars.sh
