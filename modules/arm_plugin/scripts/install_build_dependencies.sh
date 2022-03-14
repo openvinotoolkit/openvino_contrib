@@ -8,7 +8,7 @@ set -e
 export WORK_DIR=$(pwd)
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
-sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev hwloc
+sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev autoconf libtool
 # Speed up build
 wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
 unzip ninja-linux.zip
