@@ -51,7 +51,6 @@ cd "$WORK_DIR" || exit
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
-
 # hwloc install
 wget https://download.open-mpi.org/release/hwloc/v1.11/hwloc-1.11.13.tar.gz -P $WORK_DIR
 wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P $WORK_DIR
@@ -96,8 +95,11 @@ cmake -GNinja \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_ONETBB" \
+      -D CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -D CMAKE_C_COMPILER_LAUNCHER=ccache \
       -S $ONETBB_REPO_DIR \
       -B $BUILD_ONETBB
+export CCACHE_DIR=$(ONETBB_CCACHE_DIR)
 ninja -C $BUILD_ONETBB
 ninja -C $BUILD_ONETBB install
 
