@@ -23,14 +23,15 @@ OpenVINO™ ARM CPU plugin is not included into Intel® Distribution of OpenVINO
 3. [Run IE samples](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-run-IE-samples)
 4. [Run OMZ demos](https://github.com/openvinotoolkit/openvino_contrib/wiki/How-to-run-OMZ-demos)
 
-## Supported Configuration Parameters
-The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
+## Supported Mutable Properties
+The plugin supports mutable properties listed below. All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
 
 Parameter name  | Parameter values  | Default  | Description
 ------------- | ------------- | ------------- | -------------
-`KEY_CPU_THROUGHPUT_STREAMS`   | `KEY_CPU_THROUGHPUT_NUMA`, `KEY_CPU_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously. All available CPU cores are evenly distributed between the streams.
-`KEY_CPU_BIND_THREAD`   | YES/NUMA/NO  | YES  | Binds inference threads to CPU cores. Enabled only if OpenVINO™ is built with TBB that supports affinity configuration
-`KEY_CPU_THREADS_NUM` | positiv integer values| Limit `#threads` that are used by Inference Engine for inference on the CPU
+`ov::streams::num`   | `ov::streams::NUMA`, `ov::streams::AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously. All available CPU cores are evenly distributed between the streams.
+`ov::affinity`   | `ov::Affinity::CORE/NUMA/NONE`  | `ov::Affinity::NONE`  | Binds inference threads to CPU cores. Enabled only if OpenVINO™ is built with TBB that supports affinity configuration
+`ov::inference_num_threads` | positive integer values| Limit `#threads` that are used by Inference Engine for inference on the CPU
+`ov::enable_profiling` | `true/false` | Enable profiling information collection
 
 ## Supported Layers and Limitations
 The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined [here](https://github.com/openvinotoolkit/openvino_contrib/wiki/ARM-plugin-operation-set-specification).
