@@ -8,6 +8,7 @@ from transformers.modeling_outputs import BaseModelOutput
 from .modeling_ov_utils import (
     OVPreTrainedModel,
     load_ov_model_from_pytorch,
+    is_openvino_api_2,
 )
 
 class OVMBartEncoder(OVPreTrainedModel):
@@ -79,6 +80,11 @@ class OVMBartForConditionalGeneration(object):
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path)
 
+        # Origin model produces extra outputs. Return only logits.
+        origin_forward = model.forward
+        model.forward = lambda *args, **kwargs: origin_forward(*args, **kwargs).logits
+
+        # Create a separate network for encoder - it will be called just once.
         net = load_ov_model_from_pytorch(model.get_encoder())
         encoder = OVMBartEncoder(net, model.config)
 
@@ -94,7 +100,11 @@ class OVMBartForConditionalGeneration(object):
         }
 
         net = load_ov_model_from_pytorch(model, inputs)
-        net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))  # Fix for 2022.1 release
+
+        # Fix for 2022.1 release
+        if is_openvino_api_2:
+            net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
+
         model = OVPreTrainedModel(net, model.config)
 
         model.get_encoder = lambda: encoder

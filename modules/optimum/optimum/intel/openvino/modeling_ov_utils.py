@@ -75,23 +75,22 @@ def load_ov_model_from_pytorch(model, inputs=None):
     else:
         outputs = ["output"]
 
-    # use_external_data_format = True
     with torch.no_grad():
-        for use_external_data_format in [True]:
+        for use_external_data_format in [False, True]:
             # TODO: create "model" folder in cache
-            # try:
-            torch.onnx.export(
-                model,
-                inputs,
-                buf if not use_external_data_format else "model/model.onnx",
-                input_names=input_names,
-                output_names=outputs,
-                opset_version=11,
-                use_external_data_format=use_external_data_format,
-            )
-    #         #     break
-    #         # except:
-    #         #     pass
+            try:
+                torch.onnx.export(
+                    model,
+                    inputs,
+                    buf if not use_external_data_format else "model/model.onnx",
+                    input_names=input_names,
+                    output_names=outputs,
+                    opset_version=11,
+                    use_external_data_format=use_external_data_format,
+                )
+                break
+            except:
+                pass
 
     if use_external_data_format:
         if is_openvino_api_2:
@@ -330,7 +329,16 @@ class OVPreTrainedModel(GenerationMixin):
         """
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
-        self.net.serialize(os.path.join(save_directory, OV_WEIGHTS_NAME))
+
+        xml_path = os.path.join(save_directory, OV_WEIGHTS_NAME)
+        if is_openvino_api_2:
+            import openvino.runtime.passes as passes
+
+            pass_manager = passes.Manager()
+            pass_manager.register_pass("Serialize", xml_path, xml_path.replace(".xml", ".bin"))
+            pass_manager.run_passes(self.net)
+        else:
+            self.net.serialize(xml_path)
 
     def to(self, device):
         self.ov_device = device
@@ -346,12 +354,6 @@ class OVPreTrainedModel(GenerationMixin):
                     name = inp.get_any_name()
                     shapes[name] = inp.get_partial_shape()
                     shapes[name][1] = -1
-                if len(shapes) == 3:
-                    shapes = {
-                        "attention_mask": PartialShape([1, 18]),
-                        "decoder_input_ids": PartialShape([1, -1]),
-                        "encoder_outputs": PartialShape([1, 18, 1024]),
-                    }
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
             self.exec_net = compiled_model.create_infer_request()
@@ -433,11 +435,19 @@ class OVPreTrainedModel(GenerationMixin):
 
         # If <max_length> specified, pad inputs by zeros
         if inp_length < self.max_length:
-            pad = ((0, 0), (0, self.max_length - inp_length))
             for name in inputs:
-                print(name, inputs[name].shape)
-                if inputs[name].shape[1] != self.max_length:
+                shape = inputs[name].shape
+                if shape[1] != self.max_length:
+                    pad = np.zeros([len(shape), 2], dtype=np.int32)
+                    pad[1, 1] = self.max_length - shape[1]
                     inputs[name] = np.pad(inputs[name], pad)
+                # shape = inputs[name].shape
+                # if shape[1] != self.max_length:
+                #     # if shape[1] != inp_length:
+                #     #     raise Exception(f"Cannot pad input of shape {shape} to max_length {self.max_length} because main input {self.main_input_name} has shape {inputs[self.main_input_name].shape}")
+                #     pad = np.zeros([len(shape), 2], dtype=np.int32)
+                #     pad[1, 1] = self.max_length - shape[1]
+                #     inputs[name] = np.pad(inputs[name], pad)
 
         # OpenVINO >= 2022.1 supports dynamic shapes input.
         if not is_openvino_api_2:
@@ -445,8 +455,9 @@ class OVPreTrainedModel(GenerationMixin):
             input_ids = inputs[self.main_input_name]
             if inputs_info[self.main_input_name].input_data.shape[1] != input_ids.shape[1]:
                 # Use batch size 1 because we process batch sequently.
-                shapes = {key: [1, input_ids.shape[1]] for key in inputs_info}
-                logger.info(f"Reshape model to 1x{input_ids.shape[1]}")
+                shapes = {key: [1] + list(inputs[key].shape[1:]) for key in inputs_info}
+                print(shapes)
+                logger.info(f"Reshape model to {shapes}")
                 self.net.reshape(shapes)
                 self.exec_net = None
         elif is_openvino_api_2 and not self.use_dynamic_shapes:
@@ -479,7 +490,7 @@ class OVPreTrainedModel(GenerationMixin):
             return ModelOutput(logits=torch.tensor(logits))
 
     def __call__(self, *args, **kwargs):
-        if self.main_input_name == "input_ids" or self.main_input_name == "decoder_input_ids":
+        if self.main_input_name in ["input_ids", "decoder_input_ids"]:
             inputs = self._prepare_nlp_inputs(*args, **kwargs)
         elif self.main_input_name == "input_values":
             inputs = self._prepare_audio_inputs(*args, **kwargs)
