@@ -99,7 +99,7 @@ cmake -GNinja \
       -D CMAKE_C_COMPILER_LAUNCHER=ccache \
       -S $ONETBB_REPO_DIR \
       -B $BUILD_ONETBB
-export CCACHE_DIR=$(ONETBB_CCACHE_DIR)
+export CCACHE_DIR=$ONETBB_CCACHE_DIR
 ninja -C $BUILD_ONETBB
 ninja -C $BUILD_ONETBB install
 
@@ -143,7 +143,7 @@ cmake -G Ninja \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" \
       -S "$OPENCV_REPO_DIR" \
       -B "$BUILD_OPENCV"
-export CCACHE_DIR=$(OPENCV_CCACHE_DIR)
+export CCACHE_DIR=$OPENCV_CCACHE_DIR
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
 touch "$INSTALL_OPENCV"/setupvars.sh
