@@ -58,10 +58,6 @@ def load_ov_model_from_pytorch(model, inputs=None):
             inputs = (dummy_input_ids, None, dummy_mask)
         elif model.config.model_type == "wav2vec2":
             inputs = torch.zeros((1, 16000), dtype=torch.float32)
-        elif model.config.model_type == "mbart":
-            decoder_input_ids = torch.zeros((1, 18), dtype=torch.int32)
-            decoder_attention_mask = torch.zeros((1, 18), dtype=torch.int32)
-            inputs = (dummy_input_ids, dummy_mask)
         else:
             inputs = (dummy_input_ids, dummy_mask)
 
@@ -79,17 +75,21 @@ def load_ov_model_from_pytorch(model, inputs=None):
         for use_external_data_format in [False, True]:
             # TODO: create "model" folder in cache
             try:
+                if use_external_data_format:
+                    model_cache_dir = "model"
+                    os.makedirs(model_cache_dir, exist_ok=True)
+
                 torch.onnx.export(
                     model,
                     inputs,
-                    buf if not use_external_data_format else "model/model.onnx",
+                    buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
                     input_names=input_names,
                     output_names=outputs,
                     opset_version=11,
                     use_external_data_format=use_external_data_format,
                 )
                 break
-            except:
+            except RuntimeError:
                 pass
 
     if use_external_data_format:
@@ -97,6 +97,11 @@ def load_ov_model_from_pytorch(model, inputs=None):
             net = ie.read_model("model/model.onnx")
         else:
             net = ie.read_network("model/model.onnx")
+
+        try:
+            os.rmdir(model_cache_dir)
+        except Exception:
+            pass
     else:
         if is_openvino_api_2:
             net = ie.read_model(buf.getvalue(), b"")

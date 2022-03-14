@@ -1,9 +1,12 @@
 # Copyright (C) 2018-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import torch
-from transformers import MBartForConditionalGeneration
-from transformers.modeling_outputs import BaseModelOutput
+from transformers.file_utils import is_torch_available
+
+if is_torch_available():
+    import torch
+    from transformers import MBartForConditionalGeneration
+    from transformers.modeling_outputs import BaseModelOutput
 
 from .modeling_ov_utils import (
     OVPreTrainedModel,
