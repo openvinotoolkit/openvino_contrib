@@ -313,3 +313,48 @@ class OVAutoModelForAudioClassificationTest(unittest.TestCase):
         )
         model.use_dynamic_shapes = False
         self.check_model(model)
+
+
+class OVMBartForConditionalGenerationTest(unittest.TestCase):
+    @require_torch
+    @unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
+    def test_generate(self):
+        from optimum.intel.openvino import OVMBartForConditionalGeneration
+        from transformers import MBart50TokenizerFast
+
+        model = OVMBartForConditionalGeneration.from_pretrained(
+            "facebook/mbart-large-50", use_cache=False, from_pt=True
+        )
+        tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
+
+        article_hi = "संयुक्त राष्ट्र के प्रमुख का कहना है कि सीरिया में कोई सैन्य समाधान नहीं है"
+        tokenizer.src_lang = "hi_IN"
+        encoded_hi = tokenizer(article_hi, return_tensors="pt")
+        generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
+
+        expected_tokens = [
+            [
+                2,
+                250008,
+                0,
+                44269,
+                20823,
+                287,
+                12923,
+                641,
+                93748,
+                460,
+                1682,
+                13371,
+                44890,
+                421,
+                10207,
+                165095,
+                57854,
+                2191,
+                460,
+                2,
+            ]
+        ]
+
+        self.assertListEqual(generated_tokens.tolist(), expected_tokens)
