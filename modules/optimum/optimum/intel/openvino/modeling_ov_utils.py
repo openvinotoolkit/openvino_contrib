@@ -72,25 +72,25 @@ def load_ov_model_from_pytorch(model, inputs=None):
         outputs = ["output"]
 
     with torch.no_grad():
-        for use_external_data_format in [False, True]:
-            # TODO: create "model" folder in cache
-            try:
-                if use_external_data_format:
-                    model_cache_dir = "model"
-                    os.makedirs(model_cache_dir, exist_ok=True)
+        # Estimate model size. If it larger than 2GB - protobuf will fail export to ONNX.
+        mem_size = np.sum([t.element_size() * np.prod(t.shape) * 1e-6 for t in model.state_dict().values()])
 
-                torch.onnx.export(
-                    model,
-                    inputs,
-                    buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
-                    input_names=input_names,
-                    output_names=outputs,
-                    opset_version=11,
-                    use_external_data_format=use_external_data_format,
-                )
-                break
-            except RuntimeError:
-                pass
+        use_external_data_format = mem_size > 2000
+
+        # TODO: create "model" folder in cache
+        if use_external_data_format:
+            model_cache_dir = "model"
+            os.makedirs(model_cache_dir, exist_ok=True)
+
+        torch.onnx.export(
+            model,
+            inputs,
+            buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
+            input_names=input_names,
+            output_names=outputs,
+            opset_version=11,
+            use_external_data_format=use_external_data_format,
+        )
 
     if use_external_data_format:
         if is_openvino_api_2:
