@@ -69,13 +69,13 @@ class OVMBartForConditionalGeneration(object):
 
         inputs = {
             "input_ids": None,
-            "attention_mask": torch.zeros([1, 18], dtype=torch.int32),
-            "decoder_input_ids": torch.zeros([1, 18], dtype=torch.int32),
+            "attention_mask": torch.zeros([1, 11], dtype=torch.int32),
+            "decoder_input_ids": torch.zeros([1, 11], dtype=torch.int32),
             "decoder_attention_mask": None,
             "head_mask": None,
             "decoder_head_mask": None,
             "cross_attn_head_mask": None,
-            "encoder_outputs": [torch.zeros([1, 18, 1024], dtype=torch.float32)],
+            "encoder_outputs": [torch.zeros([1, 11, 1024], dtype=torch.float32)],
         }
 
         net = load_ov_model_from_pytorch(model, inputs)
@@ -88,6 +88,6 @@ class OVMBartForConditionalGeneration(object):
 
         ov_model.get_encoder = lambda: encoder
         ov_model.prepare_inputs_for_generation = model.prepare_inputs_for_generation
-        ov_model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(model, *args, **kwargs)
+        ov_model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(ov_model, *args, **kwargs)
 
         return ov_model

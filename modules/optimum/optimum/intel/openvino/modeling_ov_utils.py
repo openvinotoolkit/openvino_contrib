@@ -94,9 +94,9 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
     if use_external_data_format:
         if is_openvino_api_2:
-            net = ie.read_model("model/model.onnx")
+            net = ie.read_model(os.path.join(model_cache_dir, "model.onnx"))
         else:
-            net = ie.read_network("model/model.onnx")
+            net = ie.read_network(os.path.join(model_cache_dir, "model.onnx"))
 
         try:
             os.rmdir(model_cache_dir)
@@ -358,6 +358,7 @@ class OVPreTrainedModel(GenerationMixin):
                 shapes = {}
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
+                    shapes[inp][0] = -1
                     shapes[inp][1] = -1
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
@@ -383,23 +384,8 @@ class OVPreTrainedModel(GenerationMixin):
         return outs
 
     def _process_data_api_2022(self, inputs):
-        # In case of batching, we process samples one by one instead of
-        # single forward pass. It is done because of heavy load_network step.
-        batch_size = inputs[self.main_input_name].shape[0]
-        if batch_size > 1:
-            outs = {name: [] for name in self.output_names}
-            for i in range(batch_size):
-                outs_i = self.exec_net.infer({name: inp[i : i + 1] for name, inp in inputs.items()})
-                for out, value in outs_i.items():
-                    name = out.get_any_name()
-                    # OpenVINO produces redundant output for Stack layers. Ignore them
-                    if name.endswith("/stack"):
-                        continue
-                    outs[name].append(value)
-            outs = {name: np.concatenate(tensors, axis=0) for name, tensors in outs.items()}
-        else:
-            outs = self.exec_net.infer(inputs)
-            outs = {out.get_any_name(): value for out, value in outs.items()}
+        outs = self.exec_net.infer(inputs)
+        outs = {out.get_any_name(): value for out, value in outs.items()}
         return outs
 
     def _prepare_nlp_inputs(
