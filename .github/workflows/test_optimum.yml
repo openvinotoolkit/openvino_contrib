@@ -46,7 +46,7 @@ jobs:
         ]
         openvino-version: [
           "openvino-dev~=2021.4.2",
-          "--extra-index-url=https://test.pypi.org/simple openvino-dev~=2022.1.0.dev",
+          "openvino-dev~=2022.1.0.dev",
         ]
     steps:
     - uses: actions/checkout@v2

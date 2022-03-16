@@ -229,20 +229,20 @@ class OVPreTrainedModel(GenerationMixin):
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
-        cache_dir = kwargs.pop("cache_dir", None)
+        cache_dir = kwargs.get("cache_dir", None)
         from_pt = kwargs.pop("from_pt", False)
         from_tf = kwargs.pop("from_tf", False)
-        from_ov = kwargs.pop("from_ov", not (from_pt | from_tf))
-        force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
-        revision = kwargs.pop("revision", None)
-        from_pipeline = kwargs.pop("_from_pipeline", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
+        from_ov = kwargs.get("from_ov", not (from_pt | from_tf))
+        force_download = kwargs.get("force_download", False)
+        resume_download = kwargs.get("resume_download", False)
+        proxies = kwargs.get("proxies", None)
+        local_files_only = kwargs.get("local_files_only", False)
+        use_auth_token = kwargs.get("use_auth_token", None)
+        revision = kwargs.get("revision", None)
+        from_pipeline = kwargs.get("_from_pipeline", None)
+        from_auto_class = kwargs.get("_from_auto", False)
 
-        config = kwargs.pop("config") if "config" in kwargs else AutoConfig.from_pretrained(model_name_or_path)
+        config = kwargs.get("config") if "config" in kwargs else AutoConfig.from_pretrained(model_name_or_path)
 
         if from_pt:
             model = cls._pt_auto_model.from_pretrained(model_name_or_path, *model_args, **kwargs)

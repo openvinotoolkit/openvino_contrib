@@ -311,7 +311,6 @@ class OVAutoModelForAudioClassificationTest(unittest.TestCase):
         model = OVAutoModelForAudioClassification.from_pretrained(
             "anton-l/wav2vec2-base-ft-keyword-spotting", from_pt=True
         )
-        model.use_dynamic_shapes = False
         self.check_model(model)
 
 

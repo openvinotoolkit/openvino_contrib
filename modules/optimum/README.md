@@ -91,6 +91,6 @@ To use the NNCF component, install the package with `[nncf]` or `[all]` extras:
 pip install openvino-optimum[nncf]
 ```
 
-See the [Changelog](https://github.com/openvinotoolkit/openvino_contrib/wiki/Optimum-OpenVINO-Changelog) page for details about module development.
+See the [Changelog](https://github.com/openvinotoolkit/openvino_contrib/wiki/OpenVINO%E2%84%A2-Integration-with-Optimum*-Changelog) page for details about module development.
 
 > *Other names and brands may be claimed as the property of others.
