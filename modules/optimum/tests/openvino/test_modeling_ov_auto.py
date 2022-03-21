@@ -319,11 +319,8 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
     @unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
     def test_generate(self):
         from optimum.intel.openvino import OVMBartForConditionalGeneration
-        from transformers import MBart50TokenizerFast, MBartForConditionalGeneration
+        from transformers import MBart50TokenizerFast
 
-        # model = MBartForConditionalGeneration.from_pretrained(
-        #     "facebook/mbart-large-50-many-to-many-mmt"
-        # )
         model = OVMBartForConditionalGeneration.from_pretrained(
             "facebook/mbart-large-50-many-to-many-mmt", from_pt=True
         )
@@ -333,13 +330,6 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
         tokenizer.src_lang = "hi_IN"
         encoded_hi = tokenizer(article_hi, return_tensors="pt")
         generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
-
-        import time
-        for _ in range(5):
-            start = time.time()
-            generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
-            print(time.time() - start)
-
 
         expected_tokens = [
             [

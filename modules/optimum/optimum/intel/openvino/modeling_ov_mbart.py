@@ -1,7 +1,6 @@
 # Copyright (C) 2018-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
 from transformers.file_utils import is_torch_available
 
 if is_torch_available():
@@ -14,7 +13,6 @@ from .modeling_ov_utils import (
     OVPreTrainedModel,
     load_ov_model_from_pytorch,
     is_openvino_api_2,
-    ie
 )
 
 
@@ -53,13 +51,9 @@ def _prepare_nlp_inputs(
     }
 
     if past_key_values is not None:
-        names = ['past_key_values', '4', '3274', '3275', '7', '8', '3276', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '3288', '3289', '35', '36', '3290', '3291', '39', '40', '3292', '3293', '43', '44', '3294', '3295', '47', '48', '3296', '3297']
-        if past_key_values is not None:
-            assert len(names) == 48
-            for i in range(12):
-                for j in range(4):
-                    inputs[names[0]] = past_key_values[i][j]
-                    del names[0]
+        for i in range(12):
+            for j in range(4):
+                inputs[f"past_key_values.{i}.{j}"] = past_key_values[i][j]
     else:
         inputs["encoder_outputs"] = encoder_outputs.last_hidden_state
 
@@ -75,16 +69,11 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         self.encoder = OVMBartEncoder(encoder, config)
         self.model = OVPreTrainedModel(model, config)
         self.model_past = OVPreTrainedModel(model_past, config) if model_past else None
-        # self.encoder = OVMBartEncoder(ie.read_model("encoder/ov_model.xml", "encoder/ov_model.bin"), config)
-        # self.model = OVPreTrainedModel(ie.read_model("model/ov_model.xml", "model/ov_model.bin"), config)
 
         self.model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model, *args, **kwargs)
         self.model_past._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model_past, *args, **kwargs)
 
         self.config = config
-        # self.encoder.save_pretrained("encoder")
-        # self.model.save_pretrained("model")
-        # self.model_past.save_pretrained("model_past")
         if is_torch_available():
             self.device = torch.device("cpu")
 
@@ -142,24 +131,22 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         kwargs.pop("from_pt", None)
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path, *model_args, **kwargs)
         use_cache = model.config.use_cache
-        # return OVMBartForConditionalGeneration(model.config, None, None, None)
 
         origin_forward = model.forward
         def forward(*args, **kwargs):
-            # args = list(args)
-            # args[7] *= 1  # encoder_outputs
-            # args = tuple(args)
             outputs = origin_forward(*args, **kwargs)
+
+            # Multiply by 1.0 to workaround a bug in OpenVINO 2022.1 with
+            # dynamic shapes inputs connected to model outputs:
+            past_key_values = []
+            for i in range(12):
+                past_key_values.append((outputs.past_key_values[i][0],
+                                        outputs.past_key_values[i][1],
+                                        outputs.past_key_values[i][2] * 1.0,
+                                        outputs.past_key_values[i][3] * 1.0))
             return Seq2SeqLMOutput(
-                # loss=masked_lm_loss,
                 logits=outputs.logits,
-                past_key_values=outputs.past_key_values,
-            #     decoder_hidden_states=outputs.decoder_hidden_states,
-            #     decoder_attentions=outputs.decoder_attentions,
-            #     cross_attentions=outputs.cross_attentions,
-            #     encoder_last_hidden_state=outputs.encoder_last_hidden_state,
-            #     encoder_hidden_states=outputs.encoder_hidden_states,
-            #     encoder_attentions=outputs.encoder_attentions,
+                past_key_values=tuple(past_key_values),
             )
         model.forward = lambda *args, **kwargs: forward(*args, **kwargs)
 
@@ -168,13 +155,13 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
         inputs = {
             "input_ids": None,
-            "attention_mask": torch.zeros([5, 18], dtype=torch.int32),
-            "decoder_input_ids": torch.zeros([5, 1 if use_cache else 18], dtype=torch.int32),
+            "attention_mask": torch.zeros([1, 11], dtype=torch.int32),
+            "decoder_input_ids": torch.zeros([1, 1 if use_cache else 11], dtype=torch.int32),
             "decoder_attention_mask": None,
             "head_mask": None,
             "decoder_head_mask": None,
             "cross_attn_head_mask": None,
-            "encoder_outputs": [torch.zeros([5, 18, 1024], dtype=torch.float32)],
+            "encoder_outputs": [torch.zeros([1, 11, 1024], dtype=torch.float32)],
         }
 
         net = load_ov_model_from_pytorch(model, inputs)
@@ -185,10 +172,10 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
         if use_cache:
             inputs["past_key_values"] = [[
-                    torch.zeros([5, 16, 4, 64], dtype=torch.float32),
-                    torch.zeros([5, 16, 4, 64], dtype=torch.float32),
-                    torch.zeros([5, 16, 18, 64], dtype=torch.float32),
-                    torch.zeros([5, 16, 18, 64], dtype=torch.float32),
+                    torch.zeros([1, 16, 1, 64], dtype=torch.float32),
+                    torch.zeros([1, 16, 1, 64], dtype=torch.float32),
+                    torch.zeros([1, 16, 11, 64], dtype=torch.float32),
+                    torch.zeros([1, 16, 11, 64], dtype=torch.float32),
                 ]] * 12
             net_past = load_ov_model_from_pytorch(model, inputs)
         else:

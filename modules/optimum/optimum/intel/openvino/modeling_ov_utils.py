@@ -63,14 +63,17 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         input_names = [model.main_input_name, "attention_mask"]
     else:
-        # input_names = tuple(inputs.keys())
-        input_names = [name for name, tensor in inputs.items() if tensor is not None]
-        # if "past_key_values" in input_names:
-        #     input_names = ['attention_mask', 'decoder_input_ids', 'encoder_outputs']
-        #     for i in range(12):
-        #         for j in range(4):
-        #             input_names.append(f"past_key_values.{i}.{j}")
-        # print(input_names)
+        input_names = []
+        for name, tensor in inputs.items():
+            if tensor is None:
+                continue
+            if name == "past_key_values":
+                for i in range(len(tensor)):
+                    for j in range(len(tensor[i])):
+                        input_names.append(f"past_key_values.{i}.{j}")
+            else:
+                input_names.append(name)
+
         inputs = tuple(inputs.values())
 
     if model.__class__.__name__.endswith("ForQuestionAnswering"):
@@ -217,7 +220,6 @@ class OVPreTrainedModel(GenerationMixin):
         else:
             self.input_names = [inp for inp in self.net.input_info]
             self.output_names = [out for out in self.net.outputs]
-        # print(self.input_names)
         self.exec_net = None
         self.config = config
         self.max_length = 0
@@ -364,15 +366,14 @@ class OVPreTrainedModel(GenerationMixin):
         if is_openvino_api_2:
             if self.use_dynamic_shapes:
                 shapes = {}
-
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
                     if inp.get_any_name() in ["input_ids", "attention_mask", "decoder_input_ids", "encoder_outputs"]:
                         shapes[inp][0] = -1
                         shapes[inp][1] = -1
                     else:
-                        if shapes[inp][2] != 18:
-                            shapes[inp][2] = -1
+                        shapes[inp][0] = -1
+                        shapes[inp][2] = -1
 
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
@@ -398,28 +399,8 @@ class OVPreTrainedModel(GenerationMixin):
         return outs
 
     def _process_data_api_2022(self, inputs):
-        # print()
-        # print("OV inputs")
-        # for name in inputs:
-        #     print(name, inputs[name].shape)
         outs = self.exec_net.infer(inputs)
         outs = {out.get_any_name(): value for out, value in outs.items()}
-
-        # if "encoder_outputs" in inputs:
-        #     ref_logits = np.load("lm_logits.npy")
-        #     logits = outs["output"]
-        #     print(ref_logits.shape)
-        #     print(logits.shape)
-        #     print(np.max(np.abs(ref_logits - logits)))
-        #     # import numpy as np
-        #     # if past_key_values is None:
-        #     #     np.save("lm_logits.npy", lm_logits)
-        #     #     for i in range(12):
-        #     #         for j in range(4):
-        #     #             np.save(f"past_key_values.{i}.{j}.npy", outputs.past_key_values[i][j])
-        #     exit()
-
-
         return outs
 
     def _prepare_nlp_inputs(
@@ -490,16 +471,9 @@ class OVPreTrainedModel(GenerationMixin):
             outs = self._process_data_api_2021(inputs)
 
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
-        # past_key_values = [[]]
-        # for name in outs:
-        #     if name in ["encoder_outputs", "attention_mask", "decoder_input_ids", "output"]:
-        #         continue
-        #     if len(past_key_values[-1]) == 4:
-        #         past_key_values.append([])
 
-        #     past_key_values[-1].append(torch.tensor(outs[name]))
         past_key_values = None
-        if "decoder_input_ids" in self.input_names:
+        if getattr(self.config, "use_cache", False):
             past_key_values = [[]]
             for name in outs:
                 if name == "output":
