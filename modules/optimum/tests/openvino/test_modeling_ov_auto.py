@@ -325,7 +325,7 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
         #     "facebook/mbart-large-50-many-to-many-mmt"
         # )
         model = OVMBartForConditionalGeneration.from_pretrained(
-            "facebook/mbart-large-50-many-to-many-mmt", use_cache=False, from_pt=True
+            "facebook/mbart-large-50-many-to-many-mmt", from_pt=True
         )
         tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
 
@@ -334,11 +334,11 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
         encoded_hi = tokenizer(article_hi, return_tensors="pt")
         generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
 
-        # import time
-        # for _ in range(5):
-        #     start = time.time()
-        #     generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
-        #     print(time.time() - start)
+        import time
+        for _ in range(5):
+            start = time.time()
+            generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
+            print(time.time() - start)
 
 
         expected_tokens = [

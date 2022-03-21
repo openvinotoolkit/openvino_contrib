@@ -47,30 +47,23 @@ def _prepare_nlp_inputs(
     output_hidden_states=None,
     return_dict=None,
 ):
-    return {
-        "encoder_outputs": encoder_outputs.last_hidden_state,
+    inputs = {
         "attention_mask": attention_mask,
         "decoder_input_ids": decoder_input_ids,
     }
 
-#     if "past_key_values" is not None:
+    if past_key_values is not None:
+        names = ['past_key_values', '4', '3274', '3275', '7', '8', '3276', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '3288', '3289', '35', '36', '3290', '3291', '39', '40', '3292', '3293', '43', '44', '3294', '3295', '47', '48', '3296', '3297']
+        if past_key_values is not None:
+            assert len(names) == 48
+            for i in range(12):
+                for j in range(4):
+                    inputs[names[0]] = past_key_values[i][j]
+                    del names[0]
+    else:
+        inputs["encoder_outputs"] = encoder_outputs.last_hidden_state
 
-
-    # names = ['past_key_values', '4', '3274', '3275', '7', '8', '3276', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '3288', '3289', '35', '36', '3290', '3291', '39', '40', '3292', '3293', '43', '44', '3294', '3295', '47', '48', '3296', '3297']
-    # if past_key_values is not None:
-    #     assert len(names) == 48
-    #     for i in range(12):
-    #         for j in range(4):
-    #             inputs[names[0]] = past_key_values[i][j]
-    #             del names[0]
-    # else:
-    #     for i in range(12):
-    #         inputs[names[i * 4]] = np.zeros([5, 16, 0, 64], dtype=np.float32)
-    #         inputs[names[i * 4 + 1]] = np.zeros([5, 16, 0, 64], dtype=np.float32)
-    #         inputs[names[i * 4 + 2]] = np.zeros([5, 16, 18, 64], dtype=np.float32)
-    #         inputs[names[i * 4 + 3]] = np.zeros([5, 16, 18, 64], dtype=np.float32)
-
-    # return inputs
+    return inputs
 
 
 # A wrapper for MBart model. When use_cache=True is specified,
@@ -81,11 +74,12 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         super().__init__()
         self.encoder = OVMBartEncoder(encoder, config)
         self.model = OVPreTrainedModel(model, config)
-        # self.model_past = OVPreTrainedModel(model_past, config) if model_past else None
+        self.model_past = OVPreTrainedModel(model_past, config) if model_past else None
         # self.encoder = OVMBartEncoder(ie.read_model("encoder/ov_model.xml", "encoder/ov_model.bin"), config)
         # self.model = OVPreTrainedModel(ie.read_model("model/ov_model.xml", "model/ov_model.bin"), config)
 
         self.model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model, *args, **kwargs)
+        self.model_past._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model_past, *args, **kwargs)
 
         self.config = config
         # self.encoder.save_pretrained("encoder")
@@ -138,7 +132,10 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         return reordered_past
 
     def __call__(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+        if kwargs.get("past_key_values", None):
+            return self.model_past(*args, **kwargs)
+        else:
+            return self.model(*args, **kwargs)
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
@@ -156,7 +153,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             return Seq2SeqLMOutput(
                 # loss=masked_lm_loss,
                 logits=outputs.logits,
-                # past_key_values=outputs.past_key_values,
+                past_key_values=outputs.past_key_values,
             #     decoder_hidden_states=outputs.decoder_hidden_states,
             #     decoder_attentions=outputs.decoder_attentions,
             #     cross_attentions=outputs.cross_attentions,
@@ -168,17 +165,16 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
         # Create a separate network for encoder - it will be called just once.
         encoder = load_ov_model_from_pytorch(model.get_encoder())
-        # encoder = OVMBartEncoder(net, model.config)
 
         inputs = {
             "input_ids": None,
-            "attention_mask": torch.zeros([1, 11], dtype=torch.int32),
-            "decoder_input_ids": torch.zeros([1, 1 if use_cache else 11], dtype=torch.int32),
+            "attention_mask": torch.zeros([5, 18], dtype=torch.int32),
+            "decoder_input_ids": torch.zeros([5, 1 if use_cache else 18], dtype=torch.int32),
             "decoder_attention_mask": None,
             "head_mask": None,
             "decoder_head_mask": None,
             "cross_attn_head_mask": None,
-            "encoder_outputs": [torch.zeros([1, 11, 1024], dtype=torch.float32)],
+            "encoder_outputs": [torch.zeros([5, 18, 1024], dtype=torch.float32)],
         }
 
         net = load_ov_model_from_pytorch(model, inputs)
@@ -186,8 +182,6 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         # Fix for 2022.1 release
         if is_openvino_api_2:
             net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
-
-        # ov_model = OVPreTrainedModel(net, model.config)
 
         if use_cache:
             inputs["past_key_values"] = [[
@@ -201,11 +195,3 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             net_past = None
 
         return OVMBartForConditionalGeneration(model.config, encoder, net, net_past)
-        # ov_model = OVMBartForConditionalGenerationUseCache(encoder, ov_model, ov_model_past)
-
-        # ov_model.get_encoder = lambda: encoder
-        # ov_model.prepare_inputs_for_generation = model.prepare_inputs_for_generation
-        # ov_model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(ov_model, *args, **kwargs)
-        # ov_model._reorder_cache = model._reorder_cache
-
-        # return ov_model

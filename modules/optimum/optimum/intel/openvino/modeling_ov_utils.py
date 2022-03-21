@@ -217,7 +217,7 @@ class OVPreTrainedModel(GenerationMixin):
         else:
             self.input_names = [inp for inp in self.net.input_info]
             self.output_names = [out for out in self.net.outputs]
-        print(self.input_names)
+        # print(self.input_names)
         self.exec_net = None
         self.config = config
         self.max_length = 0
@@ -367,22 +367,12 @@ class OVPreTrainedModel(GenerationMixin):
 
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
-
-                    # if inp.get_any_name() == "past_key_values":
-                    #     print("~~~~~~~~~~~~~~~~~~~~~~~~~")
-                    #     print(inp.get_partial_shape())
-                    #     print("~~~~~~~~~~~~~~~~~~~~~~~~~")
-                    #     shapes[inp][2] = -1
-                #         shapes[inp] = inp.get_partial_shape()
-                #         if shapes[inp][2] != 18:
-
-                    shapes[inp][0] = -1
-                    shapes[inp][1] = -1
-
-                # for inp in self.net.inputs[3:]:
-                #     shapes[inp] = inp.get_partial_shape()
-                #     if shapes[inp][2] != 18:
-                #         shapes[inp][2] = -1
+                    if inp.get_any_name() in ["input_ids", "attention_mask", "decoder_input_ids", "encoder_outputs"]:
+                        shapes[inp][0] = -1
+                        shapes[inp][1] = -1
+                    else:
+                        if shapes[inp][2] != 18:
+                            shapes[inp][2] = -1
 
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
@@ -408,10 +398,10 @@ class OVPreTrainedModel(GenerationMixin):
         return outs
 
     def _process_data_api_2022(self, inputs):
-        print()
-        print("OV inputs")
-        for name in inputs:
-            print(name, inputs[name].shape)
+        # print()
+        # print("OV inputs")
+        # for name in inputs:
+        #     print(name, inputs[name].shape)
         outs = self.exec_net.infer(inputs)
         outs = {out.get_any_name(): value for out, value in outs.items()}
 
@@ -508,9 +498,18 @@ class OVPreTrainedModel(GenerationMixin):
         #         past_key_values.append([])
 
         #     past_key_values[-1].append(torch.tensor(outs[name]))
+        past_key_values = None
+        if "decoder_input_ids" in self.input_names:
+            past_key_values = [[]]
+            for name in outs:
+                if name == "output":
+                    continue
+                if len(past_key_values[-1]) == 4:
+                    past_key_values.append([])
+                past_key_values[-1].append(torch.tensor(outs[name]))
 
-        # past_key_values = [tuple(l) for l in past_key_values]
-        # past_key_values = tuple(past_key_values)
+            past_key_values = [tuple(l) for l in past_key_values]
+            past_key_values = tuple(past_key_values)
 
         # Trunc padded values
         if inp_length != logits.shape[1]:
@@ -525,8 +524,7 @@ class OVPreTrainedModel(GenerationMixin):
         elif arch.endswith("ForQuestionAnswering"):
             return QuestionAnsweringModelOutput(start_logits=outs["output_s"], end_logits=outs["output_e"])
         else:
-            # return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
-            return ModelOutput(logits=torch.tensor(logits))
+            return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 
     def __call__(self, *args, **kwargs):
         if self.main_input_name in ["input_ids", "decoder_input_ids"]:
