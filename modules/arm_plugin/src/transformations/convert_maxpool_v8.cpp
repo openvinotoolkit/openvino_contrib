@@ -21,7 +21,13 @@ ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
             return false;
         }
 
-        // Pooling indices only supported for kernel size 2x2
+        //MaxPool is similar to v1 and pooling indices aren't required so could be just ignored during inference
+        if ((maxpool->get_input_shape(0).size() == 4) &&
+            (maxpool->get_dilations() == ngraph::Strides{1, 1}) &&
+            (maxpool->output(1).get_target_inputs().size() == 0)) {
+            return false;
+        }
+        // Pooling indices only supported for kernel size 2x2. Fallback to reference will be used
         if ((maxpool->get_input_shape(0).size() != 4) ||
             (maxpool->get_kernel() != ngraph::Shape{2, 2}) ||
             (maxpool->get_dilations() != ngraph::Strides{1, 1}) ||
