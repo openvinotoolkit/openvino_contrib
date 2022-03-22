@@ -472,7 +472,7 @@ class OVPreTrainedModel(GenerationMixin):
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
         past_key_values = None
-        if getattr(self.config, "use_cache", False):
+        if self.config.architectures[0].endswith("ForConditionalGeneration") and self.config.use_cache:
             past_key_values = [[]]
             for name in outs:
                 if name == "output":
