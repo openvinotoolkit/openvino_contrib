@@ -75,6 +75,21 @@ ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
             return false;
         }
 
+        if (interp->get_input_size() == 4) {
+            auto axes = std::dynamic_pointer_cast<opset::Constant>(interp->input_value(3).get_node_shared_ptr());
+            std::vector<int64_t> axes_vec = axes->cast_vector<int64_t>();
+
+            ngraph::PartialShape input_shape = ngraph::PartialShape(interp->get_input_partial_shape(0));
+            const auto input_rank = input_shape.rank().get_length();
+            std::vector<int64_t> default_axes_vec(input_rank);
+            std::iota(default_axes_vec.begin(), default_axes_vec.end(), 0);
+
+            bool is_default_axes = std::equal(axes_vec.begin(), axes_vec.end(), default_axes_vec.begin());
+            if (!is_default_axes) {
+                return false;
+            }
+        }
+
         if (interp->get_shape().size() != 4) {
             return false;
         }
@@ -109,7 +124,6 @@ ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
         auto arm_interp = std::make_shared<opset::ArmInterpolate>(interp->input_value(0),
                                                                   interp->input_value(1),
                                                                   interp->input_value(2),
-                                                                  interp->input_value(3),
                                                                   attrs);
         arm_interp->set_friendly_name(interp->get_friendly_name());
         ngraph::copy_runtime_info(interp, arm_interp);
