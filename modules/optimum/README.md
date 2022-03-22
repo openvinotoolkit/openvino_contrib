@@ -1,6 +1,6 @@
 # OpenVINO&trade; Integration with Optimum*
 
-[![Test Optimum](https://github.com/dkurt/openvino_contrib/actions/workflows/test_optimum.yml/badge.svg?branch=master)](https://github.com/dkurt/openvino_contrib/actions/workflows/test_optimum.yml)
+[![Test Optimum](https://github.com/openvinotoolkit/openvino_contrib/actions/workflows/test_optimum.yml/badge.svg?branch=master)](https://github.com/openvinotoolkit/openvino_contrib/actions/workflows/test_optimum.yml?query=branch%3Amaster)
 
 This module is an extension for [Optimum*](https://github.com/huggingface/optimum) library which brings [OpenVINO&trade;](https://github.com/openvinotoolkit/openvino) backend for [Hugging Face Transformers*](https://github.com/huggingface/transformers) :hugs:.
 

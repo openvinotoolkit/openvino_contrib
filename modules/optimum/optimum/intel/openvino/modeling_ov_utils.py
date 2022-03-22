@@ -63,7 +63,17 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         input_names = [model.main_input_name, "attention_mask"]
     else:
-        input_names = [name for name, tensor in inputs.items() if tensor is not None]
+        input_names = []
+        for name, tensor in inputs.items():
+            if tensor is None:
+                continue
+            if name == "past_key_values":
+                for i in range(len(tensor)):
+                    for j in range(len(tensor[i])):
+                        input_names.append(f"past_key_values.{i}.{j}")
+            else:
+                input_names.append(name)
+
         inputs = tuple(inputs.values())
 
     if model.__class__.__name__.endswith("ForQuestionAnswering"):
@@ -359,7 +369,11 @@ class OVPreTrainedModel(GenerationMixin):
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
                     shapes[inp][0] = -1
-                    shapes[inp][1] = -1
+                    if inp.get_any_name().startswith("past_key_values"):
+                        shapes[inp][2] = -1
+                    else:
+                        shapes[inp][1] = -1
+
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
             self.exec_net = compiled_model.create_infer_request()
@@ -457,6 +471,18 @@ class OVPreTrainedModel(GenerationMixin):
 
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
+        past_key_values = None
+        if self.config.architectures[0].endswith("ForConditionalGeneration") and self.config.use_cache:
+            past_key_values = [[]]
+            for name in outs:
+                if name == "output":
+                    continue
+                if len(past_key_values[-1]) == 4:
+                    past_key_values.append([])
+                past_key_values[-1].append(torch.tensor(outs[name]))
+
+            past_key_values = tuple([tuple(val) for val in past_key_values])
+
         # Trunc padded values
         if inp_length != logits.shape[1]:
             logits = logits[:, :inp_length]
@@ -470,7 +496,7 @@ class OVPreTrainedModel(GenerationMixin):
         elif arch.endswith("ForQuestionAnswering"):
             return QuestionAnsweringModelOutput(start_logits=outs["output_s"], end_logits=outs["output_e"])
         else:
-            return ModelOutput(logits=torch.tensor(logits))
+            return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 
     def __call__(self, *args, **kwargs):
         if self.main_input_name in ["input_ids", "decoder_input_ids"]:
