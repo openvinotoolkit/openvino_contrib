@@ -8,6 +8,12 @@ if is_torch_available():
     from transformers import MBartForConditionalGeneration
     from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
     from transformers.generation_utils import GenerationMixin
+else:
+
+    class GenerationMixin(object):
+        def __init__(self):
+            pass
+
 
 from .modeling_ov_utils import (
     OVPreTrainedModel,
@@ -71,7 +77,10 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         self.model_past = OVPreTrainedModel(model_past, config) if model_past else None
 
         self.model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model, *args, **kwargs)
-        self.model_past._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model_past, *args, **kwargs)
+        if model_past is not None:
+            self.model_past._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(
+                self.model_past, *args, **kwargs
+            )
 
         self.config = config
         if is_torch_available():
@@ -91,7 +100,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         cross_attn_head_mask=None,
         use_cache=None,
         encoder_outputs=None,
-        **kwargs
+        **kwargs,
     ):
         # cut decoder_input_ids if past is used
         if past is not None:
@@ -133,21 +142,30 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         use_cache = model.config.use_cache
 
         origin_forward = model.forward
+
         def forward(*args, **kwargs):
             outputs = origin_forward(*args, **kwargs)
 
-            # Multiply by 1.0 to workaround a bug in OpenVINO 2022.1 with
-            # dynamic shapes inputs connected to model outputs:
-            past_key_values = []
-            for i in range(12):
-                past_key_values.append((outputs.past_key_values[i][0],
-                                        outputs.past_key_values[i][1],
-                                        outputs.past_key_values[i][2] * 1.0,
-                                        outputs.past_key_values[i][3] * 1.0))
+            if outputs.past_key_values is not None:
+                # Multiply by 1.0 to workaround a bug in OpenVINO 2022.1 with
+                # dynamic shapes inputs connected to model outputs:
+                past_key_values = []
+                for i in range(12):
+                    past_key_values.append(
+                        (
+                            outputs.past_key_values[i][0],
+                            outputs.past_key_values[i][1],
+                            outputs.past_key_values[i][2] * 1.0,
+                            outputs.past_key_values[i][3] * 1.0,
+                        )
+                    )
+                outputs.past_key_values = tuple(past_key_values)
+
             return Seq2SeqLMOutput(
                 logits=outputs.logits,
-                past_key_values=tuple(past_key_values),
+                past_key_values=outputs.past_key_values,
             )
+
         model.forward = lambda *args, **kwargs: forward(*args, **kwargs)
 
         # Create a separate network for encoder - it will be called just once.
@@ -171,12 +189,14 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
 
         if use_cache:
-            inputs["past_key_values"] = [[
+            inputs["past_key_values"] = [
+                [
                     torch.zeros([1, 16, 1, 64], dtype=torch.float32),
                     torch.zeros([1, 16, 1, 64], dtype=torch.float32),
                     torch.zeros([1, 16, 11, 64], dtype=torch.float32),
                     torch.zeros([1, 16, 11, 64], dtype=torch.float32),
-                ]] * 12
+                ]
+            ] * 12
             net_past = load_ov_model_from_pytorch(model, inputs)
         else:
             net_past = None

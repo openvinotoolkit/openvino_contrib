@@ -314,15 +314,15 @@ class OVAutoModelForAudioClassificationTest(unittest.TestCase):
         self.check_model(model)
 
 
+@require_torch
+@unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
 class OVMBartForConditionalGenerationTest(unittest.TestCase):
-    @require_torch
-    @unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
-    def test_generate(self):
+    def check_model(self, use_cache):
         from optimum.intel.openvino import OVMBartForConditionalGeneration
         from transformers import MBart50TokenizerFast
 
         model = OVMBartForConditionalGeneration.from_pretrained(
-            "facebook/mbart-large-50-many-to-many-mmt", from_pt=True
+            "facebook/mbart-large-50-many-to-many-mmt", use_cache=use_cache, from_pt=True
         )
         tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
 
@@ -364,3 +364,9 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
 
         decoded_fr = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
         self.assertEqual(decoded_fr, "Le chef de l 'ONU affirme qu 'il n 'y a pas de solution militaire en Syria.")
+
+    def test_no_cache(self):
+        self.check_model(use_cache=False)
+
+    def test_with_cache(self):
+        self.check_model(use_cache=True)

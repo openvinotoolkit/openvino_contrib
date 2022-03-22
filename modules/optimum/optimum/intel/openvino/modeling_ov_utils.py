@@ -368,12 +368,11 @@ class OVPreTrainedModel(GenerationMixin):
                 shapes = {}
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
-                    if inp.get_any_name() in ["input_ids", "attention_mask", "decoder_input_ids", "encoder_outputs"]:
-                        shapes[inp][0] = -1
-                        shapes[inp][1] = -1
-                    else:
-                        shapes[inp][0] = -1
+                    shapes[inp][0] = -1
+                    if inp.get_any_name().startswith("past_key_values"):
                         shapes[inp][2] = -1
+                    else:
+                        shapes[inp][1] = -1
 
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
@@ -482,8 +481,7 @@ class OVPreTrainedModel(GenerationMixin):
                     past_key_values.append([])
                 past_key_values[-1].append(torch.tensor(outs[name]))
 
-            past_key_values = [tuple(l) for l in past_key_values]
-            past_key_values = tuple(past_key_values)
+            past_key_values = tuple([tuple(val) for val in past_key_values])
 
         # Trunc padded values
         if inp_length != logits.shape[1]:
