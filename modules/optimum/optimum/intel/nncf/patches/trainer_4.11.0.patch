@@ -206,7 +206,7 @@ index 070f200..fe35a08 100644
 +        import subprocess
 +
 +        subprocess.run(
-+            [sys.executable, "-m", "mo", "--input_model", path_to_onnx, "--output_dir", output_dir], check=True
++            ["mo", "--input_model", path_to_onnx, "--output_dir", output_dir], check=True
 +        )
 +
      def store_flos(self):
