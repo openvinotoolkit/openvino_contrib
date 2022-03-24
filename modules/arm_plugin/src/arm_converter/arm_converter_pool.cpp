@@ -70,16 +70,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::M
         FillLayerInfo(node, pool_info);
         pool_info.pool_type = arm_compute::PoolingType::MAX;
         return MakeConversion<arm_compute::NEPoolingLayer>(node.input(0), node.output(0), pool_info, node.output(1));
-    } else if ((node.get_input_shape(0).size() == 4) &&
-               (node.get_dilations() == ngraph::Strides{1, 1}) &&
-               (node.output(1).get_target_inputs().size() == 1) &&
-               (ngraph::op::is_output(node.output(1).get_target_inputs().begin()->get_node())) &&
-               (node.output(1).get_target_inputs().begin()->get_node()->get_friendly_name() ==
-                ngraph::op::util::get_ie_output_name(node.output(1)))) {
-        arm_compute::PoolingLayerInfo pool_info;
-        FillLayerInfo(node, pool_info);
-        pool_info.pool_type = arm_compute::PoolingType::MAX;
-        return MakeConversion<arm_compute::NEPoolingLayer>(node.input(0), node.output(0), pool_info);
     } else {
         auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,

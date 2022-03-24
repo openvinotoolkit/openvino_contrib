@@ -21,12 +21,25 @@ ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
             return false;
         }
 
-        //MaxPool is similar to v1 and pooling indices aren't required so could be just ignored during inference
-        if ((maxpool->get_input_shape(0).size() == 4) &&
-            (maxpool->get_dilations() == ngraph::Strides{1, 1}) &&
+        //MaxPool is similar to v1 and pooling indices aren't required so replace it with V1
+        if ((maxpool->get_dilations() == ngraph::Strides{1, 1}) &&
             (maxpool->output(1).get_target_inputs().size() == 0)) {
-            return false;
+            auto maxpoolV1 = std::make_shared<opset::MaxPool>(maxpool->input_value(0),
+                                                              maxpool->get_strides(),
+                                                              maxpool->get_pads_begin(),
+                                                              maxpool->get_pads_end(),
+                                                              maxpool->get_kernel(),
+                                                              maxpool->get_rounding_type(),
+                                                              maxpool->get_auto_pad());
+            maxpoolV1->set_friendly_name(maxpool->get_friendly_name());
+            ngraph::copy_runtime_info(maxpool, maxpoolV1);
+            maxpool->output(0).replace(maxpoolV1->output(0));
+            maxpoolV1->add_node_control_dependents(maxpool);
+            maxpoolV1->add_node_control_dependencies(maxpool);
+            maxpool->clear_control_dependents();
+            return true;
         }
+
         // Pooling indices only supported for kernel size 2x2. Fallback to reference will be used
         if ((maxpool->get_input_shape(0).size() != 4) ||
             (maxpool->get_kernel() != ngraph::Shape{2, 2}) ||
