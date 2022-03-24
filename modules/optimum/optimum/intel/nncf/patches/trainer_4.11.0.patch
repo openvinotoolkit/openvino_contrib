@@ -201,12 +201,16 @@ index 070f200..fe35a08 100644
          torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
 
 +        path_to_onnx = os.path.join(output_dir, "ov_model.onnx")
-+        self.compression_ctrl.export_model(path_to_onnx, input_names=["input_ids", "attention_mask"])
++
++        input_names = self.tokenizer.model_input_names
++        if input_names[0] == "input_ids":
++            input_names = ["input_ids", "attention_mask", "token_type_ids"]
++        self.compression_ctrl.export_model(path_to_onnx, input_names=input_names)
 +
 +        import subprocess
 +
 +        subprocess.run(
-+            [sys.executable, "-m", "mo", "--input_model", path_to_onnx, "--output_dir", output_dir], check=True
++            ["mo", "--input_model", path_to_onnx, "--output_dir", output_dir], check=True
 +        )
 +
      def store_flos(self):

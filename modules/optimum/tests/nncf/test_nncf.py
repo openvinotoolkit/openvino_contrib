@@ -88,3 +88,11 @@ class NNCFTests(unittest.TestCase):
             ],
             check=True,
         )
+
+        config = AutoConfig.from_pretrained("anton-l/wav2vec2-base-ft-keyword-spotting")
+        model = OVAutoModel.from_pretrained("wav2vec2-base-ft-keyword-spotting", config=config)
+        input_values = np.random.rand(1, 16000).astype(np.float32)
+
+        expected_shape = (1, 12)
+        output = model(input_values).logits
+        self.assertEqual(output.shape, expected_shape)
