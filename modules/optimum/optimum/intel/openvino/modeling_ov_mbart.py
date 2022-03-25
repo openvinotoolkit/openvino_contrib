@@ -5,7 +5,7 @@ from transformers.file_utils import is_torch_available
 
 if is_torch_available():
     import torch
-    from transformers import MBartForConditionalGeneration
+    from transformers import MBartForConditionalGeneration, AutoConfig
     from transformers.modeling_outputs import BaseModelOutput, Seq2SeqLMOutput
     from transformers.generation_utils import GenerationMixin
 else:
@@ -21,15 +21,7 @@ from .modeling_ov_utils import (
     is_openvino_api_2,
 )
 
-
-class OVMBartEncoder(OVPreTrainedModel):
-    def __init__(self, net, config):
-        super().__init__(net, config)
-
-    def __call__(self, *args, **kwargs):
-        kwargs["return_dict"] = False
-        res = super().__call__(*args, **kwargs)
-        return BaseModelOutput(last_hidden_state=torch.tensor(res[0]))
+from . import modeling_ov_utils
 
 
 def _prepare_nlp_inputs(
@@ -72,12 +64,21 @@ def _prepare_nlp_inputs(
 class OVMBartForConditionalGeneration(GenerationMixin):
     def __init__(self, config, encoder, model, model_past=None):
         super().__init__()
-        self.encoder = OVMBartEncoder(encoder, config)
-        self.model = OVPreTrainedModel(model, config)
-        self.model_past = OVPreTrainedModel(model_past, config) if model_past else None
+        self.encoder = encoder
+        self.model = model
+        self.model_past = model_past
+
+        origin_forward = self.encoder.forward
+
+        def forward_wrap(self, *args, **kwargs):
+            kwargs["return_dict"] = False
+            res = origin_forward(*args, **kwargs)
+            return BaseModelOutput(last_hidden_state=torch.tensor(res[0]))
+
+        self.encoder.forward = lambda *args, **kwargs: forward_wrap(self.encoder, *args, **kwargs)
 
         self.model._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(self.model, *args, **kwargs)
-        if model_past is not None:
+        if self.model_past is not None:
             self.model_past._prepare_nlp_inputs = lambda *args, **kwargs: _prepare_nlp_inputs(
                 self.model_past, *args, **kwargs
             )
@@ -137,7 +138,25 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
-        kwargs.pop("from_pt", None)
+        from_pt = kwargs.pop("from_pt", False)
+
+        from_ov = not from_pt
+        if from_ov:
+            if not use_cache:
+                raise NotImplementedError("Loading from IR supports only use_cache=True")
+            config = kwargs.get("config") if "config" in kwargs else AutoConfig.from_pretrained(model_name_or_path)
+
+            modeling_ov_utils.OV_WEIGHTS_NAME = "encoder.xml"
+            encoder = OVPreTrainedModel.from_pretrained(model_name_or_path, *model_args, **kwargs)
+
+            modeling_ov_utils.OV_WEIGHTS_NAME = "first_run.xml"
+            net = OVPreTrainedModel.from_pretrained(model_name_or_path, *model_args, **kwargs)
+
+            modeling_ov_utils.OV_WEIGHTS_NAME = "ov_model.xml"
+            net_past = OVPreTrainedModel.from_pretrained(model_name_or_path, *model_args, **kwargs)
+
+            return OVMBartForConditionalGeneration(config, encoder, net, net_past)
+
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path, *model_args, **kwargs)
         use_cache = model.config.use_cache
 
@@ -186,7 +205,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
         # Fix for 2022.1 release
         if is_openvino_api_2:
-            net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
+            net.net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
 
         if use_cache:
             inputs["past_key_values"] = [
