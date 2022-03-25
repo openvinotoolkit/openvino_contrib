@@ -32,6 +32,7 @@
 #include "transformations/common_optimizations/weights_dequantize_to_fake_quantize.hpp"
 #include "transformations/common_optimizations/convert_quantize_dequantize.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
+#include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -277,9 +278,10 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertInterpolate>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMVN>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReorgYolo>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPoolV8>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMaxPool8ToMaxPool1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPool1D>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertAvgPool1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPoolV8>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastSelect>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGather>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertGather8ToGather7>();

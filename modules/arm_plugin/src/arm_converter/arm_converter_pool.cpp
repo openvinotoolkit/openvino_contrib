@@ -7,7 +7,6 @@
 #include <arm_compute/runtime/NEON/functions/NEPoolingLayer.h>
 #include <ngraph/runtime/reference/max_pool.hpp>
 #include <ngraph/runtime/reference/avg_pool.hpp>
-#include <transformations/utils/utils.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 
