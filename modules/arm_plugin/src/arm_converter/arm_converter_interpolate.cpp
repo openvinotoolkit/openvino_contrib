@@ -32,12 +32,22 @@ static void pad_input_data(const uint8_t* data_ptr,
     }
 }
 
-template <typename T, typename V>
+void get_default_axes(std::vector<int64_t>& axes_vec,
+                      const ngraph::PartialShape& input_partial_shape) {
+    const auto input_rank = input_partial_shape.rank().get_length();
+    axes_vec.resize(input_rank);
+    std::iota(axes_vec.begin(), axes_vec.end(), 0);
+    return;
+}
+
+template <typename T, typename V, typename U>
 void wrap_interpolate(const T* input_data,
                       const ngraph::Shape& input_shape,
+                      const ngraph::PartialShape& input_partial_shape,
                       const V* scales,
                       const ngraph::Shape& scales_shape,
-                      const std::vector<int64_t>& axes_vec,
+                      const U* axes,
+                      const ngraph::Shape& axes_shape,
                       T* out,
                       const ngraph::Shape& out_shape,
                       const ngraph::op::v4::Interpolate::InterpolateAttrs& attrs) {
@@ -55,6 +65,14 @@ void wrap_interpolate(const T* input_data,
 
     pad_input_data(data_ptr, padded_data_ptr, type_size, input_shape, padded_shape, pads_begin);
 
+    std::vector<int64_t> axes_vec;
+    if (axes != nullptr) {
+        auto axes_size = ngraph::shape_size(axes_shape);
+        axes_vec.assign(axes, axes + axes_size);
+    } else {
+        get_default_axes(axes_vec, input_partial_shape);
+    }
+
     auto scales_size = ngraph::shape_size(scales_shape);
     std::vector<float> scales_vec;
     if (attrs.shape_calculation_mode == ngraph::op::v4::Interpolate::ShapeCalcMode::SIZES) {
@@ -67,45 +85,47 @@ void wrap_interpolate(const T* input_data,
     }
 
     ngraph::runtime::reference::interpolate<T>(reinterpret_cast<T*>(padded_data_ptr),
-                                                padded_shape,
-                                                scales_vec,
-                                                axes_vec,
-                                                out,
-                                                out_shape,
-                                                attrs);
-}
-
-void get_axes_vec(const opset::Interpolate& node, std::vector<int64_t>& axes_vec) {
-    if (node.get_input_size() == 4) {
-        auto axes = safe_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());
-        axes_vec = axes->cast_vector<int64_t>();
-    } else {
-        ngraph::PartialShape input_shape = ngraph::PartialShape(node.get_input_partial_shape(0));
-        const auto input_rank = input_shape.rank().get_length();
-        axes_vec.resize(input_rank);
-        std::iota(axes_vec.begin(), axes_vec.end(), 0);
-    }
-    return;
+                                               padded_shape,
+                                               scales_vec,
+                                               axes_vec,
+                                               out,
+                                               out_shape,
+                                               attrs);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Interpolate& node) {
-    std::vector<int64_t> axes_vec;
-    get_axes_vec(node, axes_vec);
     auto make = [&] (auto refFunction) {
+    if (node.get_input_size() == 4) {
         return this->MakeConversion(refFunction,
                                     node.input(0),
                                     node.get_input_shape(0),
+                                    node.get_input_partial_shape(0),
                                     node.input(2),
                                     node.get_input_shape(2),
-                                    axes_vec,
+                                    node.input(3),
+                                    node.get_input_shape(3),
                                     node.output(0),
                                     node.get_output_shape(0),
                                     node.get_attrs());
+    }
+    return this->MakeConversion(refFunction,
+                                node.input(0),
+                                node.get_input_shape(0),
+                                node.get_input_partial_shape(0),
+                                node.input(2),
+                                node.get_input_shape(2),
+                                nullptr,
+                                ngraph::Shape{},
+                                node.output(0),
+                                node.get_output_shape(0),
+                                node.get_attrs());
     };
     return CallSwitch(
         AP_WRAP(make, wrap_interpolate),
         node.get_input_element_type(0), allTypes,
-        node.get_input_element_type(2), floatTypes);
+        node.get_input_element_type(2), floatTypes,
+        node.get_input_size() == 4 ? node.get_input_element_type(3) : ngraph::element::i64,
+        indexTypes);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpolate& node) {
