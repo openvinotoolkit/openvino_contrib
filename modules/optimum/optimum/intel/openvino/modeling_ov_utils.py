@@ -223,7 +223,7 @@ class OVPreTrainedModel(GenerationMixin):
         self.exec_net = None
         self.config = config
         self.max_length = 0
-        self.ov_config = {}
+        self.ov_config = {"PERFORMANCE_HINT": "LATENCY"} if is_openvino_api_2 else {}
         self.ov_device = "CPU"
         self.use_dynamic_shapes = is_openvino_api_2
 

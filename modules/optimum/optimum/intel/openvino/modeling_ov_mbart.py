@@ -139,6 +139,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
         from_pt = kwargs.pop("from_pt", False)
+        use_cache = kwargs.get("from_pt", True)
 
         from_ov = not from_pt
         if from_ov:
