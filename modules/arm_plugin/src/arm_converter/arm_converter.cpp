@@ -140,6 +140,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::Gelu>();
         Register<opset::Selu>();
         Register<opset::DetectionOutput>();
+        Register<ngraph::op::v8::DetectionOutput>();
         Register<opset::ReverseSequence>();
         Register<opset::ConvolutionBackpropData>();
         Register<opset::CumSum>();
