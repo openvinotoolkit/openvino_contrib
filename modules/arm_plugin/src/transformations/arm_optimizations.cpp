@@ -79,7 +79,8 @@
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 
-#include <transformations/low_precision/disable_convert_constant_folding_on_const_path.hpp>
+#include <transformations/low_precision/mark_dequantization_subgraph.hpp>
+
 #include <low_precision/common/operation_per_tensor_quantization_restriction.hpp>
 #include <low_precision/common/operation_precision_restriction.hpp>
 #include <low_precision/convolution.hpp>
@@ -146,7 +147,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         Dump(m, "initial");
 
         if (quantized) {
-            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::DisableConvertConstantFoldingOnConstPath>(
+            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::MarkDequantizationSubgraph>(
                 std::vector<ngraph::element::Type>{ ngraph::element::i8, ngraph::element::u8 });
         }
 
