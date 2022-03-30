@@ -112,7 +112,8 @@ cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
 git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
 cmake -G Ninja \
       -D CMAKE_BUILD_TYPE="$BUILD_TYPE" \
-      -D TBB_DIR="$INSTALL_ONETBB"/lib/cmake/TBB \
+      -D WITH_TBB=ON \
+      -D TBB_DIR="$INSTALL_ONETBB/lib/cmake/TBB" \
       -D BUILD_opencv_python2=OFF \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
