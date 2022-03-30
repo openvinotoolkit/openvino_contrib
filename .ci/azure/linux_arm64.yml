@@ -137,13 +137,13 @@ jobs:
         -DENABLE_GAPI_PREPROCESSING=OFF 
         -DENABLE_DATA=OFF 
         -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$(INSTALL_OPENCV)/lib 
-        -DTHREADING=SEQ -DENABLE_LTO=ON 
+        -DENABLE_LTO=ON 
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake 
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
         -DENABLE_INTEL_MYRIAD=OFF
-        -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
+        -DTBBROOT=$(INSTALL_ONETBB)
         -DTHREADING=TBB
         -DIE_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -175,7 +175,8 @@ jobs:
         -GNinja
         -DInferenceEngineDeveloperPackage_DIR=$(BUILD_OPENVINO)
         -DENABLE_PYTHON=ON 
-        -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
+        -DTBBROOT=$(INSTALL_ONETBB)
+        -DTHREADING=TBB
         -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.8 
         -DPYTHON_INCLUDE_DIRS=$(INSTALL_PYTHON)/include/python3.8 
         -DPYTHON_LIBRARIES=$(INSTALL_PYTHON)/lib
