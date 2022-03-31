@@ -26,7 +26,13 @@ ArmPlugin::pass::ConvertConcat::ConvertConcat() {
             return false;
         }
 
-        auto arm_concat = std::make_shared<opset::ArmConcat>(concat->input_values(), concat->get_axis());
+        int64_t axis = concat->get_axis();
+        if (axis < 0) {
+            auto rank = concat->get_input_partial_shape(0).rank().get_length();
+            axis = axis + rank;
+        }
+
+        auto arm_concat = std::make_shared<opset::ArmConcat>(concat->input_values(), axis);
         arm_concat->set_friendly_name(concat->get_friendly_name());
         ngraph::copy_runtime_info(concat, arm_concat);
         ngraph::replace_node(concat, arm_concat);
