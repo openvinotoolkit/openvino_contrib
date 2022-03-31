@@ -23,12 +23,30 @@ public class Model extends Wrapper {
         return getOutputs(nativeObj);
     }
 
+    public Output output() {
+        return new Output(getOutput(nativeObj));
+    }
+
+    public void reshape(int[] shape) {
+        Reshape(nativeObj, shape);
+    }
+
+    public Output input() {
+        return new Output(getInput(nativeObj));
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native String getName(long addr);
 
     private static native long getBatch(long addr);
 
     private static native ArrayList<Output> getOutputs(long addr);
+
+    private static native long getOutput(long addr);
+
+    private static native void Reshape(long addr, int[] shape);
+
+    private static native long getInput(long addr);
 
     @Override
     protected native void delete(long nativeObj);

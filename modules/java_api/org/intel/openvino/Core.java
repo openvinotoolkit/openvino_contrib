@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.file.Files;
+import java.util.Map;
 import java.util.logging.Logger;
 
 public class Core extends Wrapper {
@@ -117,6 +118,14 @@ public class Core extends Wrapper {
         return new CompiledModel(CompileModel(nativeObj, net.getNativeObjAddr(), device));
     }
 
+    public Any get_property(final String device, final String name) {
+        return new Any(GetProperty(nativeObj, device, name));
+    }
+
+    public void set_property(final String device, final Map<String, String> prop) {
+        SetProperty(nativeObj, device, prop);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
 
     private static native long GetCore();
@@ -129,6 +138,11 @@ public class Core extends Wrapper {
             long core, final String modelPath, final String weightPath);
 
     private static native long CompileModel(long core, long net, final String device);
+
+    private static native long GetProperty(long core, final String device, final String name);
+
+    private static native void SetProperty(
+            long core, final String device, final Map<String, String> prop);
 
     @Override
     protected native void delete(long nativeObj);

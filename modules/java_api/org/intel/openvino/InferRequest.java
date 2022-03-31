@@ -12,8 +12,20 @@ public class InferRequest extends Wrapper {
         Infer(nativeObj);
     }
 
+    public void start_async() {
+        StartAsync(nativeObj);
+    }
+
+    public void wait_async() {
+        Wait(nativeObj);
+    }
+
     public void set_input_tensor(Tensor input) {
         SetInputTensor(nativeObj, input.nativeObj);
+    }
+
+    public void set_output_tensor(Tensor tensor) {
+        SetOutputTensor(nativeObj, tensor.nativeObj);
     }
 
     public Tensor get_output_tensor() {
@@ -27,7 +39,13 @@ public class InferRequest extends Wrapper {
     /*----------------------------------- native methods -----------------------------------*/
     private static native void Infer(long addr);
 
+    private static native void StartAsync(long addr);
+
+    private static native void Wait(long addr);
+
     private static native void SetInputTensor(long addr, long tensorAddr);
+
+    private static native void SetOutputTensor(long addr, long tensorAddr);
 
     private static native long GetOutputTensor(long addr);
 
