@@ -144,7 +144,6 @@ jobs:
         -DBUILD_java_api=OFF
         -DENABLE_INTEL_MYRIAD=OFF
         -DTHREADING=TBB
-        -DTBBROOT=$(INSTALL_ONETBB)
         -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
         -DIE_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -177,7 +176,6 @@ jobs:
         -DInferenceEngineDeveloperPackage_DIR=$(BUILD_OPENVINO)
         -DENABLE_PYTHON=ON 
         -DTHREADING=TBB
-        -DTBBROOT=$(INSTALL_ONETBB)
         -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
         -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.8 
         -DPYTHON_INCLUDE_DIRS=$(INSTALL_PYTHON)/include/python3.8 
