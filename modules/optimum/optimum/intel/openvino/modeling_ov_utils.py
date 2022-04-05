@@ -123,14 +123,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
 
 def load_ov_model_from_tf(model, tf_weights_path):
-    # Instead of using subprocess which is marked as unsafe, we call MO by <main> function
-    if is_openvino_api_2:
-        from openvino.frontend import FrontEndManager
-        from openvino.tools.mo.main import main as mo_main
-        from openvino.tools.mo.utils.cli_parser import get_tf_cli_parser
-    else:
-        from mo.main import main as mo_main
-        from mo.utils.cli_parser import get_tf_cli_parser
+    import subprocess  # nosec
 
     import tensorflow as tf
     from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
@@ -153,25 +146,25 @@ def load_ov_model_from_tf(model, tf_weights_path):
     with tf.io.gfile.GFile(pb_model_path, "wb") as f:
         f.write(graph_def.SerializeToString())
 
-    parser = get_tf_cli_parser()
-    parser.set_defaults(
-        output_dir=cache_dir,
-        input_model=pb_model_path,
-        model_name=os.path.basename(tf_weights_path),
-        input="input_ids,attention_mask",
-        output=",".join(output_names),
-        input_shape="[1, 11], [1, 11]",
-        disable_nhwc_to_nchw=True,
+    subprocess.run(  # nosec
+        [
+            "mo",
+            "--output_dir",
+            cache_dir,
+            "--input_model",
+            pb_model_path,
+            "--model_name",
+            os.path.basename(tf_weights_path),
+            "--input",
+            "input_ids,attention_mask",
+            "--output",
+            ",".join(output_names),
+            "--input_shape",
+            "[1, 11], [1, 11]",
+            "--disable_nhwc_to_nchw",
+        ],
+        check=True,
     )
-
-    # Replace original parser to ignore global sys.argv
-    origin_parse = parser.parse_args
-    parser.parse_args = lambda: origin_parse([])
-
-    if is_openvino_api_2:
-        mo_main(parser, FrontEndManager(), "tf")
-    else:
-        mo_main(parser, "tf")
 
     try:
         os.remove(pb_model_path)
