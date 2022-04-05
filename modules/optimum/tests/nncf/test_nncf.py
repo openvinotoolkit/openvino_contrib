@@ -1,6 +1,6 @@
 import sys
 import unittest
-import subprocess
+import subprocess  # nosec
 import json
 from packaging import version
 
@@ -15,7 +15,7 @@ from transformers import AutoConfig
 
 class NNCFTests(unittest.TestCase):
     def test_bert_base_ner(self):
-        subprocess.run(
+        subprocess.run(  # nosec
             [
                 sys.executable,
                 "examples/pytorch/token-classification/run_ner.py",
@@ -53,7 +53,7 @@ class NNCFTests(unittest.TestCase):
         "Test is supported starts from Transformers 4.15.0",
     )
     def test_wav2vec2_audio_classification(self):
-        subprocess.run(
+        subprocess.run(  # nosec
             [
                 sys.executable,
                 "examples/pytorch/audio-classification/run_audio_classification.py",
