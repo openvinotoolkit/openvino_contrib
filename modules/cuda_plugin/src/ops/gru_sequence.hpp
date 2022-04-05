@@ -7,10 +7,10 @@
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
 
-#include "gru_sequence_components.hpp"
-#include "gru_sequence_cudnn_components.hpp"
 #include "ngraph/op/gru_sequence.hpp"
-#include "rnn_sequence_components.hpp"
+#include "rnn_components/gru_sequence_components.hpp"
+#include "rnn_components/gru_sequence_cudnn_components.hpp"
+#include "rnn_components/rnn_sequence_components.hpp"
 
 namespace CUDAPlugin {
 

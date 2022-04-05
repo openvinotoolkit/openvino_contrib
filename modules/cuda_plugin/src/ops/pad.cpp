@@ -3,14 +3,25 @@
 //
 #include "pad.hpp"
 
+#include <ngraph/validation_util.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <memory>
+#include <cstddef>
 
 #include "converters.hpp"
 
 namespace CUDAPlugin {
+
+static bool isNCHWConvolutionPadding(const PadOp::NodeOp& node) {
+    auto padsBegin = ngraph::get_constant_from_source(node.input_value(1));
+    auto padsEnd = ngraph::get_constant_from_source(node.input_value(2));
+    const auto padsBeginCoord = padsBegin->cast_vector<size_t>();
+    const auto padsEndCoord = padsEnd->cast_vector<size_t>();
+    return node.get_input_shape(0).size() == 4 && padsBeginCoord[0] == 0 && padsBeginCoord[1] == 0 &&
+           padsEndCoord[0] == 0 && padsEndCoord[1] == 0;
+}
 
 PadOp::PadOp(const CreationContext& context,
              const NodeOp& node,
@@ -22,7 +33,10 @@ PadOp::PadOp(const CreationContext& context,
                   kernel::ConstModePad::kWarpsPerBlock * static_cast<unsigned>(context.device().props().warpSize),
                   kernel::ConstModePad::kElementsPerThread},
               node.get_output_element_type(0),
-              node.get_output_shape(0).size()},
+              node.get_output_shape(0).size(),
+              context.device().props().maxThreadsPerBlock,
+              ngraph::shape_size(node.get_output_shape(0)),
+              isNCHWConvolutionPadding(node)},
       src_shape_{node.get_input_shape(0)},
       dst_shape_{node.get_output_shape(0)} {
     Expects(ngraph::op::PadMode::CONSTANT == node.get_pad_mode());

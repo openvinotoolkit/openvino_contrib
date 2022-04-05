@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "lstm_sequence_components.hpp"
+#include "rnn_components/lstm_sequence_components.hpp"
 
 namespace CUDAPlugin {
 

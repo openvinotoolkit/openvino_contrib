@@ -94,22 +94,34 @@ const std::vector<double> cubeCoefs = {
     -0.75f,
 };
 
-const std::vector<std::vector<int64_t>> defaultAxes = {{0, 1, 2, 3}};
-
-const std::vector<std::vector<float>> defaultScales = {{1.f, 1.f, 2.f, 2.f}};
+const std::vector<std::vector<int64_t>> smokeTest4DAxes = {{0, 1, 2, 3}};
+const std::vector<std::vector<float>> smokeTest4DScales = {{1.f, 1.f, 2.f, 2.f}};
+const std::vector<std::vector<int64_t>> smokeTest2DAxes = {{2, 3}};
+const std::vector<std::vector<float>> smokeTest2DScales = {{2.f, 2.f}};
 
 std::map<std::string, std::string> additional_config = {};
 
-const auto nearestModeParams = ::testing::Combine(::testing::ValuesIn(nearestMode),
-                                                  ::testing::ValuesIn(shapeCalculationMode),
-                                                  ::testing::ValuesIn(coordinateTransformModes),
-                                                  ::testing::ValuesIn(nearestModes),
-                                                  ::testing::ValuesIn(antialias),
-                                                  ::testing::ValuesIn(pads),
-                                                  ::testing::ValuesIn(pads),
-                                                  ::testing::ValuesIn(cubeCoefs),
-                                                  ::testing::ValuesIn(defaultAxes),
-                                                  ::testing::ValuesIn(defaultScales));
+const auto interpolate4DScaleParams = ::testing::Combine(::testing::ValuesIn(nearestMode),
+                                                         ::testing::ValuesIn(shapeCalculationMode),
+                                                         ::testing::ValuesIn(coordinateTransformModes),
+                                                         ::testing::ValuesIn(nearestModes),
+                                                         ::testing::ValuesIn(antialias),
+                                                         ::testing::ValuesIn(pads),
+                                                         ::testing::ValuesIn(pads),
+                                                         ::testing::ValuesIn(cubeCoefs),
+                                                         ::testing::ValuesIn(smokeTest4DAxes),
+                                                         ::testing::ValuesIn(smokeTest4DScales));
+
+const auto interpolate2DScaleParams = ::testing::Combine(::testing::ValuesIn(nearestMode),
+                                                         ::testing::ValuesIn(shapeCalculationMode),
+                                                         ::testing::ValuesIn(coordinateTransformModes),
+                                                         ::testing::ValuesIn(nearestModes),
+                                                         ::testing::ValuesIn(antialias),
+                                                         ::testing::ValuesIn(pads),
+                                                         ::testing::ValuesIn(pads),
+                                                         ::testing::ValuesIn(cubeCoefs),
+                                                         ::testing::ValuesIn(smokeTest2DAxes),
+                                                         ::testing::ValuesIn(smokeTest2DScales));
 
 class CUDNNInterpolateLayerTest : public UnsymmetricalComparer<InterpolateLayerTest> {};
 
@@ -118,23 +130,41 @@ TEST_P(CUDNNInterpolateLayerTest, CompareWithRefs) {
     Run();
 };
 
-const auto simpleCombineTests = ::testing::Combine(nearestModeParams,
-                                                   ::testing::ValuesIn(netPrecisions),
-                                                   ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                                   ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                                   ::testing::Values(InferenceEngine::Layout::ANY),
-                                                   ::testing::Values(InferenceEngine::Layout::ANY),
-                                                   ::testing::ValuesIn(inShapes),
-                                                   ::testing::ValuesIn(targetShapes),
-                                                   ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                                   ::testing::Values(additional_config));
+const auto simpleCombine4DScaleParamTests =
+    ::testing::Combine(interpolate4DScaleParams,
+                       ::testing::ValuesIn(netPrecisions),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(inShapes),
+                       ::testing::ValuesIn(targetShapes),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_Nearest_Test,
+INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_4D_Scale_Param_Test,
                         CUDNNInterpolateLayerTest,
-                        simpleCombineTests,
+                        simpleCombine4DScaleParamTests,
                         InterpolateLayerTest::getTestCaseName);
 
-const auto downscaleCombineTests = ::testing::Combine(nearestModeParams,
+const auto simpleCombine2DScaleParamTests =
+    ::testing::Combine(interpolate2DScaleParams,
+                       ::testing::ValuesIn(netPrecisions),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(inShapes),
+                       ::testing::ValuesIn(targetShapes),
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(additional_config));
+
+INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_2D_Scale_Param_Test,
+                        CUDNNInterpolateLayerTest,
+                        simpleCombine2DScaleParamTests,
+                        InterpolateLayerTest::getTestCaseName);
+
+const auto downscaleCombineTests = ::testing::Combine(interpolate4DScaleParams,
                                                       ::testing::ValuesIn(netPrecisions),
                                                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -149,8 +179,11 @@ INSTANTIATE_TEST_CASE_P(smoke_Downscale_Interpolate_Nearest_Test,
                         downscaleCombineTests,
                         InterpolateLayerTest::getTestCaseName);
 
-const auto highScaleCombineTest =
-    ::testing::Combine(nearestModeParams,
+const std::vector<std::vector<int64_t>> default4DAxes = {{0, 1, 2, 3}};
+const std::vector<std::vector<float>> default4DScales = {{1.f, 1.f, 2.f, 2.f}};
+
+const auto highResolutionCombineTest =
+    ::testing::Combine(interpolate4DScaleParams,
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -161,12 +194,12 @@ const auto highScaleCombineTest =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_High_Scale_Interpolate_Test,
+INSTANTIATE_TEST_CASE_P(smoke_High_Resolution_Interpolate_4D_Scale_Param_Test,
                         CUDNNInterpolateLayerTest,
-                        highScaleCombineTest,
+                        highResolutionCombineTest,
                         InterpolateLayerTest::getTestCaseName);
 
-const auto efficientdetCombinations = ::testing::Combine(nearestModeParams,
+const auto efficientdetCombinations = ::testing::Combine(interpolate4DScaleParams,
                                                          ::testing::ValuesIn(netPrecisions),
                                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -182,7 +215,7 @@ INSTANTIATE_TEST_CASE_P(efficientdetInterpolateCombinationTests,
                         InterpolateLayerTest::getTestCaseName);
 
 const auto yolov5InterpolateFrom20To40Shape =
-    ::testing::Combine(nearestModeParams,
+    ::testing::Combine(interpolate4DScaleParams,
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -198,7 +231,7 @@ INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom20To40ShapeTests,
                         InterpolateLayerTest::getTestCaseName);
 
 const auto yolov5InterpolateFrom40To80Shape =
-    ::testing::Combine(nearestModeParams,
+    ::testing::Combine(interpolate4DScaleParams,
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -223,7 +256,7 @@ TEST_P(CUDNNInterpolateLayerBenchmarkTest, DISABLED_benchmark) {
 }
 
 const auto benchmarkParams =
-    ::testing::Combine(nearestModeParams,
+    ::testing::Combine(interpolate4DScaleParams,
                        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32}),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),

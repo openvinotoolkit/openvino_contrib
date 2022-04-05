@@ -6,8 +6,7 @@
 
 #include <error.hpp>
 #include <gsl/gsl_assert>
-
-#include "converters.hpp"
+#include <ops/converters.hpp>
 
 #define CUDNN_VERSION_MIN(major, minor, patch) (CUDNN_VERSION >= ((major)*1000 + (minor)*100 + (patch)))
 
@@ -111,12 +110,14 @@ CUDA::DnnRnnDescriptor LSTMCellParamsCuDnn::makeRNNDescriptor() const {
 
 CUDA::DnnRnnDataDescriptor LSTMCellParamsCuDnn::makeXDescriptor() const {
     const auto x_vector_size = inputSize();
-    return CUDA::DnnRnnDataDescriptor{}.set(dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill());
+    return CUDA::DnnRnnDataDescriptor{}.set(
+        dataType(), layout(), maxSeqLength(), batchSize(), x_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnRnnDataDescriptor LSTMCellParamsCuDnn::makeYDescriptor() const {
     const auto y_vector_size = projSize();
-    return CUDA::DnnRnnDataDescriptor{}.set(dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill());
+    return CUDA::DnnRnnDataDescriptor{}.set(
+        dataType(), layout(), maxSeqLength(), batchSize(), y_vector_size, seq_length_array_.data(), paddingFill());
 }
 
 CUDA::DnnTensorDescriptor LSTMCellParamsCuDnn::makeHDescriptor() const {

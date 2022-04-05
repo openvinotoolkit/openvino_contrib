@@ -482,4 +482,22 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA:
     return (status == CUDNN_STATUS_SUCCESS) && (algo_perf_.status == CUDNN_STATUS_SUCCESS) && (returnedAlgoCount > 0);
 }
 
+std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ngraph::Shape& shape,
+                                                                  ngraph::element::Type_t element_type) {
+    std::array<int, CUDNN_DIM_MAX> int_shape;
+    std::copy(shape.begin(), shape.end(), int_shape.begin());
+    auto desc = std::make_shared<CUDA::DnnTensorDescriptor>();
+    desc->set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+              convertDataType<cudnnDataType_t>(element_type),
+              static_cast<int>(shape.size()),
+              int_shape.data());
+    return desc;
+}
+
+std::shared_ptr<CUDA::DnnActivationDescriptor> MakeFusedActivationDescriptor(nodes::ActivationMode mode) {
+    auto desc = std::make_shared<CUDA::DnnActivationDescriptor>();
+    desc->set(convertActivationMode(mode), CUDNN_PROPAGATE_NAN, 0);
+    return desc;
+}
+
 }  // namespace CUDAPlugin::Convolution::Details

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "fused_convolution.hpp"
-
 #include <fmt/format.h>
 
 #include <error.hpp>
@@ -11,63 +9,88 @@
 #include <gsl/gsl_assert>
 #include <memory>
 
+#include "convolution_components/convolution_cudnn_components.hpp"
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
-#include "fused_group_convolution.hpp"
+#include "fused_convolution_cudnn_decomposed.hpp"
+#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
 
 namespace CUDAPlugin {
 
-template <typename TOperation>
-FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
-                                       const TOperation& op,
-                                       IndexCollection&& inputIds,
-                                       IndexCollection&& outputIds)
-    : OperationCuDnn(context, op, std::move(inputIds), std::move(outputIds)) {
-    const auto element_type = op.get_input_element_type(ArgIndices::input);
-    Expects(element_type == op.get_input_element_type(ArgIndices::filter));
-    Expects(element_type == op.get_input_element_type(ArgIndices::bias));
-    Expects(element_type == op.get_output_element_type(ArgIndices::output));
-    const bool includesOnlyBiasAdd = op.inputs().size() == 3;
-    const bool includesSecondAddition = op.inputs().size() == 4;
+OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
+                                           const std::shared_ptr<ngraph::Node>& node,
+                                           OperationBase::IndexCollection&& inputIds,
+                                           OperationBase::IndexCollection&& outputIds) {
+    using ArgIndices = Convolution::Details::FusedConvolutionIndices;
+    const auto element_type = node->get_input_element_type(ArgIndices::input);
+    Expects(element_type == node->get_input_element_type(ArgIndices::filter));
+    Expects(element_type == node->get_input_element_type(ArgIndices::bias));
+    Expects(element_type == node->get_output_element_type(ArgIndices::output));
+    const bool includesOnlyBiasAdd = node->inputs().size() == 3;
+    const bool includesSecondAddition = node->inputs().size() == 4;
     Expects(includesOnlyBiasAdd || includesSecondAddition);  // Conv input, filters, Bias and optional Add
 
-    Convolution::Details::FusedConvolutionParams params{op};
+    std::stringstream exception_msg;
+    const auto fused_conv = std::dynamic_pointer_cast<nodes::FusedConvolution>(node);
+    const auto fused_group_conv = std::dynamic_pointer_cast<nodes::FusedGroupConvolution>(node);
+    Expects(fused_conv || fused_group_conv);
+
+    const auto params = fused_conv ? Convolution::Details::FusedConvolutionParams{*fused_conv}
+                                   : Convolution::Details::FusedConvolutionParams{*fused_group_conv};
+    const auto conv_descs{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_)};
+    const auto bias_desc{Convolution::Details::MakeFusedAddDescriptor(params.bias_shape_, params.conv_.element_type_)};
+    const auto activation_desc{Convolution::Details::MakeFusedActivationDescriptor(params.activation_)};
+    const auto add_desc{params.add_shape_ ? Convolution::Details::MakeFusedAddDescriptor(params.add_shape_.value(),
+                                                                                         params.conv_.element_type_)
+                                          : nullptr};
+
+    // cudnnConvolutionBiasActivationForward() doesn't work properly with CUDNN_ACTIVATION_IDENTITY and any algorithm
+    // other than CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, so we should decompose the convolution node and call
+    // separate cuDNN functions.
+    // For more information see:
+    // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
+    const bool should_decompose = params.activation_ == CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION &&
+                                  conv_descs->Algo().algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+
+    if (should_decompose) {
+        try {
+            return std::make_unique<FusedConvolutionCuDnnDecomposed>(context,
+                                                                     *node,
+                                                                     std::move(inputIds),
+                                                                     std::move(outputIds),
+                                                                     conv_descs,
+                                                                     bias_desc,
+                                                                     add_desc,
+                                                                     activation_desc);
+        } catch (const std::exception& e) {
+            throwIEException(
+                fmt::format("unsupported `{}` node: Failed to create "
+                            "FusedConvolutionCuDnnDecomposed impl: {}",
+                            node->get_type_info().name,
+                            e.what()));
+        }
+    }
+
     try {
-        impl_ = std::make_unique<FusedConvolutionCuDnn>(context, params);
+        return std::make_unique<FusedConvolutionCuDnn>(context,
+                                                       *node,
+                                                       std::move(inputIds),
+                                                       std::move(outputIds),
+                                                       conv_descs,
+                                                       bias_desc,
+                                                       add_desc,
+                                                       activation_desc);
     } catch (const std::exception& e) {
         throwIEException(
             fmt::format("unsupported `{}` node: Failed to create "
                         "FusedConvolutionCuDnn impl: {}",
-                        op.get_type_info().name,
+                        node->get_type_info().name,
                         e.what()));
     }
+    throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
-template FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
-                                                const nodes::FusedConvolution& op,
-                                                IndexCollection&& inputIds,
-                                                IndexCollection&& outputIds);
-
-template FusedConvolutionOp::FusedConvolutionOp(const CreationContext& context,
-                                                const nodes::FusedGroupConvolution& op,
-                                                IndexCollection&& inputIds,
-                                                IndexCollection&& outputIds);
-
-void FusedConvolutionOp::Execute(const InferenceRequestContext& context,
-                                 Inputs inputs,
-                                 Outputs outputs,
-                                 const Workbuffers& workbuffers) const {
-    impl_->Execute(context, inputs, outputs, workbuffers);
-}
-
-WorkbufferRequest FusedConvolutionOp::GetWorkBufferRequest() const { return impl_->GetWorkBufferRequest(); }
-
-const WorkbufferIds& FusedConvolutionOp::GetWorkbufferIds() const { return impl_->GetWorkbufferIds(); }
-
-IOperationExec::WorkbufferStatus FusedConvolutionOp::SetWorkbufferIds(WorkbufferIds&& workbufferIds) {
-    return impl_->SetWorkbufferIds(std::move(workbufferIds));
-}
-
-OPERATION_REGISTER(FusedConvolutionOp, FusedConvolution);
+OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedConvolution);
+OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedGroupConvolution);
 
 }  // namespace CUDAPlugin
