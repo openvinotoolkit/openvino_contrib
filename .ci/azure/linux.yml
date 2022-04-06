@@ -80,6 +80,7 @@ jobs:
       unzip gradle-$(GRADLE_VER)-bin.zip
       # For opencv-python: python3-setuptools and pip upgrade
       python3 -m pip install --upgrade pip
+      python3 -m pip install -U setuptools
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements_test.txt
       python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
