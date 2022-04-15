@@ -71,7 +71,7 @@ jobs:
     - name: Test OpenVINO backend
       working-directory: modules/optimum/tests/openvino
       run: |
-        python -m unittest -v
+        python -m unittest discover
 
   test_examples:
     name: "Examples"

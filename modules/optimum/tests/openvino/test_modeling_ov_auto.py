@@ -3,19 +3,19 @@
 
 import os
 import unittest
-from packaging import version
 
-import numpy as np
-
-import transformers
-from transformers import AutoTokenizer
 import datasets
+import numpy as np
+import transformers
 from datasets import DatasetDict, load_dataset
+from packaging import version
+from transformers import AutoConfig, AutoTokenizer
+
 
 try:
     from transformers.testing_utils import require_tf, require_torch
 except ImportError:
-    from transformers.file_utils import is_torch_available, is_tf_available
+    from transformers.file_utils import is_tf_available, is_torch_available
 
     def require_torch(test_case):
         if not is_torch_available():
@@ -40,16 +40,16 @@ except ImportError:
 
 from optimum.intel.openvino import (
     OVAutoModel,
+    OVAutoModelForAudioClassification,
     OVAutoModelForMaskedLM,
     OVAutoModelForQuestionAnswering,
     OVAutoModelWithLMHead,
-    OVAutoModelForAudioClassification,
     OVMBartForConditionalGeneration,
 )
 
 
 class OVBertForQuestionAnsweringTest(unittest.TestCase):
-    def check_model(self, model, tok):
+    def check_model(self, model, tok, expected_answer):
         context = """
         Soon her eye fell on a little glass box that
         was lying under the table: she opened it, and
@@ -78,7 +78,7 @@ class OVBertForQuestionAnsweringTest(unittest.TestCase):
         answer_ids = input_ids[0, start_pos:end_pos]
         answer = tok.convert_tokens_to_string(tok.convert_ids_to_tokens(answer_ids))
 
-        self.assertEqual(answer, "the garden")
+        self.assertEqual(answer, expected_answer)
 
     @require_torch
     @unittest.skipIf(is_openvino_api_2 and "GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
@@ -87,7 +87,7 @@ class OVBertForQuestionAnsweringTest(unittest.TestCase):
         model = OVAutoModelForQuestionAnswering.from_pretrained(
             "bert-large-uncased-whole-word-masking-finetuned-squad", from_pt=True
         )
-        self.check_model(model, tok)
+        self.check_model(model, tok, "the garden")
 
     @unittest.skipIf(
         version.parse(transformers.__version__) < version.parse("4.0.0"),
@@ -98,7 +98,62 @@ class OVBertForQuestionAnsweringTest(unittest.TestCase):
         model = OVAutoModelForQuestionAnswering.from_pretrained(
             "dkurt/bert-large-uncased-whole-word-masking-squad-int8-0001"
         )
-        self.check_model(model, tok)
+        self.check_model(model, tok, "the garden")
+
+    @require_torch
+    def test_tinybert_from_pt(self):
+        model_name = "Intel/dynamic_tinybert"
+        tok = AutoTokenizer.from_pretrained(model_name)
+        model = OVAutoModelForQuestionAnswering.from_pretrained(model_name, from_pt=True)
+        self.check_model(model, tok, "if it makes me grow smaller, i can creep under the door")
+
+
+@require_torch
+class SameOutputTest(unittest.TestCase):
+    def check_same_ouput(self, model_name):
+        """
+        Sanity check that argmax and argmin output is the same for PyTorch and OpenVINO models
+        """
+        import torch
+        from transformers import AutoModelForMaskedLM, AutoModelForQuestionAnswering
+        from utils import generate_random_inputs
+
+        torch.set_grad_enabled(False)
+
+        arch = AutoConfig.from_pretrained(model_name).to_dict()["architectures"][0]
+        if arch.endswith("ForQuestionAnswering"):
+            ov_model = OVAutoModelForQuestionAnswering.from_pretrained(model_name, from_pt=True)
+            pt_model = AutoModelForQuestionAnswering.from_pretrained(model_name)
+        elif arch.endswith("ForMaskedLM"):
+            ov_model = OVAutoModelForMaskedLM.from_pretrained(model_name, from_pt=True)
+            pt_model = AutoModelForMaskedLM.from_pretrained(model_name)
+        else:
+            raise NotImplementedError("Only QA and MaskedLM models are currently supported for this test.")
+        tok = AutoTokenizer.from_pretrained(model_name)
+        input_datas = generate_random_inputs(
+            num_items=25, input_names=tok.model_input_names, seq_length=128, return_tensors="pt"
+        )
+
+        all_results = []
+        for input_data in input_datas:
+
+            ov_result = ov_model(**input_data, return_dict=True)
+            pt_result = pt_model(**input_data, return_dict=True)
+            ov_values = np.array(next(iter(ov_result.values()))).round(4)
+            pt_values = np.array(next(iter(pt_result.values()))).round(4)
+
+            same_result = np.argmax(ov_values) == np.argmax(pt_values) and np.argmin(ov_values) == np.argmin(pt_values)
+            all_results.append(same_result)
+        all_same = all(all_results)
+        self.assertTrue(all_same, f"Different output for PyTorch and OpenVINO on {model_name}: {all_results}")
+
+    def test_same_output_tinybert(self):
+        model_name = "Intel/dynamic_tinybert"
+        self.check_same_ouput(model_name)
+
+    def test_same_output_bert(self):
+        model_name = "csarron/bert-base-uncased-squad-v1"
+        self.check_same_ouput(model_name)
 
 
 @require_torch
@@ -346,3 +401,31 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
     def test_from_ir(self):
         model = OVMBartForConditionalGeneration.from_pretrained("dkurt/mbart-large-50-many-to-many-mmt-int8")
         self.check_model(model, "Le chef de l’ONU affirme qu’aucune solution militaire n’existe dans la Syrie.")
+
+
+class QAModelMetricTest(unittest.TestCase):
+    def compare_metrics(self, model_name):
+        """
+        Compute F1 and Exact Match over small dataset subset. Compare OpenVINO
+        and PyTorch result: return True if metrics are the same, False if not.
+        """
+        from utils import QAModel
+
+        ov_model = QAModel(model_name, "ov", 128)
+        pt_model = QAModel(model_name, "pt", 128)
+
+        examples = load_dataset("squad", split="validation")
+        examples = examples.select(range(0, 50))
+        ov_f1, ov_em = ov_model.compute_metrics(examples)
+        pt_f1, pt_em = pt_model.compute_metrics(examples)
+        print(f"{model_name}, ov f1: {ov_f1}, pt f1: {pt_f1}")
+        print(f"{model_name}, ov em: {ov_em}, pt em: {pt_em}")
+        return ov_f1 == pt_f1 and ov_em == pt_em
+
+    @require_torch
+    @unittest.skipIf(
+        version.parse(transformers.__version__) < version.parse("4.15.0"), "Too old version for QA models"
+    )
+    def test_bert_metrics(self):
+        model_name = "csarron/bert-base-uncased-squad-v1"
+        self.assertTrue(self.compare_metrics(model_name))
