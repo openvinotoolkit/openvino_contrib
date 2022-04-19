@@ -123,9 +123,9 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     }
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
-    const std::string optimizeOptionString = cfg_.Get(CUDA_CONFIG_KEY(OPTIMIZE));
-    const bool optimizeOption = optimizeOptionString == CUDA_CONFIG_VALUE(YES);
-    const auto creationContext = CreationContext{device, optimizeOption};
+    const std::string opBenchOptionString = cfg_.Get(CUDA_CONFIG_KEY(OPERATION_BENCHMARK));
+    const bool opBenchOption = opBenchOptionString == CUDA_CONFIG_VALUE(YES);
+    const auto creationContext = CreationContext{device, opBenchOption};
 
     graph_ = std::make_unique<CudaGraph>(creationContext, function_);
 
