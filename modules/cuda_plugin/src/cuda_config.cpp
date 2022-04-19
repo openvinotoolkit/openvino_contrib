@@ -44,14 +44,14 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
                 throwIEException(
                     fmt::format("Device ID {} is not supported", deviceId));
             }
-        } else if (CUDA_CONFIG_KEY(OPTIMIZE) == key) {
+        } else if (CUDA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
           if (value == CUDA_CONFIG_VALUE(YES)) {
-            optimization = true;
+              operation_benchmark = true;
           } else if (value == CUDA_CONFIG_VALUE(NO)) {
-            optimization = false;
+              operation_benchmark = false;
           } else {
               throwIEException(fmt::format(
-                  "optimize option value {} is not supported", value));
+                  "operation benchmark option value {} is not supported", value));
           }
         } else if (CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM) == key) {
             if (value == CUDA_CONFIG_VALUE(YES)) {
@@ -74,8 +74,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {std::to_string(deviceId)};
     } else if (name == CONFIG_KEY(PERF_COUNT)) {
       return {std::string{perfCount ? CONFIG_VALUE(YES) : CONFIG_VALUE(NO)}};
-    } else if (name == CUDA_CONFIG_KEY(OPTIMIZE)) {
-      return {std::string(optimization ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
+    } else if (name == CUDA_CONFIG_KEY(OPERATION_BENCHMARK)) {
+        return {std::string(operation_benchmark ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
     } else if (name == CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
         return {std::string(disabled_tensoriterator_transform ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
     } else if (name == CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
