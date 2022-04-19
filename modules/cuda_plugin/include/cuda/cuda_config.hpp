@@ -12,6 +12,7 @@
 #pragma once
 
 #include <string>
+
 #include "ie_plugin_config.hpp"
 
 namespace InferenceEngine {
@@ -58,7 +59,7 @@ DECLARE_CUDA_CONFIG_KEY(THROUGHPUT_STREAMS);
 /**
  * @brief Defines if optimization should be run for CUDA libraries ("CUDA_YES", "CUDA_NO" - default).
  */
-DECLARE_CUDA_CONFIG_KEY(OPTIMIZE);
+DECLARE_CUDA_CONFIG_KEY(OPERATION_BENCHMARK);
 
 /**
  * @brief Defines possibility to disable TensorIterator transformation for test purposes.
