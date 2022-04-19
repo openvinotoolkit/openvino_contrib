@@ -92,7 +92,7 @@ ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CreationContext& 
       conv_{},
       algo_perf_{} {
     auto& dnnHandle = context.dnnHandle();
-    if (context.optimizeOption()) {
+    if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle, params_);
     } else {
         GetAlgo(dnnHandle);
@@ -321,7 +321,7 @@ ConvolutionBackpropDataDescriptorCuDnn::ConvolutionBackpropDataDescriptorCuDnn(
       conv_{},
       algo_perf_{} {
     auto& dnnHandle = context.dnnHandle();
-    if (context.optimizeOption()) {
+    if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle);
     } else {
         GetAlgo(dnnHandle);

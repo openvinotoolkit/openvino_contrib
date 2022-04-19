@@ -15,14 +15,14 @@ namespace CUDAPlugin {
 class CreationContext {
     CUDA::Device device_;
     CUDA::DnnHandle dnn_handle_;
-    bool optimize_option_;
+    bool op_bench_option_;
 
 public:
-    explicit CreationContext(CUDA::Device d, bool optimizeOption)
-        : device_{d.setCurrent()}, optimize_option_{optimizeOption} {}
+    explicit CreationContext(CUDA::Device d, bool opBenchOption)
+        : device_{d.setCurrent()}, op_bench_option_{opBenchOption} {}
     CUDA::Device device() const { return device_; }
     const CUDA::DnnHandle& dnnHandle() const { return dnn_handle_; }
-    bool optimizeOption() const noexcept { return optimize_option_; }
+    bool opBenchOption() const noexcept { return op_bench_option_; }
 };
 
 }  // namespace CUDAPlugin

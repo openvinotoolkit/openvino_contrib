@@ -16,7 +16,7 @@ index af18c908e..d55baa34c 100644
                                             "                                  'false' - disable bfloat16 regardless of platform support";
  
 +/// @brief message for optimization mode
-+static const char optimize_mode_message[] = "Optional. Optimize mode for particular device";
++static const char op_bench_mode_message[] = "Optional. Operator level benchmark on particular device";
 +
  /// @brief message for user library argument
  static const char custom_cpu_library_message[] = "Required for CPU custom layers. Absolute path to a shared library with the kernels "
@@ -26,7 +26,7 @@ index af18c908e..d55baa34c 100644
  DEFINE_bool(enforcebf16, false, enforce_bf16_message);
  
 +/// @brief Optimization mode for particular device
-+DEFINE_bool(optimize, false, optimize_mode_message);
++DEFINE_bool(op_bench, false, op_bench_mode_message);
 +
  /// @brief Define parameter for batch size <br>
  /// Default is 0 (that means don't specify)
@@ -35,7 +35,7 @@ index af18c908e..d55baa34c 100644
      std::cout << "    -report_folder            " << report_folder_message << std::endl;
      std::cout << "    -exec_graph_path          " << exec_graph_path_message << std::endl;
      std::cout << "    -pc                       " << pc_message << std::endl;
-+    std::cout << "    -optimize                 " << optimize_mode_message << std::endl;
++    std::cout << "    -op_bench                 " << op_bench_mode_message << std::endl;
  #ifdef USE_OPENCV
      std::cout << "    -dump_config              " << dump_config_message << std::endl;
      std::cout << "    -load_config              " << load_config_message << std::endl;
@@ -49,10 +49,10 @@ index cd7ddc641..c638f4f4e 100644
                      device_config[GNA_CONFIG_KEY(LIB_N_THREADS)] = std::to_string(FLAGS_nthreads);
 +            } else if (device == "CUDA") {
 +                setThroughputStreams();
-+                if (isFlagSetInCommandLine("optimize")) {
-+                  device_config["CUDA_OPTIMIZE"] = FLAGS_optimize ?
-+                                                   std::string("CUDA_YES") :
-+                                                   std::string("CUDA_NO");
++                if (isFlagSetInCommandLine("op_bench")) {
++                  device_config["CUDA_OPERATION_BENCHMARK"] = FLAGS_op_bench ?
+        +                                                      std::string("CUDA_YES") :
+        +                                                      std::string("CUDA_NO");
 +                }
              } else {
                  std::vector<std::string> supported_config_keys = ie.GetMetric(device, METRIC_KEY(SUPPORTED_CONFIG_KEYS));
