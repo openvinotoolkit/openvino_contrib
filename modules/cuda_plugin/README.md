@@ -119,7 +119,7 @@ The plugin supports the configuration parameters listed below. All parameters mu
 Parameter name  | Parameter values  | Default  | Description
 ------------- | ------------- | ------------- | -------------
 `CUDA_THROUGHPUT_STREAMS`   | `CUDA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
-`CUDA_OPTIMIZE`   | `CUDA_YES`, `CUDA_NO`  | `CUDA_NO`  | Specifies if optimization should be run for increasing performance of network
+`CUDA_OPERATION_BENCHMARK`   | `CUDA_YES`, `CUDA_NO`  | `CUDA_NO`  | Specifies if operation level benchmark should be run for increasing performance of network
 
 ## Supported Layers and Limitations
 The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [cuda_opset.md](docs/cuda_opset.md).
