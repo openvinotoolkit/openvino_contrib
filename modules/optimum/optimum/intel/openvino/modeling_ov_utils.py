@@ -5,6 +5,7 @@ import os
 import errno
 import logging
 import shutil
+import time
 
 import numpy as np
 
@@ -91,8 +92,8 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         # TODO: create "model" folder in cache
         if use_external_data_format:
-            model_cache_dir = "openvino_model_cache"
-            os.makedirs(model_cache_dir, exist_ok=True)
+            model_cache_dir = f"openvino_model_cache_{time.time()}"
+            os.makedirs(model_cache_dir)
 
         torch.onnx.export(
             model,
