@@ -4,6 +4,7 @@
 import os
 import errno
 import logging
+import shutil
 
 import numpy as np
 
@@ -90,7 +91,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         # TODO: create "model" folder in cache
         if use_external_data_format:
-            model_cache_dir = "model"
+            model_cache_dir = "openvino_model_cache"
             os.makedirs(model_cache_dir, exist_ok=True)
 
         torch.onnx.export(
@@ -110,7 +111,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
             net = ie.read_network(os.path.join(model_cache_dir, "model.onnx"))
 
         try:
-            os.rmdir(model_cache_dir)
+            shutil.rmtree(model_cache_dir)
         except OSError as e:
             if e.errno != errno.ENOENT:
                 raise
