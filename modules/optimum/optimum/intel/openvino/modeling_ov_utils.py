@@ -119,7 +119,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
             net = ie.read_model(buf.getvalue(), b"")
         else:
             net = ie.read_network(buf.getvalue(), b"", init_from_buffer=True)
-    return net
+    return OVPreTrainedModel(net, model.config)
 
 
 def load_ov_model_from_tf(model, tf_weights_path):
@@ -226,7 +226,7 @@ class OVPreTrainedModel(GenerationMixin):
         self.exec_net = None
         self.config = config
         self.max_length = 0
-        self.ov_config = {}
+        self.ov_config = {"PERFORMANCE_HINT": "LATENCY"} if is_openvino_api_2 else {}
         self.ov_device = "CPU"
         self.use_dynamic_shapes = is_openvino_api_2
 
@@ -259,8 +259,7 @@ class OVPreTrainedModel(GenerationMixin):
 
         if from_pt:
             model = cls._pt_auto_model.from_pretrained(model_name_or_path, *model_args, **kwargs)
-            net = load_ov_model_from_pytorch(model)
-            return OVPreTrainedModel(net, model.config)
+            return load_ov_model_from_pytorch(model)
         elif from_tf:
             model, cache_path = load_model_from_cache(
                 model_name_or_path, cls.__name__, cache_dir, TF2_WEIGHTS_NAME, config
@@ -501,7 +500,7 @@ class OVPreTrainedModel(GenerationMixin):
         else:
             return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 
-    def __call__(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         if self.main_input_name in ["input_ids", "decoder_input_ids"]:
             inputs = self._prepare_nlp_inputs(*args, **kwargs)
         elif self.main_input_name == "input_values":
@@ -531,5 +530,5 @@ class OVPreTrainedModel(GenerationMixin):
 
         return super().generate(input_ids, *args, **kwargs)
 
-    def forward(self, *args, **kwargs):
-        return self.__call__(*args, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)

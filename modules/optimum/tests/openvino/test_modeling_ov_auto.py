@@ -44,6 +44,7 @@ from optimum.intel.openvino import (
     OVAutoModelForQuestionAnswering,
     OVAutoModelWithLMHead,
     OVAutoModelForAudioClassification,
+    OVMBartForConditionalGeneration,
 )
 
 
@@ -317,13 +318,9 @@ class OVAutoModelForAudioClassificationTest(unittest.TestCase):
 @require_torch
 @unittest.skipIf("GITHUB_ACTIONS" in os.environ, "Memory limit exceed")
 class OVMBartForConditionalGenerationTest(unittest.TestCase):
-    def check_model(self, use_cache):
-        from optimum.intel.openvino import OVMBartForConditionalGeneration
+    def check_model(self, model, expected_fr):
         from transformers import MBart50TokenizerFast
 
-        model = OVMBartForConditionalGeneration.from_pretrained(
-            "facebook/mbart-large-50-many-to-many-mmt", use_cache=use_cache, from_pt=True
-        )
         tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-many-mmt")
 
         article_hi = "संयुक्त राष्ट्र के प्रमुख का कहना है कि सीरिया में कोई सैन्य समाधान नहीं है"
@@ -331,42 +328,21 @@ class OVMBartForConditionalGenerationTest(unittest.TestCase):
         encoded_hi = tokenizer(article_hi, return_tensors="pt")
         generated_tokens = model.generate(**encoded_hi, forced_bos_token_id=tokenizer.lang_code_to_id["fr_XX"])
 
-        expected_tokens = [
-            [
-                2,
-                250008,
-                636,
-                21861,
-                8,
-                96,
-                242,
-                136840,
-                222939,
-                1103,
-                242,
-                379,
-                653,
-                242,
-                53,
-                10,
-                452,
-                8,
-                29806,
-                128683,
-                22,
-                51712,
-                5,
-                2,
-            ]
-        ]
-
-        self.assertListEqual(generated_tokens.tolist(), expected_tokens)
-
         decoded_fr = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
-        self.assertEqual(decoded_fr, "Le chef de l 'ONU affirme qu 'il n 'y a pas de solution militaire en Syria.")
+        self.assertEqual(decoded_fr, expected_fr)
 
     def test_no_cache(self):
-        self.check_model(use_cache=False)
+        model = OVMBartForConditionalGeneration.from_pretrained(
+            "facebook/mbart-large-50-many-to-many-mmt", use_cache=False, from_pt=True
+        )
+        self.check_model(model, "Le chef de l 'ONU affirme qu 'il n 'y a pas de solution militaire en Syria.")
 
     def test_with_cache(self):
-        self.check_model(use_cache=True)
+        model = OVMBartForConditionalGeneration.from_pretrained(
+            "facebook/mbart-large-50-many-to-many-mmt", from_pt=True
+        )
+        self.check_model(model, "Le chef de l 'ONU affirme qu 'il n 'y a pas de solution militaire en Syria.")
+
+    def test_from_ir(self):
+        model = OVMBartForConditionalGeneration.from_pretrained("dkurt/mbart-large-50-many-to-many-mmt-int8")
+        self.check_model(model, "Le chef de l’ONU affirme qu’aucune solution militaire n’existe dans la Syrie.")
