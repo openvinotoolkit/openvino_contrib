@@ -4,6 +4,8 @@
 import os
 import errno
 import logging
+import shutil
+import time
 
 import numpy as np
 
@@ -90,8 +92,8 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         # TODO: create "model" folder in cache
         if use_external_data_format:
-            model_cache_dir = "model"
-            os.makedirs(model_cache_dir, exist_ok=True)
+            model_cache_dir = f"openvino_model_cache_{time.time()}"
+            os.makedirs(model_cache_dir)
 
         torch.onnx.export(
             model,
@@ -110,7 +112,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
             net = ie.read_network(os.path.join(model_cache_dir, "model.onnx"))
 
         try:
-            os.rmdir(model_cache_dir)
+            shutil.rmtree(model_cache_dir)
         except OSError as e:
             if e.errno != errno.ENOENT:
                 raise
