@@ -6,42 +6,9 @@
 
 #include <cuda_operation_base.hpp>
 #include <gsl/span>
+#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin::RNN::Details {
-
-/**
- * Helps operation to handle multiple workbuffers. Allows to easily skip
- * some allocations without the need to track workbuffer indices.
- */
-class WorkbufferDesc {
-public:
-    WorkbufferDesc() : bsize_{0}, index_{-1} {}
-    void addRequest(std::vector<WorkbufferRequest::size_in_bytes_t>& workbuffers_sizes, size_t requested_bsize) {
-        if (requested_bsize > 0) {
-            bsize_ = requested_bsize;
-            index_ = workbuffers_sizes.size();
-            workbuffers_sizes.emplace_back(bsize_);
-        }
-    }
-    size_t size() const { return bsize_; }
-    template <typename T>
-    T* optionalPtr(const std::vector<CUDA::DevicePointer<T*>>& buffers) const {
-        if (index_ < 0) {
-            return nullptr;
-        }
-        return requiredPtr(buffers);
-    }
-    template <typename T>
-    T* requiredPtr(const std::vector<CUDA::DevicePointer<T*>>& buffers) const {
-        Expects((index_ >= 0) && (index_ < buffers.size()));
-        return buffers[index_].get();
-    }
-    operator bool() const { return index_ >= 0; }
-
-private:
-    size_t bsize_;
-    int index_;
-};
 
 /**
  * Base class for `TransposeInputTensorAdapter` and `TransposeOutputTensorAdapter`
