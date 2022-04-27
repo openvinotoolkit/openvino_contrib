@@ -7,15 +7,17 @@
 #include <cuda/device_pointers.hpp>
 #include <vector>
 
+#include "tensor_types.hpp"
+
 namespace CUDAPlugin {
 
 /**
  * @brief WorkbufferRequest - a POD structure describing operator's memory demands
  */
 struct WorkbufferRequest {
-  using size_in_bytes_t = size_t;
-  std::vector<size_in_bytes_t> immutable_sizes;
-  std::vector<size_in_bytes_t> mutable_sizes;
+    using size_in_bytes_t = size_t;
+    std::vector<size_in_bytes_t> immutable_sizes;
+    std::vector<size_in_bytes_t> mutable_sizes;
 };
 
 /**
@@ -45,9 +47,9 @@ struct Workbuffers {
  * @brief WorkbufferIds - structure holding the memory buffers' indices
  */
 struct WorkbufferIds {
-  using vector_of_ids = std::vector<BufferID>;
-  vector_of_ids immutableIds;
-  vector_of_ids mutableIds;
+    using vector_of_ids = std::vector<BufferID>;
+    vector_of_ids immutableIds;
+    vector_of_ids mutableIds;
 };
 
-}
+}  // namespace CUDAPlugin

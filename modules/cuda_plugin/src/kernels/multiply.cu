@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda/float16.hpp>
+
 #include "multiply.hpp"
 
 namespace CUDAPlugin {
@@ -12,11 +14,16 @@ struct MultiplyOpImpl {
     __device__ static inline T op(T in0, T in1) { return in0 * in1; }
 };
 
-Multiply::Multiply(Type_t element_type, size_t max_threads_per_block, size_t in0_num_elements, size_t in1_num_elements)
-    : ewb_{element_type, max_threads_per_block, in0_num_elements, in1_num_elements} {}
+Multiply::Multiply(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block)
+    : impl_{element_type, out_num_elements, max_threads_per_block} {}
 
-void Multiply::operator()(cudaStream_t stream, const void* in0, const void* in1, void* out) const {
-    ewb_(stream, in0, in1, out);
+void Multiply::operator()(cudaStream_t stream,
+                          const void* in0,
+                          const NumpyBroadcastMapper& in0_mapper,
+                          const void* in1,
+                          const NumpyBroadcastMapper& in1_mapper,
+                          void* out) const {
+    impl_(stream, in0, in0_mapper, in1, in1_mapper, out);
 }
 
 }  // namespace kernel
