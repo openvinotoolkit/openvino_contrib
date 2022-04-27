@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,15 +10,15 @@ namespace CUDAPlugin {
 namespace kernel {
 
 template <typename T>
-struct MultiplyOpImpl;
+struct MinimumOpImpl;
 
 /**
- * Performs element-wise multiplication operation with two given tensors applying
+ * Performs element-wise minimum operation with two given tensors applying
  * broadcasting if needed.
  */
-class Multiply {
+class Minimum {
 public:
-    Multiply(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block);
+    Minimum(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block);
 
     void operator()(cudaStream_t stream,
                     const void* in0,
@@ -28,7 +28,7 @@ public:
                     void* out) const;
 
 private:
-    ElementwiseBinary<AllElementTypesSwitch, MultiplyOpImpl> impl_;
+    ElementwiseBinary<AllElementTypesSwitch, MinimumOpImpl> impl_;
 };
 
 }  // namespace kernel

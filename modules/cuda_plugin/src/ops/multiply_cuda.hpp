@@ -4,26 +4,21 @@
 
 #pragma once
 
-#include <cuda_operation_base.hpp>
+#include <ngraph/op/multiply.hpp>
 
+#include "elementwise_binary.hpp"
 #include "kernels/multiply.hpp"
 
 namespace CUDAPlugin {
 
-class MultiplyCudaOp : public OperationBase {
+using MultiplyCudaOpBase = ElementwiseBinaryOp<ngraph::op::v1::Multiply, kernel::Multiply>;
+class MultiplyCudaOp : public MultiplyCudaOpBase {
 public:
+    using NodeOp = ngraph::op::v1::Multiply;
     MultiplyCudaOp(const CreationContext& context,
-                   const ngraph::Node& node,
+                   const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);
-
-    void Execute(const InferenceRequestContext& context,
-                 Inputs inputTensors,
-                 Outputs outputTensors,
-                 const Workbuffers& workbuffers) const override;
-
-private:
-    std::optional<kernel::Multiply> kernel_;
 };
 
 }  // namespace CUDAPlugin
