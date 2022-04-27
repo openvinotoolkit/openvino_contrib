@@ -10,6 +10,7 @@
 #include "rnn_components/lstm_sequence_components.hpp"
 #include "rnn_components/lstm_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
+#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin {
 
@@ -43,7 +44,6 @@ protected:
     std::vector<WorkbufferRequest::size_in_bytes_t> immut_sizes_;
     std::vector<WorkbufferRequest::size_in_bytes_t> mut_sizes_;
 
-    using WorkbufferDesc = RNN::Details::WorkbufferDesc;
     WorkbufferDesc ib_seq_lengths_;
     WorkbufferDesc ib_weight_space_;
     WorkbufferDesc mb_work_space_;

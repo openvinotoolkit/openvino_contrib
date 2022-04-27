@@ -14,9 +14,12 @@
 namespace CUDAPlugin {
 
 static OperationBase::Ptr multiplyFactory(const CreationContext& context,
-                                          const std::shared_ptr<ngraph::Node>& node,
+                                          const std::shared_ptr<ngraph::Node>& in_node,
                                           OperationBase::IndexCollection&& inputIds,
                                           OperationBase::IndexCollection&& outputIds) {
+    auto node = std::dynamic_pointer_cast<ngraph::op::v1::Multiply>(in_node);
+    Expects(node);
+
     const OperationBase::IndexCollection inputs{inputIds};
     const OperationBase::IndexCollection outputs{outputIds};
 

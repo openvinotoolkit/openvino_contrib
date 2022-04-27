@@ -7,6 +7,7 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/broadcast.hpp"
 #include "ngraph/op/broadcast.hpp"
+#include "components/numpy_broadcast_params.h"
 
 namespace CUDAPlugin {
 
@@ -26,9 +27,8 @@ public:
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
 
 private:
-    std::vector<size_t> broadcast_dims_;
-    std::vector<size_t> src_strides_;
-    std::vector<size_t> dst_strides_;
+    std::vector<WorkbufferRequest::size_in_bytes_t> immutable_buffer_sizes_;
+    std::unique_ptr<NumpyBroadcastParams> broadcast_params_;
 
     std::optional<kernel::Broadcast> kernel_;
 };

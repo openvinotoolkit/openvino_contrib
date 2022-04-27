@@ -4,13 +4,13 @@
 
 #pragma once
 
-#include <ngraph/op/power.hpp>
+#include <ngraph/op/minimum.hpp>
 
 #include "elementwise_binary.hpp"
-#include "kernels/power.hpp"
+#include "kernels/minimum.hpp"
 
 namespace CUDAPlugin {
 
-using PowerOp = ElementwiseBinaryOp<ngraph::op::v1::Power, kernel::Power>;
+using MinimumOp = ElementwiseBinaryOp<ngraph::op::v1::Minimum, kernel::Minimum>;
 
 }  // namespace CUDAPlugin

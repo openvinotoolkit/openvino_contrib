@@ -4,13 +4,13 @@
 
 #pragma once
 
-#include <ngraph/op/power.hpp>
+#include <ngraph/op/maximum.hpp>
 
 #include "elementwise_binary.hpp"
-#include "kernels/power.hpp"
+#include "kernels/maximum.hpp"
 
 namespace CUDAPlugin {
 
-using PowerOp = ElementwiseBinaryOp<ngraph::op::v1::Power, kernel::Power>;
+using MaximumOp = ElementwiseBinaryOp<ngraph::op::v1::Maximum, kernel::Maximum>;
 
 }  // namespace CUDAPlugin
