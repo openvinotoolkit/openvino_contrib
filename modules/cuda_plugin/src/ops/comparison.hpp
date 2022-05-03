@@ -32,7 +32,6 @@ private:
 private:
     std::vector<size_t> output_shape_;
     std::vector<size_t> output_offset_;
-    size_t max_size_;
     std::vector<size_t> output_sizes_;
 
     using Input = std::vector<size_t>;
