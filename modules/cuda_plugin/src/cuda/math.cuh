@@ -39,6 +39,16 @@ inline __device__ __half pow<__half>(__half x, __half y) {
     return powf(static_cast<float>(x), static_cast<float>(y));
 }
 
+template <typename T>
+inline __device__ T round(T x) {
+    return ::round(x);
+}
+
+template <>
+inline __device__ __half round(__half x) {
+    return ::round(static_cast<float>(x));
+}
+
 #if defined(CUDA_HAS_HALF_MATH)
 template <>
 inline __device__ __half exp<__half>(__half x) {
@@ -73,6 +83,12 @@ inline __device__ __half sqrt<__half>(__half a) {
 
 #if defined(CUDA_HAS_BF16_TYPE)
 #if defined(CUDA_HAS_BF16_MATH)
+
+template <>
+inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
+    return ::round(static_cast<float>(x));
+}
+
 template <>
 inline __device__ __nv_bfloat16 exp<__nv_bfloat16>(__nv_bfloat16 x) {
     return ::hexp(x);
