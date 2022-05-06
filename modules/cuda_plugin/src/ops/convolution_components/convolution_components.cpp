@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -112,10 +112,19 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
       pads_begin_{node.get_pads_begin()},
       pads_end_{node.get_pads_end()},
       auto_pad_{node.get_auto_pad()},
-      output_padding_{node.get_output_padding()} {
+      output_padding_{node.get_output_padding()},
+      groups_{1U} {
     Expects(doutput_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
     Expects(element_type_ == node.get_input_element_type(ConvBackArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvBackArgIndices::dinput));
+
+    if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolutionBackpropData>) {
+        groups_ = node.get_input_shape(1)[0];
+        Expects(groups_ >= 1U);
+        Expects(dinput_shape_[1] % groups_ == 0);
+        filter_shape_.erase(filter_shape_.begin());
+        filter_shape_[0] *= groups_;
+    }
 
     if (doutput_shape_.size() == CONV_1D_DIMS_NUMBER) {
         ConvertConv1DToConv2D();
@@ -135,6 +144,8 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
     Ensures(pads_begin_.size() == spatial_dims_number);
     Ensures(pads_end_.size() == spatial_dims_number);
 }
+template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
+    const ngraph::op::v1::GroupConvolutionBackpropData& node);
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
     const ngraph::op::v1::ConvolutionBackpropData& node);
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const nodes::FusedConvBackpropData& node);
