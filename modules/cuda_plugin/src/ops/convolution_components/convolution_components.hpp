@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -76,6 +76,7 @@ struct ConvolutionBackwardDataParams {
     ngraph::CoordinateDiff pads_end_;
     ngraph::op::PadType auto_pad_;
     ngraph::CoordinateDiff output_padding_;
+    size_t groups_;
 
     size_t NumberOfDims() const { return doutput_shape_.size(); }
     size_t NumberOfSpatialDims() const { return doutput_shape_.size() - NON_SPATIAL_DIMS_NUMBER; }

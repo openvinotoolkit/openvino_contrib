@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -247,6 +247,7 @@ bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle&
 ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
     const Convolution::Details::ConvolutionBackwardDataParams& params)
     : number_of_dims_{static_cast<int>(params.NumberOfDims())},
+      groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.pads_begin_ != params.pads_end_) {
         throwIEException(
@@ -307,6 +308,7 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
     // (compute capability 7.0).
     const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
     throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
+    throwIfError(::cudnnSetConvolutionGroupCount(conv_desc.get(), groups_));
 
     return conv_desc;
 }

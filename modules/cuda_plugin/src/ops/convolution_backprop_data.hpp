@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -9,19 +9,23 @@
 #include "convolution_components/convolution_components.hpp"
 #include "convolution_components/convolution_cudnn_components.hpp"
 
+
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v1::Convolution` using cuDNN API
+ * @brief Implements both `ngraph::op::v1::ConvolutionBackpropData`
+ * and `ngraph::op::v1::GroupConvolutionBackpropData` using cuDNN API
  * which doesn't support asymmetric padding.
  */
-class ConvolutionBackpropDataOp : public OperationCuDnn {
+template <typename T>
+class ConvBackpropDataOp : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::v1::ConvolutionBackpropData;
-    ConvolutionBackpropDataOp(const CreationContext& context,
-                              const NodeOp& node,
-                              IndexCollection&& inputIds,
-                              IndexCollection&& outputIds);
+    using NodeOp = T;
+
+    ConvBackpropDataOp(const CreationContext& context,
+                       const NodeOp& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds);
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -37,14 +41,19 @@ private:
     Convolution::Details::ConvolutionBackpropDataDescriptorCuDnn descs_;
 };
 
-inline void ConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) {}
+template <typename T>
+inline void ConvBackpropDataOp<T>::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) {}
 
-inline WorkbufferRequest ConvolutionBackpropDataOp::GetWorkBufferRequest() const {
+template <typename T>
+inline WorkbufferRequest ConvBackpropDataOp<T>::GetWorkBufferRequest() const {
     if (descs_.Algo().memory != 0) {
         return {{}, {descs_.Algo().memory}};
     } else {
         return {{}, {}};
     }
 }
+
+using ConvolutionBackpropDataOp = ConvBackpropDataOp<ngraph::op::v1::ConvolutionBackpropData>;
+using GroupConvolutionBackpropDataOp = ConvBackpropDataOp<ngraph::op::v1::GroupConvolutionBackpropData>;
 
 }  // namespace CUDAPlugin
