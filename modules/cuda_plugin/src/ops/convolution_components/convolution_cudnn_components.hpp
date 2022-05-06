@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -56,6 +56,7 @@ public:
 
 private:
     const int number_of_dims_;
+    const int groups_;
     const cudnnDataType_t data_type_;
     using IntArray = std::array<int, CUDNN_DIM_MAX>;
     IntArray doutput_shape_;
