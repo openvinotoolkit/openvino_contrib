@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 
 #include <cstdint>
+#include <cuda/float16.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
 #include <kernels/cuda_type_traits.hpp>
@@ -107,9 +108,10 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
     switch (static_cast<nType_t>(type)) {
         case nType_t::boolean:
             return kType_t::boolean;
-#if CUDART_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case nType_t::bf16:
             return kType_t::bf16;
+#endif
         case nType_t::i16:
             return kType_t::i16;
         case nType_t::u16:
@@ -118,7 +120,6 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::el
             return kType_t::i64;
         case nType_t::u64:
             return kType_t::u64;
-#endif
         case nType_t::f16:
             return kType_t::f16;
         case nType_t::f32:

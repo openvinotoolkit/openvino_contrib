@@ -1,46 +1,15 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include <cctype>
+#include <iostream>
+
 #include "shared_test_classes/base/layer_test_utils.hpp"
 
 namespace LayerTestsDefinitions {
-
-namespace details {
-// A workaround for an MSVC 19 bug, complaining 'fpclassify': ambiguous call
-template <typename T>
-constexpr bool equal_infs(const T&, const T& b) {
-    static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
-    return false;
-}
-template <>
-inline bool equal_infs<float>(const float& a, const float& b) {
-    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
-}
-template <>
-inline bool equal_infs<double>(const double& a, const double& b) {
-    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
-}
-template <>
-inline bool equal_infs<ngraph::float16>(const ngraph::float16& a, const ngraph::float16& b) {
-    return equal_infs<float>(a, b);  // Explicit conversion to floats
-}
-template <>
-inline bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16& a, const ngraph::bfloat16& b) {
-    return equal_infs<float>(a, b);  // Explicit conversion to floats
-}
-template <typename T>
-constexpr T conv_infs(const T& val, const T& threshold, const T& infinityValue) {
-    if constexpr (std::is_floating_point_v<T>) {
-        if ((val + threshold) >= infinityValue || (val - threshold) <= -infinityValue) {
-            return val > 0 ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
-        }
-    }
-    return val;
-}
-}  // namespace details
 
 template <typename BaseLayerTest>
 class BenchmarkLayerTest : public BaseLayerTest, virtual public LayerTestsUtils::LayerTestsCommon {
@@ -48,14 +17,24 @@ class BenchmarkLayerTest : public BaseLayerTest, virtual public LayerTestsUtils:
                   "BaseLayerTest should inherit from LayerTestsUtils::LayerTestsCommon");
 
 public:
-    void Run(const std::string& name,
+    void Run(const std::initializer_list<std::string>& names,
              const std::chrono::milliseconds warmupTime = std::chrono::milliseconds(2000),
              const int numAttempts = 100) {
-        bench_name_ = name;
+        bench_names_ = names;
         warmup_time_ = warmupTime;
         num_attempts_ = numAttempts;
         configuration = {{"PERF_COUNT", "YES"}};
         LayerTestsUtils::LayerTestsCommon::Run();
+    }
+
+    void Run(const std::string& name,
+             const std::chrono::milliseconds warmupTime = std::chrono::milliseconds(2000),
+             const int numAttempts = 100) {
+        if (!name.empty()) {
+            Run({name}, warmupTime, numAttempts);
+        } else {
+            Run({}, warmupTime, numAttempts);
+        }
     }
 
     void Validate() override {
@@ -64,6 +43,38 @@ public:
 
 protected:
     void Infer() override {
+        // Operation names search
+        std::map<std::string, long long> results_us{};
+        LayerTestsUtils::LayerTestsCommon::Infer();
+        const auto& perfResults = inferRequest.GetPerformanceCounts();
+        for (const auto& name : bench_names_) {
+            bool found = false;
+            for (const auto& result : perfResults) {
+                const auto& resName = result.first;
+                const bool shouldAdd =
+                    !name.empty() && resName.find(name) != std::string::npos && resName.find('_') != std::string::npos;
+                // Adding operations with numbers for the case there are several operations of the same type
+                if (shouldAdd) {
+                    found = true;
+                    results_us.emplace(std::make_pair(resName, 0));
+                }
+            }
+            if (!found) {
+                std::cout << "WARNING! Performance count for \"" << name << "\" wasn't found!\n";
+            }
+        }
+        // If no operations were found adding the time of all operations except Parameter and Result
+        if (results_us.empty()) {
+            for (const auto& result : perfResults) {
+                const auto& resName = result.first;
+                const bool shouldAdd = (resName.find("Parameter") == std::string::npos) &&
+                                       (resName.find("Result") == std::string::npos) &&
+                                       (resName.find('_') != std::string::npos);
+                if (shouldAdd) {
+                    results_us.emplace(std::make_pair(resName, 0));
+                }
+            }
+        }
         // Warmup
         auto warmCur = std::chrono::steady_clock::now();
         const auto warmEnd = warmCur + warmup_time_;
@@ -71,24 +82,26 @@ protected:
             LayerTestsUtils::LayerTestsCommon::Infer();
             warmCur = std::chrono::steady_clock::now();
         }
-
         // Benchmark
-        size_t accumulated_real_time_usec = {};
         for (int i = 0; i < num_attempts_; ++i) {
             LayerTestsUtils::LayerTestsCommon::Infer();
-            std::map<std::string, InferenceEngine::InferenceEngineProfileInfo> perf_results =
-                inferRequest.GetPerformanceCounts();
-            accumulated_real_time_usec += perf_results.at(bench_name_).realTime_uSec;
+            const auto& perfResults = inferRequest.GetPerformanceCounts();
+            for (auto& [name, time] : results_us) {
+                time += perfResults.at(name).realTime_uSec;
+            }
         }
 
-        const auto averageMicroExecTime = std::chrono::microseconds(accumulated_real_time_usec / num_attempts_);
-        const auto averageMilliExecTime = std::chrono::duration_cast<std::chrono::milliseconds>(averageMicroExecTime);
-        std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMicroExecTime.count() << " us\n";
-        std::cout << std::fixed << std::setfill('0') << bench_name_ << ": " << averageMilliExecTime.count() << " ms\n";
+        long long total_us = 0;
+        for (auto& [name, time] : results_us) {
+            time /= num_attempts_;
+            total_us += time;
+            std::cout << std::fixed << std::setfill('0') << name << ": " << time << " us\n";
+        }
+        std::cout << std::fixed << std::setfill('0') << "Total time: " << total_us << " us\n";
     }
 
 private:
-    std::string bench_name_;
+    std::vector<std::string> bench_names_;
     std::chrono::milliseconds warmup_time_;
     int num_attempts_;
 };
