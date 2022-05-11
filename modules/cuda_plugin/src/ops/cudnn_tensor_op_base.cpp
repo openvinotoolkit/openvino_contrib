@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 #include "cudnn_tensor_op_base.hpp"
@@ -79,8 +79,8 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     if (!argTypesSupported(in0.type_, in1.type_, out.type_)) {
         // See https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor for
         // supported argument types.
-        throwIEException(
-            fmt::format("MultiplyCuDnn: unsupported argument types: ({},{}) -> {}", in0.type_, in1.type_, out.type_));
+        throwIEException(fmt::format(
+            "CuDnnTensorOpBase: unsupported argument types: ({},{}) -> {}", in0.type_, in1.type_, out.type_));
     }
     const auto& in_partial_shape0 = node->get_input_partial_shape(0);
     const auto& in_partial_shape1 = node->get_input_partial_shape(1);
