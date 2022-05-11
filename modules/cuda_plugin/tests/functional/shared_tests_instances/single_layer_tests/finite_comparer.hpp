@@ -1,12 +1,17 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
+#include <cmath>
+#include <common_test_utils/common_utils.hpp>
+#include <limits>
+#include <ngraph/type/bfloat16.hpp>
+#include <ngraph/type/float16.hpp>
 #include <optional>
-
-#include "shared_test_classes/base/layer_test_utils.hpp"
+#include <shared_test_classes/base/layer_test_utils.hpp>
+#include <type_traits>
 
 namespace LayerTestsDefinitions {
 
@@ -17,155 +22,176 @@ constexpr bool equal_infs(const T&, const T& b) {
   static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
   return false;
 }
-template<>
-inline
-bool equal_infs<float>(const float& a, const float& b) {
-  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
-}
-template<>
-inline
-bool equal_infs<double>(const double& a, const double& b) {
-  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
-}
-template<>
-inline
-bool equal_infs<ngraph::float16>(const ngraph::float16& a, const ngraph::float16& b) {
-  return equal_infs<float>(a, b); // Explicit conversion to floats
-}
-template<>
-inline
-bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16& a, const ngraph::bfloat16& b) {
-  return equal_infs<float>(a, b); // Explicit conversion to floats
-}
-template<typename T>
-constexpr T conv_infs(const T& val, const T& threshold, const T& infinityValue) {
-  if constexpr (std::is_floating_point_v<T>) {
-    if ((val+threshold) >= infinityValue || (val-threshold) <= -infinityValue) {
-      return val > 0 ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
-    }
-  }
-  return val;
-}
-} //namespace details
 
+template<>
+inline bool equal_infs<float>(const float& a, const float& b) {
+  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+}
+
+template<>
+inline bool equal_infs<double>(const double& a, const double& b) {
+  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+}
+
+template<>
+inline bool equal_infs<ngraph::float16>(const ngraph::float16& a, const ngraph::float16& b) {
+  return equal_infs<float>(a, b); // Explicit conversion to floats
+}
+
+template<>
+inline bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16& a, const ngraph::bfloat16& b) {
+  return equal_infs<float>(a, b); // Explicit conversion to floats
+}
+
+template <typename T1, typename T2>
+inline bool equal_infs(T1 a, T2 b) {
+    // If one of the types is intergral it's value couldn't be an inf
+    if constexpr (std::is_integral_v<T1> || std::is_integral_v<T2>) {
+        return false;
+    } else if constexpr (std::is_same_v<T1, double> || std::is_same_v<T2, double>) {
+        return equal_infs<double>(static_cast<double>(a), static_cast<double>(b));
+    } else if constexpr (std::is_same_v<T1, float> || std::is_same_v<T2, float> ||
+                         std::is_same_v<T1, ngraph::float16> || std::is_same_v<T2, ngraph::float16> ||
+                         std::is_same_v<T1, ngraph::bfloat16> || std::is_same_v<T2, ngraph::bfloat16>) {
+        return equal_infs<float>(static_cast<float>(a), static_cast<float>(b));
+    }
+    return equal_infs<double>(static_cast<double>(a), static_cast<double>(b));
+}
+
+template <typename T>
+constexpr T conv_infs(const T &val, const T &threshold, const T &infinity_value) {
+    if constexpr (std::is_floating_point_v<T>) {
+        if ((val + threshold) >= infinity_value || (val - threshold) <= -infinity_value) {
+            return val > 0 ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
+        }
+    }
+    return val;
+}
+
+template <typename T>
+constexpr bool equal_nans(T, T) {
+    static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
+    return false;
+}
+template <>
+inline bool equal_nans<float>(float a, float b) {
+    return std::isnan(a) && std::isnan(b);
+}
+template <>
+inline bool equal_nans<double>(double a, double b) {
+    return std::isnan(a) && std::isnan(b);
+}
+template <>
+inline bool equal_nans<ngraph::float16>(ngraph::float16 a, ngraph::float16 b) {
+    return equal_nans(static_cast<float>(a), static_cast<float>(b));
+}
+template <>
+inline bool equal_nans<ngraph::bfloat16>(ngraph::bfloat16 a, ngraph::bfloat16 b) {
+    return equal_nans(static_cast<float>(a), static_cast<float>(b));
+}
+
+template <typename T1, typename T2>
+inline bool equal_nans(T1 a, T2 b) {
+    // If one of the types is intergral it's value couldn't be nan
+    if constexpr (std::is_integral_v<T1> || std::is_integral_v<T2>) {
+        return false;
+    } else if constexpr (std::is_same_v<T1, double> || std::is_same_v<T2, double>) {
+        return equal_nans<double>(static_cast<double>(a), static_cast<double>(b));
+    } else if constexpr (std::is_same_v<T1, float> || std::is_same_v<T2, float> ||
+                         std::is_same_v<T1, ngraph::float16> || std::is_same_v<T2, ngraph::float16> ||
+                         std::is_same_v<T1, ngraph::bfloat16> || std::is_same_v<T2, ngraph::bfloat16>) {
+        return equal_nans<float>(static_cast<float>(a), static_cast<float>(b));
+    }
+    return equal_nans<double>(static_cast<double>(a), static_cast<double>(b));
+}
+
+}  // namespace details
+
+/**
+ * @brief This class implements the logics of the correct comparison of infinity and nan values on CUDA
+ * for the floating point tensors.
+ * It is based on the copies of Compare() member functions of LayerTestsUtils::LayerTestsCommon class with slight
+ * differences only. This approach had to be taken because of the fact that function  where logic had to be changed and
+ * functions calling it are static but not virtual.
+ * Please pay attention to the future updates in the base LayerTestsUtils::LayerTestsCommon class and update this class
+ * correspondingly.
+ */
 class FiniteLayerComparer : virtual public LayerTestsUtils::LayerTestsCommon {
-    template <class T>
-    static void Compare(const T *expected, const T *actual, std::size_t size, T threshold,
-                        std::optional<T> infinityValue) {
+public:
+    static void Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expected,
+                        const std::vector<InferenceEngine::Blob::Ptr> &actual,
+                        float threshold,
+                        bool to_check_nans,
+                        std::optional<double> infinity_value);
+
+    static void Compare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
+                        const InferenceEngine::Blob::Ptr &actual,
+                        float threshold,
+                        bool to_check_nans,
+                        std::optional<double> infinity_value);
+
+    void Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+                 const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs) override;
+
+    void Compare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
+                 const InferenceEngine::Blob::Ptr &actual) override;
+
+    void Compare(const InferenceEngine::Blob::Ptr &expected, const InferenceEngine::Blob::Ptr &actual) override;
+
+    void Compare(const InferenceEngine::TensorDesc &actualDesc,
+                 const InferenceEngine::TensorDesc &expectedDesc) override;
+
+    template <class T_IE, class T_NGRAPH>
+    static void Compare(const T_NGRAPH *expected,
+                        const T_IE *actual,
+                        std::size_t size,
+                        float threshold,
+                        bool to_check_nans,
+                        std::optional<double> infinity_value) {
         for (std::size_t i = 0; i < size; ++i) {
-            const auto &ref = infinityValue
-                                  ? details::conv_infs<T>(expected[i], threshold, std::fabs(infinityValue.value()))
-                                  : expected[i];
-            const auto &res = infinityValue
-                                  ? details::conv_infs<T>(actual[i], threshold, std::fabs(infinityValue.value()))
-                                  : actual[i];
-            if (details::equal_infs<T>(ref, res)) {
+            const T_NGRAPH &ref =
+                infinity_value ? details::conv_infs<T_NGRAPH>(expected[i],
+                                                              static_cast<T_NGRAPH>(threshold),
+                                                              std::fabs(static_cast<T_NGRAPH>(infinity_value.value())))
+                               : expected[i];
+            const T_IE &res =
+                infinity_value
+                    ? details::conv_infs<T_IE>(
+                          actual[i], static_cast<T_IE>(threshold), std::fabs(static_cast<T_IE>(infinity_value.value())))
+                    : actual[i];
+            if (details::equal_infs(ref, res)) {
+                continue;
+            }
+            if (to_check_nans && details::equal_nans(ref, res)) {
                 continue;
             }
             const auto absoluteDifference = CommonTestUtils::ie_abs(res - ref);
             if (absoluteDifference <= threshold) {
                 continue;
             }
-
-            const auto max = std::max(CommonTestUtils::ie_abs(res), CommonTestUtils::ie_abs(ref));
-            float diff = static_cast<float>(absoluteDifference) / static_cast<float>(max);
-            ASSERT_TRUE(max != 0 && (diff <= static_cast<float>(threshold)))
-                << "Relative comparison of values expected: " << ref << " and actual: " << res << " at index " << i
-                << " with threshold " << threshold << " failed";
+            double max;
+            if (sizeof(T_IE) < sizeof(T_NGRAPH)) {
+                max = std::max(CommonTestUtils::ie_abs(T_NGRAPH(res)), CommonTestUtils::ie_abs(ref));
+            } else {
+                max = std::max(CommonTestUtils::ie_abs(res), CommonTestUtils::ie_abs(T_IE(ref)));
+            }
+            double diff = static_cast<float>(absoluteDifference) / max;
+            if (max == 0 || (diff > static_cast<float>(threshold)) || std::isnan(static_cast<float>(res)) ||
+                std::isnan(static_cast<float>(ref))) {
+                IE_THROW() << "Relative comparison of values expected: " << ref << " and actual: " << res
+                           << " at index " << i << " with threshold " << threshold << " failed";
+            }
         }
     }
 
-    void Compare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
-                 const InferenceEngine::Blob::Ptr &actual, float threshold) {
-        const auto expectedBuffer = expected.second.data();
-        const auto &precision = actual->getTensorDesc().getPrecision();
-        auto k = static_cast<double>(expected.first.size()) / precision.size();
-        // W/A for int4, uint4
-        if (expected.first == ngraph::element::Type_t::u4 || expected.first == ngraph::element::Type_t::i4) {
-            k /= 2;
-        } else if (expected.first == ngraph::element::Type_t::undefined ||
-                   expected.first == ngraph::element::Type_t::dynamic) {
-            k = 1;
-        }
-        ASSERT_EQ(expected.second.size(), actual->byteSize() * k);
-
-        auto memory = InferenceEngine::as<InferenceEngine::MemoryBlob>(actual);
-        IE_ASSERT(memory);
-        const auto lockedMemory = memory->wmap();
-        const auto actualBuffer = lockedMemory.as<const std::uint8_t *>();
-
-        const auto &size = actual->size();
-        switch (precision) {
-            case InferenceEngine::Precision::FP32:
-                Compare<float>(reinterpret_cast<const float *>(expectedBuffer),
-                               reinterpret_cast<const float *>(actualBuffer), size, this->threshold,
-                               this->infinity_value);
-                break;
-            case InferenceEngine::Precision::I32:
-                Compare<int32_t>(reinterpret_cast<const int32_t *>(expectedBuffer),
-                                 reinterpret_cast<const int32_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::I64:
-                Compare<int64_t>(reinterpret_cast<const int64_t *>(expectedBuffer),
-                                 reinterpret_cast<const int64_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::I8:
-                Compare<int8_t>(reinterpret_cast<const int8_t *>(expectedBuffer),
-                                reinterpret_cast<const int8_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::U16:
-                Compare<uint16_t>(reinterpret_cast<const uint16_t *>(expectedBuffer),
-                                  reinterpret_cast<const uint16_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::I16:
-                Compare<int16_t>(reinterpret_cast<const int16_t *>(expectedBuffer),
-                                 reinterpret_cast<const int16_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::BOOL:
-            case InferenceEngine::Precision::U8:
-                Compare<uint8_t>(reinterpret_cast<const uint8_t *>(expectedBuffer),
-                                 reinterpret_cast<const uint8_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::U64:
-                Compare<uint64_t>(reinterpret_cast<const uint64_t *>(expectedBuffer),
-                                  reinterpret_cast<const uint64_t *>(actualBuffer), size, 0, std::nullopt);
-                break;
-            case InferenceEngine::Precision::BF16:
-                Compare(reinterpret_cast<const ngraph::bfloat16 *>(expectedBuffer),
-                        reinterpret_cast<const ngraph::bfloat16 *>(actualBuffer), size,
-                        ngraph::bfloat16(this->threshold), std::optional<ngraph::bfloat16>{std::nullopt});
-                break;
-            case InferenceEngine::Precision::FP16:
-                Compare(reinterpret_cast<const ngraph::float16 *>(expectedBuffer),
-                        reinterpret_cast<const ngraph::float16 *>(actualBuffer), size, ngraph::float16(this->threshold),
-                        std::optional<ngraph::float16>{std::nullopt});
-                break;
-            default:
-                FAIL() << "Comparator for " << precision << " precision isn't supported";
-        }
-    }
-
-    void Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
-                 const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs, float threshold) {
-        for (std::size_t outputIndex = 0; outputIndex < expectedOutputs.size(); ++outputIndex) {
-            const auto &expected = expectedOutputs[outputIndex];
-            const auto &actual = actualOutputs[outputIndex];
-            Compare(expected, actual, threshold);
-        }
-    }
-
-    void Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
-                 const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs) override {
-        Compare(expectedOutputs, actualOutputs, threshold);
-    }
-
-   protected:
-    std::optional<float> infinity_value;
+protected:
+    std::optional<double> infinity_value;
+    bool to_check_nans = false;
 };
 
 template <typename BaseLayerTest>
 class FiniteComparer : public BaseLayerTest, public FiniteLayerComparer {
-    static_assert(std::is_base_of<LayerTestsUtils::LayerTestsCommon, BaseLayerTest>::value,
+    static_assert(std::is_base_of_v<LayerTestsUtils::LayerTestsCommon, BaseLayerTest>,
                   "BaseLayerTest should inherit from LayerTestsUtils::LayerTestsCommon");
 };
 
