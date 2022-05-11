@@ -1,18 +1,44 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2021-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include "add.hpp"
 
-#include <cuda_operation_registry.hpp>
+#include <fmt/format.h>
+
+#include <gsl/gsl_assert>
+#include <sstream>
+
+#include "add_cuda.hpp"
+#include "add_cudnn.hpp"
+#include "cuda_operation_registry.hpp"
 
 namespace CUDAPlugin {
 
-AddOp::AddOp(const CreationContext& context,
-             const std::shared_ptr<ngraph::Node>& node,
-             IndexCollection&& inputIds,
-             IndexCollection&& outputIds)
-    : CuDnnTensorOpBase{context, node, move(inputIds), move(outputIds), cudnnOpTensorOp_t::CUDNN_OP_TENSOR_ADD} {}
+static OperationBase::Ptr addFactory(const CreationContext& context,
+                                     const std::shared_ptr<ngraph::Node>& in_node,
+                                     OperationBase::IndexCollection&& inputIds,
+                                     OperationBase::IndexCollection&& outputIds) {
+    auto node = std::dynamic_pointer_cast<ngraph::op::v1::Add>(in_node);
+    Expects(node);
 
-OPERATION_REGISTER(AddOp, Add);
+    const OperationBase::IndexCollection inputs{inputIds};
+    const OperationBase::IndexCollection outputs{outputIds};
+
+    std::stringstream exception_msg;
+    try {
+        return std::make_shared<AddCuDnnOp>(
+            context, node, OperationBase::IndexCollection{inputs}, OperationBase::IndexCollection{outputs});
+    } catch (const std::exception& e) {
+        exception_msg << "Failed to create AddCuDnn impl: " << e.what();
+    }
+    try {
+        return std::make_shared<AddCudaOp>(
+            context, *node, OperationBase::IndexCollection{inputs}, OperationBase::IndexCollection{outputs});
+    } catch (const std::exception& e) {
+        exception_msg << "\nFailed to create AddCuda impl: " << e.what();
+    }
+    throwIEException(fmt::format("Add node is not supported:\n{}", exception_msg.str()));
+}
+
+OPERATION_REGISTER_FACTORY(addFactory, Add)
 
 }  // namespace CUDAPlugin

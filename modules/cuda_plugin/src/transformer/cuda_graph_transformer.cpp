@@ -11,6 +11,7 @@
 #include <transformations/convert_precision.hpp>
 #include <transformations/init_node_info.hpp>
 #include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
+#include <transformations/op_conversions/convert_mod.hpp>
 #include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
 #include <transformations/op_conversions/convert_ti_to_sequences.hpp>
 #include <transformer/convolution_asym_padding_transformation.hpp>
@@ -22,7 +23,9 @@
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
+#include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
+#include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 
 using namespace CUDAPlugin;
@@ -37,6 +40,16 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
 
     passConfig->enable<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
     passConfig->disable<ngraph::pass::MVN6Decomposition>();
+
+    // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
+    // are executed faster on CUDA/cuDNN.
+    // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
+    // on CUDA, for them decomposed cuDNN versions are faster.
+    // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
+    // for these operations, implementing in-place logic in CUDA plugin for these operations.
+    passConfig->disable<ngraph::pass::ConvertSubtract>();
+    passConfig->disable<ngraph::pass::ConvertDivide>();
+    passConfig->disable<ngraph::pass::ConvertMod>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
@@ -63,7 +76,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     manager.register_pass<ngraph::pass::ConcatTransformation>();
     manager.register_pass<ngraph::pass::NoopBroadcastTransformation>();
-
+    
     manager.run_passes(transformed_function);
 
     [[maybe_unused]] const auto& transformedOps = transformed_function->get_ordered_ops();
