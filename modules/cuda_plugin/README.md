@@ -173,6 +173,10 @@ Parameter name  | Parameter values  | Default  | Description
 `CUDA_THROUGHPUT_STREAMS`   | `CUDA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
 `CUDA_OPERATION_BENCHMARK`   | `CUDA_YES`, `CUDA_NO`  | `CUDA_NO`  | Specifies if operation level benchmark should be run for increasing performance of network
 
+During compilation of the CUDAPlugin, user could specify two options:
+1) `-DCUDA_KERNEL_PRINT_LOG=ON` enables print logs from kernels (WARNING, be careful with this options, could print to many logs)
+2) `-DENABLE_CUDNN_BACKEND_API` enables cuDNN backend support that could increase performance of convolutions by 20%
+
 ## Supported Layers and Limitations
 The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [cuda_opset.md](docs/cuda_opset.md).
 
