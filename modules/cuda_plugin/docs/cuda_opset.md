@@ -28,12 +28,12 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [CTCGreedyDecoderSeqLen](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCGreedyDecoderSeqLen_6.md)                | Not Supported |
 | [CTCLoss](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/CTCLoss_4.md)                                              | Not Supported |
 | [Ceiling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Ceiling_1.md)                                            | Not Supported |
-| [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                | Not Supported |
+| [Clamp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Clamp_1.md)                                                | Supported     |
 | [Concat](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Concat_1.md)                                                | Supported     |
 | [Constant](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Constant_1.md)                                      | Supported     |
 | [Convert](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/Convert_1.md)                                                  | Supported     |
 | [ConvertLike](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/type/ConvertLike_1.md)                                          | Not Supported |
-| [Convolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/Convolution_1.md)                                   | Supported*    |
+| [Convolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/Convolution_1.md)                                   | Supported     |
 | [ConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/ConvolutionBackpropData_1.md)           | Supported*    |
 | [Cos](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cos_1.md)                                                    | Not Supported |
 | [Cosh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Cosh_1.md)                                                  | Not Supported |
@@ -41,8 +41,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [DeformableConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/DeformableConvolution_1.md)               | Not Supported |
 | [DeformablePSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DeformablePSROIPooling_1.md)               | Not Supported |
 | [DepthToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/DepthToSpace_1.md)                                    | Not Supported |
-| [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                             | Not Supported |
-| [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                              | Not Supported |
+| [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                             | Supported     |
+| [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                              | Supported     |
 | [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                    | Not Supported |
 | [EmbeddingBagOffsetsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagOffsetsSum_3.md)                  | Not Supported |
 | [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                    | Not Supported |
@@ -51,9 +51,9 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Erf](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Erf_1.md)                                                    | Not Supported |
 | [Exp](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Exp_1.md)                                                    | Not Supported |
 | [ExtractImagePatches](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ExtractImagePatches_3.md)                      | Not Supported |
-| [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                | Not Supported |
-| [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                | Not Supported |
-| [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                          | Not Supported |
+| [FakeQuantize](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/quantization/FakeQuantize_1.md)                                | Supported     |
+| [Floor](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Floor_1.md)                                                | Supported     |
+| [FloorMod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/FloorMod_1.md)                                          | Supported     |
 | [Gather](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Gather_1.md)                                                | Supported*    |
 | [GatherElements](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherElements_6.md)                                | Not Supported |
 | [GatherND_5](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/GatherND_5.md)                                          | Not Supported |
@@ -62,8 +62,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Greater](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Greater_1.md)                                            | Supported     |
 | [GreaterEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/GreaterEqual_1.md)                                  | Not Supported |
 | [GRN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/GRN_1.md)                                                 | Not Supported |
-| [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                         | Not Supported |
-| [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md) | Not Supported |
+| [GroupConvolution](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolution_1.md)                         | Supported     |
+| [GroupConvolutionBackpropData](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/convolution/GroupConvolutionBackpropData_1.md) | Supported     |
 | [GRUCell](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUCell_3.md)                                              | Supported*    |
 | [GRUSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/GRUSequence_5.md)                                      | Supported*    |
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Not Supported |
@@ -84,11 +84,11 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [LSTMSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/LSTMSequence_1.md)                                    | Supported*    |
 | [MatMul](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/matrix/MatMul_1.md)                                                  | Supported     |
 | [MaxPool](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/pooling/MaxPool_1.md)                                               | Supported     |
-| [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                            | Not Supported |
-| [Minimum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Minimum_1.md)                                            | Not Supported |
+| [Maximum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Maximum_1.md)                                            | Supported     |
+| [Minimum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Minimum_1.md)                                            | Supported     |
 | [Mish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Mish_4.md)                                                  | Not Supported |
-| [Mod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Mod_1.md)                                                    | Not Supported |
-| [MVN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/MVN_6.md)                                                 | Not Supported |
+| [Mod](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Mod_1.md)                                                    | Supported     |
+| [MVN](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/MVN_6.md)                                                 | Supported     |
 | [Multiply](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Multiply_1.md)                                          | Supported*    |
 | [Negative](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Negative_1.md)                                          | Not Supported |
 | [NonMaxSuppression](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/NonMaxSuppression_5.md)                              | Not Supported |
@@ -96,7 +96,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                 | Not Supported |
 | [NotEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/NotEqual_1.md)                                          | Not Supported |
 | [OneHot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/OneHot_1.md)                                                | Not Supported |
-| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                      | Not Supported |
+| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                      | Supported     |
 | [Parameter](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Parameter_1.md)                                    | Supported     |
 | [Power](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Power_1.md)                                                | Not Supported |
 | [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                | Not Supported |
@@ -104,7 +104,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [PriorBox](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PriorBox_1.md)                                           | Not Supported |
 | [Proposal](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/Proposal_4.md)                                           | Not Supported |
 | [PSROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/PSROIPooling_1.md)                                   | Not Supported |
-| [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                | Not Supported |
+| [Range](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/generation/Range_4.md)                                                | Supported*    |
 | [ReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/ReLU_1.md)                                                  | Supported     |
 | [ReadValue](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/ReadValue_3.md)                                    | Not Supported |
 | [ReduceL1](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/reduction/ReduceL1_4.md)                                           | Not Supported |
@@ -125,9 +125,9 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [RNNSequence](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/RNNSequence_5.md)                                      | Not Supported |
 | [ROIAlign](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIAlign_3.md)                                           | Not Supported |
 | [ROIPooling](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/ROIPooling_1.md)                                       | Not Supported |
-| [Round](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Round_5.md)                                                | Not Supported |
+| [Round](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Round_5.md)                                                | Supported     |
 | [ScatterElementsUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterElementsUpdate_3.md)                  | Not Supported |
-| [ScatterNDUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterNDUpdate_3.md)                              | Not Supported |
+| [ScatterNDUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterNDUpdate_3.md)                              | Supported     |
 | [ScatterUpdate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/ScatterUpdate_3.md)                                  | Not Supported |
 | [Select](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/condition/Select_1.md)                                               | Supported     |
 | [Selu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Selu_1.md)                                                  | Not Supported |
@@ -143,10 +143,10 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [SpaceToDepth](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/SpaceToDepth_1.md)                                    | Not Supported |
 | [Split](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Split_1.md)                                                  | Supported*    |
 | [Sqrt](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Sqrt_1.md)                                                  | Not Supported |
-| [SquaredDifference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/SquaredDifference_1.md)                        | Not Supported |
+| [SquaredDifference](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/SquaredDifference_1.md)                        | Supported     |
 | [Squeeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Squeeze_1.md)                                                 | Supported     |
 | [StridedSlice](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/StridedSlice_1.md)                                    | Supported     |
-| [Subtract](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Subtract_1.md)                                          | Not Supported |
+| [Subtract](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Subtract_1.md)                                          | Supported     |
 | [Swish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Swish_4.md)                                                | Not Supported |
 | [Tan](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tan_1.md)                                                    | Not Supported |
 | [Tanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tanh_1.md)                                                  | Supported     |
@@ -155,7 +155,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                        | Supported     |
 | [Transpose](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Transpose_1.md)                                          | Supported     |
 | [Unsqueeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Unsqueeze_1.md)                                             | Supported     |
-| [VariadicSplit](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/VariadicSplit_1.md)                                  | Not Supported |
+| [VariadicSplit](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/VariadicSplit_1.md)                                  | Supported     |
 
 *- support is limited to the specific parameters. Refer to "Known Layers Limitation" section.
 
@@ -178,8 +178,6 @@ The semantics match corresponding nGraph operation classes declared in `namespac
     * supported clipping mode: default only (no clipping: `0.0` or `infinity` `clip` value);
     * shape limitations: no combination of `input_size == 1` and `hidden_size == 1` simultaneously
     * cuDNN v8.1 crash observed, see https://forums.developer.nvidia.com/t/cudnn-crash-in-v8-1-x/194346
-* `'Convolution'`
-    * Asymmetric paddings are not supported yet
 * `'ConvolutionBackpropData'`
     * Asymmetric paddings are not supported yet
 * `'Interpolate'`
@@ -197,13 +195,8 @@ The semantics match corresponding nGraph operation classes declared in `namespac
     * All limitations of GRUCell
     * "REVERSE" and "BIDIRECTIONAL" directions are not supported
 * `'Add'`
-    * supported `ngraph::element::Type_t` data types are: `bf16`, `f16`, `f32`, `i8`;
     * supported `auto_broadcast` types are: `NONE` and `NUMPY`;
-    * only broadcasting of either first or second input is supported, not of both
 * `'Multiply'`
-    * supported `ngraph::element::Type_t` data types are: `bf16`, `f16`, `f32`, `i8`, `u8`, `i16`, `u16`,
-      `i32`, `u32`, `i64`, `u64`;
     * supported `auto_broadcast` types are: `NONE` and `NUMPY`;
-    * only broadcasting of either first or second input is supported, not of both
 * `'Gather'`
     * supported range of values for indices tensor is `[0, data[axis] - 1]`, if a value is out of this range, CUDA runtime will crash during one of the subsequent operations.
