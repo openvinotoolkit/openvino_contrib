@@ -9,6 +9,7 @@
 #include "kernels/variance_normalization_factor.hpp"
 #include "ngraph/op/mvn.hpp"
 #include "ngraph/shape.hpp"
+#include "converters.hpp"
 
 namespace CUDAPlugin {
 
@@ -91,9 +92,12 @@ private:
 inline WorkbufferRequest MvnOp::GetWorkBufferRequest() const {
     if (!reduced_shape_.empty()) {
         if (normalize_variance_) {
-            return {{}, {reduce_workspace_size_, ngraph::shape_size(reduced_shape_), ngraph::shape_size(shape_)}};
+            return {{},
+                    {reduce_workspace_size_,
+                     elementSize(comp_type_) * ngraph::shape_size(reduced_shape_),
+                     elementSize(comp_type_) * ngraph::shape_size(shape_)}};
         } else {
-            return {{}, {reduce_workspace_size_, ngraph::shape_size(reduced_shape_)}};
+            return {{}, {reduce_workspace_size_, elementSize(comp_type_) * ngraph::shape_size(reduced_shape_)}};
         }
     }
     return {};
