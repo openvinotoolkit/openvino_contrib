@@ -2,3 +2,4 @@ tensorflow-cpu==2.8.0
 datasets
 soundfile
 librosa
+protobuf==3.19.*
