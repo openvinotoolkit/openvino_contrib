@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "memory_manager/cuda_workbuffers.hpp"
+#include "cuda_operation_base.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -160,6 +161,8 @@ public:
      */
     static bool isReshapeOnlyNode(const ov::Node& node);
 
+    void inplaceOperations(std::vector<OperationBase::Ptr> vector_1);
+
 private:
     /**
      * Internal buffer representation
@@ -269,6 +272,8 @@ private:
     std::unordered_map<BufferID, gsl::span<const Byte>> immutable_buffers_;
     std::unordered_map<BufferID, size_t> immutable_workbuffers_;
     std::unordered_map<std::string, TensorID::Ptr> tensor_names_;
+    std::unordered_map<BufferID, TensorID> buffer_virtual_tensors_;
+    std::unordered_map<TensorID, TensorID> virtual_tensors_;
     unsigned next_buffer_id_{};
     const bool is_stable_params_ = false;
     const bool is_stable_results_ = false;

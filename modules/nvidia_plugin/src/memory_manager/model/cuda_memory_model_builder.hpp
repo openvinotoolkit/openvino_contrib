@@ -16,6 +16,8 @@ namespace nvidia_gpu {
  */
 class MemoryModelBuilder {
 public:
+    explicit MemoryModelBuilder(const std::unordered_map<BufferID, TensorID>& buffer_virtual_tensors,
+                                const std::unordered_map<TensorID, TensorID>& virtual_tensors);
     /**
      * Defines a single tensor allocation.
      *
@@ -37,6 +39,8 @@ public:
     MemoryModel::Ptr build();
 
 private:
+    std::unordered_map<BufferID, TensorID> buffer_virtual_tensors_;
+    std::unordered_map<TensorID, TensorID> virtual_tensors_;
     std::vector<MemorySolver::Box> boxes_;
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };

@@ -25,6 +25,10 @@ public:
      * @param [in] bsize Memory block size in bytes.
      * @param [in] offsets Maps buffer identifiers to tensor offsets within a memory block.
      */
+    MemoryModel(size_t bsize,
+                const std::unordered_map<BufferID, ptrdiff_t>& offsets,
+                const std::unordered_map<TensorID, TensorID>& virtual_tensors);
+
     MemoryModel(size_t bsize, const std::unordered_map<BufferID, ptrdiff_t>& offsets);
 
     /**
@@ -33,6 +37,7 @@ public:
     size_t deviceMemoryBlockSize() const;
 
     void* deviceBufferPtr(CUDA::DevicePointer<uint8_t*> devPtr, const BufferID& id);
+
     void* deviceTensorPtr(CUDA::DevicePointer<uint8_t*> devPtr, const TensorID& id);
 
     /**
@@ -50,6 +55,7 @@ private:
     size_t bsize_;
     std::vector<BufferID> buffer_ids_;
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
+    std::unordered_map<TensorID, TensorID> virtual_tensors_;
 };
 
 }  // namespace nvidia_gpu

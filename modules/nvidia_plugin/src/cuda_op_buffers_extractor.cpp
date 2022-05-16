@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
 #include <utility>
+#include "cuda_operation_base.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -201,6 +202,29 @@ void OperationBuffersExtractor::extractMutableTensors(const NodePtr& node, int n
     }
 }
 
+void OperationBuffersExtractor::inplaceOperations(std::vector<OperationBase::Ptr> vector_1) {
+    for (const auto& op : vector_1) {
+        for (const auto& inplaceTensors : op->GetInplaceIds()) {
+            const auto& [inputTensorID, outputTensorID] = inplaceTensors;
+            if (inputTensorID.GetBuffer().GetId() != inputTensorID.GetId() &&
+                outputTensorID.GetBuffer().GetId() != outputTensorID.GetId() &&
+                inputTensorID.GetBuffer().GetId() != outputTensorID.GetBuffer().GetId()) {
+                continue;
+            }
+            if (outputTensorID.GetBuffer().GetId() != outputTensorID.GetId()) {
+                continue;
+            }
+            if (inputTensorID.GetBuffer().GetId() == outputTensorID.GetBuffer().GetId()) {
+                auto& buf = mutable_buffers_.at(inputTensorID.GetBuffer().GetId());
+                buf.size -= mutable_tensor_sizes_[outputTensorID.GetId()];
+            } else {
+                mutable_buffers_.erase(outputTensorID.GetId());
+            }
+            virtual_tensors_.emplace(outputTensorID, inputTensorID);
+        }
+    }
+}
+
 void OperationBuffersExtractor::extractParameterTensors(const NodePtr& node, int node_idx) {
     if (node->inputs().size() > 0) {
         Expects(node->get_output_size() > 0);
@@ -257,13 +281,13 @@ WorkbufferIds OperationBuffersExtractor::processWorkbufferRequest(int node_idx, 
     WorkbufferIds result{};
     for (auto size : request.immutable_sizes) {
         immutable_workbuffers_.emplace(next_buffer_id_, size);
-        result.immutableIds.push_back(next_buffer_id_);
+        result.immutableIds.push_back(TensorID{next_buffer_id_});
         next_buffer_id_++;
     }
     for (auto size : request.mutable_sizes) {
         // mutable workbuffers share the same memory space with mutable I/O buffers
         mutable_buffers_.emplace(std::make_pair(next_buffer_id_, BufferDesc{node_idx, node_idx, size}));
-        result.mutableIds.push_back(next_buffer_id_);
+        result.mutableIds.push_back(TensorID{next_buffer_id_});
         next_buffer_id_++;
     }
     return result;
@@ -289,7 +313,7 @@ MemoryModel::Ptr OperationBuffersExtractor::createConstantMemoryModel() const {
 }
 
 MemoryModel::Ptr OperationBuffersExtractor::createMutableMemoryModel() const {
-    MemoryModelBuilder mutable_model_builder;
+    MemoryModelBuilder mutable_model_builder{buffer_virtual_tensors_, virtual_tensors_};
     for (auto id : mutableBuffersIds()) {
         mutable_model_builder.addAllocation(
             id, mutableBufferLifespanStart(id), mutableBufferLifespanEnd(id), mutableBufferSize(id));

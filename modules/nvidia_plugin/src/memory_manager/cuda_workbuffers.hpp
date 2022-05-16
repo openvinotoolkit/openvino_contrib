@@ -48,7 +48,7 @@ struct Workbuffers {
  * @brief WorkbufferIds - structure holding the memory buffers' indices
  */
 struct WorkbufferIds {
-    using vector_of_ids = std::vector<BufferID>;
+    using vector_of_ids = std::vector<TensorID>;
     vector_of_ids immutableIds;
     vector_of_ids mutableIds;
 };

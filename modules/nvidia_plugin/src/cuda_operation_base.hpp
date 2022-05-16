@@ -63,6 +63,7 @@ public:
     virtual const std::string& GetTypeName() const = 0;
     virtual gsl::span<const TensorID> GetInputIds() const = 0;
     virtual gsl::span<const TensorID> GetOutputIds() const = 0;
+    virtual std::vector<std::pair<TensorID, TensorID>> GetInplaceIds() const = 0;
 };
 
 class OperationBase : public IOperationExec, public IOperationMeta, public std::enable_shared_from_this<OperationBase> {
@@ -95,6 +96,7 @@ public:
     const std::string& GetTypeName() const override { return type_name_; }
     gsl::span<const TensorID> GetInputIds() const override { return input_ids_; }
     gsl::span<const TensorID> GetOutputIds() const override { return output_ids_; }
+    std::vector<std::pair<TensorID, TensorID>> GetInplaceIds() const override { return {}; }
     const WorkbufferIds& GetWorkbufferIds() const override { return workbuffer_ids_; }
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
         workbuffer_ids_ = workbufferIds;

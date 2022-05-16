@@ -80,3 +80,12 @@ inline std::ostream& operator<<(std::ostream& s, const TensorID& t) {
 
 }  // namespace nvidia_gpu
 }  // namespace ov
+
+namespace std {
+template <>
+struct hash<ov::nvidia_gpu::TensorID> {
+    std::size_t operator()(const ov::nvidia_gpu::TensorID& id) const {
+        return std::hash<ov::nvidia_gpu::BufferID>()(id.GetId());
+    }
+};
+}  // namespace std

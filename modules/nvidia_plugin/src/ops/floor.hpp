@@ -23,6 +23,10 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    std::vector<std::pair<TensorID, TensorID>> GetInplaceIds() const override {
+        return {{input_ids_.at(0), output_ids_.at(0)}};
+    }
+
 private:
     std::optional<kernel::Floor> kernel_;
 };

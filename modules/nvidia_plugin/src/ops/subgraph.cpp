@@ -86,6 +86,7 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
         }
         exec_sequence_.push_back(operation);
     }
+    opBuffersExtractor.inplaceOperations(exec_sequence_);
     memory_manager_ = createMemoryManager(opBuffersExtractor);
     initSharedImmutableWorkbuffers(init_sequence);
 }
@@ -116,7 +117,7 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     std::vector<DevicePointer<void*>> result;
     result.reserve(ids.immutableIds.size());
     for (const auto immutable_id : ids.immutableIds) {
-        void* ptr = memory_manager_->immutableWorkbuffers().deviceBufferPtr(immutable_id);
+        void* ptr = memory_manager_->immutableWorkbuffers().deviceTensorPtr(immutable_id);
         IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
         result.emplace_back(ptr);
     }

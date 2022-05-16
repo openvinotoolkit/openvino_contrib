@@ -48,12 +48,12 @@ Workbuffers MemoryManager::workBuffers(const IOperationExec& operation,
     Workbuffers result{};
     const auto& indices = operation.GetWorkbufferIds();
     for (const auto immutable_id : indices.immutableIds) {
-        void* ptr = immutable_workbuffers_->deviceBufferPtr(immutable_id);
+        void* ptr = immutable_workbuffers_->deviceTensorPtr(immutable_id);
         IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
         result.immutable_buffers.emplace_back(ptr);
     }
     for (const auto mutable_id : indices.mutableIds) {
-        void* ptr = mutable_tensors_model_->deviceBufferPtr(mutableBufferPtr.cast<uint8_t*>(), mutable_id);
+        void* ptr = mutable_tensors_model_->deviceTensorPtr(mutableBufferPtr.cast<uint8_t*>(), mutable_id);
         IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << mutable_id;
         result.mutable_buffers.emplace_back(ptr);
     }
