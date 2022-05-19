@@ -113,7 +113,7 @@ WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
     if (workspace_size_ < 0) {
         CUDAPlugin::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
-    const size_t size = std::max(0l, workspace_size_);
+    const size_t size = std::max(static_cast<int64_t>(0), workspace_size_);
     if (size > 0) {
         return {{}, {size}};
     } else {
