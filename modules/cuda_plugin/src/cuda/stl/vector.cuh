@@ -29,7 +29,9 @@ public:
      * @param capacity Capacity of underlying Vector
      */
     __host__ __device__ explicit Vector(void* data, size_t capacity)
-        : capacity_{capacity}, size_{*static_cast<size_t*>(data)}, data_{static_cast<T*>(data + sizeof(size_t))} {}
+        : capacity_{capacity},
+          size_{*static_cast<size_t*>(data)},
+          data_{static_cast<T*>(static_cast<void*>(static_cast<char*>(data) + sizeof(size_t)))} {}
 
     /**
      * @brief Returns reference to first item in container

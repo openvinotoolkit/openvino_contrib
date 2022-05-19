@@ -71,8 +71,8 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> performBenchmarks(
             try {
                 const auto aligned_workspace_size = CUDAPlugin::applyAllignment(workspace_size);
                 CUDA::DefaultAllocation workspace = CUDA::DefaultStream::stream().malloc(aligned_workspace_size);
-                return std::make_pair<CUDA::DefaultAllocation, size_t>(std::move(workspace),
-                                                                       static_cast<size_t>(workspace_size));
+                return std::optional<std::pair<CUDA::DefaultAllocation, size_t>>{
+                    {std::move(workspace), workspace_size}};
             } catch (...) {
                 // NOTE: If not enough memory try another workspace size
             }
