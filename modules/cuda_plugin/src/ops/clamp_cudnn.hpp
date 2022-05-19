@@ -4,7 +4,11 @@
 
 #pragma once
 
+#if defined(_WIN32)
+#include <cudnn_ops_infer.h>
+#else
 #include <cudnn_ops_infer_v8.h>
+#endif
 
 #include <cuda/dnn.hpp>
 #include <cuda_operation_base.hpp>

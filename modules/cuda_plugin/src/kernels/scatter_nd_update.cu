@@ -170,7 +170,7 @@ void ScatterNDUpdate::Call(const cudaStream_t stream,
     auto output_typed = static_cast<DataType*>(output);
 
     if (thread_per_element_) {
-        dim3 grid{num_of_update_chunks_, num_of_blocks_};
+        dim3 grid{static_cast<unsigned int>(num_of_update_chunks_), static_cast<unsigned int>(num_of_blocks_)};
         kernel::update_thread_per_element<<<grid, num_of_threads_, 0, stream>>>(indices_last_dim_,
                                                                                 num_of_update_elements_,
                                                                                 input_data_dim_pading,
@@ -178,7 +178,7 @@ void ScatterNDUpdate::Call(const cudaStream_t stream,
                                                                                 updates_typed,
                                                                                 output_typed);
     } else {
-        dim3 grid{num_of_update_elements_, num_of_blocks_};
+        dim3 grid{static_cast<unsigned int>(num_of_update_elements_), static_cast<unsigned int>(num_of_blocks_)};
         kernel::update_thread_per_chunk<<<grid, num_of_threads_, 0, stream>>>(indices_last_dim_,
                                                                               num_of_update_elements_,
                                                                               num_of_update_chunks_,
