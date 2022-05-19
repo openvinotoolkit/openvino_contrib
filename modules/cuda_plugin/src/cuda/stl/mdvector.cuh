@@ -32,7 +32,9 @@ public:
      */
     template <typename... TExtents>
     __host__ explicit MDSpan(const CUDA::Stream& stream, size_t capacity, void* data, TExtents... extents)
-        : capacity_{capacity}, sizes_{data, extents...}, data_{data + sizes_.size_bytes(), extents..., capacity} {
+        : capacity_{capacity},
+          sizes_{data, extents...},
+          data_{static_cast<void*>(static_cast<char*>(data) + sizes_.size_bytes()), extents..., capacity} {
         stream.memset(CUDA::DevicePointer<void*>{sizes_.data()}, 0, sizes_.size_bytes());
     }
 
