@@ -74,6 +74,24 @@ T finite_cast(U val) {
 }
 
 template <typename T>
+bool is_inf(T val) {
+    if constexpr (std::is_integral_v<T>) {
+        return false;
+    } else {
+        return std::isinf(val);
+    }
+}
+
+template <typename T>
+bool is_nan(T val) {
+    if constexpr (std::is_integral_v<T>) {
+        return false;
+    } else {
+        return std::isnan(val);
+    }
+}
+
+template <typename T>
 void run_zero_div_test() {
     using devptr_t = CUDA::DevicePointer<void*>;
     using cdevptr_t = CUDA::DevicePointer<const void*>;
@@ -146,11 +164,11 @@ void run_zero_div_test() {
     stream.synchronize();
 
     for (std::size_t i = 0; i < out.size(); i++) {
-        if (std::isinf(correct[i])) {
-            EXPECT_TRUE(std::isinf(out[i]));
+        if (is_inf(correct[i])) {
+            EXPECT_TRUE(is_inf(out[i]));
             EXPECT_EQ(correct[i] > 0, out[i] > 0);
-        } else if (std::isnan(correct[i])) {
-            EXPECT_TRUE(std::isnan(out[i]));
+        } else if (is_nan(correct[i])) {
+            EXPECT_TRUE(is_nan(out[i]));
         } else {
             EXPECT_EQ(out[i], correct[i]) << "at i == " << i;
         }
