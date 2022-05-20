@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using AddCudaOp = ElementwiseBinaryOp<ngraph::op::v1::Add, kernel::Add>;
+class AddCudaOp : public ElementwiseBinaryOp<ngraph::op::v1::Add, kernel::Add> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin
