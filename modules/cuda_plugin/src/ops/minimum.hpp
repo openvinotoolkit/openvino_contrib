@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using MinimumOp = ElementwiseBinaryOp<ngraph::op::v1::Minimum, kernel::Minimum>;
+class MinimumOp : public ElementwiseBinaryOp<ngraph::op::v1::Minimum, kernel::Minimum> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin
