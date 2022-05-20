@@ -138,7 +138,13 @@ private:
     ActivationMode activation_;
 };  // class TBaseConvolution
 
-using FusedConvolution = BasicFusedConvolution<ngraph::op::v1::Convolution>;
-using FusedGroupConvolution = BasicFusedConvolution<ngraph::op::v1::GroupConvolution>;
+class FusedConvolution : public BasicFusedConvolution<ngraph::op::v1::Convolution> {
+public:
+    using BasicFusedConvolution::BasicFusedConvolution;
+};
+class FusedGroupConvolution : public BasicFusedConvolution<ngraph::op::v1::GroupConvolution> {
+public:
+    using BasicFusedConvolution::BasicFusedConvolution;
+};
 
 }  // namespace CUDAPlugin::nodes

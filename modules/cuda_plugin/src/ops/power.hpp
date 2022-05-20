@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using PowerOp = ElementwiseBinaryOp<ngraph::op::v1::Power, kernel::Power>;
+class PowerOp : public ElementwiseBinaryOp<ngraph::op::v1::Power, kernel::Power> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin

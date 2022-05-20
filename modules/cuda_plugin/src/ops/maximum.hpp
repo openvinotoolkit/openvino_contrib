@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using MaximumOp = ElementwiseBinaryOp<ngraph::op::v1::Maximum, kernel::Maximum>;
+class MaximumOp : public ElementwiseBinaryOp<ngraph::op::v1::Maximum, kernel::Maximum> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin
