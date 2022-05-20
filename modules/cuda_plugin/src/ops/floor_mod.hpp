@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using FloorModOp = ElementwiseBinaryOp<ngraph::op::v1::FloorMod, kernel::FloorMod>;
+class FloorModOp : public ElementwiseBinaryOp<ngraph::op::v1::FloorMod, kernel::FloorMod> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin

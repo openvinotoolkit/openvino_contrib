@@ -53,7 +53,13 @@ inline WorkbufferRequest ConvBackpropDataOp<T>::GetWorkBufferRequest() const {
     }
 }
 
-using ConvolutionBackpropDataOp = ConvBackpropDataOp<ngraph::op::v1::ConvolutionBackpropData>;
-using GroupConvolutionBackpropDataOp = ConvBackpropDataOp<ngraph::op::v1::GroupConvolutionBackpropData>;
+class ConvolutionBackpropDataOp : public ConvBackpropDataOp<ngraph::op::v1::ConvolutionBackpropData> {
+public:
+    using ConvBackpropDataOp::ConvBackpropDataOp;
+};
+class GroupConvolutionBackpropDataOp : public ConvBackpropDataOp<ngraph::op::v1::GroupConvolutionBackpropData> {
+public:
+    using ConvBackpropDataOp::ConvBackpropDataOp;
+};
 
 }  // namespace CUDAPlugin
