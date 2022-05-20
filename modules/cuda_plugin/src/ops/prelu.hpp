@@ -12,6 +12,9 @@
 
 namespace CUDAPlugin {
 
-using PReluOp = ElementwiseBinaryOp<ngraph::op::v0::PRelu, kernel::PRelu>;
+class PReluOp : public ElementwiseBinaryOp<ngraph::op::v0::PRelu, kernel::PRelu> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin

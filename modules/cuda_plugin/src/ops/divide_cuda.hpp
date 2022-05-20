@@ -11,7 +11,13 @@
 
 namespace CUDAPlugin {
 
-using DivideOp = ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::Divide>;
-using PythonDivideOp = ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::PythonDivide>;
+class DivideOp : public ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::Divide> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
+class PythonDivideOp : public ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::PythonDivide> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin

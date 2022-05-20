@@ -11,6 +11,9 @@
 
 namespace CUDAPlugin {
 
-using SquaredDifferenceOp = ElementwiseBinaryOp<ngraph::op::v0::SquaredDifference, kernel::SquaredDifference>;
+class SquaredDifferenceOp : public ElementwiseBinaryOp<ngraph::op::v0::SquaredDifference, kernel::SquaredDifference> {
+public:
+    using ElementwiseBinaryOp::ElementwiseBinaryOp;
+};
 
 }  // namespace CUDAPlugin
