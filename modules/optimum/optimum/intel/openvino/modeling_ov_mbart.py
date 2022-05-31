@@ -17,8 +17,7 @@ else:
 
 from .modeling_ov_utils import (
     OVPreTrainedModel,
-    load_ov_model_from_pytorch,
-    is_openvino_api_2,
+    load_ov_model_from_pytorch
 )
 
 from . import modeling_ov_utils
@@ -67,6 +66,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         self.encoder = encoder
         self.model = model
         self.model_past = model_past
+        self.main_input_name = None
 
         origin_forward = self.encoder.forward
 
@@ -130,14 +130,30 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             )
         return reordered_past
 
-    def __call__(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         if kwargs.get("past_key_values", None):
             return self.model_past(*args, **kwargs)
         else:
             return self.model(*args, **kwargs)
 
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
+        inference_backend = kwargs.get("inference_backend", "openvino")
+        if inference_backend == "ovms":
+            config = kwargs.get("config")
+            if config is None:
+                raise Exception("Config is required when using OVMS as a backend")
+            if type(model_name_or_path) is not list:
+                raise Exception("Provide a list of URLs for MBart components in order: [encoder, model, model_past]")
+            
+            encoder = OVPreTrainedModel.from_pretrained(model_name_or_path[0], *model_args, **kwargs)
+            net = OVPreTrainedModel.from_pretrained(model_name_or_path[1], *model_args, **kwargs)
+            net_past = OVPreTrainedModel.from_pretrained(model_name_or_path[2], *model_args, **kwargs)
+            return OVMBartForConditionalGeneration(config, encoder, net, net_past)
+        
         from_pt = kwargs.pop("from_pt", False)
         use_cache = kwargs.get("from_pt", True)
 
@@ -205,8 +221,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         net = load_ov_model_from_pytorch(model, inputs)
 
         # Fix for 2022.1 release
-        if is_openvino_api_2:
-            net.net.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
+        net.inference_adapter.model.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
 
         if use_cache:
             inputs["past_key_values"] = [

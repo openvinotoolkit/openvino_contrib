@@ -9,13 +9,21 @@ import time
 
 import numpy as np
 
+try:
+    from openvino.runtime import Core
+
+    is_openvino_api_2 = True
+except ImportError:
+    from openvino.inference_engine import IECore as Core
+
+    is_openvino_api_2 = False
+
 from transformers.file_utils import cached_path, hf_bucket_url
 from transformers.file_utils import is_torch_available
-from transformers import TF2_WEIGHTS_NAME, AutoConfig, AutoTokenizer
-
-from openvino.runtime import Core
-from openvino.model_zoo.model_api.adapters.openvino_adapter import OpenvinoAdapter
-from openvino.model_zoo.model_api.adapters.ovms_adapter import OVMSAdapter
+from transformers import (
+    TF2_WEIGHTS_NAME,
+    AutoConfig,
+)
 
 
 if is_torch_available():
@@ -43,34 +51,20 @@ def load_ov_model_from_pytorch(model, inputs=None):
     import io
 
     buf = io.BytesIO()
-
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model.name_or_path)
-        input_names = tokenizer.model_input_names
-    except OSError:
-        input_names = [model.main_input_name, "attention_mask"]
-
-    if "token_type_ids" in input_names:
-        # token_type_ids should be last input
-        input_names = [model.main_input_name, "attention_mask", "token_type_ids"]
-
     if inputs is None:
-        dummy_inputs = torch.zeros((1, 18), dtype=torch.int64)
-
+        dummy_input_ids = torch.zeros((1, 18), dtype=torch.int32)
+        dummy_mask = torch.zeros((1, 18), dtype=torch.int32)
         if model.config.model_type == "gpt2":
             if model.config.use_cache:
                 raise NotImplementedError("GPT2 model with use_cache=True is not implemented for OpenVINO backend")
 
-            inputs = (dummy_inputs, None, dummy_inputs)
+            inputs = (dummy_input_ids, None, dummy_mask)
         elif model.main_input_name == "input_values":
             inputs = torch.zeros((1, 16000), dtype=torch.float32)
         else:
-            inputs = tuple(
-                [
-                    dummy_inputs,
-                ]
-                * len(input_names)
-            )
+            inputs = (dummy_input_ids, dummy_mask)
+
+        input_names = [model.main_input_name, "attention_mask"]
     else:
         input_names = []
         for name, tensor in inputs.items():
@@ -107,12 +101,15 @@ def load_ov_model_from_pytorch(model, inputs=None):
             buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
             input_names=input_names,
             output_names=outputs,
-            opset_version=12,
+            opset_version=11,
             use_external_data_format=use_external_data_format,
         )
 
     if use_external_data_format:
-        inference_adapter = OpenvinoAdapter(ie, (os.path.join(model_cache_dir, "model.onnx")))
+        if is_openvino_api_2:
+            net = ie.read_model(os.path.join(model_cache_dir, "model.onnx"))
+        else:
+            net = ie.read_network(os.path.join(model_cache_dir, "model.onnx"))
 
         try:
             shutil.rmtree(model_cache_dir)
@@ -120,8 +117,11 @@ def load_ov_model_from_pytorch(model, inputs=None):
             if e.errno != errno.ENOENT:
                 raise
     else:
-        inference_adapter = OpenvinoAdapter(ie, buf.getvalue(), b"")
-    return OVPreTrainedModel(inference_adapter, model.config)
+        if is_openvino_api_2:
+            net = ie.read_model(buf.getvalue(), b"")
+        else:
+            net = ie.read_network(buf.getvalue(), b"", init_from_buffer=True)
+    return OVPreTrainedModel(net, model.config)
 
 
 def load_ov_model_from_tf(model, tf_weights_path):
@@ -148,7 +148,6 @@ def load_ov_model_from_tf(model, tf_weights_path):
     with tf.io.gfile.GFile(pb_model_path, "wb") as f:
         f.write(graph_def.SerializeToString())
 
-    # TODO: fix for models with different input names
     subprocess.run(  # nosec
         [
             "mo",
@@ -175,8 +174,11 @@ def load_ov_model_from_tf(model, tf_weights_path):
         if e.errno != errno.ENOENT:
             raise
 
-    inference_adapter = OpenvinoAdapter(ie, tf_weights_path + ".xml")
-    return OVPreTrainedModel(inference_adapter, model.config)
+    if is_openvino_api_2:
+        net = ie.read_model(tf_weights_path + ".xml")
+    else:
+        net = ie.read_network(tf_weights_path + ".xml")
+    return OVPreTrainedModel(net, model.config)
 
 
 def load_ov_model_from_ir(xml_path, bin_path, config):
@@ -186,8 +188,11 @@ def load_ov_model_from_ir(xml_path, bin_path, config):
         shutil.copyfile(xml_path, xml_path + ".xml")
         xml_path += ".xml"
 
-    inference_adapter = OpenvinoAdapter(ie, xml_path, bin_path)
-    return OVPreTrainedModel(inference_adapter, config)
+    if is_openvino_api_2:
+        net = ie.read_model(xml_path, bin_path)
+    else:
+        net = ie.read_network(xml_path, bin_path)
+    return OVPreTrainedModel(net, config)
 
 
 def load_model_from_cache(model_name_or_path, model_arch, cache_dir, filename, config):
@@ -206,28 +211,26 @@ class OVPreTrainedModel(GenerationMixin):
     _pt_auto_model = None
     _tf_auto_model = None
 
-    def __init__(self, inference_adapter, config):
+    def __init__(self, net, config):
         super().__init__()
-        self.inference_adapter = inference_adapter
-        self.model_initialized = False
+        self.net = net
 
-        # Workaround for a bug with "input_ids:0" name
-        #for inp in self.net.inputs:
-        #    name = inp.get_any_name().split(":")[0]
-        #    inp.get_tensor().set_names(set([name]))
-
-        inputs = inference_adapter.get_input_layers()
-        outputs = inference_adapter.get_output_layers()
-
-        self.input_names = list(inputs.keys())
-        self.output_names = list(outputs.keys())
-
-        #self.exec_net = None
+        if is_openvino_api_2:
+            # Workaround for a bug with "input_ids:0" name
+            for inp in self.net.inputs:
+                name = inp.get_any_name().split(":")[0]
+                inp.get_tensor().set_names(set([name]))
+            self.input_names = [inp.get_any_name() for inp in self.net.inputs]
+            self.output_names = [out.get_any_name() for out in self.net.outputs]
+        else:
+            self.input_names = [inp for inp in self.net.input_info]
+            self.output_names = [out for out in self.net.outputs]
+        self.exec_net = None
         self.config = config
         self.max_length = 0
-        #self.ov_config = {"PERFORMANCE_HINT": "LATENCY"}
-        #self.ov_device = "CPU"
-        self.use_dynamic_shapes = True
+        self.ov_config = {"PERFORMANCE_HINT": "LATENCY"} if is_openvino_api_2 else {}
+        self.ov_device = "CPU"
+        self.use_dynamic_shapes = is_openvino_api_2
 
         self.main_input_name = None
         for name in ["input_ids", "input_values", "decoder_input_ids"]:
@@ -241,14 +244,6 @@ class OVPreTrainedModel(GenerationMixin):
 
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
-        inference_backend = kwargs.get("inference_backend", "openvino")
-        if inference_backend == "ovms":
-            inference_adapter = OVMSAdapter(model_name_or_path)
-            config = kwargs.get("config")
-            if config is None:
-                raise Exception("Config is required when using OVMS as a backend")
-            return OVPreTrainedModel(inference_adapter, config)
-
         cache_dir = kwargs.get("cache_dir", None)
         from_pt = kwargs.pop("from_pt", False)
         from_tf = kwargs.pop("from_tf", False)
@@ -356,13 +351,14 @@ class OVPreTrainedModel(GenerationMixin):
             os.makedirs(save_directory)
 
         xml_path = os.path.join(save_directory, OV_WEIGHTS_NAME)
-        import openvino.runtime.passes as passes
+        if is_openvino_api_2:
+            import openvino.runtime.passes as passes
 
-        pass_manager = passes.Manager()
-        pass_manager.register_pass("Serialize", xml_path, xml_path.replace(".xml", ".bin"))
-        # TO DO: disable saving for OVMSAdapter as model is not in place
-        pass_manager.run_passes(self.inference_adapter.model)
-
+            pass_manager = passes.Manager()
+            pass_manager.register_pass("Serialize", xml_path, xml_path.replace(".xml", ".bin"))
+            pass_manager.run_passes(self.net)
+        else:
+            self.net.serialize(xml_path)
 
     def to(self, device):
         self.ov_device = device
@@ -371,19 +367,44 @@ class OVPreTrainedModel(GenerationMixin):
         self.ov_config = config
 
     def _load_network(self):
-        if self.use_dynamic_shapes and not isinstance(self.inference_adapter, OVMSAdapter):
-            shapes = {}
-            for input_name, metadata in self.inference_adapter.get_input_layers().items():
-                shapes[input_name] = list(metadata.shape)
-                shapes[input_name][0] = -1
-                if input_name.startswith("past_key_values"):
-                    shapes[input_name][2] = -1
-                else:
-                    shapes[input_name][1] = -1
+        if is_openvino_api_2:
+            if self.use_dynamic_shapes:
+                shapes = {}
+                for inp in self.net.inputs:
+                    shapes[inp] = inp.get_partial_shape()
+                    shapes[inp][0] = -1
+                    if inp.get_any_name().startswith("past_key_values"):
+                        shapes[inp][2] = -1
+                    else:
+                        shapes[inp][1] = -1
 
-            self.inference_adapter.reshape_model(shapes)
-        self.inference_adapter.load_model()
-        self.model_initialized = True
+                self.net.reshape(shapes)
+            compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
+            self.exec_net = compiled_model.create_infer_request()
+        else:
+            self.exec_net = ie.load_network(self.net, self.ov_device, self.ov_config)
+
+    def _process_data_api_2021(self, inputs):
+        # In case of batching, we process samples one by one instead of
+        # single forward pass. It is done because of heavy load_network step.
+        batch_size = inputs[self.main_input_name].shape[0]
+        if batch_size > 1:
+            outs = {k: np.zeros([batch_size] + out.shape[1:], np.float32) for k, out in self.net.outputs.items()}
+            for i in range(batch_size):
+                outs_i = self.exec_net.infer({name: inp[i : i + 1] for name, inp in inputs.items()})
+                for name in outs:
+                    # OpenVINO produces redundant output for Stack layers. Ignore them
+                    if name.endswith("/stack"):
+                        continue
+                    outs[name][i] = outs_i[name]
+        else:
+            outs = self.exec_net.infer(inputs)
+        return outs
+
+    def _process_data_api_2022(self, inputs):
+        outs = self.exec_net.infer(inputs)
+        outs = {out.get_any_name(): value for out, value in outs.items()}
+        return outs
 
     def _prepare_nlp_inputs(
         self,
@@ -430,14 +451,27 @@ class OVPreTrainedModel(GenerationMixin):
                     pad[1, 1] = self.max_length - shape[1]
                     inputs[name] = np.pad(inputs[name], pad)
 
-        if not self.use_dynamic_shapes:
+        # OpenVINO >= 2022.1 supports dynamic shapes input.
+        if not is_openvino_api_2:
+            inputs_info = self.net.input_info
+            input_ids = inputs[self.main_input_name]
+            if inputs_info[self.main_input_name].input_data.shape[1] != input_ids.shape[1]:
+                # Use batch size 1 because we process batch sequently.
+                shapes = {key: [1] + list(inputs[key].shape[1:]) for key in inputs_info}
+                logger.info(f"Reshape model to {shapes}")
+                self.net.reshape(shapes)
+                self.exec_net = None
+        elif is_openvino_api_2 and not self.use_dynamic_shapes:
             # TODO
             pass
 
-        if not self.model_initialized:
+        if self.exec_net is None:
             self._load_network()
 
-        outs = self.inference_adapter.infer_sync(inputs)
+        if is_openvino_api_2:
+            outs = self._process_data_api_2022(inputs)
+        else:
+            outs = self._process_data_api_2021(inputs)
 
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
@@ -464,15 +498,7 @@ class OVPreTrainedModel(GenerationMixin):
         if arch.endswith("ForSequenceClassification"):
             return SequenceClassifierOutput(logits=logits)
         elif arch.endswith("ForQuestionAnswering"):
-            # For OpenVINO API 1.0, output names are not necessarily in correct order
-            if "output_s" in outs.keys() and "output_e" in outs.keys():
-                output_s, output_e = "output_s", "output_e"
-            else:
-                # Get output names from model.
-                # For quantized models, output names are not necessarily "output_s" and "output_e"
-                output_s, output_e = list(outs.keys())
-
-            return QuestionAnsweringModelOutput(start_logits=outs[output_s], end_logits=outs[output_e])
+            return QuestionAnsweringModelOutput(start_logits=outs["output_s"], end_logits=outs["output_e"])
         else:
             return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 
@@ -508,57 +534,3 @@ class OVPreTrainedModel(GenerationMixin):
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
-
-"""
-    # Experimental
-    def create_ovms_image(self, image_tag):
-
-        # Prepare configuration file
-        if not self.model_initialized:
-            self._load_network()
-
-        shapes = {}
-        for name, metadata in self.inference_adapter.get_input_layers().items():
-            shapes[name] = str(tuple(metadata.shape))
-        model_configuration = {
-            "name":"model",
-            "base_path":"/opt/model",
-            "shape": shapes
-         }
-
-        config = {}
-        config["model_config_list"] = [{"config": model_configuration}]
-
-        import json
-        with open("/tmp/optimum/config.json", "w") as outfile:
-            json.dump(config, outfile)
-
-        import shutil
-        self.save_pretrained("/tmp/optimum/")
-        print("Copied model to temporary location")
-
-        dockerfile_content = [
-            "FROM openvino/model_server:latest\n",
-            "COPY *.xml *.bin /opt/model/1/\n",
-            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--model_name\", \"model\", \"--model_path\", \"/opt/model\"]\n"
-            ]
-
-        with open("/tmp/optimum/Dockerfile", "w") as f:
-            f.writelines(dockerfile_content)
-
-        print("Created Dockerfile")
-
-        import docker
-        client = docker.from_env()
-        client.images.build(path="/tmp/optimum", tag=image_tag)
-        print(f"Successfully built image: {image_tag}")
-        shutil.rmtree("/tmp/optimum/")
-        print("Cleanup successful")
-
-    # Experimental
-    @classmethod
-    def start_ovms_container(cls, image_tag, port):
-        import docker
-        client = docker.from_env()
-        return client.containers.run(image_tag, "--port 9000", ports= {"9000/tcp": port}, detach=True)
-"""

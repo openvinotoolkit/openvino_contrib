@@ -56,6 +56,9 @@ from transformers import AutoConfig
 
 config = AutoConfig.from_pretrained(model_name)
 model = OVAutoModel.from_pretrained(<name_or_path>, config=config)
+
+# Initialize with a model hosted in OpenVINO Model Server (requires providing config)
+model = OVAutoModel.from_pretrained(<model_url>, inference_backend="ovms", config=<config>)
 ```
 
 To save a model that was loaded from PyTorch or TensorFlow to OpenVINO's IR format, use the `save_pretrained()` method:
@@ -65,6 +68,8 @@ model.save_pretrained(<model_directory>)
 ```
 
 `ov_model.xml` and `ov_model.bin` will be saved in `model_directory`.
+
+**Note:** `save_pretrained()` method will not work if model has been initialized with `inference_backend="ovms"`
 
 For a complete example of how to do inference on a Hugging Face model with openvino-optimum, please check
 out the [Fill-Mask demo](examples/masked_lm_demo.py)
