@@ -6,7 +6,6 @@
 
 #include <cpp_interfaces/interface/ie_iplugin_internal.hpp>
 
-#include "backend.hpp"
 #include "cuda_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_thread_pool.hpp"
@@ -55,7 +54,6 @@ class Plugin : public InferenceEngine::IInferencePlugin {
     bool isOperationSupported(const std::shared_ptr<ngraph::Node>& node) const;
 
     std::mutex mtx_;
-    std::shared_ptr<ngraph::runtime::Backend> _backend;
     GraphTransformer transformer_{};
     Configuration _cfg;
     std::unordered_map<std::string, InferenceEngine::ITaskExecutor::Ptr> _waitExecutors;

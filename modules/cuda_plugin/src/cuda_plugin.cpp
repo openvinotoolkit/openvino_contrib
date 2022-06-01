@@ -21,17 +21,11 @@
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
-#include "cuda_plugin.hpp"
 #include "cuda_operation_registry.hpp"
+#include "cuda_plugin.hpp"
 using namespace CUDAPlugin;
 
-Plugin::Plugin() {
-    _pluginName = "CUDAPlugin";
-
-    // create ngraph backend which performs inference using ngraph reference implementations
-    ngraph::runtime::Backend::set_backend_shared_library_search_directory("");
-    _backend = ngraph::runtime::Backend::create("INTERPRETER");
-}
+Plugin::Plugin() { _pluginName = "CUDAPlugin"; }
 
 Plugin::~Plugin() {
     // Plugin should remove executors from executor cache to avoid threads number growth in the whole application
