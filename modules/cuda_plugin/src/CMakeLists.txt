@@ -58,7 +58,6 @@ target_link_libraries(${OBJ_NAME}
                       PUBLIC
                       GSL
                       fmt-header-only
-                      IE::ngraph_backend
                       IE::inference_engine
                       IE::inference_engine_plugin_api
                       PRIVATE
