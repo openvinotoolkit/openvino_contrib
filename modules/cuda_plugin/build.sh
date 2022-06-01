@@ -2,8 +2,16 @@
 
 set -e
 
+if [ -f .env ]; then
+    # Load Variables from .env if present
+    source .env
+fi
+
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 BUILD_TYPE=${BUILD_TYPE:-Release}
+BUILD_TARGETS=${BUILD_TARGETS:-"CudaFuncTests CudaUnitTests CUDAPlugin benchmark_app"}
+WHEEL_VERSION=${WHEEL_VERSION:-"2021.4.1"}
+ENABLE_TESTS=${ENABLE_TESTS:-"ON"}
 
 [[ -n "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME environment variable is expected"; exit 1; }
 [[ -n "${OPENVINO_CONTRIB}" ]] || { echo "OPENVINO_CONTRIB environment variable is expected"; exit 1; }
@@ -31,14 +39,14 @@ fi
 cd "${OPENVINO_BUILD_PATH}"
 cmake "${OPENVINO_HOME}" \
       -DENABLE_CUDA=ON \
-      -DENABLE_TESTS=ON \
+      -DENABLE_TESTS="${ENABLE_TESTS}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \
       -DIE_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
-      -DWHEEL_VERSION=2021.3.0 \
+      -DWHEEL_VERSION="${WHEEL_VERSION}" \
       -DVERBOSE_BUILD=ON \
       -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
 
 if [[ "$1" != "--setup" ]]; then
-  cmake --build "${OPENVINO_BUILD_PATH}" --target CudaFuncTests CudaUnitTests CUDAPlugin benchmark_app -j "${BUILD_JOBS}"
+  cmake --build "${OPENVINO_BUILD_PATH}" --target ${BUILD_TARGETS} -j "${BUILD_JOBS}"
 fi
