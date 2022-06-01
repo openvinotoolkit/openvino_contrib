@@ -15,9 +15,10 @@ Ubuntu* 18.04 (64-bit) | Geforce 1080 Ti, NVIDIA T4
 OpenVINO™ CUDA plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
 
 ## How to build
-In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
 
-Afterwards plugin build procedure is as following:
+### Prerequisites
+
+In order to build CUDA plugin the next dependencies must be installed.
 
 1. Install one of the following compilers with support of **C++17**:
 - Install **gcc-7** compiler
@@ -38,20 +39,27 @@ sudo apt-get install clang-8 clang++8
 
 4. Install **cuDNN 8.1.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
 5. Install **cuTENSOR 1.3.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
-6. Clone `openvino_contrib` repository:
+
+### Build with cmake
+
+In order to build the plugin, you must prebuild OpenVINO™ package from source using [this guideline](https://github.com/openvinotoolkit/openvino/wiki/BuildingCode#building-for-different-oses).
+
+Afterwards plugin build procedure is as following:
+
+1. Clone `openvino_contrib` repository:
 ```bash
 git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
 ```
-7. Go to plugin directory:
+2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/cuda_plugin
 git checkout develop
 ```
-8. Prepare a build folder:
+3. Prepare a build folder:
 ```bash
 mkdir build && cd build
 ```
-9. Build plugin
+4. Build plugin
 
     First of all, switch OpenVINO™ to tag _2021.4_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
@@ -83,6 +91,50 @@ mkdir build && cd build
   cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
   cmake --build . --target CUDAPlugin -j `nproc`
   ```
+
+### Build with _setup.py_
+
+If python available the CUDA Plugin could be compiled with setup.py script as following:
+
+1. Clone `openvino_contrib` repository:
+```bash
+git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
+```
+2. Go to plugin directory:
+```bash
+cd openvino_contrib/modules/cuda_plugin
+git checkout develop
+```
+3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
+```bash
+export CUDACXX=/usr/local/cuda-11.2/bin/nvcc
+```
+
+4. Add the path to the cuda libraries to the `LD_LIBRARY_PATH` environment variable like the next (use yours path)
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/bin/nvcc
+```
+
+5. Run setup.py build command as follows.
+```bash
+export CUDA_PLUGIN_SRC_ROOT_DIR=</path/to/openvino_contrib>/modules/cuda_plugin
+python3 ${CUDA_PLUGIN_SRC_ROOT_DIR}/wheel/setup.py build
+```
+This will automatically download, build OpenVINO and build CUDA Plugin finally. The location of the resulting library file will be like the next.
+```
+${CUDA_PLUGIN_SRC_ROOT_DIR}/build/temp.linux-x86_64-3.6/deps/openvino/bin/intel64/Debug/lib/libCUDAPlugin.so
+```
+
+## Install as python package with `setup.py`
+
+To install CUDA Plugin as python package do all steps except last one from the `Build with setup.py` section.
+After that installation could be done by running setup.py install command as follows.
+```bash
+export OPENVINO_CONTRIB=</path/to/openvino_contrib>
+python3 ${OPENVINO_CONTRIB}/modules/cuda_plugin/wheel/setup.py install
+```
+This command will install dependent openvino package if needed and update it for using with CUDA plugin.
+
 
 ## Docker support
 ### Build docker container
