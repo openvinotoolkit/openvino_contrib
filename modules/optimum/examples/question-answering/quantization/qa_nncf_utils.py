@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from nncf.torch.initialization import PTInitializingDataLoader
 
-class QADataLoader(PTInitializingDataLoader):
+class NNCFQADataLoader(PTInitializingDataLoader):
     def __init__(self, data_loader: DataLoader):
         self._data_loader = data_loader
     
