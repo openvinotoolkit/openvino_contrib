@@ -33,6 +33,8 @@ index 070f200..fe35a08 100644
              args = TrainingArguments(output_dir=output_dir)
          self.args = args
 +
++        self.compression_ctrl = None
++
 +        if nncf_config is not None:
 +            nncf_config.auto_register_extra_structs(args, train_dataset, data_collator)
 +            # TODO: restore compression state
