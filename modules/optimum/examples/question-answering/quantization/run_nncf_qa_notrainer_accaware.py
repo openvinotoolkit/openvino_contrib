@@ -256,6 +256,14 @@ def parse_args():
         default='nncf_configs/nncf_bert_config_squad.json',
         help="A configuration .json file used for NNCF enabled compression optimized training.",
     )
+    parser.add_argument(
+        "--opset_version",
+        type=int,
+        default=11,
+        help=(
+            "The opset version used to export the NNCF compressed model to ONNX format"
+        ),
+    )
     args = parser.parse_args()
 
     # Sanity checks
@@ -656,7 +664,7 @@ def main():
     else:
         args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
-    def training_function(compression_ctrl, compressed_model, epoch=None, optimizer=optimizer, lr_scheduler=lr_scheduler):
+    def train_epoch_fn(compression_ctrl, compressed_model, epoch=None, optimizer=optimizer, lr_scheduler=lr_scheduler):
         total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
         # Figure out how many steps we should save the Accelerator states
@@ -709,10 +717,11 @@ def main():
                 starting_epoch = resume_step // len(train_dataloader)
                 resume_step -= starting_epoch * len(train_dataloader)
 
-        #for epoch in range(starting_epoch, args.num_train_epochs):
         # We need to track the total loss for NNCF finetuning
+        # We also do a single epoch training since we're running it
+        # under NNCF training loop
         total_loss = 0.0
-        model.train()
+        compressed_model.train()
         if args.with_tracking:
             total_loss = 0
         for step, batch in enumerate(train_dataloader):
@@ -723,7 +732,7 @@ def main():
                     continue
             compression_ctrl.scheduler.step()
             batch = batch.to(args.device)
-            outputs = model(**batch)
+            outputs = compressed_model(**batch)
             loss = outputs.loss
             compression_loss = compression_ctrl.loss()
             loss += compression_loss
@@ -747,7 +756,7 @@ def main():
             if completed_steps >= args.max_train_steps:
                 break
         train_metric = {}
-        train_metric[args.acc_metric] = eval_function(model)
+        train_metric[args.acc_metric] = validate_fn(compressed_model)
 
         logger.info(f"Total loss: {total_loss}, Eval metric: {train_metric}")
         return total_loss, train_metric
@@ -776,7 +785,7 @@ def main():
         references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
-    def eval_function(model, epoch=None):
+    def validate_fn(model, epoch=None):
         logger.info("\n***** Running Evaluation *****")
         logger.info(f"  Num examples = {len(eval_dataloader)}")
         logger.info(f"  Instantaneous batch size per device = {args.per_device_eval_batch_size}")
@@ -822,7 +831,7 @@ def main():
         model, optimizer, train_dataloader, eval_dataloader, lr_scheduler
     )
 
-    nncf_config = register_default_init_args(nncf_config, train_dataloader, model_eval_fn=eval_function)
+    nncf_config = register_default_init_args(nncf_config, train_dataloader, model_eval_fn=validate_fn)
     logger.info(f" NNCF config: {nncf_config}")
 
     # Apply the NNCF specified compression algorithms to the model
@@ -833,15 +842,13 @@ def main():
     ## NNCF accuracy aware training loop
     acc_aware_training_loop = create_accuracy_aware_training_loop(nncf_config, compression_ctrl)
     optimized_model = acc_aware_training_loop.run(compressed_model,
-                                        train_epoch_fn=training_function,
-                                        validate_fn=eval_function,
+                                        train_epoch_fn=train_epoch_fn,
+                                        validate_fn=validate_fn,
                                         configure_optimizers_fn=configure_optimizers_fn,
                                         log_dir=optimized_model_dir)
 
-    if args.checkpointing_steps == "epoch":
-        accelerator.save_state(f"epoch_{epoch}")
 
-    ## Save compressed model
+    ## Save compressed model when done fine-tuning
     logger.info("\n***** Saving the compressed model *****")
     input_names = tokenizer.model_input_names
     if input_names[0] == "input_ids":
@@ -852,8 +859,10 @@ def main():
     
     path_to_onnx = os.path.join(optimized_model_dir, "ov_model.onnx")
 
-    # Export to ONNX or .pth when done fine-tuning
-    compression_ctrl.export_model(path_to_onnx, input_names=input_names)
+    save_format = 'onnx_{}'.format(args.opset_version)
+
+    # Export to ONNX 
+    compression_ctrl.export_model(path_to_onnx, input_names=input_names, save_format=save_format)
 
     import subprocess
 
