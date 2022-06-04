@@ -12,11 +12,11 @@ To run the accuracy aware finetuning on 🤗 Transformers models:
 > pip install openvino-optimum[nncf]
 
 * Run the provided example on a device, model and parameters of choice, for example:
-> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name sst2 --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cpu'
+> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name stsb --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cpu' --acc_metric 'pearson'
 
 OR
 
-> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name sst2 --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cuda'
+> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name stsb --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cuda' --acc_metric 'pearson'
 
 The NNCF config example is provided in [nncf_configs](nncf_configs).
 The optimized model is generated under `NNCF_optimized_model` by default.
