@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-Fine-tuning with Intel NNCF toolkit for the question answering task using 🤗 Accelerate.
+Fine-tuning with Intel NNCF toolkit for the sequence classification task using 🤗 Accelerate.
 Uses HuggingFace accelarate - https://github.com/huggingface/accelerate
-References: https://github.com/huggingface/transformers/blob/main/examples/pytorch/question-answering/run_qa_beam_search_no_trainer.py
+References: https://github.com/huggingface/transformers/blob/main/examples/pytorch/question-answering/run_glue_no_trainer.py
 """
 import argparse
 import json
@@ -79,6 +79,15 @@ def parse_args():
     )
     parser.add_argument(
         "--do_eval", type=bool, default=True, help="Whether to run eval on the dev set."
+    )
+    parser.add_argument(
+        "--train_subset_name", type=str, default='train', help="A csv or a json file containing the training data."
+    )
+    parser.add_argument(
+        "--val_subset_name", type=str, default='validation', help="A csv or a json file containing the training data."
+    )
+    parser.add_argument(
+        "--labels_name", type=str, default='labels', help="A csv or a json file containing the training data."
     )
     parser.add_argument(
         "--train_file", type=str, default=None, help="A csv or a json file containing the training data."
@@ -257,7 +266,8 @@ def load_raw_dataset(args):
     # download the dataset.
     if args.task_name is not None:
         # Downloading and loading a dataset from the hub.
-        raw_datasets = load_dataset('glue', args.task_name)
+        #raw_datasets = load_dataset('glue', args.task_name)
+        raw_datasets = load_dataset("stsb_multi_mt", name="en")
     else:
         data_files = {}
         if args.train_file is not None:
@@ -276,7 +286,7 @@ def load_raw_dataset(args):
     if args.task_name is not None:
         is_regression = args.task_name == "stsb"
         if not is_regression:
-            label_list = raw_datasets["train"].features["label"].names
+            label_list = raw_datasets["train"].features[args.labels_name].names
             num_labels = len(label_list)
         else:
             num_labels = 1
@@ -345,13 +355,10 @@ def main():
     # Preprocessing the datasets.
     # Preprocessing is slighlty different for training and evaluation.
     
-    if "train" not in raw_datasets:
+    if args.train_subset_name not in raw_datasets:
         raise ValueError("--do_train requires a train dataset")
-    if "validation" not in raw_datasets:
-        if "validation_matched" in raw_datasets:
-            pass
-        else:
-            raise ValueError("--do_eval requires a validation dataset")
+    if args.val_subset_name not in raw_datasets:
+        raise ValueError("--do_eval requires a validation dataset")
     
     # Preprocessing the datasets
     if args.task_name is not None:
@@ -407,13 +414,13 @@ def main():
         )
         result = tokenizer(*texts, padding=padding, max_length=args.max_length, truncation=True)
 
-        if "label" in examples:
+        if args.labels_name in examples:
             if label_to_id is not None:
                 # Map labels to IDs (not necessary for GLUE tasks)
-                result["labels"] = [label_to_id[l] for l in examples["label"]]
+                result["labels"] = [label_to_id[l] for l in examples[args.labels_name]]
             else:
                 # In all cases, rename the column to labels because the model will expect that.
-                result["labels"] = examples["label"]
+                result["labels"] = examples[args.labels_name]
         return result
        
     # Create train feature from dataset
@@ -427,9 +434,8 @@ def main():
             desc="Running tokenizer on train dataset",
         )
 
-    train_dataset = preprocessed_datasets["train"]
-    eval_dataset = preprocessed_datasets["validation_matched" if args.task_name == "mnli" else "validation"]
-    
+    train_dataset = preprocessed_datasets[args.train_subset_name]
+    eval_dataset = preprocessed_datasets[args.val_subset_name]
     
     if args.max_train_samples is not None:
         # We will select sample from whole data
@@ -621,7 +627,7 @@ def main():
 
         model.eval()
 
-        for step, batch in enumerate(eval_dataloader):
+        for step, batch in enumerate(tqdm(eval_dataloader)):
             with torch.no_grad():
                 batch = batch.to(args.device)
                 outputs = model(**batch)

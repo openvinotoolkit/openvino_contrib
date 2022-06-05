@@ -18,7 +18,7 @@ class NNCFGLUEDataLoader(PTInitializingDataLoader):
         return len(self._data_loader)
 
     def get_inputs(self, sample: Any) -> Tuple[Tuple, Dict]:
-        return (sample['input_ids'],sample['attention_mask'],sample['token_type_ids']), {}
+        return (sample['input_ids'],sample['attention_mask']), {}
 
     def get_target(self, sample: Any):
         label = (sample['labels'])
