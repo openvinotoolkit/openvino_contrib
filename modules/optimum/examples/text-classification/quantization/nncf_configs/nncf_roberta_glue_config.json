@@ -1,0 +1,42 @@
+{
+    "input_info": [
+        {
+            "sample_size": [1, 128],
+            "type": "long"
+        },
+        {
+            "sample_size": [1, 128],
+            "type": "long"
+        }
+    ],
+    "accuracy_aware_training": {
+        "mode":"early_exit",
+        "params": {
+            "maximal_relative_accuracy_degradation": 1,
+            "maximal_total_epochs": 10
+        }
+    },
+    "compression": {
+        "algorithm": "quantization",
+        "initializer": {
+            "range": {
+                "num_init_samples": 200
+            },
+            "batchnorm_adaptation": {
+                "num_bn_adaptation_samples": 50
+            }
+        },
+        "ignored_scopes": ["{re}BertSelfAttention\\[self\\]/__add___0",
+            "RobertaForSequenceClassification/RobertaClassificationHead[classifier]/Linear[out_proj]",
+            "RobertaForSequenceClassification/RobertaClassificationHead[classifier]/Linear[dense]"
+        ],
+        "activations":
+        {
+            "mode": "asymmetric"
+        },
+        "weights":
+        {
+            "mode": "asymmetric"
+        }
+    }
+}
