@@ -3,7 +3,7 @@
 """
 Fine-tuning with Intel NNCF toolkit for the sequence classification task using 🤗 Accelerate.
 Uses HuggingFace accelarate - https://github.com/huggingface/accelerate
-References: https://github.com/huggingface/transformers/blob/main/examples/pytorch/question-answering/run_glue_no_trainer.py
+References: https://github.com/huggingface/transformers/blob/main/examples/pytorch/text-classification/run_glue_no_trainer.py
 """
 import argparse
 import json
@@ -66,7 +66,7 @@ task_to_keys = {
 }
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Finetune a transformers model on a Question Answering task")
+    parser = argparse.ArgumentParser(description="Finetune a transformers model on a Text Classification task")
     parser.add_argument(
         "--task_name",
         type=str,
@@ -266,8 +266,8 @@ def load_raw_dataset(args):
     # download the dataset.
     if args.task_name is not None:
         # Downloading and loading a dataset from the hub.
-        #raw_datasets = load_dataset('glue', args.task_name)
-        raw_datasets = load_dataset("stsb_multi_mt", name="en")
+        raw_datasets = load_dataset('glue', args.task_name)
+
     else:
         data_files = {}
         if args.train_file is not None:
@@ -537,8 +537,7 @@ def main():
             experiment_config = vars(args)
             # TensorBoard cannot log Enums, need the raw value
             experiment_config["lr_scheduler_type"] = experiment_config["lr_scheduler_type"].value
-            accelerator.init_trackers("qa_beam_search_no_trainer", experiment_config)
-
+        
         logger.info("\n***** Running training *****")
         logger.info(f"  Num examples = {len(train_dataloader)}")
         logger.info(f"  Num Epochs = {args.num_train_epochs}")
@@ -693,6 +692,13 @@ def main():
     subprocess.run(
         ["mo", "--input_model", path_to_onnx, "--output_dir", optimized_model_dir], check=True
     )
+
+    checkpoint = {
+        'model_state_dict': compressed_model.state_dict(),
+        'compression_state': compression_ctrl.get_compression_state()
+    }
+    
+    torch.save(checkpoint, 'optimized_pt_model/pytorch_model.bin')
 
 if __name__ == "__main__":
     main()
