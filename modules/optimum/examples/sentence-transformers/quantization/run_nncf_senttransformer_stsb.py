@@ -41,8 +41,6 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 
-from sentence_transformers import models, losses
-
 from nncf import NNCFConfig
 from nncf.torch import create_compressed_model, register_default_init_args
 from nncf.common.accuracy_aware_training import create_accuracy_aware_training_loop
@@ -630,6 +628,7 @@ def main():
         model.eval()
         for step, batch in enumerate(tqdm(eval_dataloader)):
             with torch.no_grad():
+                batch = batch.to(args.device)
                 output_tokens = model(input_ids=batch['input_ids'][0], attention_mask=batch['attention_mask'][0], return_dict=False)[0]
                 sentence_embeddings = mean_pooling(output_tokens, batch['attention_mask'][0])
                 cos_sim = torch.nn.CosineSimilarity(dim=0)
