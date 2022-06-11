@@ -25,7 +25,7 @@ static __global__ void slice_part(const Slice::Props *props, const size_t start,
         Shape<size_t, 5> originalIndexes{};
         memcpy(originalIndexes, slicedIndexes, sizeof(slicedIndexes));
         originalIndexes[props->axe] = start + slicedIndexes[props->axe];
-        const size_t flatInputAddress = flat_address(props->old_shape, originalIndexes);
+        const size_t flatInputAddress = flat_address_by_shape(props->old_shape, originalIndexes);
         y[i] = x[flatInputAddress];
     }
 }

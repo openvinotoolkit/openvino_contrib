@@ -26,7 +26,7 @@ static __global__ void insert_part(
         Shape<size_t, 5> joinIndexes{};
         memcpy(joinIndexes, originalIndexes, sizeof(originalIndexes));
         joinIndexes[props->axe] = start + joinIndexes[props->axe];
-        const size_t flatInputAddress = flat_address(props->new_shape, joinIndexes);
+        const size_t flatInputAddress = flat_address_by_shape(props->new_shape, joinIndexes);
         y[flatInputAddress] = x[i];
     }
 }
