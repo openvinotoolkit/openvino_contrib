@@ -47,11 +47,11 @@ __device__ void swap(T& a, T& b) {
  * @param comparer Custom comparer
  * @return Returns index to pivot element after partitioning
  */
-template <typename T, typename Comparer>
-__device__ int partition(T* arr, int l, int h, Comparer comparer) {
+template <typename TIterator, typename Comparer>
+__device__ int partition(TIterator arr, int l, int h, Comparer comparer) {
     int pivot_id = (h - l) / 2 + l;
     swap(arr[pivot_id], arr[h]);
-    const T pivot = arr[h];
+    const auto pivot = arr[h];
 
     int i = (l - 1);
     for (int j = l; j <= h - 1; j++) {
@@ -72,8 +72,8 @@ __device__ int partition(T* arr, int l, int h, Comparer comparer) {
  * @param end End of sequence to iterate (last element + 1)
  * @param comparer Custom comparer
  */
-template <typename T, typename Comparer>
-__device__ void bubble_sort_iterative(T* begin, T* end, Comparer comparer) {
+template <typename TIterator, typename Comparer>
+__device__ void bubble_sort_iterative(TIterator begin, TIterator end, Comparer comparer) {
     if (end <= begin) {
         return;
     }
@@ -102,8 +102,8 @@ __device__ void bubble_sort_iterative(T* begin, T* end, Comparer comparer) {
  * @param end End of sequence to iterate (last element + 1)
  * @param comparer Custom comparer
  */
-template <typename T, typename Comparer>
-__device__ void quick_sort_iterative(T* begin, T* end, Comparer comparer) {
+template <typename TIterator, typename Comparer>
+__device__ void quick_sort_iterative(TIterator begin, TIterator end, Comparer comparer) {
     if (end <= begin) {
         return;
     }
@@ -198,8 +198,9 @@ __device__ void quick_sort_iterative(T* begin, T* end, int* stack, Comparer comp
  * @param topk Number of elements to keep sorting from the beginning of the sequence
  * @param comparer Custom comparer
  */
-template <typename T, typename Comparer>
-__device__ void partial_quick_sort_iterative(T* begin, T* end, int* stack, size_t topk, Comparer comparer) {
+template <typename TIterator, typename Comparer>
+__device__ void partial_quick_sort_iterative(
+    TIterator begin, TIterator end, int* stack, size_t topk, Comparer comparer) {
     if (end <= begin) {
         return;
     }
@@ -244,8 +245,8 @@ __device__ void partial_quick_sort_iterative(T* begin, T* end, int* stack, size_
  * @param topk Number of elements to keep sorting from the beginning of the sequence
  * @param comparer Custom comparer
  */
-template <typename T, typename Comparer>
-__device__ void partial_quick_sort_iterative(T* begin, T* end, size_t topk, Comparer comparer) {
+template <typename TIterator, typename Comparer>
+__device__ void partial_quick_sort_iterative(TIterator begin, TIterator end, size_t topk, Comparer comparer) {
     if (end <= begin) {
         return;
     }
@@ -306,9 +307,9 @@ namespace parallel {
  * @param workItemId Id of work item
  * @param numWorkItems Number of work items
  */
-template <size_t NumPartitions, typename T, typename Comparer>
+template <size_t NumPartitions, typename TIterator, typename Comparer>
 __forceinline__ __device__ void quick_sort_iterative(
-    T* begin, T* end, int* stack, Comparer comparer, const int workItemId, const size_t numWorkItems) {
+    TIterator begin, TIterator end, int* stack, Comparer comparer, const int workItemId, const size_t numWorkItems) {
     if (end <= begin) {
         return;
     }
@@ -364,9 +365,9 @@ __forceinline__ __device__ void quick_sort_iterative(
  * @param workItemId Id of work item
  * @param numWorkItems Number of work items
  */
-template <size_t NumPartitions, typename T, typename Comparer>
+template <size_t NumPartitions, typename TIterator, typename Comparer>
 __forceinline__ __device__ void quick_sort_iterative(
-    T* begin, T* end, Comparer comparer, const int workItemId, const size_t numWorkItems) {
+    TIterator begin, TIterator end, Comparer comparer, const int workItemId, const size_t numWorkItems) {
     if (end <= begin) {
         return;
     }

@@ -45,20 +45,68 @@ inline __host__ __device__ void shape_indices(const Shape<T, N>& shape,
 }
 
 template <typename T, unsigned N>
-inline __host__ __device__ size_t flat_address(const Shape<T, N>& shape, const Shape<T, N>& indexes) {
+inline __host__ __device__ size_t flat_address_by_shape(const Shape<T, N>& shape, const Shape<T, N>& indexes) {
     size_t address = 0;
     const size_t shape_rank = rank(shape);
-    size_t mul_shapes = 1;
+    size_t stride = 1;
     const size_t startDim = shape_rank - 1;
     for (int dim = startDim; dim >= 0; --dim) {
         if (dim != startDim) {
-            address += indexes[dim] * mul_shapes;
+            address += indexes[dim] * stride;
         } else {
             address += indexes[dim];
         }
-        mul_shapes *= shape[dim];
+        stride *= shape[dim];
     }
     return address;
+}
+
+template <typename T, unsigned N>
+inline __host__ __device__ size_t flat_address_by_strides(const Shape<T, N>& strides, const Shape<T, N>& indexes) {
+    size_t address = 0;
+    const size_t shape_rank = rank(strides);
+    for (int dim = 0; dim < shape_rank; ++dim) {
+        address += indexes[dim] * strides[dim];
+    }
+    return address;
+}
+
+template <typename T, unsigned N>
+inline __host__ __device__ void calculate_indexes_by_flat_address(Shape<T, N>& indexes,
+                                                                  const std::size_t i,
+                                                                  const Shape<T, N>& shape) {
+    const auto& shape_rank = rank(shape);
+    std::size_t left = i;
+    const size_t startDim = shape_rank - 1;
+    for (int dim = startDim; dim >= 0; --dim) {
+        const auto val = shape[dim];
+        indexes[dim] = left % val;
+        left = left / val;
+    }
+}
+
+template <typename T, unsigned N>
+inline __host__ __device__ void calculate_strides(Shape<T, N>& strides, const Shape<T, N>& shape) {
+    const auto& shape_rank = rank(shape);
+    size_t stride = 1;
+    const size_t startDim = shape_rank - 1;
+    for (int dim = startDim; dim >= 0; --dim) {
+        strides[dim] = stride;
+        stride *= dim;
+    }
+}
+
+template <typename T, unsigned N>
+inline __host__ __device__ void calculate_strides_for_axis(Shape<T, N>& strides,
+                                                           const Shape<T, N>& shape,
+                                                           const std::int32_t axis) {
+    calculate_strides(strides, shape);
+    const auto& shape_rank = rank(shape);
+    const auto stride_dim = strides[axis];
+    for (int dim = axis; dim < (shape_rank - 1); ++dim) {
+        strides[dim] = strides[dim + 1];
+    }
+    strides[shape_rank - 1] = stride_dim;
 }
 
 template <typename T, unsigned N>
