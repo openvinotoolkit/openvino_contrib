@@ -152,7 +152,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [Tanh](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Tanh_1.md)                                                  | Supported     |
 | [TensorIterator](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/TensorIterator_1.md)                          | Supported     |
 | [Tile](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Tile_1.md)                                                    | Not Supported |
-| [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                        | Not Supported |
+| [TopK](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sort/TopK_3.md)                                                        | Supported     |
 | [Transpose](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Transpose_1.md)                                          | Supported     |
 | [Unsqueeze](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/shape/Unsqueeze_1.md)                                             | Supported     |
 | [VariadicSplit](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/VariadicSplit_1.md)                                  | Not Supported |

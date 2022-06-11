@@ -62,12 +62,12 @@ TEST_F(SliceKernelTest, FlatAddress) {
     {
         kernel::Shape<size_t, 5> shape{1, 2, 3, 0, 0};
         kernel::Shape<size_t, 5> indexes{1, 1, 1, 0, 0};
-        ASSERT_EQ(10, kernel::flat_address(shape, indexes));
+        ASSERT_EQ(10, kernel::flat_address_by_shape(shape, indexes));
     }
     {
         kernel::Shape<size_t, 5> shape{1, 2, 3, 8, 0};
         kernel::Shape<size_t, 5> indexes{0, 0, 1, 2, 0};
-        ASSERT_EQ(10, kernel::flat_address(shape, indexes));
+        ASSERT_EQ(10, kernel::flat_address_by_shape(shape, indexes));
     }
 }
 
