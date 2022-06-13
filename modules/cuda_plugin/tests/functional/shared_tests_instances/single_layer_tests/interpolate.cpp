@@ -13,6 +13,11 @@
 
 using namespace LayerTestsDefinitions;
 
+using InterpolateMode = ngraph::op::v4::Interpolate::InterpolateMode;
+using ShapeCalcMode = ngraph::op::v4::Interpolate::ShapeCalcMode;
+using CoordinateTransformMode = ngraph::op::v4::Interpolate::CoordinateTransformMode;
+using NearestMode = ngraph::op::v4::Interpolate::NearestMode;
+
 namespace {
 
 const std::vector<InferenceEngine::Precision> netPrecisions = {
@@ -52,31 +57,25 @@ const std::vector<std::vector<size_t>> yolov5From40To80Shape = {
     {1, 128, 80, 80},
 };
 
-// TODO only nearest mode supported now
-const std::vector<ngraph::op::v4::Interpolate::InterpolateMode> nearestMode = {
-    ngraph::op::v4::Interpolate::InterpolateMode::nearest,
-};
-
-const std::vector<ngraph::op::v4::Interpolate::CoordinateTransformMode> coordinateTransformModes = {
-    ngraph::op::v4::Interpolate::CoordinateTransformMode::asymmetric,
-    ngraph::op::v4::Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn,
+const std::vector<CoordinateTransformMode> coordinateTransformModes = {
+    CoordinateTransformMode::asymmetric, CoordinateTransformMode::tf_half_pixel_for_nn,
     // TODO CoordinateTransform mode not supported yet
-    // ngraph::op::v4::Interpolate::CoordinateTransformMode::pytorch_half_pixel,
-    // ngraph::op::v4::Interpolate::CoordinateTransformMode::half_pixel,
-    // ngraph::op::v4::Interpolate::CoordinateTransformMode::align_corners,
+    // CoordinateTransformMode::pytorch_half_pixel,
+    // CoordinateTransformMode::half_pixel,
+    // CoordinateTransformMode::align_corners,
 };
 
-const std::vector<ngraph::op::v4::Interpolate::ShapeCalcMode> shapeCalculationMode = {
-    ngraph::op::v4::Interpolate::ShapeCalcMode::sizes,
-    ngraph::op::v4::Interpolate::ShapeCalcMode::scales,
+const std::vector<ShapeCalcMode> shapeCalculationMode = {
+    ShapeCalcMode::sizes,
+    ShapeCalcMode::scales,
 };
 
-const std::vector<ngraph::op::v4::Interpolate::NearestMode> nearestModes = {
-    ngraph::op::v4::Interpolate::NearestMode::simple, ngraph::op::v4::Interpolate::NearestMode::floor,
+const std::vector<NearestMode> nearestModes = {
+    NearestMode::simple, NearestMode::floor,
     // TODO nearest modes not supported yet
-    // ngraph::op::v4::Interpolate::NearestMode::round_prefer_floor,
-    // ngraph::op::v4::Interpolate::NearestMode::ceil,
-    // ngraph::op::v4::Interpolate::NearestMode::round_prefer_ceil,
+    // NearestMode::round_prefer_floor,
+    // NearestMode::ceil,
+    // NearestMode::round_prefer_ceil,
 };
 
 const std::vector<std::vector<size_t>> pads = {
@@ -90,7 +89,7 @@ const std::vector<bool> antialias = {
     false,
 };
 
-const std::vector<double> cubeCoefs = {
+const std::vector<double> defaultCubeCoeff = {
     -0.75f,
 };
 
@@ -101,31 +100,42 @@ const std::vector<std::vector<float>> smokeTest2DScales = {{2.f, 2.f}};
 
 std::map<std::string, std::string> additional_config = {};
 
-const auto interpolate4DScaleParams = ::testing::Combine(::testing::ValuesIn(nearestMode),
+const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
                                                          ::testing::ValuesIn(antialias),
                                                          ::testing::ValuesIn(pads),
                                                          ::testing::ValuesIn(pads),
-                                                         ::testing::ValuesIn(cubeCoefs),
+                                                         ::testing::ValuesIn(defaultCubeCoeff),
                                                          ::testing::ValuesIn(smokeTest4DAxes),
                                                          ::testing::ValuesIn(smokeTest4DScales));
 
-const auto interpolate2DScaleParams = ::testing::Combine(::testing::ValuesIn(nearestMode),
+const auto interpolate2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
                                                          ::testing::ValuesIn(antialias),
                                                          ::testing::ValuesIn(pads),
                                                          ::testing::ValuesIn(pads),
-                                                         ::testing::ValuesIn(cubeCoefs),
+                                                         ::testing::ValuesIn(defaultCubeCoeff),
                                                          ::testing::ValuesIn(smokeTest2DAxes),
                                                          ::testing::ValuesIn(smokeTest2DScales));
 
-class CUDNNInterpolateLayerTest : public UnsymmetricalComparer<InterpolateLayerTest> {};
+class CUDAInterpolateLayerTest : public UnsymmetricalComparer<InterpolateLayerTest> {
+protected:
+    void SetUp() override {
+        UnsymmetricalComparer<InterpolateLayerTest>::SetUp();
 
-TEST_P(CUDNNInterpolateLayerTest, CompareWithRefs) {
+        auto params = this->GetParam();
+        auto netPrecision = std::get<1>(params);
+        if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
+            this->threshold = 0.12;
+        }
+    }
+};
+
+TEST_P(CUDAInterpolateLayerTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
     Run();
 };
@@ -142,8 +152,8 @@ const auto simpleCombine4DScaleParamTests =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_4D_Scale_Param_Test,
-                        CUDNNInterpolateLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_Nearest_4D_Scale_Param_Test,
+                        CUDAInterpolateLayerTest,
                         simpleCombine4DScaleParamTests,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -159,8 +169,8 @@ const auto simpleCombine2DScaleParamTests =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_2D_Scale_Param_Test,
-                        CUDNNInterpolateLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_Nearest_2D_Scale_Param_Test,
+                        CUDAInterpolateLayerTest,
                         simpleCombine2DScaleParamTests,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -175,7 +185,7 @@ const auto downscaleCombineTests = ::testing::Combine(interpolate4DScaleParams,
                                                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                                       ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(smoke_Downscale_Interpolate_Nearest_Test,
-                        CUDNNInterpolateLayerTest,
+                        CUDAInterpolateLayerTest,
                         downscaleCombineTests,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -194,8 +204,8 @@ const auto highResolutionCombineTest =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_High_Resolution_Interpolate_4D_Scale_Param_Test,
-                        CUDNNInterpolateLayerTest,
+INSTANTIATE_TEST_CASE_P(smoke_High_Resolution_Interpolate_Nearest_4D_Scale_Param_Test,
+                        CUDAInterpolateLayerTest,
                         highResolutionCombineTest,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -210,7 +220,7 @@ const auto efficientdetCombinations = ::testing::Combine(interpolate4DScaleParam
                                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                                          ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(efficientdetInterpolateCombinationTests,
-                        CUDNNInterpolateLayerTest,
+                        CUDAInterpolateLayerTest,
                         efficientdetCombinations,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -226,7 +236,7 @@ const auto yolov5InterpolateFrom20To40Shape =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom20To40ShapeTests,
-                        CUDNNInterpolateLayerTest,
+                        CUDAInterpolateLayerTest,
                         yolov5InterpolateFrom20To40Shape,
                         InterpolateLayerTest::getTestCaseName);
 
@@ -242,20 +252,165 @@ const auto yolov5InterpolateFrom40To80Shape =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom40To80ShapeTests,
-                        CUDNNInterpolateLayerTest,
+                        CUDAInterpolateLayerTest,
                         yolov5InterpolateFrom40To80Shape,
+                        InterpolateLayerTest::getTestCaseName);
+
+const std::vector<InferenceEngine::Precision> linearNetPrecisions = {
+    InferenceEngine::Precision::FP16,
+    InferenceEngine::Precision::FP32,
+};
+const std::vector<ShapeCalcMode> linearShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<CoordinateTransformMode> linearCoordinateTransformModes = {
+    CoordinateTransformMode::half_pixel,
+    CoordinateTransformMode::pytorch_half_pixel,
+    CoordinateTransformMode::asymmetric,
+    CoordinateTransformMode::tf_half_pixel_for_nn,
+    CoordinateTransformMode::align_corners,
+};
+const std::vector<NearestMode> linearNearestModes = {NearestMode::simple};
+const std::vector<bool> linearAntialias = {true, false};
+
+const std::vector<std::vector<int64_t>> linearTest2DAxes = {{2, 3}};
+const std::vector<std::vector<float>> linearTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
+const std::vector<std::vector<size_t>> linearTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
+const auto linear2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+                                                    ::testing::ValuesIn(linearShapeCalculationMode),
+                                                    ::testing::ValuesIn(linearCoordinateTransformModes),
+                                                    ::testing::ValuesIn(linearNearestModes),
+                                                    ::testing::ValuesIn(linearAntialias),
+                                                    ::testing::ValuesIn(pads),
+                                                    ::testing::ValuesIn(pads),
+                                                    ::testing::ValuesIn(defaultCubeCoeff),
+                                                    ::testing::ValuesIn(linearTest2DAxes),
+                                                    ::testing::ValuesIn(linearTest2DScales));
+const std::vector<std::vector<size_t>> linearInput2DScaleShapes = {{1, 3, 10, 16}};
+INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_2D_Scale_Test,
+                        CUDAInterpolateLayerTest,
+                        ::testing::Combine(linear2DScaleParams,
+                                           ::testing::ValuesIn(linearNetPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(linearInput2DScaleShapes),
+                                           ::testing::ValuesIn(linearTest2DSizes),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
+                        InterpolateLayerTest::getTestCaseName);
+
+const std::vector<std::vector<int64_t>> linearTest3DAxes = {{2, 3, 4}};
+const std::vector<std::vector<float>> linearTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
+const std::vector<std::vector<size_t>> linearTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
+const auto linear3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+                                                    ::testing::ValuesIn(linearShapeCalculationMode),
+                                                    ::testing::ValuesIn(linearCoordinateTransformModes),
+                                                    ::testing::ValuesIn(linearNearestModes),
+                                                    ::testing::ValuesIn(linearAntialias),
+                                                    ::testing::ValuesIn(pads),
+                                                    ::testing::ValuesIn(pads),
+                                                    ::testing::ValuesIn(defaultCubeCoeff),
+                                                    ::testing::ValuesIn(linearTest3DAxes),
+                                                    ::testing::ValuesIn(linearTest3DScales));
+const std::vector<std::vector<size_t>> linearInput3DScaleShapes = {{1, 3, 8, 12, 14}};
+INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_3D_Scale_Test,
+                        CUDAInterpolateLayerTest,
+                        ::testing::Combine(linear3DScaleParams,
+                                           ::testing::ValuesIn(linearNetPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(linearInput3DScaleShapes),
+                                           ::testing::ValuesIn(linearTest3DSizes),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
+                        InterpolateLayerTest::getTestCaseName);
+
+const std::vector<InferenceEngine::Precision> cubicNetPrecisions = {
+    InferenceEngine::Precision::FP16,
+    InferenceEngine::Precision::FP32,
+};
+const std::vector<double> cubeCoeffs = {-0.75f, -0.6f};
+const std::vector<ShapeCalcMode> cubicShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<CoordinateTransformMode> cubicCoordinateTransformModes = {
+    CoordinateTransformMode::half_pixel,
+    CoordinateTransformMode::pytorch_half_pixel,
+    CoordinateTransformMode::asymmetric,
+    CoordinateTransformMode::tf_half_pixel_for_nn,
+    CoordinateTransformMode::align_corners,
+};
+const std::vector<NearestMode> cubicNearestModes = {
+    NearestMode::simple  // Cubic interpolation algo doesn't use it.
+};
+const std::vector<bool> cubicAntialias = {false};  // Cubic interpolation algo doesn't use it.
+
+const std::vector<std::vector<int64_t>> cubicTest2DAxes = {{2, 3}};
+const std::vector<std::vector<float>> cubicTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
+const std::vector<std::vector<size_t>> cubicTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
+const auto cubic2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+                                                   ::testing::ValuesIn(cubicShapeCalculationMode),
+                                                   ::testing::ValuesIn(cubicCoordinateTransformModes),
+                                                   ::testing::ValuesIn(cubicNearestModes),
+                                                   ::testing::ValuesIn(cubicAntialias),
+                                                   ::testing::ValuesIn(pads),
+                                                   ::testing::ValuesIn(pads),
+                                                   ::testing::ValuesIn(cubeCoeffs),
+                                                   ::testing::ValuesIn(cubicTest2DAxes),
+                                                   ::testing::ValuesIn(cubicTest2DScales));
+const std::vector<std::vector<size_t>> cubicInput2DScaleShapes = {{1, 3, 10, 16}};
+INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_2D_Scale_Test,
+                        CUDAInterpolateLayerTest,
+                        ::testing::Combine(cubic2DScaleParams,
+                                           ::testing::ValuesIn(cubicNetPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(cubicInput2DScaleShapes),
+                                           ::testing::ValuesIn(cubicTest2DSizes),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
+                        InterpolateLayerTest::getTestCaseName);
+
+const std::vector<std::vector<int64_t>> cubicTest3DAxes = {{2, 3, 4}};
+const std::vector<std::vector<float>> cubicTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
+const std::vector<std::vector<size_t>> cubicTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
+const auto cubic3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+                                                   ::testing::ValuesIn(cubicShapeCalculationMode),
+                                                   ::testing::ValuesIn(cubicCoordinateTransformModes),
+                                                   ::testing::ValuesIn(cubicNearestModes),
+                                                   ::testing::ValuesIn(cubicAntialias),
+                                                   ::testing::ValuesIn(pads),
+                                                   ::testing::ValuesIn(pads),
+                                                   ::testing::ValuesIn(cubeCoeffs),
+                                                   ::testing::ValuesIn(cubicTest3DAxes),
+                                                   ::testing::ValuesIn(cubicTest3DScales));
+const std::vector<std::vector<size_t>> cubicInput3DScaleShapes = {{1, 3, 8, 12, 14}};
+INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_3D_Scale_Test,
+                        CUDAInterpolateLayerTest,
+                        ::testing::Combine(cubic3DScaleParams,
+                                           ::testing::ValuesIn(cubicNetPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(cubicInput3DScaleShapes),
+                                           ::testing::ValuesIn(cubicTest3DSizes),
+                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(additional_config)),
                         InterpolateLayerTest::getTestCaseName);
 
 namespace benchmark {
 
-struct CUDNNInterpolateLayerBenchmarkTest : BenchmarkLayerTest<CUDNNInterpolateLayerTest> {};
+struct CUDAInterpolateLayerBenchmarkTest : BenchmarkLayerTest<CUDAInterpolateLayerTest> {};
 
-TEST_P(CUDNNInterpolateLayerBenchmarkTest, DISABLED_benchmark) {
+TEST_P(CUDAInterpolateLayerBenchmarkTest, DISABLED_benchmark) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
     Run("Interpolate", std::chrono::milliseconds(2000), 200);
 }
 
-const auto benchmarkParams =
+const auto nearestBenchmarkParams =
     ::testing::Combine(interpolate4DScaleParams,
                        ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32}),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -267,8 +422,40 @@ const auto benchmarkParams =
                        ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(CUDNNInterpolate_Benchmark,
-                        CUDNNInterpolateLayerBenchmarkTest,
+INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Nearest_Benchmark,
+                        CUDAInterpolateLayerBenchmarkTest,
+                        nearestBenchmarkParams,
+                        InterpolateLayerTest::getTestCaseName);
+
+const std::vector<InterpolateMode> benchmarkInterpolateModes = {InterpolateMode::linear, InterpolateMode::cubic};
+const std::vector<InferenceEngine::Precision> benchmarkPrecisions = {
+    InferenceEngine::Precision::FP16,
+    InferenceEngine::Precision::FP32,
+};
+const std::vector<std::vector<float>> benchmarkScales = {{0.5f, 0.5f, 0.5f}, {1.5f, 1.5f, 1.5f}};
+const auto benchmarkParams =
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(benchmarkInterpolateModes),
+                                          ::testing::Values(ShapeCalcMode::scales),
+                                          ::testing::Values(CoordinateTransformMode::half_pixel),
+                                          ::testing::Values(NearestMode::simple),
+                                          ::testing::Values(true),  // antialias
+                                          ::testing::ValuesIn(pads),
+                                          ::testing::ValuesIn(pads),
+                                          ::testing::ValuesIn(defaultCubeCoeff),
+                                          ::testing::Values(std::vector<int64_t>{2, 3, 4}),  // axes
+                                          ::testing::ValuesIn(benchmarkScales)),
+                       ::testing::ValuesIn(benchmarkPrecisions),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(std::vector<size_t>{1, 3, 50, 50, 50}),  // input data shape
+                       ::testing::Values(std::vector<size_t>{0, 0, 0}),           // sizes, not used
+                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(additional_config));
+
+INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Benchmark,
+                        CUDAInterpolateLayerBenchmarkTest,
                         benchmarkParams,
                         InterpolateLayerTest::getTestCaseName);
 

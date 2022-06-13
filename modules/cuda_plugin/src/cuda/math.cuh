@@ -91,6 +91,11 @@ inline __device__ T sqrt(T a) {
     return ::sqrt(a);
 }
 
+template <typename T>
+inline __device__ T abs(T a) {
+    return ::abs(a);
+}
+
 #ifdef __CUDACC__
 /* ==================== __half ===================== */
 template <>
@@ -114,11 +119,16 @@ inline __device__ __half exp<__half>(__half x) {
 }
 
 template <>
-inline __device__ __half sqrt<__half>(__half a) {
-    return ::hsqrt(a);
+inline __device__ __half sqrt<__half>(__half x) {
+    return ::hsqrt(x);
 }
 
-#else   // defined (CUDA_HAS_HALF_MATH)
+template <>
+inline __device__ __half abs<__half>(__half x) {
+    return ::__habs(x);
+}
+
+#else  // defined (CUDA_HAS_HALF_MATH)
 
 inline __device__ __half floor(__half x) { return floor(static_cast<float>(x)); }
 
@@ -140,9 +150,15 @@ inline __device__ __half exp<__half>(__half x) {
 }
 
 template <>
-inline __device__ __half sqrt<__half>(__half a) {
-    return ::sqrt(static_cast<float>(a));
+inline __device__ __half sqrt<__half>(__half x) {
+    return ::sqrt(static_cast<float>(x));
 }
+
+template <>
+inline __device__ __half abs<__half>(__half x) {
+    return ::abs(static_cast<float>(x));
+}
+
 #endif  // defined (CUDA_HAS_HALF_MATH)
 
 /* ================================================= */
@@ -153,7 +169,6 @@ inline __device__ __half sqrt<__half>(__half a) {
 template <>
 inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
     return ::round(static_cast<float>(x));
-
 }
 
 #if defined(CUDA_HAS_BF16_MATH)
@@ -164,6 +179,11 @@ inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return ::htrunc(x); }
 template <>
 inline __device__ __nv_bfloat16 exp<__nv_bfloat16>(__nv_bfloat16 x) {
     return ::hexp(x);
+}
+
+template <>
+inline __device__ __nv_bfloat16 abs<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::__habs(x);
 }
 
 #else  // defined (CUDA_HAS_BF16_MATH)
@@ -186,6 +206,12 @@ template <>
 inline __device__ __nv_bfloat16 exp<__nv_bfloat16>(__nv_bfloat16 x) {
     return exp<float>(static_cast<float>(x));
 }
+
+template <>
+inline __device__ __nv_bfloat16 abs<__nv_bfloat16>(__nv_bfloat16 x) {
+    return abs<float>(static_cast<float>(x));
+}
+
 #endif  // defined (CUDA_HAS_BF16_MATH)
 #endif  // defined (CUDA_HAS_BF16_TYPE)
 /* ================================================= */
