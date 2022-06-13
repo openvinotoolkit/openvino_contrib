@@ -1,4 +1,4 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,25 +12,25 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-class Interpolate {
+class InterpolateNearest {
 public:
     /// \brief Round modes for the nearest interpolation.
     enum class NearestMode { round_prefer_floor, round_prefer_ceil, floor, ceil, simple };
 
     enum class TransformMode { half_pixel, pytorch_half_pixel, asymmetric, tf_half_pixel_for_nn, align_corners };
 
-    Interpolate(size_t num_blocks,
-                size_t threads_per_block,
-                CUDAPlugin::kernel::Type_t element_type,
-                bool upscale,
-                NearestMode nearest_mode,
-                TransformMode transform_mode);
+    InterpolateNearest(size_t num_blocks,
+                       size_t threads_per_block,
+                       CUDAPlugin::kernel::Type_t element_type,
+                       bool upscale,
+                       NearestMode nearest_mode,
+                       TransformMode transform_mode);
 
     void operator()(const cudaStream_t stream,
                     const void* src,
                     const size_t* input_strides,
                     const size_t* output_strides,
-                    const float* slices,
+                    const float* scales,
                     const size_t* input_shape,
                     const size_t* output_shape,
                     void* dst) const;
@@ -41,7 +41,7 @@ private:
                     const void* src,
                     const size_t* input_strides,
                     const size_t* output_strides,
-                    const float* slices,
+                    const float* scales,
                     const size_t* input_shape,
                     const size_t* output_shape,
                     void* dst) const;
