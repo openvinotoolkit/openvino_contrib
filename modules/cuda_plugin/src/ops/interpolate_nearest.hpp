@@ -5,18 +5,18 @@
 #pragma once
 
 #include "cuda_operation_base.hpp"
-#include "kernels/interpolate.hpp"
+#include "kernels/interpolate_nearest.hpp"
 #include "ngraph/op/interpolate.hpp"
 
 namespace CUDAPlugin {
 
-class InterpolateOp : public OperationBase {
+class InterpolateNearestOp : public OperationBase {
 public:
     using NodeOp = ngraph::op::v4::Interpolate;
-    InterpolateOp(const CreationContext& context,
-                  const NodeOp& stridedSliceOp,
-                  IndexCollection&& inputIds,
-                  IndexCollection&& outputIds);
+    InterpolateNearestOp(const CreationContext& context,
+                         const NodeOp& stridedSliceOp,
+                         IndexCollection&& inputIds,
+                         IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputs,
                  Outputs outputs,
@@ -33,7 +33,7 @@ private:
     std::vector<std::size_t> out_shape_;
     bool can_use_upscale_optimizing_;
 
-    std::optional<kernel::Interpolate> interpolate_;
+    std::optional<kernel::InterpolateNearest> interpolate_;
 };
 
 }  // namespace CUDAPlugin

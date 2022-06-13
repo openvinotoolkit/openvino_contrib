@@ -1,22 +1,21 @@
-// Copyright (C) 2021 Intel Corporation
+// Copyright (C) 2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <fmt/format.h>
-#include <printf.h>
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
-#include "interpolate.hpp"
+#include "interpolate_nearest.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
-static __device__ float calc_input_index(const Interpolate::TransformMode mode,
+static __device__ float calc_input_index(const InterpolateNearest::TransformMode mode,
                                          const unsigned index,
                                          const float scale) {
-    using TransformMode = Interpolate::TransformMode;
+    using TransformMode = InterpolateNearest::TransformMode;
     float input_index = {};
     switch (mode) {
         case TransformMode::asymmetric:
@@ -31,10 +30,10 @@ static __device__ float calc_input_index(const Interpolate::TransformMode mode,
     return input_index;
 }
 
-static __device__ float calc_output_index(const Interpolate::TransformMode mode,
+static __device__ float calc_output_index(const InterpolateNearest::TransformMode mode,
                                           const unsigned index,
                                           const float scale) {
-    using TransformMode = Interpolate::TransformMode;
+    using TransformMode = InterpolateNearest::TransformMode;
     float output_index = {};
     switch (mode) {
         case TransformMode::asymmetric:
@@ -49,8 +48,10 @@ static __device__ float calc_output_index(const Interpolate::TransformMode mode,
     return output_index;
 }
 
-static __device__ unsigned round_index(const Interpolate::NearestMode mode, const float index, const float scale) {
-    using NearestMode = Interpolate::NearestMode;
+static __device__ unsigned round_index(const InterpolateNearest::NearestMode mode,
+                                       const float index,
+                                       const float scale) {
+    using NearestMode = InterpolateNearest::NearestMode;
     switch (mode) {
         case NearestMode::simple:
             if (scale < 1.0)
@@ -72,8 +73,8 @@ static __device__ unsigned round_index(const Interpolate::NearestMode mode, cons
     }
 }
 
-static __device__ unsigned input_index(const Interpolate::NearestMode nearest_mode,
-                                       const Interpolate::TransformMode transform_mode,
+static __device__ unsigned input_index(const InterpolateNearest::NearestMode nearest_mode,
+                                       const InterpolateNearest::TransformMode transform_mode,
                                        const unsigned index,
                                        const float scale) {
     if (scale == 1.0f) return index;
@@ -85,8 +86,8 @@ static inline __device__ unsigned min_position(const unsigned idx, const size_t 
     return idx < max_length ? idx : static_cast<unsigned>(max_length);
 }
 template <typename T = float>
-static __global__ void interpolate(const Interpolate::NearestMode nearest_mode,
-                                   const Interpolate::TransformMode transform_mode,
+static __global__ void interpolate(const InterpolateNearest::NearestMode nearest_mode,
+                                   const InterpolateNearest::TransformMode transform_mode,
                                    const T* src,
                                    const size_t input_strides[4],
                                    const size_t output_strides[4],
@@ -122,8 +123,8 @@ static __global__ void interpolate(const Interpolate::NearestMode nearest_mode,
     dst[dst_idx] = src[src_idx];
 }
 
-static __device__ void output_indexes(const Interpolate::NearestMode nearest_mode,
-                                      const Interpolate::TransformMode transform_mode,
+static __device__ void output_indexes(const InterpolateNearest::NearestMode nearest_mode,
+                                      const InterpolateNearest::TransformMode transform_mode,
                                       const unsigned input_idx,
                                       const float scale,
                                       unsigned& from,
@@ -134,8 +135,8 @@ static __device__ void output_indexes(const Interpolate::NearestMode nearest_mod
 }
 
 template <typename T = float>
-static __global__ void upscale_interpolate(const Interpolate::NearestMode nearest_mode,
-                                           const Interpolate::TransformMode transform_mode,
+static __global__ void upscale_interpolate(const InterpolateNearest::NearestMode nearest_mode,
+                                           const InterpolateNearest::TransformMode transform_mode,
                                            const T* src,
                                            const size_t input_strides[4],
                                            const size_t output_strides[4],
@@ -190,12 +191,12 @@ static __global__ void upscale_interpolate(const Interpolate::NearestMode neares
     }
 }
 
-Interpolate::Interpolate(size_t num_blocks,
-                         size_t threads_per_block,
-                         CUDAPlugin::kernel::Type_t element_type,
-                         bool use_optimized_kernel,
-                         NearestMode nearest_mode,
-                         TransformMode transform_mode)
+InterpolateNearest::InterpolateNearest(size_t num_blocks,
+                                       size_t threads_per_block,
+                                       CUDAPlugin::kernel::Type_t element_type,
+                                       bool use_optimized_kernel,
+                                       NearestMode nearest_mode,
+                                       TransformMode transform_mode)
     : num_blocks_{num_blocks},
       threads_per_block_{threads_per_block},
       element_type_{element_type},
@@ -203,34 +204,36 @@ Interpolate::Interpolate(size_t num_blocks,
       nearest_mode_{nearest_mode},
       transform_mode_{transform_mode} {}
 
-void Interpolate::operator()(const cudaStream_t stream,
-                             const void* src,
-                             const size_t* input_strides,
-                             const size_t* output_strides,
-                             const float* scales,
-                             const size_t* input_shape,
-                             const size_t* output_shape,
-                             void* dst) const {
+void InterpolateNearest::operator()(const cudaStream_t stream,
+                                    const void* src,
+                                    const size_t* input_strides,
+                                    const size_t* output_strides,
+                                    const float* scales,
+                                    const size_t* input_shape,
+                                    const size_t* output_shape,
+                                    void* dst) const {
     switch (element_type_) {
         case Type_t::f32:
-            return callKernel<float>(stream, src, input_strides, output_strides, scales, input_shape, output_shape, dst);
+            return callKernel<float>(
+                stream, src, input_strides, output_strides, scales, input_shape, output_shape, dst);
         case Type_t::f16:
-            return callKernel<__half>(stream, src, input_strides, output_strides, scales, input_shape, output_shape, dst);
+            return callKernel<__half>(
+                stream, src, input_strides, output_strides, scales, input_shape, output_shape, dst);
         default:
             throwIEException(
-                fmt::format("Index element type = {} is not supported by Gather operation !!", element_type_));
+                fmt::format("Element type = {} is not supported by InterpolateNearest operation !!", element_type_));
     }
 }
 
 template <typename T>
-void Interpolate::callKernel(const cudaStream_t stream,
-                             const void* src,
-                             const size_t* input_strides,
-                             const size_t* output_strides,
-                             const float* scales,
-                             const size_t* input_shape,
-                             const size_t* output_shape,
-                             void* dst) const {
+void InterpolateNearest::callKernel(const cudaStream_t stream,
+                                    const void* src,
+                                    const size_t* input_strides,
+                                    const size_t* output_strides,
+                                    const float* scales,
+                                    const size_t* input_shape,
+                                    const size_t* output_shape,
+                                    void* dst) const {
     if (use_optimized_kernel_)
         kernel::upscale_interpolate<T><<<num_blocks_, threads_per_block_, 0, stream>>>(nearest_mode_,
                                                                                        transform_mode_,
