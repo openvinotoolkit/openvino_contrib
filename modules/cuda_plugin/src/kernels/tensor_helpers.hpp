@@ -110,7 +110,7 @@ inline __host__ __device__ void calculate_strides_for_axis(Shape<T, N>& strides,
 }
 
 template <typename T, unsigned N>
-inline size_t shape_size(const Shape<T, N>& shape) {
+inline __host__ __device__ size_t shape_size(const Shape<T, N>& shape) {
     size_t size = 1;
     for (auto d : shape) {
         if (d == 0) {

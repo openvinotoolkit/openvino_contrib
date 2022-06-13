@@ -69,7 +69,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Not Supported |
 | [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Not Supported |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                              | Not Supported |
-| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Not Supported |
+| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported     |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported     |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                        | Not Supported |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Not Supported |
@@ -182,6 +182,14 @@ The semantics match corresponding nGraph operation classes declared in `namespac
     * Asymmetric paddings are not supported yet
 * `'ConvolutionBackpropData'`
     * Asymmetric paddings are not supported yet
+* `'Interpolate'`
+    * Supported modes: `nearest`, `cubic`, `linear`;
+    * Only default zero values are supported for `pads_begin` and `pads_end` attributes;
+    * True value of `antialias` attribute is supported in `linear` mode only;
+    * Additional limitations of `nearest` mode:
+      * Only 4D data tensors are supported;
+      * Supported values of `nearest_mode` attribute are `simple` and `floor`;
+      * `coordinate_transformation_mode` attribute is limited to `asymmetric` and `tf_half_pixel_for_nn`;
 * `'LSTMSequence'`
     * All limitations of LSTMCell
     * "REVERSE" direction is not supported
