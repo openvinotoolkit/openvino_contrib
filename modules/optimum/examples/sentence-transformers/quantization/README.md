@@ -18,6 +18,9 @@ OR
 
 > python run_nncf_senttransformer_stsb.py --model_name_or_path sentence-transformers/roberta-base-nli-stsb-mean-tokens --task_name stsb --max_length 512 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --learning_rate 2e-5 --num_train_epochs 1 --output_dir stsb_out_dir_senttransformer_nncf --labels_name 'label' --nncf_config nncf_configs/nncf_roberta_config.json --device 'cuda' --acc_metric 'spearmanr'
 
+* To run the provided example in batched mode:
+> python run_nncf_senttransformer_stsb.py --model_name_or_path sentence-transformers/roberta-base-nli-stsb-mean-tokens --task_name stsb --max_length 512 --per_device_train_batch_size 8 --per_device_eval_batch_size 32 --learning_rate 2e-5 --num_train_epochs 1 --output_dir stsb_out_dir_senttransformer_nncf --labels_name 'label' --nncf_config nncf_configs/nncf_roberta_config.json --device 'cpu' --acc_metric 'spearmanr'
+
 The NNCF config example is provided in [nncf_configs](nncf_configs).
 The optimized model is generated under `NNCF_optimized_model` by default.
 
