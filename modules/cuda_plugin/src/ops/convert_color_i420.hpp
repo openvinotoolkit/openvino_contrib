@@ -8,15 +8,15 @@
 #include <kernels/convert_color_i420.hpp>
 #include <kernels/cuda_type_traits.hpp>
 
-#include "openvino/op/i420_to_rgb.hpp"
-#include "openvino/op/i420_to_bgr.hpp"
 #include "converters.hpp"
+#include "openvino/op/i420_to_bgr.hpp"
+#include "openvino/op/i420_to_rgb.hpp"
 
 namespace CUDAPlugin {
 
 template <typename TNGraphNode, typename TKernel>
 class I420ConvertColorBase : public OperationBase {
- public:
+public:
     static_assert(std::is_same<TNGraphNode, ov::op::v8::I420toRGB>::value ||
                       std::is_same<TNGraphNode, ov::op::v8::I420toBGR>::value,
                   "TNGraphNode should be either NV12toRGB or NV12toBGR");
@@ -90,20 +90,20 @@ class I420ConvertColorBase : public OperationBase {
         }
     }
 
- private:
+private:
     std::optional<TKernel> kernel_;
 };
 
-class I420toRGBOp : public I420ConvertColorBase<ov::op::v8::I420toRGB,
-                                                kernel::I420ColorConvert<kernel::ColorConversion::RGB>> {
- public:
+class I420toRGBOp
+    : public I420ConvertColorBase<ov::op::v8::I420toRGB, kernel::I420ColorConvert<kernel::ColorConversion::RGB>> {
+public:
     using I420ConvertColorBase::I420ConvertColorBase;
 };
 
-class I420toBGROp : public I420ConvertColorBase<ov::op::v8::I420toBGR,
-                                                kernel::I420ColorConvert<kernel::ColorConversion::BGR>> {
- public:
+class I420toBGROp
+    : public I420ConvertColorBase<ov::op::v8::I420toBGR, kernel::I420ColorConvert<kernel::ColorConversion::BGR>> {
+public:
     using I420ConvertColorBase::I420ConvertColorBase;
 };
 
-}
+}  // namespace CUDAPlugin

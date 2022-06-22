@@ -7,8 +7,8 @@
 
 #include <cstddef>
 #include <cuda_test_constants.hpp>
-#include <openvino/op/util/attr_types.hpp>
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <vector>
 
 #include "convolution_biasadd_activation.hpp"

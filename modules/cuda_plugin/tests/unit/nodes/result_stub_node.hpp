@@ -16,8 +16,7 @@ struct ResultStubNode : ov::op::v0::Result {
         return type_info;
     }
 
-    std::shared_ptr<ov::Node>
-    clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
         return std::make_shared<ResultStubNode>();
     }
 };

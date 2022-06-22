@@ -25,13 +25,15 @@ static OperationBase::Ptr convolutionFactory(const CreationContext& context,
     std::stringstream exception_msg;
 #ifdef ENABLE_CUDNN_BACKEND_API
     try {
-        return std::make_shared<ConvolutionCuDnnBE>(context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
+        return std::make_shared<ConvolutionCuDnnBE>(
+            context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create ConvolutionCuDnnBE impl: " << e.what();
     }
 #endif  // ENABLE_CUDNN_BACKEND_API
     try {
-        return std::make_shared<ConvolutionCuDnn>(context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
+        return std::make_shared<ConvolutionCuDnn>(
+            context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
     } catch (const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what();
     }

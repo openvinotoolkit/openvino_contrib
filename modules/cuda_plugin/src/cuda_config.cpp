@@ -72,12 +72,12 @@ Configuration::Configuration(const ConfigMap& config, const Configuration & defa
 InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     auto streamExecutorConfigKeys = streams_executor_config_.SupportedKeys();
     if ((streamExecutorConfigKeys.end() !=
-        std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
+         std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
         return streams_executor_config_.GetConfig(name);
     } else if (name == CONFIG_KEY(DEVICE_ID)) {
         return {std::to_string(deviceId)};
     } else if (name == CONFIG_KEY(PERF_COUNT)) {
-      return {perfCount};
+        return {perfCount};
     } else if (name == CUDA_CONFIG_KEY(OPERATION_BENCHMARK)) {
         return {std::string(operation_benchmark ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
     } else if (name == CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
@@ -96,9 +96,9 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {std::to_string(streams_executor_config_._streams)};
     } else if (name == ov::inference_num_threads) {
         return {std::to_string(streams_executor_config_._threads)};
-      // TODO: Refactoring
-//    } else if (name == ov::affinity) {
-//        return {std::to_string(streams_executor_config_._threadPreferredCoreType)};
+        // TODO: Refactoring
+        //    } else if (name == ov::affinity) {
+        //        return {std::to_string(streams_executor_config_._threadPreferredCoreType)};
     } else {
         throwNotFound(name);
     }

@@ -9,7 +9,7 @@
 namespace ngraph::pass {
 
 class RemoveRedundantConvertTransformation : public ngraph::pass::MatcherPass {
- public:
+public:
     NGRAPH_RTTI_DECLARATION;
     RemoveRedundantConvertTransformation();
 };

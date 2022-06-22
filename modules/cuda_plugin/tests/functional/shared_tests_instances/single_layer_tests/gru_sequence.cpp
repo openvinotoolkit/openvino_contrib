@@ -112,7 +112,7 @@ public:
                                      direction,
                                      mode);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(gru_sequence->output(0)),
-                                     std::make_shared<ngraph::opset1::Result>(gru_sequence->output(1))};
+                                 std::make_shared<ngraph::opset1::Result>(gru_sequence->output(1))};
         function = std::make_shared<ngraph::Function>(results, params, "gru_sequence");
         bool ti_found = is_tensor_iterator_exist(function);
         EXPECT_EQ(ti_found, false);

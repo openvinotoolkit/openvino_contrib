@@ -18,8 +18,8 @@ std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
     auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
 
     auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
-    auto paramOuts = ngraph::helpers::convert2OutputVector(
-        ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
+    auto paramOuts =
+        ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
     auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
         ngraph::builder::makeMatMul(paramOuts[0], secondaryInput, false, false));
     ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(MatMul)};
@@ -33,8 +33,7 @@ class SuperDummyOp : public ov::op::Op {
         return type_info;
     }
 
-    std::shared_ptr<ov::Node>
-    clone_with_new_inputs(const ov::OutputVector& new_args) const override {
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override {
         check_new_args_count(this, new_args);
         return std::make_shared<SuperDummyOp>(new_args.at(0), new_args.at(1));
     }
@@ -62,9 +61,7 @@ class SuperDummyOp : public ov::op::Op {
         }
     }
 
-    SuperDummyOp(const ov::Output<Node>& A,
-                 const ov::Output<Node>& B)
-        : ov::op::Op(ov::OutputVector{A, B}) {
+    SuperDummyOp(const ov::Output<Node>& A, const ov::Output<Node>& B) : ov::op::Op(ov::OutputVector{A, B}) {
         constructor_validate_and_infer_types();
     }
 };

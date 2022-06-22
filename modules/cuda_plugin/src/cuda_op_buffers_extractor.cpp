@@ -8,17 +8,16 @@
 
 #include <error.hpp>
 #include <gsl/span_ext>
-#include <openvino/op/transpose.hpp>
-#include <stdexcept>
-#include <transformer/nodes/concat_optimized.hpp>
-#include <utility>
-
 #include <openvino/op/constant.hpp>
 #include <openvino/op/reshape.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/squeeze.hpp>
 #include <openvino/op/tensor_iterator.hpp>
+#include <openvino/op/transpose.hpp>
 #include <openvino/op/unsqueeze.hpp>
+#include <stdexcept>
+#include <transformer/nodes/concat_optimized.hpp>
+#include <utility>
 
 namespace CUDAPlugin {
 
@@ -323,8 +322,7 @@ bool OperationBuffersExtractor::IsConcatOptimizedNode(const ov::Node& node) {
 }
 
 bool OperationBuffersExtractor::isReshapeOnlyNode(const ov::Node& node) {
-    return ov::is_type<const ov::op::v1::Reshape>(&node) ||
-           ov::is_type<const ov::op::v0::Squeeze>(&node) ||
+    return ov::is_type<const ov::op::v1::Reshape>(&node) || ov::is_type<const ov::op::v0::Squeeze>(&node) ||
            ov::is_type<const ov::op::v0::Unsqueeze>(&node);
 }
 

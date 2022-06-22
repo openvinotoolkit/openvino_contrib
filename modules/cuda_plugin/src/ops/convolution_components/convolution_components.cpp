@@ -69,8 +69,7 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
         // TODO: potentially it can be removed, because paddings are assigned in ngraph operation
         case ov::op::PadType::SAME_LOWER:
         case ov::op::PadType::SAME_UPPER: {
-            const ov::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
-                                                     filter_shape_.end()};
+            const ov::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, filter_shape_.end()};
             padding_before_.clear();
             padding_after_.clear();
             ov::infer_auto_padding(

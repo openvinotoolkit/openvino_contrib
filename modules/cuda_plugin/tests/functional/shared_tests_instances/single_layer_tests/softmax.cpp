@@ -33,15 +33,13 @@ const std::vector<size_t> axis2D = {
     0, 1
 };
 
-const auto params2D = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes2D)),
-    testing::ValuesIn(axis2D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto params2D = testing::Combine(testing::ValuesIn(netPrecisions),
+                                       testing::Values(ov::element::undefined),
+                                       testing::Values(ov::element::undefined),
+                                       testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes2D)),
+                                       testing::ValuesIn(axis2D),
+                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax2D,
@@ -59,15 +57,13 @@ const std::vector<ov::Shape> inputShapes3D = {
 
 const std::vector<size_t> axis3D = {0, 1, 2};
 
-const auto params3D = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes3D)),
-    testing::ValuesIn(axis3D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto params3D = testing::Combine(testing::ValuesIn(netPrecisions),
+                                       testing::Values(ov::element::undefined),
+                                       testing::Values(ov::element::undefined),
+                                       testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes3D)),
+                                       testing::ValuesIn(axis3D),
+                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax3D,
@@ -88,15 +84,13 @@ const std::vector<ov::Shape> inputShapes4D = {
 
 const std::vector<size_t> axis4D = {0, 1, 2, 3};
 
-const auto params4D = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes4D)),
-    testing::ValuesIn(axis4D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto params4D = testing::Combine(testing::ValuesIn(netPrecisions),
+                                       testing::Values(ov::element::undefined),
+                                       testing::Values(ov::element::undefined),
+                                       testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes4D)),
+                                       testing::ValuesIn(axis4D),
+                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax4D,
@@ -114,16 +108,13 @@ const std::vector<ov::Shape> inputShapes5D = {
 
 const std::vector<size_t> axis5D = {0, 1, 2, 3, 4};
 
-
-const auto params5D = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes5D)),
-    testing::ValuesIn(axis5D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto params5D = testing::Combine(testing::ValuesIn(netPrecisions),
+                                       testing::Values(ov::element::undefined),
+                                       testing::Values(ov::element::undefined),
+                                       testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes5D)),
+                                       testing::ValuesIn(axis5D),
+                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax5D,
@@ -140,15 +131,14 @@ const std::vector<ov::Shape> resnet5Shapes = {
     {1, 1001},
 };
 
-const auto resnet5Params = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(resnet5Shapes)),
-    testing::ValuesIn(axis2D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto resnet5Params =
+    testing::Combine(testing::ValuesIn(netPrecisions),
+                     testing::Values(ov::element::undefined),
+                     testing::Values(ov::element::undefined),
+                     testing::ValuesIn(ov::test::static_shapes_to_test_representation(resnet5Shapes)),
+                     testing::ValuesIn(axis2D),
+                     testing::Values(CommonTestUtils::DEVICE_CUDA),
+                     testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax2Dresnet5,
@@ -161,15 +151,13 @@ const std::vector<ov::Shape> vggShapes = {
     {1, 1000},
 };
 
-const auto vggParams = testing::Combine(
-    testing::ValuesIn(netPrecisions),
-    testing::Values(ov::element::undefined),
-    testing::Values(ov::element::undefined),
-    testing::ValuesIn(ov::test::static_shapes_to_test_representation(vggShapes)),
-    testing::ValuesIn(axis2D),
-    testing::Values(CommonTestUtils::DEVICE_CUDA),
-    testing::Values(ov::AnyMap())
-);
+const auto vggParams = testing::Combine(testing::ValuesIn(netPrecisions),
+                                        testing::Values(ov::element::undefined),
+                                        testing::Values(ov::element::undefined),
+                                        testing::ValuesIn(ov::test::static_shapes_to_test_representation(vggShapes)),
+                                        testing::ValuesIn(axis2D),
+                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                        testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(
         SoftMax2Dvgg,

@@ -14,13 +14,13 @@
 namespace CUDAPlugin {
 
 class Plugin : public InferenceEngine::IInferencePlugin {
-   public:
+public:
     using Ptr = std::shared_ptr<Plugin>;
 
     Plugin();
     ~Plugin();
 
-    void SetConfig(const std::map<std::string, std::string> &config) override;
+    void SetConfig(const std::map<std::string, std::string>& config) override;
     InferenceEngine::QueryNetworkResult QueryNetwork(const InferenceEngine::CNNNetwork& network,
                                                      const std::map<std::string, std::string>& config) const override;
     InferenceEngine::IExecutableNetworkInternal::Ptr LoadExeNetworkImpl(
@@ -32,7 +32,7 @@ class Plugin : public InferenceEngine::IInferencePlugin {
     InferenceEngine::IExecutableNetworkInternal::Ptr ImportNetwork(
         std::istream& model, const std::map<std::string, std::string>& config) override;
 
-   private:
+private:
     friend class ExecutableNetwork;
     friend class CudaInferRequest;
 
@@ -44,12 +44,12 @@ class Plugin : public InferenceEngine::IInferencePlugin {
      * @param cfg Configuration used for CpuStreamExecutor creation
      * @return CpuStreamExecutor
      */
-    InferenceEngine::ITaskExecutor::Ptr GetStreamExecutor(const Configuration &cfg);
+    InferenceEngine::ITaskExecutor::Ptr GetStreamExecutor(const Configuration& cfg);
 
     template <cuda_attribute ID, class Result>
     Result getCudaAttribute() const;
 
-    int cudaDeviceID() const noexcept { return 0; } //TODO implement
+    int cudaDeviceID() const noexcept { return 0; }  // TODO implement
 
     bool isOperationSupported(const std::shared_ptr<ov::Node>& node) const;
 
@@ -62,6 +62,5 @@ class Plugin : public InferenceEngine::IInferencePlugin {
 
 template <>
 std::string Plugin::getCudaAttribute<Plugin::cuda_attribute::name, std::string>() const;
-
 
 }  // namespace CUDAPlugin

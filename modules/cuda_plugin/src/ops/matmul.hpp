@@ -61,11 +61,8 @@ private:
      * @param matrixBShape Shape of matrix B
      * @param matrixCShape Shape of matrix C
      */
-    static void BroadcastShapes(ov::Shape& matrixAShape,
-                                bool& transposeA,
-                                ov::Shape& matrixBShape,
-                                bool& transposeB,
-                                ov::Shape& matrixCShape);
+    static void BroadcastShapes(
+        ov::Shape& matrixAShape, bool& transposeA, ov::Shape& matrixBShape, bool& transposeB, ov::Shape& matrixCShape);
 
     cudaDataType_t data_type_ = cudaDataType_t::CUDA_R_32F;
     cudaDataType_t compute_type_ = cudaDataType_t::CUDA_R_32F;

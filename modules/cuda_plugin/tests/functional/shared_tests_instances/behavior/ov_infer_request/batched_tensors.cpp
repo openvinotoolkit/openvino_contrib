@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-#include <cuda_test_constants.hpp>
-
 #include "behavior/ov_infer_request/batched_tensors.hpp"
+
+#include <cuda_test_constants.hpp>
+#include <vector>
 
 namespace ov {
 namespace test {
@@ -62,10 +62,12 @@ TEST_P(OVInferRequestBatchedTests, SetInputTensors_Strides) {
     tensors.push_back(tensor1_cut);
     tensors.push_back(tensor2_cut);
     auto exp_tensor = ov::Tensor(element::f32, batch_shape);
-    ASSERT_THROW({
-                     req.set_tensors("tensor_input0", tensors);
-                     req.infer();
-                 }, ov::Exception);
+    ASSERT_THROW(
+        {
+            req.set_tensors("tensor_input0", tensors);
+            req.infer();
+        },
+        ov::Exception);
 }
 
 }  // namespace behavior
@@ -77,7 +79,8 @@ namespace {
 using namespace ov::test::behavior;
 using namespace ov;
 
-INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests, OVInferRequestBatchedTests,
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         OVInferRequestBatchedTests,
                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                          OVInferRequestBatchedTests::getTestCaseName);
 

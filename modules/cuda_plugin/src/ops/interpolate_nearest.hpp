@@ -4,9 +4,10 @@
 
 #pragma once
 
+#include <openvino/op/interpolate.hpp>
+
 #include "cuda_operation_base.hpp"
 #include "kernels/interpolate_nearest.hpp"
-#include <openvino/op/interpolate.hpp>
 
 namespace CUDAPlugin {
 

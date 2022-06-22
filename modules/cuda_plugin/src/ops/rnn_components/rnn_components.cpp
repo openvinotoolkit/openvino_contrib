@@ -15,8 +15,7 @@ namespace {
 
 template <typename T>
 const T& toRNNCell(const ov::Node& node) {
-    static_assert(std::is_base_of_v<ov::op::util::RNNCellBase, T>,
-                  "T node should have base ov::op::util::RNNCellBase");
+    static_assert(std::is_base_of_v<ov::op::util::RNNCellBase, T>, "T node should have base ov::op::util::RNNCellBase");
     try {
         return dynamic_cast<const T&>(node);
     } catch (const std::bad_cast&) {

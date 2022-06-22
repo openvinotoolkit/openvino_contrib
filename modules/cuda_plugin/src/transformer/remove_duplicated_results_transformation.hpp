@@ -9,7 +9,7 @@
 namespace ngraph::pass {
 
 class RemoveDuplicatedResultsTransformation : public ngraph::pass::FunctionPass {
- public:
+public:
     static constexpr auto Name = "RemoveDuplicatedResultsTransformation";
 
     NGRAPH_RTTI_DECLARATION;

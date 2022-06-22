@@ -44,8 +44,8 @@ TEST(TransformationTests, DISABLED_TemplateTest) {
         // Example reference function
         auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 1, 2});
         auto divide_constant = ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {1.5});
-        auto pow = std::make_shared<ov::opset8::Power>(divide_constant,
-                                                           ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {-1}));
+        auto pow = std::make_shared<ov::opset8::Power>(
+            divide_constant, ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {-1}));
         auto mul = std::make_shared<ov::opset8::Multiply>(data, pow);
 
         f_ref = std::make_shared<ngraph::Function>(ov::NodeVector{mul}, ov::ParameterVector{data});

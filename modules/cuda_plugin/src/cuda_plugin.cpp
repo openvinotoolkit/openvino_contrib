@@ -52,8 +52,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
         if (output_precision != InferenceEngine::Precision::FP32 &&
             output_precision != InferenceEngine::Precision::FP16 &&
             output_precision != InferenceEngine::Precision::I32 &&
-            output_precision != InferenceEngine::Precision::I16 &&
-            output_precision != InferenceEngine::Precision::U8 &&
+            output_precision != InferenceEngine::Precision::I16 && output_precision != InferenceEngine::Precision::U8 &&
             output_precision != InferenceEngine::Precision::I8 &&
             output_precision != InferenceEngine::Precision::BOOL) {
             throwIEException(
@@ -67,12 +66,9 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
         auto input_precision = networkInput.second->getTensorDesc().getPrecision();
 
         if (input_precision != InferenceEngine::Precision::FP32 &&
-            input_precision != InferenceEngine::Precision::FP16 &&
-            input_precision != InferenceEngine::Precision::I32 &&
-            input_precision != InferenceEngine::Precision::I16 &&
-            input_precision != InferenceEngine::Precision::U8 &&
-            input_precision != InferenceEngine::Precision::I8 &&
-            input_precision != InferenceEngine::Precision::BOOL) {
+            input_precision != InferenceEngine::Precision::FP16 && input_precision != InferenceEngine::Precision::I32 &&
+            input_precision != InferenceEngine::Precision::I16 && input_precision != InferenceEngine::Precision::U8 &&
+            input_precision != InferenceEngine::Precision::I8 && input_precision != InferenceEngine::Precision::BOOL) {
             throwIEException(
                 fmt::format("Input format {} is not supported yet. Supported "
                             "formats are: FP32, FP16, I32, I16, I8, U8 and BOOL.",
@@ -244,35 +240,35 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
             }
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
-// TODO: Uncomment when will be required 'SUPPORTED_PROPERTIES' and check all tests
-//    } else if (ov::supported_properties == name) {
-//        using properties_type = decltype(ov::supported_properties)::value_type;
-//        properties_type supportedMetrics = {
-//            ov::supported_properties.name(),
-//            METRIC_KEY(AVAILABLE_DEVICES),
-//            METRIC_KEY(SUPPORTED_METRICS),
-//            METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-//            METRIC_KEY(FULL_DEVICE_NAME),
-//            METRIC_KEY(IMPORT_EXPORT_SUPPORT),
-//            METRIC_KEY(DEVICE_ARCHITECTURE),
-//            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
-//            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS)
-//        };
-//        properties_type configKeys = {
-//            CONFIG_KEY(DEVICE_ID),
-//            CONFIG_KEY(PERF_COUNT),
-//            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)
-//        };
-//        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
-//        for (auto&& configKey : streamExecutorConfigKeys) {
-//            if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
-//                configKeys.emplace_back(configKey);
-//            }
-//        }
-//        properties_type all_properties;
-//        all_properties.insert(all_properties.end(), supportedMetrics.begin(), supportedMetrics.end());
-//        all_properties.insert(all_properties.end(), configKeys.begin(), configKeys.end());
-//        return all_properties;
+        // TODO: Uncomment when will be required 'SUPPORTED_PROPERTIES' and check all tests
+        //    } else if (ov::supported_properties == name) {
+        //        using properties_type = decltype(ov::supported_properties)::value_type;
+        //        properties_type supportedMetrics = {
+        //            ov::supported_properties.name(),
+        //            METRIC_KEY(AVAILABLE_DEVICES),
+        //            METRIC_KEY(SUPPORTED_METRICS),
+        //            METRIC_KEY(SUPPORTED_CONFIG_KEYS),
+        //            METRIC_KEY(FULL_DEVICE_NAME),
+        //            METRIC_KEY(IMPORT_EXPORT_SUPPORT),
+        //            METRIC_KEY(DEVICE_ARCHITECTURE),
+        //            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
+        //            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS)
+        //        };
+        //        properties_type configKeys = {
+        //            CONFIG_KEY(DEVICE_ID),
+        //            CONFIG_KEY(PERF_COUNT),
+        //            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)
+        //        };
+        //        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
+        //        for (auto&& configKey : streamExecutorConfigKeys) {
+        //            if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
+        //                configKeys.emplace_back(configKey);
+        //            }
+        //        }
+        //        properties_type all_properties;
+        //        all_properties.insert(all_properties.end(), supportedMetrics.begin(), supportedMetrics.end());
+        //        all_properties.insert(all_properties.end(), configKeys.begin(), configKeys.end());
+        //        return all_properties;
     } else if (METRIC_KEY(AVAILABLE_DEVICES) == name) {
         // TODO: fill list of available devices
         std::vector<std::string> availableDevices = {""};

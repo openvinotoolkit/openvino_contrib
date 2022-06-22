@@ -16,9 +16,9 @@ class FakeQuantizeOp : public OperationBase {
 public:
     using NodeOp = ov::op::v0::FakeQuantize;
     FakeQuantizeOp(const CreationContext& context,
-                  const NodeOp& node,
-                  IndexCollection&& inputIds,
-                  IndexCollection&& outputIds);
+                   const NodeOp& node,
+                   IndexCollection&& inputIds,
+                   IndexCollection&& outputIds);
 
 private:
     void Execute(const InferenceRequestContext& context,

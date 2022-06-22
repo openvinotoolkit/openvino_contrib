@@ -5,11 +5,11 @@
 #include "cuda_fullyconnected_transformation.hpp"
 
 #include <exec_graph_info.hpp>
-#include <openvino/op/add.hpp>
-#include <openvino/op/matmul.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
+#include <openvino/op/add.hpp>
+#include <openvino/op/matmul.hpp>
 #include <ops/matmul.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 

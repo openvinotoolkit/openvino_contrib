@@ -78,10 +78,10 @@ class FullyConnectedLayerTest : public testing::WithParamInterface<FullyConnecte
       params.push_back(std::dynamic_pointer_cast<ov::op::v0::Parameter>(secondaryInput));
     }
     auto thirdInput = ngraph::builder::makeInputLayer(ngPrc, ngraph::helpers::InputLayerType::CONSTANT, shapeRelatedParams.input3);
-    auto paramOuts = ngraph::helpers::convert2OutputVector(
-        ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-    auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
-        ngraph::builder::makeMatMul(paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second));
+    auto paramOuts =
+        ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
+    auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(ngraph::builder::makeMatMul(
+        paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second));
     auto Add = std::dynamic_pointer_cast<ov::op::v1::Add>(
         ngraph::builder::makeEltwise(MatMul, thirdInput, ngraph::helpers::EltwiseTypes::ADD));
     ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};

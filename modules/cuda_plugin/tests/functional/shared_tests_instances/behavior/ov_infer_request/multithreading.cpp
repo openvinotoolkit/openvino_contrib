@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-#include <cuda_test_constants.hpp>
-
 #include "behavior/ov_infer_request/multithreading.hpp"
+
+#include <cuda_test_constants.hpp>
+#include <vector>
 
 using namespace ov::test::behavior;
 
 namespace {
 
-const std::vector<ov::AnyMap> configs = {
-    {}
-};
+const std::vector<ov::AnyMap> configs = {{}};
 
-INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests, OVInferRequestMultithreadingTests,
-                        ::testing::Combine(
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                ::testing::ValuesIn(configs)),
-                        OVInferRequestMultithreadingTests::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         OVInferRequestMultithreadingTests,
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::ValuesIn(configs)),
+                         OVInferRequestMultithreadingTests::getTestCaseName);
 
 }  // namespace

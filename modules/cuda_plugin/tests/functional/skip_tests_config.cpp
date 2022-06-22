@@ -19,7 +19,7 @@ std::vector<std::string> disabledTestPatterns() {
         // CVS-51758
         R"(.*InferRequestPreprocessConversionTest.*oLT=(NHWC|NCHW).*)",
         R"(.*InferRequestPreprocessDynamicallyInSetBlobTest.*oPRC=0.*oLT=1.*)",
-        //Not Implemented
+        // Not Implemented
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution|CheckExecGraphInfoSerialization).*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*canExport.*)",
@@ -43,17 +43,17 @@ std::vector<std::string> disabledTestPatterns() {
 
         // CVS-64094
         R"(.*ReferenceLogSoftmaxLayerTest.*4.*iType=f16.*axis=.*1.*)",
-        //CVS-64012
+        // CVS-64012
         R"(.*ReferenceDeformableConvolutionLayerTest.*f16.*real_offset_padding_stride_dialation.*)",
         R"(.*ReferenceDeformableConvolutionLayerTest.*bf16.*)",
         R"(.*ReferenceDeformableConvolutionV8LayerTest.*f16.*real_offset_padding_stride_dialation.*)",
         R"(.*ReferenceDeformableConvolutionV8LayerTest.*bf16.*)",
         R"(.*ReferenceDeformableConvolutionV8LayerTest.*f64.*mask.*)",
-        //CVS-63973
+        // CVS-63973
         R"(.*ReferencePSROIPoolingLayerTest.*bf16.*)",
-        //CVS-63977
+        // CVS-63977
         R"(.*ReferenceProposalV1LayerTest.*f16.*)",
-        //CVS-64082
+        // CVS-64082
         R"(.*ReferenceProposalV4LayerTest.*f16.*)",
         // CVS-64101
         R"(.*ReferenceExperimentalGPLayerTest.*bf16.*)",
@@ -113,7 +113,7 @@ std::vector<std::string> disabledTestPatterns() {
 
 #ifdef _WIN32
     // CVS-63989
-     retVector.emplace_back(R"(.*ReferenceSigmoidLayerTest.*u64.*)");
+    retVector.emplace_back(R"(.*ReferenceSigmoidLayerTest.*u64.*)");
     // CVS-64054
     retVector.emplace_back(R"(.*ReferenceTopKTest.*topk_max_sort_none)");
     retVector.emplace_back(R"(.*ReferenceTopKTest.*topk_min_sort_none)");

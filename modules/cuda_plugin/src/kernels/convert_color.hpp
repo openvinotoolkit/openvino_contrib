@@ -13,19 +13,11 @@
 namespace CUDAPlugin {
 namespace kernel {
 
-enum class ColorConversion {
-    RGB,
-    BGR
-};
+enum class ColorConversion { RGB, BGR };
 
 #ifdef __CUDACC__
-template<typename T>
-__device__ void yuv_pixel_to_rgb(const float y_val,
-                                 const float u_val,
-                                 const float v_val,
-                                 T &r,
-                                 T &g,
-                                 T &b) {
+template <typename T>
+__device__ void yuv_pixel_to_rgb(const float y_val, const float u_val, const float v_val, T &r, T &g, T &b) {
     const float c = y_val - 16.f;
     const float d = u_val - 128.f;
     const float e = v_val - 128.f;
@@ -44,5 +36,5 @@ __device__ void yuv_pixel_to_rgb(const float y_val,
 }
 #endif
 
-}
-}
+}  // namespace kernel
+}  // namespace CUDAPlugin

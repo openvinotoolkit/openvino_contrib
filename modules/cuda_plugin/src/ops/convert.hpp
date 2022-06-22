@@ -8,6 +8,8 @@
 #include <cuda_operation_base.hpp>
 #include <ngraph/type/element_type.hpp>
 
+#include "kernels/convert.hpp"
+
 namespace CUDAPlugin {
 
 class ConvertOp : public OperationBase {

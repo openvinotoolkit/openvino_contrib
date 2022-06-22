@@ -42,24 +42,25 @@ const std::vector<CommonTestUtils::OpType> smoke_op_types = {CommonTestUtils::Op
                                                              CommonTestUtils::OpType::VECTOR};
 
 const std::vector<ov::test::ElementType> add_precisions = {ov::test::ElementType::f16,
-                                                                ov::test::ElementType::f32,
-                                                                ov::test::ElementType::i32,
-                                                                ov::test::ElementType::i16,
-                                                                ov::test::ElementType::u8};
+                                                           ov::test::ElementType::f32,
+                                                           ov::test::ElementType::i32,
+                                                           ov::test::ElementType::i16,
+                                                           ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Add,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(add_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(add_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> mul_precisions = {
@@ -68,16 +69,17 @@ const std::vector<ov::test::ElementType> mul_precisions = {
 INSTANTIATE_TEST_CASE_P(
     smoke_Multiply,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(mul_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(mul_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> sub_precisions = {
@@ -86,16 +88,17 @@ const std::vector<ov::test::ElementType> sub_precisions = {
 INSTANTIATE_TEST_CASE_P(
     smoke_Subtract,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(sub_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(sub_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> div_precisions = {
@@ -104,57 +107,58 @@ const std::vector<ov::test::ElementType> div_precisions = {
 INSTANTIATE_TEST_CASE_P(
     smoke_Divide,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(div_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(div_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> sq_diff_precisions = {ov::test::ElementType::f16,
-                                                                    ov::test::ElementType::f32,
-                                                                    ov::test::ElementType::i32,
-                                                                    ov::test::ElementType::i16,
-                                                                    ov::test::ElementType::u8};
+                                                               ov::test::ElementType::f32,
+                                                               ov::test::ElementType::i32,
+                                                               ov::test::ElementType::i16,
+                                                               ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_SquaredDifference,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::SQUARED_DIFF),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(sq_diff_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::SQUARED_DIFF),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(sq_diff_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<ov::test::ElementType> floor_mod_precisions = {ov::test::ElementType::f16,
-                                                                      ov::test::ElementType::f32,
-                                                                      ov::test::ElementType::i32,
-                                                                      ov::test::ElementType::u8};
+const std::vector<ov::test::ElementType> floor_mod_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32, ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(floor_mod_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(floor_mod_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 const std::vector<ov::test::ElementType> mod_precisions = {
@@ -168,16 +172,17 @@ const std::vector<ov::test::ElementType> mod_precisions = {
 INSTANTIATE_TEST_CASE_P(
     smoke_Mod,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
-                                          ::testing::ValuesIn(input_layer_types),
-                                          ::testing::ValuesIn(smoke_op_types),
-                                          ::testing::ValuesIn(mod_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::ValuesIn(mod_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 //
@@ -207,14 +212,15 @@ const std::vector<std::vector<ov::Shape>> renset50_vgg16_add_shapes = {{{1, 1000
                                                                                  {{1, 64, 56, 56}, {1, 64, 1, 1}}};
 
 const std::vector<ov::test::ElementType> renset50_vgg16_input_precisions = {ov::test::ElementType::f16,
-                                                                                 ov::test::ElementType::f32};
+                                                                            ov::test::ElementType::f32};
 
 const std::vector<CommonTestUtils::OpType> renset50_vgg16_op_types = {CommonTestUtils::OpType::VECTOR};
 
 INSTANTIATE_TEST_CASE_P(
     renset50_vgg16_Add,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(renset50_vgg16_add_shapes)),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
+                                              renset50_vgg16_add_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(renset50_vgg16_op_types),
@@ -244,7 +250,8 @@ const std::vector<ov::test::ElementType> tacotron2_Multiply_input_precisions = {
 INSTANTIATE_TEST_CASE_P(
     tacotron2_Multiply,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(tacotron2_Multiply_shapes)),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(
+                                              tacotron2_Multiply_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
@@ -281,21 +288,22 @@ TEST_P(AddBenchmarkTest, DISABLED_Add_Benchmark) {
 }
 
 const std::vector<ov::test::ElementType> bench_add_precisions = {ov::test::ElementType::f16,
-                                                                      ov::test::ElementType::f32};
+                                                                 ov::test::ElementType::f32};
 
 INSTANTIATE_TEST_CASE_P(
     Add_Benchmark,
     AddBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
-                                          ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                          ::testing::ValuesIn(bench_add_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                           ::testing::ValuesIn(bench_add_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 //
@@ -309,21 +317,22 @@ TEST_P(MultiplyBenchmarkTest, DISABLED_Multiply_Benchmark) {
 }
 
 const std::vector<ov::test::ElementType> bench_mul_precisions = {ov::test::ElementType::f16,
-                                                                      ov::test::ElementType::f32};
+                                                                 ov::test::ElementType::f32};
 
 INSTANTIATE_TEST_CASE_P(
     Multiply_Benchmark,
     MultiplyBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
-                                          ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                          ::testing::ValuesIn(bench_mul_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
+                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                           ::testing::ValuesIn(bench_mul_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 //
@@ -342,16 +351,17 @@ const std::vector<ov::test::ElementType> bench_sub_precisions = {
 INSTANTIATE_TEST_CASE_P(
     Subtract_Benchmark,
     SubtractBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
-                                          ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                          ::testing::ValuesIn(bench_sub_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
+                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                           ::testing::ValuesIn(bench_sub_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 //
@@ -370,16 +380,17 @@ const std::vector<ov::test::ElementType> bench_div_precisions = {
 INSTANTIATE_TEST_CASE_P(
     Divide_Benchmark,
     DivideBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
-                                          ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                          ::testing::ValuesIn(bench_div_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                           ::testing::ValuesIn(bench_div_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
 
 //
@@ -403,16 +414,17 @@ const std::vector<ov::test::ElementType> bench_mod_precisions = {
 INSTANTIATE_TEST_CASE_P(
     Mod_Benchmark,
     ModBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
-                                          ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
-                                          ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
-                                          ::testing::Values(CommonTestUtils::OpType::VECTOR),
-                                          ::testing::ValuesIn(bench_mod_precisions),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                          ::testing::Values(additional_config)),
-                       ::testing::Values(OperationMode::NORMAL)),
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
+                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
+                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
+                           ::testing::ValuesIn(bench_mod_precisions),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
 }  // namespace

@@ -5,16 +5,17 @@
 #pragma once
 
 #include <cuda_runtime.h>
+
+#include "convert_color.hpp"
 #include "cuda_type_traits.hpp"
 #include "elementtypeswitch.hpp"
-#include "convert_color.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
 template <ColorConversion Conversion>
 class I420ColorConvert {
- public:
+public:
     I420ColorConvert(Type_t element_type,
                      size_t max_threads_per_block,
                      size_t batch_size,
@@ -32,25 +33,18 @@ class I420ColorConvert {
     template <typename T, typename... Args>
     void default_(T t, cudaStream_t, Args&&...) const noexcept;
 
- private:
+private:
     template <typename T>
-    void callKernel(const cudaStream_t stream,
-                    const void* in,
-                    void* out) const;
+    void callKernel(const cudaStream_t stream, const void* in, void* out) const;
     template <typename T>
-    void callKernel(const cudaStream_t stream,
-                    const void* in0,
-                    const void* in1,
-                    const void* in2,
-                    void* out) const;
+    void callKernel(const cudaStream_t stream, const void* in0, const void* in1, const void* in2, void* out) const;
 
-    using Switcher = ElementTypesSwitch<
-        Type_t::u8,
+    using Switcher = ElementTypesSwitch<Type_t::u8,
 #ifdef CUDA_HAS_BF16_TYPE
-        Type_t::bf16,
+                                        Type_t::bf16,
 #endif
-        Type_t::f16,
-        Type_t::f32>;
+                                        Type_t::f16,
+                                        Type_t::f32>;
 
     Type_t element_type_;
     unsigned num_blocks_;
@@ -62,5 +56,5 @@ class I420ColorConvert {
     size_t stride_uv_;
 };
 
-}
-}
+}  // namespace kernel
+}  // namespace CUDAPlugin

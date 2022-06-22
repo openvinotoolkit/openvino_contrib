@@ -231,15 +231,14 @@ ov::PartialShape FusedConvBackpropData::get_output_shape() const {
     return shape;
 }
 
-void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(
-    const std::vector<ov::Dimension>& input_data_shape,
-    const std::vector<ov::Dimension>& filters_shape,
-    const ov::Strides& strides,
-    const ov::Strides& dilations,
-    const ov::CoordinateDiff& pads_begin,
-    const ov::CoordinateDiff& pads_end,
-    const ov::CoordinateDiff& output_padding,
-    std::vector<ov::Dimension>& output_spatial_shape) {
+void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::vector<ov::Dimension>& input_data_shape,
+                                                                     const std::vector<ov::Dimension>& filters_shape,
+                                                                     const ov::Strides& strides,
+                                                                     const ov::Strides& dilations,
+                                                                     const ov::CoordinateDiff& pads_begin,
+                                                                     const ov::CoordinateDiff& pads_end,
+                                                                     const ov::CoordinateDiff& output_padding,
+                                                                     std::vector<ov::Dimension>& output_spatial_shape) {
     size_t num_spatial_dims = input_data_shape.size();
     NODE_VALIDATION_CHECK(this,
                           filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&

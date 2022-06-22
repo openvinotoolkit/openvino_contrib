@@ -59,9 +59,7 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
         fillBlobRandom<uint8_t>(blob);
         blobsMapping[node->get_friendly_name()] = 0;
         blobs.push_back(std::make_shared<ngraph::HostTensor>(
-            ngraph::element::Type_t::u8,
-            blob->getTensorDesc().getDims(),
-            blob->buffer().as<uint8_t*>()));
+            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};
@@ -78,7 +76,7 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
     std::map<std::string, std::size_t> blobsMapping;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-};
+ };
 
  TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ParameterStubNode>()));

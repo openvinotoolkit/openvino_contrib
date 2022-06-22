@@ -11,8 +11,8 @@
 #include "fix_win32_gtest_assert_ne_macro.hpp"
 #endif
 
-#include "ie_precision.hpp"
 #include "behavior/infer_request/callback.hpp"
+#include "ie_precision.hpp"
 
 using namespace BehaviorTestsDefinitions;
 
@@ -27,9 +27,9 @@ const std::vector<std::map<std::string, std::string>> configs = {
     {}
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests, InferRequestCallbackTests,
-                         ::testing::Combine(
-                             ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                             ::testing::ValuesIn(configs)),
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         InferRequestCallbackTests,
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::ValuesIn(configs)),
                          InferRequestCallbackTests::getTestCaseName);
 }  // namespace

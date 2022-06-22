@@ -7,30 +7,29 @@
 #include "fix_win32_gtest_assert_ne_macro.hpp"
 #endif
 
-#include "fmt/format.h"
-
-#include "debug.h"
-#include "ie/ie_compound_blob.h"
+#include <gtest/gtest.h>
 
 #include <algorithm>
-#include <map>
-#include <memory>
-#include "ngraph/runtime/host_tensor.hpp"
-#include "ngraph/runtime/reference/convert.hpp"
-#include <string>
-#include <utility>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
-#include "ie/inference_engine.hpp"
-#include <vector>
+#include <map>
+#include <memory>
 #include <random>
-#include <gtest/gtest.h>
-#include "functional_test_utils/blob_utils.hpp"
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "blob_factory.hpp"
+#include "debug.h"
+#include "fmt/format.h"
+#include "functional_test_utils/blob_utils.hpp"
+#include "ie/ie_compound_blob.h"
+#include "ie/inference_engine.hpp"
 #include "ie_api.h"
 #include "ie_common.h"
 #include "ie_ngraph_utils.hpp"
+#include "ngraph/runtime/host_tensor.hpp"
+#include "ngraph/runtime/reference/convert.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/partial_shape.hpp"
 

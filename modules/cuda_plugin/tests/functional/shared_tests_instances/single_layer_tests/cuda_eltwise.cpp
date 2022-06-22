@@ -36,21 +36,23 @@ void replace(InferenceEngine::Blob::Ptr& blob, float old_value, float new_value,
     for (size_t i = 0; i < blob->size(); ++i) {
         if constexpr (PRC == InferenceEngine::Precision::FP16) {
             const auto value = ngraph::float16::from_bits(raw_ptr[i]);
-            const bool should_replace = (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
-                                         value == static_cast<ngraph::float16>(old_value);
+            const bool should_replace =
+                (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
+                value == static_cast<ngraph::float16>(old_value);
             if (should_replace) {
                 raw_ptr[i] = static_cast<DataType>(ngraph::float16(new_value).to_bits());
             }
         } else if constexpr (PRC == InferenceEngine::Precision::BF16) {
             const auto value = ngraph::bfloat16::from_bits(raw_ptr[i]);
-            const bool should_replace = (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
-                                         value == static_cast<ngraph::bfloat16>(old_value);
+            const bool should_replace =
+                (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
+                value == static_cast<ngraph::bfloat16>(old_value);
             if (should_replace) {
                 raw_ptr[i] = static_cast<DataType>(ngraph::bfloat16(new_value).to_bits());
             }
         } else {
-            const bool should_replace = (is_integer && static_cast<int>(raw_ptr[i]) == static_cast<int>(old_value)) ||
-                                         raw_ptr[i] == old_value;
+            const bool should_replace =
+                (is_integer && static_cast<int>(raw_ptr[i]) == static_cast<int>(old_value)) || raw_ptr[i] == old_value;
             if (should_replace) {
                 raw_ptr[i] = new_value;
             }
@@ -136,7 +138,8 @@ InferenceEngine::Precision convertTestElementTypeToNGraphPrecision(const ov::tes
         case ov::element::Type_t::u64:
             return InferenceEngine::Precision::U64;
         default:
-            throw std::invalid_argument(fmt::format("Cannot convert ElementType = {} to InferenceEngine::Precision", value));
+            throw std::invalid_argument(
+                fmt::format("Cannot convert ElementType = {} to InferenceEngine::Precision", value));
     }
 };
 
@@ -227,7 +230,8 @@ void CudaEltwiseLayerTest::SetUp() {
     } else {
         constexpr bool is_random = true;
         ov::Shape shape = inputDynamicShapes.back().get_max_shape();
-        auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::f32>(ngraph::shape_size(shape), up_to, start_from, seed);
+        auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::f32>(
+            ngraph::shape_size(shape), up_to, start_from, seed);
         switch (eltwiseType) {
             case ngraph::helpers::EltwiseTypes::DIVIDE:
             case ngraph::helpers::EltwiseTypes::MOD: {
@@ -258,8 +262,8 @@ void CudaEltwiseLayerTest::SetUp() {
 
     const bool is_python_divide = mode == OperationMode::PYTHON_DIVIDE;
     auto eltwise = eltwiseType == ngraph::helpers::EltwiseTypes::DIVIDE
-                   ? std::make_shared<ngraph::op::v1::Divide>(parameters[0], secondaryInput, is_python_divide)
-                   : ngraph::builder::makeEltwise(parameters[0], secondaryInput, eltwiseType);
+                       ? std::make_shared<ngraph::op::v1::Divide>(parameters[0], secondaryInput, is_python_divide)
+                       : ngraph::builder::makeEltwise(parameters[0], secondaryInput, eltwiseType);
     function = std::make_shared<ngraph::Function>(eltwise, parameters, "Eltwise");
 }
 

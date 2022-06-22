@@ -7,8 +7,8 @@
 #include <cuda_operation_base.hpp>
 #include <openvino/op/strided_slice.hpp>
 
-#include "ngraph/slice_plan.hpp"
 #include "kernels/strided_slice.hpp"
+#include "ngraph/slice_plan.hpp"
 
 namespace CUDAPlugin {
 

@@ -3,15 +3,16 @@
 //
 
 #include "convolution_asym_padding_transformation.hpp"
-#include "ngraph/op/convolution.hpp"
 
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <openvino/op/convolution.hpp>
-#include <openvino/op/pad.hpp>
 #include <ngraph/opsets/opset1.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
+#include <openvino/op/convolution.hpp>
+#include <openvino/op/pad.hpp>
+
+#include "ngraph/op/convolution.hpp"
 
 namespace {
 
@@ -45,16 +46,16 @@ bool convolution_with_padding(ngraph::pattern::Matcher &m) {
     const ov::Output<ov::Node> &data = convolution->input(0).get_source_output();
     const ov::Output<ov::Node> &filters = convolution->input(1).get_source_output();
 
-    const auto pads_begin_node = std::make_shared<ov::op::v0::Constant>(
-        ov::element::i64, ov::Shape{pads_begin.size()}, pads_begin.data());
+    const auto pads_begin_node =
+        std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{pads_begin.size()}, pads_begin.data());
     const auto pads_end_node =
         std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{pads_end.size()}, pads_end.data());
-    const auto padding = std::make_shared<ov::op::v1::Pad>(
-        data,
-        pads_begin_node,
-        pads_end_node,
-        ov::op::v0::Constant::create(data.get_element_type(), ov::Shape{}, {0}),
-        ov::op::PadMode::CONSTANT);
+    const auto padding =
+        std::make_shared<ov::op::v1::Pad>(data,
+                                          pads_begin_node,
+                                          pads_end_node,
+                                          ov::op::v0::Constant::create(data.get_element_type(), ov::Shape{}, {0}),
+                                          ov::op::PadMode::CONSTANT);
 
     const ov::CoordinateDiff zero_pads(convolution->get_pads_begin().size(), 0);
     auto new_convolution = std::make_shared<TBaseConvolution>(padding->output(0),

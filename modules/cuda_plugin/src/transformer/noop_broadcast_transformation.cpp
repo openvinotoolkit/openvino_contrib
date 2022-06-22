@@ -5,8 +5,8 @@
 #include "noop_broadcast_transformation.hpp"
 
 #include <gsl/gsl_assert>
-#include <openvino/op/broadcast.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
+#include <openvino/op/broadcast.hpp>
 
 namespace ngraph::pass {
 

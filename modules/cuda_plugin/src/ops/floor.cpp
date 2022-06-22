@@ -5,9 +5,9 @@
 #include "floor.hpp"
 
 #include <cuda_operation_registry.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
-#include <openvino/op/constant.hpp>
 
 namespace CUDAPlugin {
 

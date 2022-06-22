@@ -70,10 +70,9 @@ class OperationBufferExtractorTest: public testing::Test {
                 ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
-        ov::ParameterVector inputs { input };
-        ov::NodeVector outputs { reshape };
-        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs,
-                "SimpleGraph");
+        ov::ParameterVector inputs{input};
+        ov::NodeVector outputs{reshape};
+        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "SimpleGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
         extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
@@ -364,8 +363,8 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
             ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
-        ov::ParameterVector inputs { input };
-        ov::NodeVector outputs { reshape };
+        ov::ParameterVector inputs{input};
+        ov::NodeVector outputs{reshape};
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();

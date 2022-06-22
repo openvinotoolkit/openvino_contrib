@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda_operation_registry.hpp>
 #include "kernels/round.hpp"
 
-#include "round.hpp"
-#include "openvino/op/round.hpp"
+#include <cuda_operation_registry.hpp>
+
 #include "converters.hpp"
+#include "openvino/op/round.hpp"
+#include "round.hpp"
 
 namespace CUDAPlugin {
 
@@ -31,8 +32,8 @@ RoundOp::RoundOp(const CreationContext& context,
     Expects(ov::shape_size(node.get_output_shape(0)) == num_elements);
 
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
-    kernel_ = kernel::Round{
-        convertDataType<CUDAPlugin::kernel::Type_t>(element_type), max_threads_per_block, num_elements};
+    kernel_ =
+        kernel::Round{convertDataType<CUDAPlugin::kernel::Type_t>(element_type), max_threads_per_block, num_elements};
 }
 
 void RoundOp::Execute(const InferenceRequestContext& context,
@@ -48,4 +49,4 @@ void RoundOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(RoundOp, Round);
 
-}
+}  // namespace CUDAPlugin

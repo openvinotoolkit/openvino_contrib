@@ -65,8 +65,7 @@ bool change_concat_to_concat_optimized(pattern::Matcher &m) {
         found != rt_info.end()) {
         auto& rt_info_layer_names = found->second;
         const auto original_names = rt_info_layer_names.as<std::string>();
-        const std::string original_names_with_activation =
-            concat->get_friendly_name() + "," + original_names;
+        const std::string original_names_with_activation = concat->get_friendly_name() + "," + original_names;
         rt_info_layer_names = original_names_with_activation;
     }
 

@@ -45,8 +45,7 @@ public:
     std::shared_ptr<ngraph::Function> GetExecGraphInfo() override;
     void Export(std::ostream& model) override;
     InferenceEngine::IInferRequestInternal::Ptr CreateInferRequestImpl(
-        InferenceEngine::InputsDataMap networkInputs,
-        InferenceEngine::OutputsDataMap networkOutputs) override;
+        InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) override;
     InferenceEngine::IInferRequestInternal::Ptr CreateInferRequestImpl(
         const std::vector<std::shared_ptr<const ov::Node>>& inputs,
         const std::vector<std::shared_ptr<const ov::Node>>& outputs) override;

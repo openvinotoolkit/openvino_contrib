@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <utility>
-#include <string>
-#include <vector>
-#include <cuda_test_constants.hpp>
-
 #include "behavior/plugin/core_integration.hpp"
+
+#include <cuda_test_constants.hpp>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace BehaviorTestsDefinitions;
 
@@ -148,7 +148,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 // IE Class Load network
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassLoadNetworkTest, IEClassLoadNetworkTest,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
-} // namespace
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassLoadNetworkTest,
+                         IEClassLoadNetworkTest,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+}  // namespace

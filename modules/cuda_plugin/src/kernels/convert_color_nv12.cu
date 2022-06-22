@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <type_traits>
 #include <fmt/format.h>
-#include <cuda/math.cuh>
+
 #include <cuda/float16.hpp>
+#include <cuda/math.cuh>
+#include <type_traits>
 
 #include "convert_color_nv12.hpp"
 #include "error.hpp"
@@ -64,27 +65,23 @@ NV12ColorConvert<Conversion>::NV12ColorConvert(const Type_t element_type,
                                                const size_t image_w,
                                                const size_t stride_y,
                                                const size_t stride_uv)
-    : element_type_{element_type}
-    , batch_size_{batch_size}
-    , image_h_{image_h}
-    , image_w_{image_w}
-    , stride_y_{stride_y}
-    , stride_uv_{stride_uv} {
-    std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(batch_size * image_h * image_w, max_threads_per_block);
+    : element_type_{element_type},
+      batch_size_{batch_size},
+      image_h_{image_h},
+      image_w_{image_w},
+      stride_y_{stride_y},
+      stride_uv_{stride_uv} {
+    std::tie(num_blocks_, threads_per_block_) =
+        calculateElementwiseGrid(batch_size * image_h * image_w, max_threads_per_block);
 }
 
 template <ColorConversion Conversion>
-void NV12ColorConvert<Conversion>::operator()(cudaStream_t stream,
-                                              const void* in,
-                                              void* out) const {
+void NV12ColorConvert<Conversion>::operator()(cudaStream_t stream, const void* in, void* out) const {
     Switcher::switch_(element_type_, *this, stream, in, out);
 }
 
 template <ColorConversion Conversion>
-void NV12ColorConvert<Conversion>::operator()(cudaStream_t stream,
-                                              const void* in0,
-                                              const void* in1,
-                                              void* out) const {
+void NV12ColorConvert<Conversion>::operator()(cudaStream_t stream, const void* in0, const void* in1, void* out) const {
     Switcher::switch_(element_type_, *this, stream, in0, in1, out);
 }
 
@@ -102,18 +99,16 @@ void NV12ColorConvert<Conversion>::default_(T t, cudaStream_t, Args&&...) const 
 
 template <ColorConversion Conversion>
 template <typename T>
-void NV12ColorConvert<Conversion>::callKernel(const cudaStream_t stream,
-                                              const void* in,
-                                              void* out) const {
-    return color_convert_nv12<Conversion><<<num_blocks_, threads_per_block_, 0, stream>>>(
-        static_cast<const T*>(in),
-        static_cast<const T*>(in) + image_w_ * image_h_,
-        static_cast<T*>(out),
-        batch_size_,
-        image_h_,
-        image_w_,
-        stride_y_,
-        stride_uv_);
+void NV12ColorConvert<Conversion>::callKernel(const cudaStream_t stream, const void* in, void* out) const {
+    return color_convert_nv12<Conversion>
+        <<<num_blocks_, threads_per_block_, 0, stream>>>(static_cast<const T*>(in),
+                                                         static_cast<const T*>(in) + image_w_ * image_h_,
+                                                         static_cast<T*>(out),
+                                                         batch_size_,
+                                                         image_h_,
+                                                         image_w_,
+                                                         stride_y_,
+                                                         stride_uv_);
 }
 
 template <ColorConversion Conversion>
@@ -122,19 +117,18 @@ void NV12ColorConvert<Conversion>::callKernel(const cudaStream_t stream,
                                               const void* in0,
                                               const void* in1,
                                               void* out) const {
-    return color_convert_nv12<Conversion><<<num_blocks_, threads_per_block_, 0, stream>>>(
-        static_cast<const T*>(in0),
-        static_cast<const T*>(in1),
-        static_cast<T*>(out),
-        batch_size_,
-        image_h_,
-        image_w_,
-        stride_y_,
-        stride_uv_);
+    return color_convert_nv12<Conversion><<<num_blocks_, threads_per_block_, 0, stream>>>(static_cast<const T*>(in0),
+                                                                                          static_cast<const T*>(in1),
+                                                                                          static_cast<T*>(out),
+                                                                                          batch_size_,
+                                                                                          image_h_,
+                                                                                          image_w_,
+                                                                                          stride_y_,
+                                                                                          stride_uv_);
 }
 
 template class NV12ColorConvert<ColorConversion::RGB>;
 template class NV12ColorConvert<ColorConversion::BGR>;
 
-}
-}
+}  // namespace kernel
+}  // namespace CUDAPlugin

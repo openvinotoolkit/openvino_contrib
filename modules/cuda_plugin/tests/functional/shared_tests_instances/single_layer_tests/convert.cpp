@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda_test_constants.hpp>
 #include <vector>
 
-#include <cuda_test_constants.hpp>
-#include "single_layer_tests/conversion.hpp"
 #include "ie_precision.hpp"
+#include "single_layer_tests/conversion.hpp"
 
 using namespace LayerTestsDefinitions;
 using namespace InferenceEngine;
@@ -50,47 +50,47 @@ const std::vector<Precision> out_precisions = {
     Precision::FP32,
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_From_F32,
-                         ConversionCUDALayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::Values(inShape),
-                                            ::testing::Values(Precision::FP32),
-                                            ::testing::ValuesIn(out_precisions),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                         ConversionLayerTest::getTestCaseName);
+ INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_From_F32,
+                          ConversionCUDALayerTest,
+                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+                                             ::testing::Values(inShape),
+                                             ::testing::Values(Precision::FP32),
+                                             ::testing::ValuesIn(out_precisions),
+                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                             ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                          ConversionLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_To_F32,
-                         ConversionCUDALayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::Values(inShape),
-                                            ::testing::ValuesIn(in_precisions),
-                                            ::testing::Values(Precision::FP32),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                         ConversionLayerTest::getTestCaseName);
+ INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_To_F32,
+                          ConversionCUDALayerTest,
+                          ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
+                                             ::testing::Values(inShape),
+                                             ::testing::ValuesIn(in_precisions),
+                                             ::testing::Values(Precision::FP32),
+                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                             ::testing::Values(InferenceEngine::Layout::ANY),
+                                             ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                          ConversionLayerTest::getTestCaseName);
 
-/* TODO Uncomment when BF16 support is implemented
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_BF16, ConversionCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::Values(Precision::BF16),
-                                ::testing::ValuesIn(precisions),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        ConvertLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConversionCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::ValuesIn(precisions),
-                                ::testing::Values(Precision::BF16),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
-                        ConvertLayerTest::getTestCaseName);
-*/
-}  // namespace
-}  // namespace CUDALayerTestsDefinitions
+ /* TODO Uncomment when BF16 support is implemented
+ INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_BF16, ConversionCUDALayerTest,
+                         ::testing::Combine(
+                                 ::testing::Values(inShape),
+                                 ::testing::Values(Precision::BF16),
+                                 ::testing::ValuesIn(precisions),
+                                 ::testing::Values(Layout::ANY),
+                                 ::testing::Values(Layout::ANY),
+                                 ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                         ConvertLayerTest::getTestCaseName);
+ INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConversionCUDALayerTest,
+                         ::testing::Combine(
+                                 ::testing::Values(inShape),
+                                 ::testing::ValuesIn(precisions),
+                                 ::testing::Values(Precision::BF16),
+                                 ::testing::Values(Layout::ANY),
+                                 ::testing::Values(Layout::ANY),
+                                 ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                         ConvertLayerTest::getTestCaseName);
+ */
+ }  // namespace
+ }  // namespace CUDALayerTestsDefinitions

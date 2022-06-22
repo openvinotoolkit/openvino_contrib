@@ -6,12 +6,12 @@
 
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
-
 #include <openvino/op/gru_sequence.hpp>
+#include <ops/components/workbuffer_desc.hpp>
+
 #include "rnn_components/gru_sequence_components.hpp"
 #include "rnn_components/gru_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
-#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin {
 

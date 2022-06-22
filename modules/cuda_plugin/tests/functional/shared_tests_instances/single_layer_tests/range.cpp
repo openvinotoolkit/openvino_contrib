@@ -254,7 +254,8 @@ TEST_P(CudaRangeTest, CompareWithRefs) {
     CUDAPlugin::Profiler profiler{false, graph};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     CudaRangeTest::upload(stream, startParamAlloc, &start, start_type, 1);
     CudaRangeTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);

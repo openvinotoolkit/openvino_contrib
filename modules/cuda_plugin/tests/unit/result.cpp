@@ -41,8 +41,7 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
 template <>
 class ov::Output<ParameterStubNode> : public ov::Output<ov::Node> {
 public:
-    explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node)
-        : ov::Output<ov::Node>(node, 0) {
+    explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node) : ov::Output<ov::Node>(node, 0) {
         auto tensor = std::make_shared<ov::descriptor::Tensor>(
             ov::element::Type{}, ov::PartialShape{1}, ParameterStubNode::type_info.name);
         node->m_outputs.emplace_back(node.get(), 0, tensor);
@@ -78,9 +77,7 @@ struct ResultTest : testing::Test {
         fillBlobRandom<uint8_t>(blob);
         blobsMapping[paramNode->get_friendly_name()] = 0;
         blobs.push_back(std::make_shared<ngraph::HostTensor>(
-            ngraph::element::Type_t::u8,
-            blob->getTensorDesc().getDims(),
-            blob->buffer().as<uint8_t*>()));
+            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};

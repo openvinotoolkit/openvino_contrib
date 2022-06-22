@@ -7,8 +7,8 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <openvino/op/range.hpp>
 #include <ngraph/validation_util.hpp>
+#include <openvino/op/range.hpp>
 
 #include "converters.hpp"
 #include "kernels/cuda_type_traits.hpp"

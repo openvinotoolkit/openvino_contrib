@@ -22,20 +22,21 @@ const std::vector<std::vector<size_t>> strides = {{1, 1}, {1, 2}, {2, 2}};
 // Note: asymmetric paddings (begin != end) are not supported in cuDNN.
 const std::vector<std::vector<size_t>> padBegins = {{0, 1} /*, {0, 0}*/};
 const std::vector<std::vector<size_t>> padEnds = {{0, 1} /*, {0, 0}*/};
-const std::vector<ov::op::RoundingType> roundingTypes = {
-    ov::op::RoundingType::CEIL, ov::op::RoundingType::FLOOR};
+const std::vector<ov::op::RoundingType> roundingTypes = {ov::op::RoundingType::CEIL, ov::op::RoundingType::FLOOR};
 
 ////* ========== Max Poolling ========== */
 /* +========== Explicit Pad Floor Rounding ========== */
-const auto maxPool_ExplicitPad_FloorRounding_Params = ::testing::Combine(
-    ::testing::Values(PoolingTypes::MAX), ::testing::ValuesIn(kernels),
-    ::testing::ValuesIn(strides), ::testing::ValuesIn(padBegins),
-    ::testing::ValuesIn(padEnds),
-    ::testing::Values(ov::op::RoundingType::FLOOR),
-    ::testing::Values(ov::op::PadType::EXPLICIT),
-    ::testing::Values(false)  // placeholder value - exclude pad not applicable
-                              // for max pooling
-);
+const auto maxPool_ExplicitPad_FloorRounding_Params =
+    ::testing::Combine(::testing::Values(PoolingTypes::MAX),
+                       ::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::FLOOR),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(false)  // placeholder value - exclude pad not applicable
+                                                 // for max pooling
+    );
 
 INSTANTIATE_TEST_CASE_P(
     smoke_MaxPool_ExplicitPad_FloorRounding, PoolingLayerTest,
@@ -51,17 +52,19 @@ INSTANTIATE_TEST_CASE_P(
     PoolingLayerTest::getTestCaseName);
 
 /* ========== Explicit Pad Ceil Rounding ========== */
-const auto maxPool_ExplicitPad_CeilRounding_Params = ::testing::Combine(
-    ::testing::Values(PoolingTypes::MAX), ::testing::ValuesIn(kernels),
-    // TODO: Non 1 strides fails in ngraph reference implementation with error
-    // "The end corner is out of bounds at axis 3" thrown in the test body.
-    ::testing::Values(std::vector<size_t>({1, 1})),
-    ::testing::ValuesIn(padBegins), ::testing::ValuesIn(padEnds),
-    ::testing::Values(ov::op::RoundingType::CEIL),
-    ::testing::Values(ov::op::PadType::EXPLICIT),
-    ::testing::Values(false)  // placeholder value - exclude pad not applicable
-                              // for max pooling
-);
+const auto maxPool_ExplicitPad_CeilRounding_Params =
+    ::testing::Combine(::testing::Values(PoolingTypes::MAX),
+                       ::testing::ValuesIn(kernels),
+                       // TODO: Non 1 strides fails in ngraph reference implementation with error
+                       // "The end corner is out of bounds at axis 3" thrown in the test body.
+                       ::testing::Values(std::vector<size_t>({1, 1})),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::CEIL),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(false)  // placeholder value - exclude pad not applicable
+                                                 // for max pooling
+    );
 
 INSTANTIATE_TEST_CASE_P(
     smoke_MaxPool_ExplicitPad_CeilRounding, PoolingLayerTest,
@@ -78,15 +81,17 @@ INSTANTIATE_TEST_CASE_P(
 
 ////* ========== Avg Pooling ========== */
 /* +========== Explicit Pad Ceil Rounding ========== */
-const auto avgPoolExplicitPadCeilRoundingParams = ::testing::Combine(
-    ::testing::Values(PoolingTypes::AVG), ::testing::ValuesIn(kernels),
-    // TODO: Non 1 strides fails in ngraph reference implementation with error
-    // "The end corner is out of bounds at axis 3" thrown in the test body.
-    ::testing::Values(std::vector<size_t>({1, 1})),
-    ::testing::ValuesIn(padBegins), ::testing::ValuesIn(padEnds),
-    ::testing::Values(ov::op::RoundingType::CEIL),
-    ::testing::Values(ov::op::PadType::EXPLICIT),
-    ::testing::Values(true, false));
+const auto avgPoolExplicitPadCeilRoundingParams =
+    ::testing::Combine(::testing::Values(PoolingTypes::AVG),
+                       ::testing::ValuesIn(kernels),
+                       // TODO: Non 1 strides fails in ngraph reference implementation with error
+                       // "The end corner is out of bounds at axis 3" thrown in the test body.
+                       ::testing::Values(std::vector<size_t>({1, 1})),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::CEIL),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(true, false));
 
 INSTANTIATE_TEST_CASE_P(
     smoke_AvgPool_ExplicitPad_CeilRounding, PoolingLayerTest,
@@ -102,13 +107,14 @@ INSTANTIATE_TEST_CASE_P(
     PoolingLayerTest::getTestCaseName);
 
 /* +========== Explicit Pad Floor Rounding ========== */
-const auto avgPoolExplicitPadFloorRoundingParams = ::testing::Combine(
-    ::testing::Values(PoolingTypes::AVG), ::testing::ValuesIn(kernels),
-    ::testing::ValuesIn(strides), ::testing::ValuesIn(padBegins),
-    ::testing::ValuesIn(padEnds),
-    ::testing::Values(ov::op::RoundingType::FLOOR),
-    ::testing::Values(ov::op::PadType::EXPLICIT),
-    ::testing::Values(true, false));
+const auto avgPoolExplicitPadFloorRoundingParams = ::testing::Combine(::testing::Values(PoolingTypes::AVG),
+                                                                      ::testing::ValuesIn(kernels),
+                                                                      ::testing::ValuesIn(strides),
+                                                                      ::testing::ValuesIn(padBegins),
+                                                                      ::testing::ValuesIn(padEnds),
+                                                                      ::testing::Values(ov::op::RoundingType::FLOOR),
+                                                                      ::testing::Values(ov::op::PadType::EXPLICIT),
+                                                                      ::testing::Values(true, false));
 
 INSTANTIATE_TEST_CASE_P(
     smoke_AvgPool_ExplicitPad_FloorRounding, PoolingLayerTest,

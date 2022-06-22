@@ -4,6 +4,8 @@
 
 #include "cuda_graph_transformer.hpp"
 
+#include <fmt/format.h>
+
 #include <openvino/pass/manager.hpp>
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/common_optimizations/nop_elimination.hpp>
@@ -23,14 +25,13 @@
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
+#include "remove_duplicated_results_transformation.hpp"
+#include "remove_redundant_convert_transformation.hpp"
+#include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
 #include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
-#include "remove_duplicated_results_transformation.hpp"
-#include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
-#include "remove_redundant_convert_transformation.hpp"
-#include <fmt/format.h>
 
 using namespace CUDAPlugin;
 

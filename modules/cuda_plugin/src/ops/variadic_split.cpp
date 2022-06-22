@@ -10,13 +10,13 @@
 #include <gsl/gsl_assert>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/split.hpp>
+#include <openvino/op/variadic_split.hpp>
 #include <utility>
 #include <vector>
 
 #include "converters.hpp"
 #include "cuda/runtime.hpp"
 #include "cuda_op_buffers_extractor.hpp"
-#include <openvino/op/variadic_split.hpp>
 
 namespace CUDAPlugin {
 

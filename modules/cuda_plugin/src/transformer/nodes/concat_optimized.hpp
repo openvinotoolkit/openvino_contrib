@@ -9,7 +9,7 @@
 namespace CUDAPlugin::nodes {
 
 class ConcatOptimized : public ov::op::v0::Concat {
-   public:
+public:
     using ov::op::v0::Concat::Concat;
 
     inline static constexpr type_info_t type_info{"ConcatOptimized", 0ul};

@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "behavior/plugin/configuration_tests.hpp"
 #include <cuda/cuda_config.hpp>
 #include <cuda_test_constants.hpp>
+
+#include "behavior/plugin/configuration_tests.hpp"
 
 using namespace BehaviorTestsDefinitions;
 
 namespace {
 
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::FP16
-};
+const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
+                                                               InferenceEngine::Precision::FP16};
 
 const std::vector<std::map<std::string, std::string>> configs = {
     {{CONFIG_KEY(CPU_THROUGHPUT_STREAMS), InferenceEngine::PluginConfigParams::CPU_THROUGHPUT_AUTO}},
@@ -28,15 +27,15 @@ const std::vector<std::map<std::string, std::string>> inconfigs = {
     {{CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), CONFIG_VALUE(NO)}},
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests, IncorrectConfigTests,
-                        ::testing::Combine(
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                ::testing::ValuesIn(inconfigs)),
-                        IncorrectConfigTests::getTestCaseName);
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         IncorrectConfigTests,
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::ValuesIn(inconfigs)),
+                         IncorrectConfigTests::getTestCaseName);
 
-INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests, IncorrectConfigAPITests,
-                        ::testing::Combine(
-                                ::testing::Values(CommonTestUtils::DEVICE_CUDA),
-                                ::testing::ValuesIn(inconfigs)),
-                        IncorrectConfigAPITests::getTestCaseName);
-} // namespace
+INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
+                         IncorrectConfigAPITests,
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::ValuesIn(inconfigs)),
+                         IncorrectConfigAPITests::getTestCaseName);
+}  // namespace

@@ -14,23 +14,23 @@ template <typename T>
 struct RoundOpImpl;
 
 class Round {
- public:
+public:
     Round(Type_t element_type, size_t max_threads_per_block, size_t num_elements);
     Round(Round&&) = default;
     Round& operator=(Round&&) = default;
 
     void operator()(cudaStream_t stream, const void* in, void* out) const;
 
- private:
+private:
     using SupportedElementTypes = ElementTypesSwitch<Type_t::f16,
                                                      Type_t::f32,
                                                      Type_t::f64
 #if CUDA_VERSION >= 11000
-        ,
+                                                     ,
                                                      Type_t::bf16
 #endif  // CUDA_VERSION >= 11000
-    >;
- private:
+                                                     >;
+private:
     ElementwiseUnary<SupportedElementTypes, RoundOpImpl> ewu_;
 };
 

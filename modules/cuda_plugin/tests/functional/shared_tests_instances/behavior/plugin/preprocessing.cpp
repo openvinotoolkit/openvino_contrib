@@ -40,4 +40,4 @@ INSTANTIATE_TEST_SUITE_P(smoke_Behavior_PreprocessingPrecisionConvertTestsViaGet
 
 }  // namespace
 
-#endif // ENABLE_GAPI_PREPROCESSING
+#endif  // ENABLE_GAPI_PREPROCESSING

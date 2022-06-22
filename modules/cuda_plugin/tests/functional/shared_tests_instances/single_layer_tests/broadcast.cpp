@@ -81,7 +81,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcast2,
 INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcas3,
                         BroadcastLayerTest,
                         ::testing::Combine(::testing::Values(ov::Shape{1, 1, 2, 2}),  // target shape
-                                           ::testing::Values(ov::AxisSet{}),  // not used in bidirectional mode
+                                           ::testing::Values(ov::AxisSet{}),          // not used in bidirectional mode
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{4, 1, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),

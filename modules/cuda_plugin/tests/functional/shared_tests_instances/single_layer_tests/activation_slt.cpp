@@ -24,9 +24,9 @@
 #include <memory>
 #include <memory_manager/cuda_workbuffers.hpp>
 #include <memory_manager/tensor_types.hpp>
+#include <ngraph/shape.hpp>
 #include <openvino/op/clamp.hpp>
 #include <openvino/op/parameter.hpp>
-#include <ngraph/shape.hpp>
 #include <random>
 #include <single_layer_tests/activation.hpp>
 #include <utility>
@@ -2620,8 +2620,7 @@ struct ClampBenchmark : testing::Test {
         CUDAPlugin::ThreadContext threadContext{{}};
         CUDAPlugin::OperationBase::Ptr operation = [&] {
             const bool optimizeOption = false;
-            auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<T>(),
-                                                                     ov::PartialShape{shape.first});
+            auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<T>(), ov::PartialShape{shape.first});
             auto node = std::make_shared<ov::op::v0::Clamp>(param->output(0), minMax[0], minMax[1]);
 
             auto& registry = CUDAPlugin::OperationRegistry::getInstance();

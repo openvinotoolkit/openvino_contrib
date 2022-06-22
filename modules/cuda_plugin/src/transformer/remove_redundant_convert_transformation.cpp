@@ -5,8 +5,8 @@
 #include "remove_redundant_convert_transformation.hpp"
 
 #include <gsl/gsl_assert>
-#include <openvino/op/convert.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
+#include <openvino/op/convert.hpp>
 
 namespace ngraph::pass {
 
@@ -14,7 +14,7 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::RemoveRedundantConvertTransformation, "Remo
 
 namespace {
 
-bool remove_redundant_convert(ngraph::pattern::Matcher &m) {
+bool remove_redundant_convert(ngraph::pattern::Matcher& m) {
     auto node = std::dynamic_pointer_cast<ov::op::v0::Convert>(m.get_match_root());
     Expects(node);
 
@@ -41,7 +41,7 @@ RemoveRedundantConvertTransformation::RemoveRedundantConvertTransformation() {
     const auto op = ngraph::pattern::wrap_type<ov::op::v0::Convert>();
     const auto m = std::make_shared<ngraph::pattern::Matcher>(op, "RemoveRedundantConvertTransformation");
 
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return remove_redundant_convert(m); };
+    matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) { return remove_redundant_convert(m); };
 
     register_matcher(m, callback);
 }

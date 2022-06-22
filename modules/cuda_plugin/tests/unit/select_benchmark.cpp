@@ -45,12 +45,9 @@ struct SelectTest : testing::Test {
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     std::function<std::shared_ptr<ov::op::v1::Select>()> create_node = [this]() {
-        auto condition =
-            std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{tensorShape});
-        auto then_flow =
-            std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
-        auto else_flow =
-            std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
+        auto condition = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{tensorShape});
+        auto then_flow = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
+        auto else_flow = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
 
         auto node =
             std::make_shared<ov::op::v1::Select>(condition->output(0), then_flow->output(0), else_flow->output(0));

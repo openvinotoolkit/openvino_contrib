@@ -6,11 +6,11 @@
 
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
+#include <ops/components/workbuffer_desc.hpp>
 
 #include "rnn_components/lstm_sequence_components.hpp"
 #include "rnn_components/lstm_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
-#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin {
 

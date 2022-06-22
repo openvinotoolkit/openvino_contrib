@@ -12,8 +12,7 @@ using namespace LayerTestsDefinitions;
 
 namespace {
 
-class Mvn6_4DPreprocessLayerTest : public Mvn6LayerTest {
-};
+class Mvn6_4DPreprocessLayerTest : public Mvn6LayerTest {};
 
 TEST_P(Mvn6_4DPreprocessLayerTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
@@ -175,4 +174,4 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_4D,
 //                                           ::testing::ValuesIn(epsMode),
 //                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
 //                        Mvn6_4DPreprocessLayerTest::getTestCaseName);
-}
+}  // namespace

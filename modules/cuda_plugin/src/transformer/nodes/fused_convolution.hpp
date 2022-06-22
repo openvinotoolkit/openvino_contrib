@@ -6,10 +6,10 @@
 
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <openvino/op/convolution.hpp>
-#include <openvino/op/group_conv.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <openvino/op/convolution.hpp>
+#include <openvino/op/group_conv.hpp>
 #include <type_traits>
 
 #include "cuda_plugin_custom_node_types.hpp"

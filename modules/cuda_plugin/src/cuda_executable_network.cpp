@@ -77,10 +77,8 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     InferenceEngine::Blob::Ptr dataBlob;
     model.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
     if (0 != dataSize) {
-        dataBlob = InferenceEngine::make_shared_blob<std::uint8_t>(
-            InferenceEngine::TensorDesc(InferenceEngine::Precision::U8,
-                                        {static_cast<std::size_t>(dataSize)},
-                                        InferenceEngine::Layout::C));
+        dataBlob = InferenceEngine::make_shared_blob<std::uint8_t>(InferenceEngine::TensorDesc(
+            InferenceEngine::Precision::U8, {static_cast<std::size_t>(dataSize)}, InferenceEngine::Layout::C));
         dataBlob->allocate();
         model.read(dataBlob->buffer(), dataSize);
     }
@@ -114,7 +112,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
                                        const InferenceEngine::OutputsDataMap& outputsInfoMap) {
     CUDA::Device device{cfg_.deviceId};
     GraphTransformer transformer;
-    export_function_ = transformer.export_transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
+    export_function_ =
+        transformer.export_transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
     function_ = transformer.transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
@@ -305,19 +304,16 @@ InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkIn
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::ExecutableNetwork::CreateInferRequestImpl(
-    InferenceEngine::InputsDataMap networkInputs,
-    InferenceEngine::OutputsDataMap networkOutputs) {
-    return std::make_shared<CudaInferRequest>(networkInputs,
-                                              networkOutputs,
-                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+    InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) {
+    return std::make_shared<CudaInferRequest>(
+        networkInputs, networkOutputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::ExecutableNetwork::CreateInferRequestImpl(
     const std::vector<std::shared_ptr<const ov::Node>>& inputs,
     const std::vector<std::shared_ptr<const ov::Node>>& outputs) {
-    return std::make_shared<CudaInferRequest>(inputs,
-                                              outputs,
-                                              std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+    return std::make_shared<CudaInferRequest>(
+        inputs, outputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferRequest() {
@@ -368,9 +364,7 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
     }
 }
 
-std::shared_ptr<ngraph::Function> ExecutableNetwork::GetExecGraphInfo() {
-    return function_;
-}
+std::shared_ptr<ngraph::Function> ExecutableNetwork::GetExecGraphInfo() { return function_; }
 
 void ExecutableNetwork::Export(std::ostream& modelStream) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "ExecutableNetwork::Export");

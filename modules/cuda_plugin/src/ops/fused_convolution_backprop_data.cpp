@@ -22,8 +22,7 @@ FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CreationCon
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       params_{node},
       conv_descs_{context, params_.conv_},
-      add_in_bytes_{ov::element::Type(params_.conv_.element_type_).size() *
-                    ov::shape_size(params_.add_shape_)} {
+      add_in_bytes_{ov::element::Type(params_.conv_.element_type_).size() * ov::shape_size(params_.add_shape_)} {
     const auto size = ov::element::Type(params_.conv_.element_type_).size();
     conv_in_bytes_ = size * ov::shape_size(params_.conv_.dinput_shape_);
     add_in_bytes_ = size * ov::shape_size(params_.add_shape_);

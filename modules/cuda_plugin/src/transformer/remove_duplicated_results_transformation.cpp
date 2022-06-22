@@ -7,11 +7,11 @@
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
-#include <openvino/op/matmul.hpp>
-#include <openvino/op/transpose.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
+#include <openvino/op/matmul.hpp>
+#include <openvino/op/transpose.hpp>
 
 namespace ngraph::pass {
 

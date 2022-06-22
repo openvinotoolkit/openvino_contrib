@@ -42,8 +42,8 @@ auto assertToThrow(F&& f,
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
-     std::map<std::string, std::size_t> emptyMapping;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
     CUDAPlugin::OperationBase::Ptr operation = [this] {
         CUDA::Device device{};
         const bool optimizeOption = false;

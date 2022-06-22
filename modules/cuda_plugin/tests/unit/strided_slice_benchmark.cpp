@@ -48,8 +48,7 @@ struct StridedSliceTest : testing::Test {
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     std::function<std::shared_ptr<ov::op::v1::StridedSlice>()> create_node = [this]() {
-        auto param =
-            std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});
         std::vector<int64_t> shapeBegin{0, 64, -65};
         auto begin_input =
             std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeBegin);
@@ -58,11 +57,11 @@ struct StridedSliceTest : testing::Test {
         std::vector<int64_t> stride{1, 1, -1};
         auto stride_input = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, stride);
         auto node = std::make_shared<ov::op::v1::StridedSlice>(param->output(0),
-                                                                   begin_input->output(0),
-                                                                   end_input->output(0),
-                                                                   stride_input->output(0),
-                                                                   std::vector<int64_t>{},
-                                                                   std::vector<int64_t>{});
+                                                               begin_input->output(0),
+                                                               end_input->output(0),
+                                                               stride_input->output(0),
+                                                               std::vector<int64_t>{},
+                                                               std::vector<int64_t>{});
         return node;
     };
 

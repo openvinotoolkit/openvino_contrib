@@ -102,8 +102,8 @@ struct ConcatTest : testing::Test {
             blobs[i]->allocate();
             fillBlob<float>(blobs[i], i + 2.0);
             output_size += blobs[i]->byteSize();
-            params.emplace_back(std::make_shared<ov::op::v0::Parameter>(
-                ov::element::Type{ov::element::Type_t::f32}, shapes[axis][i]));
+            params.emplace_back(
+                std::make_shared<ov::op::v0::Parameter>(ov::element::Type{ov::element::Type_t::f32}, shapes[axis][i]));
         }
     }
     ThreadContext threadContext{{}};

@@ -5,16 +5,17 @@
 #pragma once
 
 #include <cuda_runtime.h>
+
+#include "convert_color.hpp"
 #include "cuda_type_traits.hpp"
 #include "elementtypeswitch.hpp"
-#include "convert_color.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {
 
 template <ColorConversion Conversion>
 class NV12ColorConvert {
- public:
+public:
     NV12ColorConvert(Type_t element_type,
                      size_t max_threads_per_block,
                      size_t batch_size,
@@ -32,24 +33,18 @@ class NV12ColorConvert {
     template <typename T, typename... Args>
     void default_(T t, cudaStream_t, Args&&...) const noexcept;
 
- private:
+private:
     template <typename T>
-    void callKernel(const cudaStream_t stream,
-                    const void* in,
-                    void* out) const;
+    void callKernel(const cudaStream_t stream, const void* in, void* out) const;
     template <typename T>
-    void callKernel(const cudaStream_t stream,
-                    const void* in0,
-                    const void* in1,
-                    void* out) const;
+    void callKernel(const cudaStream_t stream, const void* in0, const void* in1, void* out) const;
 
-    using Switcher = ElementTypesSwitch<
-        Type_t::u8,
+    using Switcher = ElementTypesSwitch<Type_t::u8,
 #ifdef CUDA_HAS_BF16_TYPE
-        Type_t::bf16,
+                                        Type_t::bf16,
 #endif
-        Type_t::f16,
-        Type_t::f32>;
+                                        Type_t::f16,
+                                        Type_t::f32>;
 
     Type_t element_type_;
     dim3 num_blocks_;
@@ -61,5 +56,5 @@ class NV12ColorConvert {
     size_t stride_uv_;
 };
 
-}
-}
+}  // namespace kernel
+}  // namespace CUDAPlugin

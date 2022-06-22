@@ -5,20 +5,20 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <kernels/cuda_type_traits.hpp>
 #include <kernels/convert_color_nv12.hpp>
+#include <kernels/cuda_type_traits.hpp>
 
+#include "converters.hpp"
 #include "openvino/op/nv12_to_bgr.hpp"
 #include "openvino/op/nv12_to_rgb.hpp"
-#include "converters.hpp"
 
 namespace CUDAPlugin {
 
 template <typename TNGraphNode, typename TKernel>
 class NV12ConvertColorBase : public OperationBase {
- public:
+public:
     static_assert(std::is_same<TNGraphNode, ov::op::v8::NV12toRGB>::value ||
-                  std::is_same<TNGraphNode, ov::op::v8::NV12toBGR>::value,
+                      std::is_same<TNGraphNode, ov::op::v8::NV12toBGR>::value,
                   "TNGraphNode should be either NV12toRGB or NV12toBGR");
 
     using NodeOp = TNGraphNode;
@@ -89,20 +89,20 @@ class NV12ConvertColorBase : public OperationBase {
         }
     }
 
- private:
+private:
     std::optional<TKernel> kernel_;
 };
 
-class NV12toRGBOp : public NV12ConvertColorBase<ov::op::v8::NV12toRGB,
-                                                kernel::NV12ColorConvert<kernel::ColorConversion::RGB>> {
- public:
+class NV12toRGBOp
+    : public NV12ConvertColorBase<ov::op::v8::NV12toRGB, kernel::NV12ColorConvert<kernel::ColorConversion::RGB>> {
+public:
     using NV12ConvertColorBase::NV12ConvertColorBase;
 };
 
-class NV12toBGROp : public NV12ConvertColorBase<ov::op::v8::NV12toBGR,
-                                                kernel::NV12ColorConvert<kernel::ColorConversion::BGR>> {
- public:
+class NV12toBGROp
+    : public NV12ConvertColorBase<ov::op::v8::NV12toBGR, kernel::NV12ColorConvert<kernel::ColorConversion::BGR>> {
+public:
     using NV12ConvertColorBase::NV12ConvertColorBase;
 };
 
-}
+}  // namespace CUDAPlugin

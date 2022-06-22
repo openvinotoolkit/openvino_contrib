@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "convert.hpp"
+
 #include <array>
 #include <cuda/cuda_type_traits.hpp>
 #include <cuda_operation_registry.hpp>
@@ -10,7 +12,6 @@
 #include <ngraph/node.hpp>
 #include <utility>
 
-#include "convert.hpp"
 #include "converters.hpp"
 
 namespace CUDAPlugin {

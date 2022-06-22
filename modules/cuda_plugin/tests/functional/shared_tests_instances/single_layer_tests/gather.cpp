@@ -643,11 +643,11 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     CUDAPlugin::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
         auto dict_param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(),
-                                                                      ov::PartialShape{params.params_shape_});
+                                                                  ov::PartialShape{params.params_shape_});
         auto indices_param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<IndicesType>(),
-                                                                         ov::PartialShape{params.indices_shape_});
-        auto axis_constant = std::make_shared<ov::op::v0::Constant>(
-            ov::element::i64, ov::Shape({}), std::vector<int64_t>{params.axis_});
+                                                                     ov::PartialShape{params.indices_shape_});
+        auto axis_constant =
+            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape({}), std::vector<int64_t>{params.axis_});
         auto node = is_v7 ? std::static_pointer_cast<ov::Node>(std::make_shared<ov::op::v7::Gather>(
                                 dict_param->output(0), indices_param->output(0), axis_constant, params.batch_dims_))
                           : std::static_pointer_cast<ov::Node>(std::make_shared<ov::op::v1::Gather>(
@@ -678,7 +678,8 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     CUDAPlugin::Profiler profiler{false, graph};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;

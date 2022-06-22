@@ -273,28 +273,25 @@ void testOneShape(const LSTMCellTestParams& params) {
     stream.upload(ci_alloc, ci_host.data(), ci_size * sizeof(ElementType));
 
     const auto& type = ov::element::from<ElementType>();
-    auto w_constant = std::make_shared<ov::op::v0::Constant>(
-        type, ov::Shape({4 * params.hidden_size, params.input_size}), w_host);
-    auto r_constant = std::make_shared<ov::op::v0::Constant>(
-        type, ov::Shape({4 * params.hidden_size, params.hidden_size}), r_host);
+    auto w_constant =
+        std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size, params.input_size}), w_host);
+    auto r_constant =
+        std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size, params.hidden_size}), r_host);
     auto b_constant = std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size}), b_host);
 
     CUDAPlugin::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
 
-        auto x_param =
-            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.input_size});
-        auto hi_param =
-            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
-        auto ci_param =
-            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
+        auto x_param = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.input_size});
+        auto hi_param = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
+        auto ci_param = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
         auto node = std::make_shared<ov::op::v4::LSTMCell>(x_param->output(0),
-                                                               hi_param->output(0),
-                                                               ci_param->output(0),
-                                                               w_constant,
-                                                               r_constant,
-                                                               b_constant,
-                                                               params.hidden_size);
+                                                           hi_param->output(0),
+                                                           ci_param->output(0),
+                                                           w_constant,
+                                                           r_constant,
+                                                           b_constant,
+                                                           params.hidden_size);
 
         Ensures(ho_size == ov::shape_size(node->get_output_shape(0)));
         Ensures(co_size == ov::shape_size(node->get_output_shape(1)));

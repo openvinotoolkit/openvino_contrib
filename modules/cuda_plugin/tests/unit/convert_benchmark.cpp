@@ -19,16 +19,14 @@ namespace {
 
 struct ConvertTest : testing::Test {
     CUDAPlugin::ThreadContext threadContext { CUDA::Device {} };
-    const ov::Shape inputTensorShape {1, 1, 3, 1024, 1024};
+    const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 
     auto create_operation(ov::element::Type_t input, ov::element::Type_t output) {
-        auto param = std::make_shared<ov::op::v0::Parameter>(
-                ov::element::Type(input), ov::PartialShape(inputTensorShape));
-        const auto node = std::make_shared<ov::op::v0::Convert>(
-                    param->output(0),
-                    ov::element::Type(output));
+        auto param =
+            std::make_shared<ov::op::v0::Parameter>(ov::element::Type(input), ov::PartialShape(inputTensorShape));
+        const auto node = std::make_shared<ov::op::v0::Convert>(param->output(0), ov::element::Type(output));
 
         static constexpr bool optimizeOption = false;
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
@@ -74,7 +72,7 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
             const auto output_type = ov::element::Type(outputType);
             const auto inputBufferSize = ov::shape_size(inputTensorShape) * input_type.size();
             const auto ouputBufferSize = ov::shape_size(inputTensorShape) * output_type.size();
-            const CUDA::Allocation inAlloc =  stream.malloc(inputBufferSize);
+            const CUDA::Allocation inAlloc = stream.malloc(inputBufferSize);
             const CUDA::Allocation outAlloc = stream.malloc(ouputBufferSize);
             std::vector<CUDA::DevicePointer<const void*>> inputs{inAlloc};
             std::vector<CUDA::DevicePointer<void*>> outputs{outAlloc};

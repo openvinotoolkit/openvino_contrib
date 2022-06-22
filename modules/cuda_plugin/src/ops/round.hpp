@@ -11,7 +11,7 @@
 namespace CUDAPlugin {
 
 class RoundOp : public OperationBase {
- public:
+public:
     using NodeOp = ov::op::v5::Round;
 
     RoundOp(const CreationContext& context,
@@ -24,7 +24,7 @@ class RoundOp : public OperationBase {
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
- private:
+private:
     std::optional<kernel::Round> kernel_;
 };
 
