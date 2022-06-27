@@ -1,0 +1,99 @@
+# Copyright (C) 2021 Intel Corporation
+ARG LGPL_DEPS="binutils \
+              binutils-common:amd64 \
+              binutils-x86-64-linux-gnu \
+              build-essential \
+              cpp \
+              cpp-9 \
+              dpkg-dev \
+              g++ \
+              g++-9 \
+              gcc \
+              gcc-9 \
+              gcc-9-base:amd64 \ 
+              libasan5:amd64 \ 
+              libatomic1:amd64 \
+              libbinutils:amd64 \
+              libc-dev-bin \ 
+              libc6:amd64 \
+              libc6-dev:amd64 \
+              libcc1-0:amd64 \
+              libcrypt-dev:amd64 \
+              libctf-nobfd0:amd64 \
+              libctf0:amd64 \
+              libdpkg-perl \
+              libexpat1:amd64 \
+              libgcc-9-dev:amd64 \
+              libgdbm-compat4:amd64 \
+              libgdbm6:amd64 \
+              libgomp1:amd64 \
+              libisl22:amd64 \
+              libitm1:amd64 \
+              liblsan0:amd64 \
+              libmpc3:amd64 \
+              libmpdec2:amd64 \
+              libmpfr6:amd64 \
+              libperl5.30:amd64 \
+              libpython3-stdlib:amd64 \
+              libpython3.8-minimal:amd64 \
+              libpython3.8-stdlib:amd64 \
+              libquadmath0:amd64 \
+              libreadline8:amd64 \
+              libstdc++-9-dev:amd64 \
+              libtsan0:amd64 \
+              libubsan1:amd64 \
+              linux-libc-dev:amd64 \
+              make \
+              mime-support \
+              patch \
+              perl \
+              perl-modules-5.30"
+              
+FROM openvino/model_server:2021.4.1-gpu
+USER root 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    python3-pip
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ${LGPL_DEPS} && \
+    if [ "$INSTALL_SOURCES" = "yes" ]; then \
+        sed -Ei 's/# dep-src /dep-src /' /etc/apt/sources.list && \
+        apt-get update && \
+        dpkg --get-selections | grep -v deinstall | awk '{print $1}' > all_packages.txt && \
+        grep -v -f base_packages.txt all_packages.txt | while read line; do \
+        package=`echo $line`; \
+        apt-get source -q --download-only $package; \
+        done \
+    fi && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/models/vehicle_detection_adas/1 && cd /opt/models/vehicle_detection_adas/1 && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/vehicle-detection-adas-0002/FP32/vehicle-detection-adas-0002.bin && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/vehicle-detection-adas-0002/FP32/vehicle-detection-adas-0002.xml && \
+    mkdir -p /opt/models/vehicle_attributes/1 && cd /opt/models/vehicle_attributes/1 && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.bin && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.xml && \
+    mkdir -p /opt/models/person_vehicle_bike_detection/1 && cd /opt/models/person_vehicle_bike_detection/1 && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/person-vehicle-bike-detection-crossroad-0078/FP32/person-vehicle-bike-detection-crossroad-0078.bin && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/person-vehicle-bike-detection-crossroad-0078/FP32/person-vehicle-bike-detection-crossroad-0078.xml && \
+    mkdir -p /opt/models/face_detection_adas/1 && cd /opt/models/face_detection_adas/1 && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/face-detection-adas-0001/FP32/face-detection-adas-0001.bin && \
+    wget https://storage.openvinotoolkit.org/repositories/open_model_zoo/2021.4/models_bin/3/face-detection-adas-0001/FP32/face-detection-adas-0001.xml
+
+
+COPY src/ams_wrapper/  /ams_wrapper/
+COPY src/ams_models /ams_models
+COPY src/start_ams.sh /start_ams.sh
+COPY licensing /licensing
+
+
+
+RUN pip3 install --upgrade pip && pip3 install --no-cache-dir -r /ams_wrapper/requirements.txt
+
+RUN chmod +x /ams_wrapper/start_ams.py
+
+USER ovms
+
+ENTRYPOINT ["bash", "/start_ams.sh"]
