@@ -1,4 +1,4 @@
-# OpenVINO&trade; Integration with Optimum*
+# OpenVINO&trade; Integration with Hugging Face Optimum
 
 [![Test Optimum](https://github.com/openvinotoolkit/openvino_contrib/actions/workflows/test_optimum.yml/badge.svg?branch=master)](https://github.com/openvinotoolkit/openvino_contrib/actions/workflows/test_optimum.yml?query=branch%3Amaster)
 
@@ -34,9 +34,7 @@ or with all dependencies:
 pip install --upgrade "git+https://github.com/openvinotoolkit/openvino_contrib.git#egg=openvino-optimum[all]&subdirectory=modules/optimum"
 ```
 
-To use PyTorch or TensorFlow models, these frameworks should be installed as well, for example with `pip install torch==1.7.*` or `pip install tensorflow==2.5.*`. To use TensorFlow models, openvino-dev is required. This can either be installed seperately with `pip install openvino-dev` or by choosing the _all dependencies_ option.
-
-
+To use PyTorch or TensorFlow models, these frameworks should be installed as well, for example with `pip install torch==1.9.*` or `pip install tensorflow==2.5.*`. To use TensorFlow models, openvino-dev is required. This can either be installed seperately with `pip install openvino-dev` or by choosing the _all dependencies_ option.
 
 ## OpenVINO Runtime
 
@@ -68,6 +66,8 @@ model.save_pretrained(<model_directory>)
 
 `ov_model.xml` and `ov_model.bin` will be saved in `model_directory`.
 
+For a complete example of how to do inference on a Hugging Face model with openvino-optimum, please check
+out the [Fill-Mask demo](examples/masked_lm_demo.py)
 
 ## NNCF
 
