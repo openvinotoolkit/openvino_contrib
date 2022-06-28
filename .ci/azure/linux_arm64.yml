@@ -6,6 +6,7 @@ trigger:
   paths:
     exclude:
     - modules/optimum
+    - modules/cuda_plugin
 
 pr:
   branches:
@@ -15,6 +16,7 @@ pr:
   paths:
     exclude:
     - modules/optimum
+    - modules/cuda_plugin
 
 resources:
   repositories:
