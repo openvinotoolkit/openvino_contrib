@@ -6,10 +6,10 @@
 
 #include <cuda_operation_base.hpp>
 
+#include "converters.hpp"
 #include "kernels/variance_normalization_factor.hpp"
 #include "ngraph/op/mvn.hpp"
 #include "ngraph/shape.hpp"
-#include "converters.hpp"
 
 namespace CUDAPlugin {
 
