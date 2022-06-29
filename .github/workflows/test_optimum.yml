@@ -1,6 +1,7 @@
 name: Test Optimum
 
 on:
+  workflow_dispatch:
   push:
   pull_request:
     paths:
@@ -102,6 +103,10 @@ jobs:
       run: |
         python -m pip install ${{ matrix.transformers-version }} -r requirements.txt
         sudo apt-get install -y libsndfile1
+
+    - name: pip freeze
+      run: |
+        pip freeze
 
     - name: Prepare examples
       working-directory: modules/optimum/tests/nncf
