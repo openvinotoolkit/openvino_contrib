@@ -73,6 +73,28 @@ jobs:
       run: |
         python -m unittest -v
 
+  test_examples:
+    name: "Examples"
+
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Install package
+      working-directory: modules/optimum
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install .[all] torch==1.9.1
+
+    - name: Test MaskedLM example
+      working-directory: modules/optimum/examples
+      run: |
+        python masked_lm_demo.py
 
   test_nncf:
     name: "NNCF"
