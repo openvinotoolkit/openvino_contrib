@@ -62,7 +62,7 @@ void generate_indices(sliceSelectInShape& slice) {
 
     UniqueComplexIndexGenerator gen{{input_shape.cbegin(), input_shape.cbegin() + complex_index_size}};
 
-    const auto indices_size = ngraph::shape_size(indices_shape);
+    const auto indices_size = ov::shape_size(indices_shape);
     auto& indices = std::get<2>(slice);
     indices.resize(indices_size);
     for (size_t stride{}; stride < indices_size; stride += complex_index_size) {

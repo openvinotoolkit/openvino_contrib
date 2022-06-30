@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 class MvnOp : public OperationCuDnn {
 public:
     MvnOp(const CreationContext& context,
-          const ngraph::Node& node,
+          const ov::Node& node,
           IndexCollection&& inputIds,
           IndexCollection&& outputIds);
 
@@ -52,10 +52,10 @@ private:
         void computeVarianceNormalizationFactor(Tensor in_out);
     };
 
-    static MvnVersion validateAndGetVersion(const ngraph::Node& node);
+    static MvnVersion validateAndGetVersion(const ov::Node& node);
     size_t reduceWorkSpaceSizeCompute(const CreationContext& context);
-    ngraph::Shape makeReducedShape(const ngraph::Node& node);
-    CUDA::DnnTensorDescriptor makeReducedTensorDescriptor(const ngraph::Node& node);
+    ngraph::Shape makeReducedShape(const ov::Node& node);
+    CUDA::DnnTensorDescriptor makeReducedTensorDescriptor(const ov::Node& node);
     CUDA::DeviceBuffer<std::uint8_t> getReduceWorkspaceBuffer(const Workbuffers& workbuffers) const {
         return workbuffers.createMutableSpanFrom<0>(reduce_workspace_size_);
     }
@@ -67,12 +67,12 @@ private:
     }
 
 private:
-    const ngraph::op::v0::MVN* mvn_op_v1_;
-    const ngraph::op::v6::MVN* mvn_op_v6_;
+    const ov::op::v0::MVN* mvn_op_v1_;
+    const ov::op::v6::MVN* mvn_op_v6_;
     MvnVersion version_;
     bool normalize_variance_;
     double epsilon_;
-    ngraph::op::MVNEpsMode eps_mode_;
+    ov::op::MVNEpsMode eps_mode_;
     cudnnDataType_t comp_type_;
     cudnnDataType_t op_desc_type_;
     CUDA::DnnReduceAvgDescriptor reduce_mean_desc_;

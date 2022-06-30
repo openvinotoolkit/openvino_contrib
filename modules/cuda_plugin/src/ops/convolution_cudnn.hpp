@@ -12,13 +12,13 @@
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v1::Convolution` using cuDNN API
+ * @brief Implements `ov::op::v1::Convolution` using cuDNN API
  * which doesn't support asymmetric padding.
  */
 class ConvolutionCuDnn : public OperationCuDnn {
 public:
     ConvolutionCuDnn(const CreationContext& context,
-                     const ngraph::Node& node,
+                     const ov::Node& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds,
                      const Convolution::Details::ConvolutionParams& params);

@@ -49,7 +49,7 @@ TEST_F(PluginTest, LoadExecNetwork_Success) {
 }
 
 TEST_F(PluginTest, LoadExecNetwork_NegativeId_Failed) {
-    auto dummyFunction = std::make_shared<ngraph::Function>(ngraph::NodeVector{}, ngraph::ParameterVector{});
+    auto dummyFunction = std::make_shared<ngraph::Function>(ov::NodeVector{}, ov::ParameterVector{});
     auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
@@ -58,7 +58,7 @@ TEST_F(PluginTest, LoadExecNetwork_NegativeId_Failed) {
 }
 
 TEST_F(PluginTest, LoadExecNetwork_OutRangeId_Failed) {
-    auto dummyFunction = std::make_shared<ngraph::Function>(ngraph::NodeVector{}, ngraph::ParameterVector{});
+    auto dummyFunction = std::make_shared<ngraph::Function>(ov::NodeVector{}, ov::ParameterVector{});
     auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
     Configuration cfg;
     auto plugin = std::make_shared<Plugin>();

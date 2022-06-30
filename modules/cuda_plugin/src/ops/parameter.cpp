@@ -13,7 +13,7 @@
 namespace CUDAPlugin {
 
 ParameterOp::ParameterOp(const CreationContext& context,
-                         const ngraph::Node& node,
+                         const ov::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
@@ -28,11 +28,11 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
     Expects(outputs.size() == 1);
     Expects(context.HasInputBlob(input_tensor_name_));
     auto blob = context.GetInputBlob(input_tensor_name_);
-    auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->rmap();
-    context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->byteSize());
+    auto memory_ptr = std::static_pointer_cast<ngraph::HostTensor>(blob)->get_data_ptr();
+    context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->get_size_in_bytes());
 }
 
-std::string ParameterOp::GetInputTensorName(const ngraph::Node& node) { return node.get_friendly_name(); }
+std::string ParameterOp::GetInputTensorName(const ov::Node& node) { return node.get_friendly_name(); }
 
 OPERATION_REGISTER(ParameterOp, Parameter);
 }  // namespace CUDAPlugin

@@ -12,14 +12,14 @@ namespace CUDAPlugin {
 class ParameterOp : public OperationBase {
 public:
     ParameterOp(const CreationContext& context,
-                const ngraph::Node& node,
+                const ov::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
-    static std::string GetInputTensorName(const ngraph::Node& node);
+    static std::string GetInputTensorName(const ov::Node& node);
 
 private:
     std::string input_tensor_name_;

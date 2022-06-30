@@ -113,7 +113,7 @@ private:
     }
 
 public:
-    void Compare(const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+    void Compare(const std::vector<std::pair<ov::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
                  const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs) override {
         for (std::size_t outputIndex = 0; outputIndex < expectedOutputs.size(); ++outputIndex) {
             const auto &expected = expectedOutputs[outputIndex].second;

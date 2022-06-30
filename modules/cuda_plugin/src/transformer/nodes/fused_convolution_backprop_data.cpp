@@ -9,16 +9,16 @@
 
 namespace CUDAPlugin::nodes {
 
-FusedConvBackpropData::FusedConvBackpropData(const ngraph::Output<Node>& data_batch,
-                                             const ngraph::Output<Node>& filters,
-                                             const ngraph::Output<Node>& add,
-                                             const ngraph::Strides& strides,
-                                             const ngraph::CoordinateDiff& pads_begin,
-                                             const ngraph::CoordinateDiff& pads_end,
-                                             const ngraph::Strides& dilations,
-                                             const ngraph::op::PadType& auto_pad,
-                                             const ngraph::CoordinateDiff& output_padding)
-    : ngraph::op::Op(ngraph::OutputVector{data_batch, filters, add}),
+FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
+                                             const ov::Output<Node>& filters,
+                                             const ov::Output<Node>& add,
+                                             const ov::Strides& strides,
+                                             const ov::CoordinateDiff& pads_begin,
+                                             const ov::CoordinateDiff& pads_end,
+                                             const ov::Strides& dilations,
+                                             const ov::op::PadType& auto_pad,
+                                             const ov::CoordinateDiff& output_padding)
+    : ov::op::Op(ov::OutputVector{data_batch, filters, add}),
       strides_(strides),
       pads_begin_(pads_begin),
       pads_end_(pads_end),
@@ -30,17 +30,17 @@ FusedConvBackpropData::FusedConvBackpropData(const ngraph::Output<Node>& data_ba
     constructor_validate_and_infer_types();
 }
 
-FusedConvBackpropData::FusedConvBackpropData(const ngraph::Output<Node>& data_batch,
-                                             const ngraph::Output<Node>& filters,
-                                             const ngraph::Output<Node>& outputShape,
-                                             const ngraph::Output<Node>& add,
-                                             const ngraph::Strides& strides,
-                                             const ngraph::CoordinateDiff& pads_begin,
-                                             const ngraph::CoordinateDiff& pads_end,
-                                             const ngraph::Strides& dilations,
-                                             const ngraph::op::PadType& auto_pad,
-                                             const ngraph::CoordinateDiff& output_padding)
-    : ngraph::op::Op(ngraph::OutputVector{data_batch, filters, outputShape, add}),
+FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
+                                             const ov::Output<Node>& filters,
+                                             const ov::Output<Node>& outputShape,
+                                             const ov::Output<Node>& add,
+                                             const ov::Strides& strides,
+                                             const ov::CoordinateDiff& pads_begin,
+                                             const ov::CoordinateDiff& pads_end,
+                                             const ov::Strides& dilations,
+                                             const ov::op::PadType& auto_pad,
+                                             const ov::CoordinateDiff& output_padding)
+    : ov::op::Op(ov::OutputVector{data_batch, filters, outputShape, add}),
       strides_(strides),
       pads_begin_(pads_begin),
       pads_end_(pads_end),
@@ -52,7 +52,7 @@ FusedConvBackpropData::FusedConvBackpropData(const ngraph::Output<Node>& data_ba
     constructor_validate_and_infer_types();
 }
 
-bool FusedConvBackpropData::visit_attributes(ngraph::AttributeVisitor& visitor) {
+bool FusedConvBackpropData::visit_attributes(ov::AttributeVisitor& visitor) {
     visitor.on_attribute("strides", strides_);
     visitor.on_attribute("dilations", dilations_);
     visitor.on_attribute("pads_begin", pads_begin_);
@@ -62,7 +62,7 @@ bool FusedConvBackpropData::visit_attributes(ngraph::AttributeVisitor& visitor) 
     return true;
 }
 
-std::shared_ptr<ngraph::Node> FusedConvBackpropData::clone_with_new_inputs(const ngraph::OutputVector& new_args) const {
+std::shared_ptr<ov::Node> FusedConvBackpropData::clone_with_new_inputs(const ov::OutputVector& new_args) const {
     check_new_args_count(this, new_args);
     if (new_args.size() == 3) {
         return std::make_shared<FusedConvBackpropData>(new_args.at(0),
@@ -90,16 +90,16 @@ std::shared_ptr<ngraph::Node> FusedConvBackpropData::clone_with_new_inputs(const
 
 void FusedConvBackpropData::conv_validate_and_infer_types() {
     auto data_pshape = get_input_partial_shape(0);
-    ngraph::element::Type delta_et = get_input_element_type(0);
-    const ngraph::PartialShape& filters_pshape = get_input_partial_shape(1);
-    ngraph::element::Type filters_et = get_input_element_type(1);
+    ov::element::Type delta_et = get_input_element_type(0);
+    const ov::PartialShape& filters_pshape = get_input_partial_shape(1);
+    ov::element::Type filters_et = get_input_element_type(1);
 
     bool is_output_shape_present = inputs().size() == 3;
-    ngraph::PartialShape output_pshape = get_output_shape();
+    ov::PartialShape output_pshape = get_output_shape();
 
-    ngraph::element::Type result_et;
+    ov::element::Type result_et;
     NODE_VALIDATION_CHECK(this,
-                          ngraph::element::Type::merge(result_et, delta_et, filters_et),
+                          ov::element::Type::merge(result_et, delta_et, filters_et),
                           "Element types for data batch and filters do not match (data batch element type: ",
                           delta_et,
                           ", filters element type: ",
@@ -108,19 +108,19 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
 
     if (data_pshape.rank().is_static() && filters_pshape.rank().is_static()) {
         if (pads_begin_.size() == 0) {
-            pads_begin_ = conv_default_padding(this, data_pshape, filters_pshape);
+            pads_begin_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
         }
         if (pads_end_.size() == 0) {
-            pads_end_ = conv_default_padding(this, data_pshape, filters_pshape);
+            pads_end_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
         }
         if (output_padding_.size() == 0) {
-            output_padding_ = conv_default_padding(this, data_pshape, filters_pshape);
+            output_padding_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
         }
         if (strides_.size() == 0) {
-            strides_ = conv_default_strides(this, data_pshape, filters_pshape);
+            strides_ = ngraph::conv_default_strides(this, data_pshape, filters_pshape);
         }
         if (dilations_.size() == 0) {
-            dilations_ = conv_default_strides(this, data_pshape, filters_pshape);
+            dilations_ = ngraph::conv_default_strides(this, data_pshape, filters_pshape);
         }
 
         const auto num_spatial_dims = data_pshape.rank().get_length() - 2;
@@ -138,12 +138,12 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
                               "spatial features.");
     }
 
-    ngraph::PartialShape result_shape;
+    ov::PartialShape result_shape;
     if (is_output_shape_present) {
         if (output_pshape.is_static() && filters_pshape.is_static() && data_pshape.is_static()) {
-            ngraph::Shape output_shape = output_pshape.to_shape();
-            const ngraph::Shape data_shape = data_pshape.to_shape();
-            const ngraph::Shape filters_shape = filters_pshape.to_shape();
+            ov::Shape output_shape = output_pshape.to_shape();
+            const ov::Shape data_shape = data_pshape.to_shape();
+            const ov::Shape filters_shape = filters_pshape.to_shape();
             const size_t num_spatial_dims = data_shape.size() - 2;
 
             NODE_VALIDATION_CHECK(this,
@@ -153,10 +153,10 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
 
             // If auto_pad has one of following mode we infer paddings. Otherwise in
             // EXPLICIT auto_pad mode we use what is provided.
-            if (auto_pad_ == ngraph::op::PadType::SAME_UPPER || auto_pad_ == ngraph::op::PadType::SAME_LOWER) {
+            if (auto_pad_ == ov::op::PadType::SAME_UPPER || auto_pad_ == ov::op::PadType::SAME_LOWER) {
                 ngraph::opset1::infer_conv_backprop_auto_padding(
-                    ngraph::Shape{std::next(data_shape.begin(), 2), std::end(data_shape)},
-                    ngraph::Shape{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
+                    ov::Shape{std::next(data_shape.begin(), 2), std::end(data_shape)},
+                    ov::Shape{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
                     output_shape,
                     strides_,
                     dilations_,
@@ -177,18 +177,18 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
     // Deduce output shape from input spatial shape, strides, dilations, output padding
     // and padding values.
     else {
-        if (auto_pad_ == ngraph::op::PadType::SAME_UPPER || auto_pad_ == ngraph::op::PadType::SAME_LOWER ||
-            auto_pad_ == ngraph::op::PadType::VALID) {
+        if (auto_pad_ == ov::op::PadType::SAME_UPPER || auto_pad_ == ov::op::PadType::SAME_LOWER ||
+            auto_pad_ == ov::op::PadType::VALID) {
             pads_begin_.assign(pads_begin_.size(), 0);
             pads_end_.assign(pads_end_.size(), 0);
         }
 
         if (data_pshape.rank().is_static() && filters_pshape.is_static()) {
-            std::vector<ngraph::Dimension> data_shape{data_pshape}, filters_shape{filters_pshape}, output_shape;
+            std::vector<ov::Dimension> data_shape{data_pshape}, filters_shape{filters_pshape}, output_shape;
 
             infer_conv_backprop_output_spatial_shape(
-                std::vector<ngraph::Dimension>{std::next(data_shape.begin(), 2), std::end(data_shape)},
-                std::vector<ngraph::Dimension>{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
+                std::vector<ov::Dimension>{std::next(data_shape.begin(), 2), std::end(data_shape)},
+                std::vector<ov::Dimension>{std::next(filters_shape.begin(), 2), std::end(filters_shape)},
                 strides_,
                 dilations_,
                 pads_begin_,
@@ -200,9 +200,9 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
             output_shape.insert(output_shape.begin(), filters_shape.at(1));
             // N
             output_shape.insert(output_shape.begin(), data_shape.at(0));
-            output_pshape = ngraph::PartialShape{output_shape};
+            output_pshape = ov::PartialShape{output_shape};
         } else {
-            output_pshape = ngraph::PartialShape::dynamic(data_pshape.rank());
+            output_pshape = ov::PartialShape::dynamic(data_pshape.rank());
         }
     }
 
@@ -211,35 +211,35 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
     set_output_type(0, result_et, output_pshape);
 }
 
-ngraph::PartialShape FusedConvBackpropData::get_output_shape() const {
+ov::PartialShape FusedConvBackpropData::get_output_shape() const {
     auto data_pshape = get_input_partial_shape(0);
 
-    ngraph::PartialShape shape;
+    ov::PartialShape shape;
     if (data_pshape.rank().is_static()) {
-        shape = ngraph::PartialShape{std::vector<ngraph::Dimension>(data_pshape.rank().get_length() - 2)};
+        shape = ov::PartialShape{std::vector<ov::Dimension>(data_pshape.rank().get_length() - 2)};
     } else {
-        shape = ngraph::PartialShape{std::vector<ngraph::Dimension>(strides_.size())};
+        shape = ov::PartialShape{std::vector<ov::Dimension>(strides_.size())};
     }
     bool is_output_shape_present = inputs().size() == 3;
     if (is_output_shape_present) {
         if (auto const_op = get_constant_from_source(input_value(2))) {
             shape = const_op->get_shape_val();
         } else {
-            shape = ngraph::PartialShape::dynamic();
+            shape = ov::PartialShape::dynamic();
         }
     }
     return shape;
 }
 
 void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(
-    const std::vector<ngraph::Dimension>& input_data_shape,
-    const std::vector<ngraph::Dimension>& filters_shape,
-    const ngraph::Strides& strides,
-    const ngraph::Strides& dilations,
-    const ngraph::CoordinateDiff& pads_begin,
-    const ngraph::CoordinateDiff& pads_end,
-    const ngraph::CoordinateDiff& output_padding,
-    std::vector<ngraph::Dimension>& output_spatial_shape) {
+    const std::vector<ov::Dimension>& input_data_shape,
+    const std::vector<ov::Dimension>& filters_shape,
+    const ov::Strides& strides,
+    const ov::Strides& dilations,
+    const ov::CoordinateDiff& pads_begin,
+    const ov::CoordinateDiff& pads_end,
+    const ov::CoordinateDiff& output_padding,
+    std::vector<ov::Dimension>& output_spatial_shape) {
     size_t num_spatial_dims = input_data_shape.size();
     NODE_VALIDATION_CHECK(this,
                           filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
@@ -253,7 +253,7 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(
                           output_padding[i];
             output_spatial_shape.push_back(val);
         } else {
-            output_spatial_shape.push_back(ngraph::Dimension::dynamic());
+            output_spatial_shape.push_back(ov::Dimension::dynamic());
         }
     }
 }

@@ -39,12 +39,12 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
 }
 
 template <>
-class ngraph::Output<ParameterStubNode> : public ngraph::Output<ngraph::Node> {
+class ov::Output<ParameterStubNode> : public ov::Output<ov::Node> {
 public:
     explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node)
-        : ngraph::Output<ngraph::Node>(node, 0) {
-        auto tensor = std::make_shared<ngraph::descriptor::Tensor>(
-            ngraph::element::Type{}, ngraph::PartialShape{1}, ParameterStubNode::type_info.name);
+        : ov::Output<ov::Node>(node, 0) {
+        auto tensor = std::make_shared<ov::descriptor::Tensor>(
+            ov::element::Type{}, ov::PartialShape{1}, ParameterStubNode::type_info.name);
         node->m_outputs.emplace_back(node.get(), 0, tensor);
     }
 };
@@ -64,7 +64,7 @@ struct ResultTest : testing::Test {
         auto paramNode = std::make_shared<ParameterStubNode>();
         paramNode->set_friendly_name(ParameterStubNode::type_info.name);
         auto resultNode = std::make_shared<ResultStubNode>();
-        auto outputParameterNode = std::make_shared<ngraph::Output<ParameterStubNode>>(paramNode);
+        auto outputParameterNode = std::make_shared<ov::Output<ParameterStubNode>>(paramNode);
         resultNode->set_argument(0, *outputParameterNode);
         auto inputIDs = std::vector<TensorID>{TensorID{0}};
         auto outputIDs = std::vector<TensorID>{};
@@ -76,7 +76,11 @@ struct ResultTest : testing::Test {
         ASSERT_TRUE(resultOp);
         allocate();
         fillBlobRandom<uint8_t>(blob);
-        blobs.insert({paramNode->get_friendly_name(), blob});
+        blobsMapping[paramNode->get_friendly_name()] = 0;
+        blobs.push_back(std::make_shared<ngraph::HostTensor>(
+            ngraph::element::Type_t::u8,
+            blob->getTensorDesc().getDims(),
+            blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};
@@ -89,8 +93,10 @@ struct ResultTest : testing::Test {
     std::vector<cdevptr_t> inputs{inAlloc};
     IOperationExec::Outputs outputs;
     Blob::Ptr blob;
-    InferenceEngine::BlobMap blobs;
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> blobs;
+    std::map<std::string, std::size_t> blobsMapping;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
 };
 
 TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
@@ -101,7 +107,7 @@ TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
     CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
-    InferenceRequestContext context{empty, blobs, threadContext, token, profiler};
+    InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto mem = blob->as<MemoryBlob>()->rmap();
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), mem, size);
@@ -116,7 +122,7 @@ TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
     CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
-    InferenceRequestContext context{empty, blobs, threadContext, token, profiler};
+    InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     auto mem = blob->as<MemoryBlob>()->rmap();
     stream.upload(inputs[0].as_mutable(), mem, size);

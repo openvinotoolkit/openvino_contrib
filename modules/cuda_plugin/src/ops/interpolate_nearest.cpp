@@ -26,7 +26,7 @@ std::vector<float> getScalesVector(const CUDAPlugin::InterpolateNearestOp::NodeO
 
     std::vector<float> result_scales(node.get_output_shape(0).size(), 1.0f);
     for (size_t i = 0; i < axis.size(); ++i) {
-        using ShapeCalcMode = ngraph::op::v4::Interpolate::ShapeCalcMode;
+        using ShapeCalcMode = ov::op::v4::Interpolate::ShapeCalcMode;
         const auto idx = axis[i];
         if (node.get_attrs().shape_calculation_mode == ShapeCalcMode::scales) {
             result_scales[idx] = scales[i];
@@ -73,7 +73,7 @@ bool canApplyUpscaleOptimizing(const InterpolateNearestOp::NodeOp& node, const s
 }
 
 void checkLimitations(const InterpolateNearestOp::NodeOp& node) {
-    using namespace ngraph::op::v4;
+    using namespace ov::op::v4;
     if (node.get_input_shape(0).size() != 4u) {
         throwIEException(
             fmt::format("Unsupported shape rank {}. InterpolateNearestOp operation supports only 4d tensor",
@@ -110,7 +110,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
       in_shape_{node.get_input_shape(0)},
       out_shape_{node.get_output_shape(0)},
       can_use_upscale_optimizing_{canApplyUpscaleOptimizing(node, scales_)} {
-    Expects(node.get_attrs().mode == ngraph::op::v4::Interpolate::InterpolateMode::nearest);
+    Expects(node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::nearest);
     checkLimitations(node);
 
     const auto& prop = context.device().props();

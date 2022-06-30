@@ -8,41 +8,41 @@ namespace CUDAPlugin::nodes {
 
 namespace matmul {
 
-ngraph::PartialShape validate_matmul_output_shape(
-    const ngraph::PartialShape& arg0_shape,
-    const ngraph::PartialShape& arg1_shape, bool transpose_a, bool transpose_b);
+ov::PartialShape validate_matmul_output_shape(
+    const ov::PartialShape& arg0_shape,
+    const ov::PartialShape& arg1_shape, bool transpose_a, bool transpose_b);
 
 }
 
-FullyConnected::FullyConnected(const ngraph::Output<Node>& A,
-                               const ngraph::Output<Node>& B,
-                               const ngraph::Output<Node>& C,
+FullyConnected::FullyConnected(const ov::Output<Node>& A,
+                               const ov::Output<Node>& B,
+                               const ov::Output<Node>& C,
                                const bool& transpose_a,
                                const bool& transpose_b)
-    : ngraph::op::Op(ngraph::OutputVector{A, B, C})
+    : ov::op::Op(ov::OutputVector{A, B, C})
     , m_transpose_a{transpose_a}
     , m_transpose_b{transpose_b} {
   constructor_validate_and_infer_types();
 }
 
-bool FullyConnected::visit_attributes(ngraph::AttributeVisitor& visitor) {
+bool FullyConnected::visit_attributes(ov::AttributeVisitor& visitor) {
   visitor.on_attribute("transpose_a", m_transpose_a);
   visitor.on_attribute("transpose_b", m_transpose_b);
   return true;
 }
 
-std::shared_ptr<ngraph::Node> FullyConnected::clone_with_new_inputs(
-    const ngraph::OutputVector& new_args) const {
+std::shared_ptr<ov::Node> FullyConnected::clone_with_new_inputs(
+    const ov::OutputVector& new_args) const {
   check_new_args_count(this, new_args);
   return std::make_shared<FullyConnected>(new_args.at(0), new_args.at(1), new_args.at(2), m_transpose_a, m_transpose_b);
 }
 
 void FullyConnected::validate_and_infer_types() {
-  ngraph::element::Type result_et;
+  ov::element::Type result_et;
 
   NODE_VALIDATION_CHECK(
       this,
-      ngraph::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(1)),
+      ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(1)),
       "Arguments do not have the same element type (arg0 element type: ",
       get_input_element_type(0),
       ", arg1 element type: ",
@@ -50,7 +50,7 @@ void FullyConnected::validate_and_infer_types() {
       ").");
   NODE_VALIDATION_CHECK(
       this,
-      ngraph::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(2)),
+      ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(2)),
       "Arguments do not have the same element type (arg0 element type: ",
       get_input_element_type(0),
       ", arg2 element type: ",
@@ -60,7 +60,7 @@ void FullyConnected::validate_and_infer_types() {
   const auto& A_partial_shape = get_input_partial_shape(0);
   const auto& B_partial_shape = get_input_partial_shape(1);
   if (A_partial_shape.rank().is_static() && B_partial_shape.rank().is_static()) {
-    ngraph::PartialShape output_shape;
+    ov::PartialShape output_shape;
 
     const bool transpose_a = get_transpose_a();
     const bool transpose_b = get_transpose_b();
@@ -70,15 +70,15 @@ void FullyConnected::validate_and_infer_types() {
 
     set_output_type(0, result_et, output_shape);
   } else {
-    set_output_type(0, result_et, ngraph::PartialShape::dynamic());
+    set_output_type(0, result_et, ov::PartialShape::dynamic());
   }
 }
 
 namespace matmul {
 
-ngraph::PartialShape validate_matmul_output_shape(
-    const ngraph::PartialShape& arg0_shape,
-    const ngraph::PartialShape& arg1_shape,
+ov::PartialShape validate_matmul_output_shape(
+    const ov::PartialShape& arg0_shape,
+    const ov::PartialShape& arg1_shape,
     bool transpose_a, bool transpose_b) {
   auto arg0_rank = arg0_shape.rank().get_length();
   auto arg1_rank = arg1_shape.rank().get_length();
@@ -87,8 +87,8 @@ ngraph::PartialShape validate_matmul_output_shape(
                "Scalars are not supported as MatMul inputs.");
 
   // Temporary Dimension vectors to calculate output shape
-  std::vector<ngraph::Dimension> arg0_shape_tmp(arg0_shape);
-  std::vector<ngraph::Dimension> arg1_shape_tmp(arg1_shape);
+  std::vector<ov::Dimension> arg0_shape_tmp(arg0_shape);
+  std::vector<ov::Dimension> arg1_shape_tmp(arg1_shape);
 
   // 1. Applying transpositions specified by optional `transpose_a` and `transpose_b`
   // Only two right-most dimensions are swapped, other dimensions remain the same.
@@ -120,10 +120,10 @@ ngraph::PartialShape validate_matmul_output_shape(
   // COL_INDEX_DIM of the first matrix has to match ROW_INDEX_DIM of the second matrix.
   // Error is not thrown for dynamic dimensions bounds without intersection
   // to ensure MatMul backward compatibility.
-  auto merged_dimension = ngraph::Dimension::dynamic();
+  auto merged_dimension = ov::Dimension::dynamic();
   auto arg0_col_dim = arg0_shape_tmp[arg0_rank - 1];
   auto arg1_row_dim = arg1_shape_tmp[arg1_rank - 2];
-  NGRAPH_CHECK(ngraph::Dimension::merge(merged_dimension, arg0_col_dim, arg1_row_dim) ||
+  NGRAPH_CHECK(ov::Dimension::merge(merged_dimension, arg0_col_dim, arg1_row_dim) ||
       arg0_col_dim.is_dynamic() || arg1_row_dim.is_dynamic(),
                "Incompatible MatMul matrix dimension. ",
                "First input dimension=",
@@ -144,7 +144,7 @@ ngraph::PartialShape validate_matmul_output_shape(
     arg1_shape_tmp.insert(arg1_shape_tmp.begin(), arg0_rank - arg1_rank, 1);
   // Both arg0_shape_tmp and arg1_shape_tmp have identical size now
   auto max_rank = arg0_shape_tmp.size();
-  std::vector<ngraph::Dimension> output_shape(max_rank);
+  std::vector<ov::Dimension> output_shape(max_rank);
 
   // 4. Usual rules of the broadcasting are applied for batch dimensions.
   // Broadcast all batches (last two dimensions represent matrix),
@@ -158,9 +158,9 @@ ngraph::PartialShape validate_matmul_output_shape(
       // Error is not thrown for dynamic dimensions bounds without intersection
       // to ensure MatMul backward compatibility.
       // Instead fully dynamic dimension is set as default for such a case.
-      auto merged_dimension = ngraph::Dimension::dynamic();
+      auto merged_dimension = ov::Dimension::dynamic();
       NGRAPH_CHECK(
-          ngraph::Dimension::merge(merged_dimension, arg0_shape_tmp[i], arg1_shape_tmp[i]) ||
+          ov::Dimension::merge(merged_dimension, arg0_shape_tmp[i], arg1_shape_tmp[i]) ||
               arg0_shape_tmp[i].is_dynamic() || arg1_shape_tmp[i].is_dynamic(),
           "Incompatible MatMul batch dimension. ",
           "Can't merge first input dimension=",
@@ -173,8 +173,8 @@ ngraph::PartialShape validate_matmul_output_shape(
       output_shape[i] = merged_dimension;
     } else {
       // Dimension with value 1 can be expanded to any bigger.
-      ngraph::Dimension::value_type lower_bound; // The lowest possible value of output dimension
-      ngraph::Dimension::value_type upper_bound; // The highest possible value of output dimension
+      ov::Dimension::value_type lower_bound; // The lowest possible value of output dimension
+      ov::Dimension::value_type upper_bound; // The highest possible value of output dimension
 
       // Output dimension lower_bound is a maximum of
       // corresponding input dimensions lower bounds.
@@ -192,7 +192,7 @@ ngraph::PartialShape validate_matmul_output_shape(
                       ? arg1_shape_tmp[i].get_max_length()
                       : arg0_shape_tmp[i].get_max_length();
       }
-      output_shape[i] = ngraph::Dimension(lower_bound, upper_bound);
+      output_shape[i] = ov::Dimension(lower_bound, upper_bound);
     }
   }
 
@@ -212,7 +212,7 @@ ngraph::PartialShape validate_matmul_output_shape(
     output_shape.erase(output_shape.begin() + output_shape.size() - 1);
   }
 
-  return ngraph::PartialShape(output_shape);
+  return ov::PartialShape(output_shape);
 }
 
 } // namespace matmul

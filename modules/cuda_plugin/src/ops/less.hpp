@@ -11,7 +11,7 @@ namespace CUDAPlugin {
 class LessOp : public Comparison {
 public:
     LessOp(const CreationContext& context,
-           const ngraph::Node& node,
+           const ov::Node& node,
            IndexCollection&& inputIds,
            IndexCollection&& outputIds);
 };

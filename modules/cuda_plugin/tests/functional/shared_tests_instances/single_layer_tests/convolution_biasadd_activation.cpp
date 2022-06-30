@@ -13,7 +13,7 @@
 #include <functional_test_utils/skip_tests_config.hpp>
 #include <ie_precision.hpp>
 #include <limits>
-#include <ngraph/op/util/attr_types.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
 #include <tuple>
 #include <vector>
@@ -107,7 +107,7 @@ const auto conv2DParams_ExplicitPaddingSymmetric1 =
                        ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                        ::testing::ValuesIn(dilations),
                        ::testing::ValuesIn(numOutChannels),
-                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+                       ::testing::Values(ov::op::PadType::EXPLICIT));
 const auto conv2DParams_ExplicitPaddingSymmetric2 =
     ::testing::Combine(::testing::ValuesIn(kernels),
                        ::testing::ValuesIn(strides),
@@ -115,7 +115,7 @@ const auto conv2DParams_ExplicitPaddingSymmetric2 =
                        ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_end
                        ::testing::ValuesIn(dilations),
                        ::testing::ValuesIn(numOutChannels),
-                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+                       ::testing::Values(ov::op::PadType::EXPLICIT));
 const auto conv2DParams_ExplicitPaddingAsymmetric1 =
     ::testing::Combine(::testing::ValuesIn(kernels),
                        ::testing::ValuesIn(strides),
@@ -123,7 +123,7 @@ const auto conv2DParams_ExplicitPaddingAsymmetric1 =
                        ::testing::Values(std::vector<ptrdiff_t>({0, 3})),  // pads_end
                        ::testing::ValuesIn(dilations),
                        ::testing::ValuesIn(numOutChannels),
-                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+                       ::testing::Values(ov::op::PadType::EXPLICIT));
 const auto conv2DParams_ExplicitPaddingAsymmetric2 =
     ::testing::Combine(::testing::ValuesIn(kernels),
                        ::testing::ValuesIn(strides),
@@ -131,7 +131,7 @@ const auto conv2DParams_ExplicitPaddingAsymmetric2 =
                        ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                        ::testing::ValuesIn(dilations),
                        ::testing::ValuesIn(numOutChannels),
-                       ::testing::Values(ngraph::op::PadType::EXPLICIT));
+                       ::testing::Values(ov::op::PadType::EXPLICIT));
 
 const auto conv2DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(kernels),
                                                           ::testing::ValuesIn(strides),
@@ -139,7 +139,7 @@ const auto conv2DParams_AutoPadValid = ::testing::Combine(::testing::ValuesIn(ke
                                                           ::testing::Values(std::vector<ptrdiff_t>({0, 0})),
                                                           ::testing::ValuesIn(dilations),
                                                           ::testing::ValuesIn(numOutChannels),
-                                                          ::testing::Values(ngraph::op::PadType::VALID));
+                                                          ::testing::Values(ov::op::PadType::VALID));
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Convolution2DBiasAddActivation_ExplicitPaddingSymmetric1,
@@ -235,7 +235,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(88),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::VALID)),     // Padding type
+                                              ::testing::Values(ov::op::PadType::VALID)),     // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precisions
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -260,7 +260,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::Values(defaultPrecision),                                   // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -283,7 +283,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(128),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -306,7 +306,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -329,7 +329,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({3, 3})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(64),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -352,7 +352,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::VALID)),     // Padding type
+                                              ::testing::Values(ov::op::PadType::VALID)),     // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -375,7 +375,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(2048),                            // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::VALID)),     // Padding type
+                                              ::testing::Values(ov::op::PadType::VALID)),     // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -398,7 +398,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(1024),                            // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::VALID)),     // Padding type
+                                              ::testing::Values(ov::op::PadType::VALID)),     // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -421,7 +421,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(1024),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -444,7 +444,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(64),                                // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -467,7 +467,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(512),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -490,7 +490,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(256),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::Values(defaultPrecision),                                     // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -513,7 +513,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(256),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -536,7 +536,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(64),                                // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -559,7 +559,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(64),                                // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -582,7 +582,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(128),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -605,7 +605,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(512),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -628,7 +628,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(512),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -651,7 +651,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(512),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::Values(defaultPrecision),                                     // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -674,7 +674,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(128),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -697,7 +697,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(256),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -720,7 +720,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(2048),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -743,7 +743,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(128),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -766,7 +766,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({0, 0})),    // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),       // dilations
                                               ::testing::Values(256),                               // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::SAME_UPPER)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::SAME_UPPER)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                      // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),              // Output precision
@@ -789,7 +789,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(64),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -812,7 +812,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(64),                              // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -835,7 +835,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -858,7 +858,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -881,7 +881,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::Values(defaultPrecision),                                   // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -904,7 +904,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::Values(defaultPrecision),                                   // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -927,7 +927,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::Values(defaultPrecision),                                   // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -950,7 +950,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(128),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -973,7 +973,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(128),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -996,7 +996,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<ptrdiff_t>({1, 1})),  // pads_end
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(128),                             // Num out channels
-                                              ::testing::Values(ngraph::op::PadType::EXPLICIT)),  // Padding type
+                                              ::testing::Values(ov::op::PadType::EXPLICIT)),  // Padding type
                            ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
@@ -1035,7 +1035,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1063,7 +1063,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1091,7 +1091,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1119,7 +1119,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1147,7 +1147,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1175,7 +1175,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1203,7 +1203,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1231,7 +1231,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1259,7 +1259,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1287,7 +1287,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1315,7 +1315,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1343,7 +1343,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1371,7 +1371,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1399,7 +1399,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1427,7 +1427,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1455,7 +1455,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1483,7 +1483,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1511,7 +1511,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1539,7 +1539,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1567,7 +1567,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1595,7 +1595,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1623,7 +1623,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1651,7 +1651,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1679,7 +1679,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1707,7 +1707,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1735,7 +1735,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1763,7 +1763,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1791,7 +1791,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({1, 1, 1})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
-                ::testing::Values(ngraph::op::PadType::SAME_UPPER)), // Padding type
+                ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1819,7 +1819,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({0, 0})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(1), // Num out channels
-                ::testing::Values(ngraph::op::PadType::VALID)), // Padding type
+                ::testing::Values(ov::op::PadType::VALID)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
@@ -1847,7 +1847,7 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<ptrdiff_t>({0, 0, 0})), // pads_end
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(1), // Num out channels
-                ::testing::Values(ngraph::op::PadType::VALID)), // Padding type
+                ::testing::Values(ov::op::PadType::VALID)), // Padding type
             ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision

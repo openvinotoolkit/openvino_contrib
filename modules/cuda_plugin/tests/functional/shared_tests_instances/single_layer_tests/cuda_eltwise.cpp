@@ -30,80 +30,125 @@ namespace LayerTestsDefinitions {
 namespace {
 
 template <InferenceEngine::Precision::ePrecision PRC>
-void replace(InferenceEngine::Blob::Ptr& blob, float old_value, float new_value) {
+void replace(InferenceEngine::Blob::Ptr& blob, float old_value, float new_value, bool is_integer) {
     using DataType = typename InferenceEngine::PrecisionTrait<PRC>::value_type;
     DataType* raw_ptr = blob->buffer().as<DataType*>();
     for (size_t i = 0; i < blob->size(); ++i) {
         if constexpr (PRC == InferenceEngine::Precision::FP16) {
             const auto value = ngraph::float16::from_bits(raw_ptr[i]);
-            if (value == static_cast<ngraph::float16>(old_value)) {
+            const bool should_replace = (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
+                                         value == static_cast<ngraph::float16>(old_value);
+            if (should_replace) {
                 raw_ptr[i] = static_cast<DataType>(ngraph::float16(new_value).to_bits());
             }
         } else if constexpr (PRC == InferenceEngine::Precision::BF16) {
             const auto value = ngraph::bfloat16::from_bits(raw_ptr[i]);
-            if (value == static_cast<ngraph::bfloat16>(old_value)) {
+            const bool should_replace = (is_integer && static_cast<int>(static_cast<float>(value)) == static_cast<int>(old_value)) ||
+                                         value == static_cast<ngraph::bfloat16>(old_value);
+            if (should_replace) {
                 raw_ptr[i] = static_cast<DataType>(ngraph::bfloat16(new_value).to_bits());
             }
         } else {
-            if (raw_ptr[i] == old_value) {
+            const bool should_replace = (is_integer && static_cast<int>(raw_ptr[i]) == static_cast<int>(old_value)) ||
+                                         raw_ptr[i] == old_value;
+            if (should_replace) {
                 raw_ptr[i] = new_value;
             }
         }
     }
 }
 
-void replace(InferenceEngine::Blob::Ptr& blob, InferenceEngine::Precision precision, float old_value, float new_value) {
+void replace(InferenceEngine::Blob::Ptr& blob, InferenceEngine::Precision precision, float old_value, float new_value, bool is_integer) {
     switch (precision) {
         case InferenceEngine::Precision::FP32:
-            replace<InferenceEngine::Precision::FP32>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::FP32>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::FP16:
-            replace<InferenceEngine::Precision::FP16>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::FP16>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::BF16:
-            replace<InferenceEngine::Precision::BF16>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::BF16>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::FP64:
-            replace<InferenceEngine::Precision::FP64>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::FP64>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::I16:
-            replace<InferenceEngine::Precision::I16>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::I16>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::U8:
-            replace<InferenceEngine::Precision::U8>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::U8>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::I8:
-            replace<InferenceEngine::Precision::I8>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::I8>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::U16:
-            replace<InferenceEngine::Precision::U16>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::U16>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::I32:
-            replace<InferenceEngine::Precision::I32>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::I32>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::U32:
-            replace<InferenceEngine::Precision::U32>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::U32>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::I64:
-            replace<InferenceEngine::Precision::I64>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::I64>(blob, old_value, new_value, is_integer);
             break;
         case InferenceEngine::Precision::U64:
-            replace<InferenceEngine::Precision::U64>(blob, old_value, new_value);
+            replace<InferenceEngine::Precision::U64>(blob, old_value, new_value, is_integer);
             break;
         default:
             CUDAPlugin::throwIEException(fmt::format("replace(): Unsupported type: {}", precision.name()));
     }
 }
 
+InferenceEngine::Precision convertTestElementTypeToNGraphPrecision(const ov::test::ElementType& value) {
+    switch (value) {
+        case ov::element::Type_t::undefined:
+            return InferenceEngine::Precision::UNSPECIFIED;
+        case ov::element::Type_t::boolean:
+            return InferenceEngine::Precision::BOOL;
+        case ov::element::Type_t::bf16:
+            return InferenceEngine::Precision::BF16;
+        case ov::element::Type_t::f16:
+            return InferenceEngine::Precision::FP16;
+        case ov::element::Type_t::f32:
+            return InferenceEngine::Precision::FP32;
+        case ov::element::Type_t::f64:
+            return InferenceEngine::Precision::FP64;
+        case ov::element::Type_t::i4:
+            return InferenceEngine::Precision::I4;
+        case ov::element::Type_t::i8:
+            return InferenceEngine::Precision::I8;
+        case ov::element::Type_t::i16:
+            return InferenceEngine::Precision::I16;
+        case ov::element::Type_t::i32:
+            return InferenceEngine::Precision::I32;
+        case ov::element::Type_t::i64:
+            return InferenceEngine::Precision::I64;
+        case ov::element::Type_t::u4:
+            return InferenceEngine::Precision::U4;
+        case ov::element::Type_t::u8:
+            return InferenceEngine::Precision::U8;
+        case ov::element::Type_t::u16:
+            return InferenceEngine::Precision::U16;
+        case ov::element::Type_t::u32:
+            return InferenceEngine::Precision::U32;
+        case ov::element::Type_t::u64:
+            return InferenceEngine::Precision::U64;
+        default:
+            throw std::invalid_argument(fmt::format("Cannot convert ElementType = {} to InferenceEngine::Precision", value));
+    }
+};
+
 }  // namespace
 
 std::string CudaEltwiseLayerTest::getTestCaseName(testing::TestParamInfo<CudaEltwiseTestParams> obj) {
-    EltwiseTestParams ew_params;
+    ov::test::subgraph::EltwiseTestParams ew_params;
     OperationMode mode;
     std::tie(ew_params, mode) = obj.param;
 
     std::ostringstream result;
-    result << EltwiseLayerTest::getTestCaseName({ew_params, obj.index}) << "_";
+    result << ov::test::subgraph::EltwiseLayerTest::getTestCaseName({ew_params, obj.index}) << "_";
     result << "OperationMode=" << (mode == OperationMode::PYTHON_DIVIDE ? "PYTHON_DIVIDE" : "NORMAL");
     return result.str();
 }
@@ -121,7 +166,7 @@ InferenceEngine::Blob::Ptr CudaEltwiseLayerTest::GenerateInput(const InferenceEn
         case ngraph::helpers::EltwiseTypes::MOD: {
             auto blob = FuncTestUtils::createAndFillBlob(info.getTensorDesc(), range, start_from, resolution, seed);
             if (!is_float && info.name() == secondary_input_name) {
-                replace(blob, precision, 0, 1);
+                replace(blob, precision, 0, 1, true);
             }
             return blob;
         }
@@ -133,86 +178,89 @@ InferenceEngine::Blob::Ptr CudaEltwiseLayerTest::GenerateInput(const InferenceEn
 }
 
 void CudaEltwiseLayerTest::SetUp() {
+    PluginCache::get().reset();
+
     this->to_check_nans = true;
 
-    std::vector<std::vector<size_t>> input_shapes;
-    InferenceEngine::Precision net_precision;
-    ngraph::helpers::InputLayerType secondary_input_type;
-    CommonTestUtils::OpType op_type;
-    ngraph::helpers::EltwiseTypes eltwise_type;
-    std::map<std::string, std::string> additional_config;
-    const EltwiseTestParams ew_params = std::get<0>(this->GetParam());
+    std::vector<ov::test::InputShape> shapes;
+    ov::test::ElementType netType;
+    ov::test::ElementType in_prc;
+    ov::test::ElementType out_prc;
+    ngraph::helpers::InputLayerType secondaryInputType;
+    CommonTestUtils::OpType opType;
+    ngraph::helpers::EltwiseTypes eltwiseType;
+    ov::AnyMap additionalConfig;
+    const ov::test::subgraph::EltwiseTestParams ew_params = std::get<0>(this->GetParam());
     const OperationMode mode = std::get<1>(this->GetParam());
-    std::tie(input_shapes,
-             eltwise_type,
-             secondary_input_type,
-             op_type,
-             net_precision,
-             inPrc,
-             outPrc,
-             inLayout,
-             targetDevice,
-             additional_config) = ew_params;
-    const auto ng_precision = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(net_precision);
 
-    std::vector<size_t> input_shape1, input_shape2;
-    if (input_shapes.size() == 1) {
-        input_shape1 = input_shape2 = input_shapes.front();
-    } else if (input_shapes.size() == 2) {
-        input_shape1 = input_shapes.front();
-        input_shape2 = input_shapes.back();
-    } else {
-        CUDAPlugin::throwIEException("Incorrect number of input shapes");
-    }
+    std::tie(shapes, eltwiseType, secondaryInputType, opType, netType, in_prc, out_prc, targetDevice, configuration) =
+        ew_params;
 
-    configuration.insert(additional_config.begin(), additional_config.end());
-    auto input = ngraph::builder::makeParams(ng_precision, {input_shape1});
+    inPrc = convertTestElementTypeToNGraphPrecision(in_prc);
+    outPrc = convertTestElementTypeToNGraphPrecision(out_prc);
 
-    std::vector<size_t> shape_input_secondary;
-    switch (op_type) {
-        case CommonTestUtils::OpType::SCALAR:
-            shape_input_secondary = std::vector<size_t>({1});
+    init_input_shapes(shapes);
+
+    auto parameters = ngraph::builder::makeDynamicParams(netType, {inputDynamicShapes.front()});
+
+    ov::PartialShape shape_input_secondary;
+    switch (opType) {
+        case CommonTestUtils::OpType::SCALAR: {
+            shape_input_secondary = {1};
             break;
+        }
         case CommonTestUtils::OpType::VECTOR:
-            shape_input_secondary = input_shape2;
+            shape_input_secondary = inputDynamicShapes.back();
             break;
         default:
             FAIL() << "Unsupported Secondary operation type";
     }
+    // To propagate shape_input_secondary just in static case because all shapes are defined in dynamic scenarion
+    if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+        transformInputShapesAccordingEltwise(shape_input_secondary);
+    }
 
-    constexpr bool is_random = true;
-    std::shared_ptr<ngraph::Node> secondary_input;
-    auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::i32>(
-        ngraph::shape_size(shape_input_secondary), up_to, start_from, seed);
-    if (secondary_input_type == ngraph::helpers::InputLayerType::CONSTANT) {
-        switch (eltwise_type) {
+    std::shared_ptr<ngraph::Node> secondaryInput;
+    if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
+        secondaryInput = ngraph::builder::makeDynamicParams(netType, {shape_input_secondary}).front();
+        parameters.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(secondaryInput));
+    } else {
+        constexpr bool is_random = true;
+        ov::Shape shape = inputDynamicShapes.back().get_max_shape();
+        auto data = NGraphFunctions::Utils::generateVector<ngraph::element::Type_t::f32>(ngraph::shape_size(shape), up_to, start_from, seed);
+        switch (eltwiseType) {
             case ngraph::helpers::EltwiseTypes::DIVIDE:
             case ngraph::helpers::EltwiseTypes::MOD: {
-                if (ng_precision.is_integral()) {
-                    std::replace(data.begin(), data.end(), 0, 1);
+                if (ov::element::Type{netType}.is_integral()) {
+                    std::replace_if(
+                        data.begin(),
+                        data.end(),
+                        [](const auto& value) { return static_cast<int>(static_cast<float>(value)) == 0; },
+                        1);
                 }
-                secondary_input = ngraph::builder::makeConstant(ng_precision, shape_input_secondary, data);
+                secondaryInput = ngraph::builder::makeConstant(netType, shape, data);
                 break;
             }
-            case ngraph::helpers::EltwiseTypes::POWER:
-                // to avoid floating point overflow on some platforms, let's fill the constant with small numbers.
-                secondary_input =
-                    ngraph::builder::makeConstant<float>(ng_precision, shape_input_secondary, {}, is_random, 3);
+            case ngraph::helpers::EltwiseTypes::POWER: {
+                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, {}, is_random, 3);
                 break;
-            default:
-                secondary_input = ngraph::builder::makeConstant(ng_precision, shape_input_secondary, data);
+            }
+            default: {
+                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, data);
+            }
         }
-    } else {
-        secondary_input = ngraph::builder::makeInputLayer(ng_precision, secondary_input_type, shape_input_secondary);
-        input.push_back(std::dynamic_pointer_cast<ngraph::op::v0::Parameter>(secondary_input));
     }
-    secondary_input_name = secondary_input->get_friendly_name();
+
+    parameters[0]->set_friendly_name("param0");
+    secondaryInput->set_friendly_name("param1");
+
+    secondary_input_name = secondaryInput->get_friendly_name();
 
     const bool is_python_divide = mode == OperationMode::PYTHON_DIVIDE;
-    auto eltwise = eltwise_type == ngraph::helpers::EltwiseTypes::DIVIDE
-                       ? std::make_shared<ngraph::op::v1::Divide>(input[0], secondary_input, is_python_divide)
-                       : ngraph::builder::makeEltwise(input[0], secondary_input, eltwise_type);
-    function = std::make_shared<ngraph::Function>(eltwise, input, "Eltwise");
+    auto eltwise = eltwiseType == ngraph::helpers::EltwiseTypes::DIVIDE
+                   ? std::make_shared<ngraph::op::v1::Divide>(parameters[0], secondaryInput, is_python_divide)
+                   : ngraph::builder::makeEltwise(parameters[0], secondaryInput, eltwiseType);
+    function = std::make_shared<ngraph::Function>(eltwise, parameters, "Eltwise");
 }
 
 TEST_P(CudaEltwiseLayerTest, CompareWithRefs) {

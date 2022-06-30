@@ -5,17 +5,17 @@
 #pragma once
 
 #include <cuda/dnn.hpp>
-#include <ngraph/op/avg_pool.hpp>
-#include <ngraph/op/max_pool.hpp>
+#include <openvino/op/avg_pool.hpp>
+#include <openvino/op/max_pool.hpp>
 #include <ngraph/shape.hpp>
 
 namespace CUDAPlugin {
 
 class PoolingImpl {
 public:
-    explicit PoolingImpl(const ngraph::op::v1::MaxPool& node);
+    explicit PoolingImpl(const ov::op::v1::MaxPool& node);
 
-    explicit PoolingImpl(const ngraph::op::AvgPool& node);
+    explicit PoolingImpl(const ov::op::v1::AvgPool& node);
 
     ~PoolingImpl() = default;
     void Execute(const CUDA::DnnHandle& handle,
@@ -24,11 +24,11 @@ public:
 
 private:
     int spatial_dims() const;
-    std::vector<int> tensor_shape_from_ngraph(const ngraph::Shape& ngraph_shape) const;
-    std::vector<int> spatial_shape_from_ngraph(const ngraph::Shape& ngraph_shape) const;
-    std::vector<int> tensor_strides_from_ngraph(const ngraph::Shape& ngraph_strides) const;
-    std::vector<int> paddings_from_ngraph(const ngraph::Shape& pads_begin,
-                                          const ngraph::Shape& pads_end,
+    std::vector<int> tensor_shape_from_ngraph(const ov::Shape& ngraph_shape) const;
+    std::vector<int> spatial_shape_from_ngraph(const ov::Shape& ngraph_shape) const;
+    std::vector<int> tensor_strides_from_ngraph(const ov::Shape& ngraph_strides) const;
+    std::vector<int> paddings_from_ngraph(const ov::Shape& pads_begin,
+                                          const ov::Shape& pads_end,
                                           cudnnPoolingMode_t pooling_mode) const;
 
 public:

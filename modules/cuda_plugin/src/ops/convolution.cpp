@@ -17,11 +17,11 @@
 namespace CUDAPlugin {
 
 static OperationBase::Ptr convolutionFactory(const CreationContext& context,
-                                             const std::shared_ptr<ngraph::Node>& node,
+                                             const std::shared_ptr<ov::Node>& node,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
     using IndexCollection = OperationBase::IndexCollection;
-    const Convolution::Details::ConvolutionParams params{downcast<const ngraph::op::v1::Convolution>(node)};
+    const Convolution::Details::ConvolutionParams params{downcast<const ov::op::v1::Convolution>(node)};
     std::stringstream exception_msg;
 #ifdef ENABLE_CUDNN_BACKEND_API
     try {

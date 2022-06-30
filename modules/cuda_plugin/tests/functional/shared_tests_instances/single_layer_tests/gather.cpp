@@ -90,7 +90,7 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
     }
     std::uniform_int_distribution<T> distr(0, test_params.params_shape_[normalized_axis] - 1);
 
-    const auto indices_size = ngraph::shape_size(test_params.indices_shape_);
+    const auto indices_size = ov::shape_size(test_params.indices_shape_);
     std::vector<T> indices(indices_size);
     std::generate(indices.begin(), indices.end(), [&]() { return distr(r_engine); });
     return indices;
@@ -642,18 +642,18 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     int out_size = 0;
     CUDAPlugin::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
-        auto dict_param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::from<ElementType>(),
-                                                                      ngraph::PartialShape{params.params_shape_});
-        auto indices_param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::from<IndicesType>(),
-                                                                         ngraph::PartialShape{params.indices_shape_});
-        auto axis_constant = std::make_shared<ngraph::op::v0::Constant>(
-            ngraph::element::i64, ngraph::Shape({}), std::vector<int64_t>{params.axis_});
-        auto node = is_v7 ? std::static_pointer_cast<ngraph::Node>(std::make_shared<ngraph::op::v7::Gather>(
+        auto dict_param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(),
+                                                                      ov::PartialShape{params.params_shape_});
+        auto indices_param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<IndicesType>(),
+                                                                         ov::PartialShape{params.indices_shape_});
+        auto axis_constant = std::make_shared<ov::op::v0::Constant>(
+            ov::element::i64, ov::Shape({}), std::vector<int64_t>{params.axis_});
+        auto node = is_v7 ? std::static_pointer_cast<ov::Node>(std::make_shared<ov::op::v7::Gather>(
                                 dict_param->output(0), indices_param->output(0), axis_constant, params.batch_dims_))
-                          : std::static_pointer_cast<ngraph::Node>(std::make_shared<ngraph::op::v1::Gather>(
+                          : std::static_pointer_cast<ov::Node>(std::make_shared<ov::op::v1::Gather>(
                                 dict_param->output(0), indices_param->output(0), axis_constant));
 
-        out_size = ngraph::shape_size(node->get_output_shape(0));
+        out_size = ov::shape_size(node->get_output_shape(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
                                            node,
@@ -661,8 +661,8 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
                                            std::array{CUDAPlugin::TensorID{0}});
         return op;
     }();
-    const int dict_size = ngraph::shape_size(params.params_shape_);
-    const int indices_size = ngraph::shape_size(params.indices_shape_);
+    const int dict_size = ov::shape_size(params.params_shape_);
+    const int indices_size = ov::shape_size(params.indices_shape_);
     const auto dict_size_bytes = dict_size * sizeof(ElementType);
     const auto indices_size_bytes = indices_size * sizeof(IndicesType);
     const auto out_size_bytes = out_size * sizeof(ElementType);
@@ -673,11 +673,12 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<cdevptr_t> inputs{dict_alloc, indices_alloc, axis_alloc};
     std::vector<devptr_t> outputs{out_alloc};
 
-    InferenceEngine::BlobMap empty;
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;
@@ -735,8 +736,8 @@ TEST_F(Gather_v1_Benchmark, DISABLED_benchmark) {
     std::cout << "---Dicts: float, Indices: int64_t:\n";
     test_all_shapes<float, int64_t>(all_params_v1, is_v7);
 
-    std::cout << "---Dicts: ngraph::float16, Indices: int32_t:\n";
-    test_all_shapes<ngraph::float16, int32_t>(all_params_v1, is_v7);
+    std::cout << "---Dicts: ov::float16, Indices: int32_t:\n";
+    test_all_shapes<ov::float16, int32_t>(all_params_v1, is_v7);
 }
 
 struct Gather_v7_Benchmark : testing::Test {};
@@ -751,8 +752,8 @@ TEST_F(Gather_v7_Benchmark, DISABLED_benchmark) {
     std::cout << "---Dicts: float, Indices: int64_t:\n";
     test_all_shapes<float, int64_t>(all_params_v7, is_v7);
 
-    std::cout << "---Dicts: ngraph::float16, Indices: int32_t:\n";
-    test_all_shapes<ngraph::float16, int32_t>(all_params_v7, is_v7);
+    std::cout << "---Dicts: ov::float16, Indices: int32_t:\n";
+    test_all_shapes<ov::float16, int32_t>(all_params_v7, is_v7);
 }
 
 }  // namespace

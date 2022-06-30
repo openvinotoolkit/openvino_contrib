@@ -5,7 +5,7 @@
 #include "single_layer_tests/gru_sequence.hpp"
 
 #include <cuda_test_constants.hpp>
-#include <ngraph/op/util/attr_types.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <vector>
 
 #include "unsymmetrical_comparer.hpp"
@@ -14,7 +14,7 @@ namespace LayerTestsDefinitions {
 
 class CUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
-    void SetUp() {
+    void SetUp() override {
         GRUSequenceTest::SetUp();
         threshold = 0.01f;
         constexpr float up_to = 1.0f;
@@ -24,7 +24,7 @@ public:
         int seed = 1;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                if (op->get_element_type() == ngraph::element::Type_t::f32) {
+                if (op->get_element_type() == ov::element::Type_t::f32) {
                     const auto constant = ngraph::builder::makeConstant(
                         op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
                     function->replace_node(op, constant);
@@ -40,7 +40,7 @@ TEST_P(CUDNNGRUSequenceTest, CompareWithRefs) {
 
 class LPCNetCUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
-    void SetUp() {
+    void SetUp() override {
         threshold = 0.05f;  // there is one place with 0.0254 difference when sequence length and shapes are big, e.g.
                             // 10 and shapes input 512, hidden size 384
         updatedGRUSequenceTest_SetUp();
@@ -54,7 +54,7 @@ public:
         int seed = 1;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                if (op->get_element_type() == ngraph::element::Type_t::f32) {
+                if (op->get_element_type() == ov::element::Type_t::f32) {
                     const auto constant = ngraph::builder::makeConstant(
                         op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
                     function->replace_node(op, constant);
@@ -73,7 +73,7 @@ public:
         float clip;
         bool linear_before_reset;
         SequenceTestsMode mode;
-        ngraph::op::RecurrentSequenceDirection direction;
+        ov::op::RecurrentSequenceDirection direction;
         InferenceEngine::Precision netPrecision;
         std::tie(mode,
                  seq_lengths,
@@ -85,7 +85,7 @@ public:
                  direction,
                  netPrecision,
                  targetDevice) = this->GetParam();
-        size_t num_directions = direction == ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
+        size_t num_directions = direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
         std::vector<std::vector<size_t>> inputShapes = {
             {{batch, seq_lengths, input_size},
              {batch, num_directions, hidden_size},
@@ -98,7 +98,7 @@ public:
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         auto params = ngraph::builder::makeParams(ngPrc, {inputShapes[0], inputShapes[1]});
 
-        std::vector<ngraph::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
+        std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
         auto gru_sequence =
             ngraph::builder::makeGRU(ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes(params)),
                                      WRB,
@@ -111,14 +111,14 @@ public:
                                      true,
                                      direction,
                                      mode);
-        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(gru_sequence->output(0)),
+        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(gru_sequence->output(0)),
                                      std::make_shared<ngraph::opset1::Result>(gru_sequence->output(1))};
         function = std::make_shared<ngraph::Function>(results, params, "gru_sequence");
         bool ti_found = is_tensor_iterator_exist(function);
         EXPECT_EQ(ti_found, false);
     }
 
-    void GenerateInputs() {
+    void GenerateInputs() override {
         inputs.clear();
         for (const auto& input : executableNetwork.GetInputsInfo()) {
             const auto& info = input.second;
@@ -152,7 +152,7 @@ std::vector<size_t> hidden_size{1, 10};
 std::vector<std::vector<std::string>> activations = {{"sigmoid", "tanh"}};
 std::vector<bool> linear_before_reset = {true};  // false doesn't work properly in reference GRUCell implementation
 std::vector<float> clip{0.f};
-std::vector<ngraph::op::RecurrentSequenceDirection> direction = {ngraph::op::RecurrentSequenceDirection::FORWARD};
+std::vector<ov::op::RecurrentSequenceDirection> direction = {ov::op::RecurrentSequenceDirection::FORWARD};
 std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                          InferenceEngine::Precision::FP16};
 

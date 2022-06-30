@@ -30,6 +30,7 @@ class Plugin;
  */
 class ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDefault {
 public:
+    friend class Plugin;
     ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwork,
                       Configuration cfg,
                       InferenceEngine::ITaskExecutor::Ptr waitExecutor,
@@ -41,29 +42,35 @@ public:
 
     // Methods from a base class ExecutableNetworkThreadSafeDefault
 
-    InferenceEngine::CNNNetwork GetExecGraphInfo() override;
+    std::shared_ptr<ngraph::Function> GetExecGraphInfo() override;
     void Export(std::ostream& model) override;
     InferenceEngine::IInferRequestInternal::Ptr CreateInferRequestImpl(
-        InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) override;
+        InferenceEngine::InputsDataMap networkInputs,
+        InferenceEngine::OutputsDataMap networkOutputs) override;
+    InferenceEngine::IInferRequestInternal::Ptr CreateInferRequestImpl(
+        const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+        const std::vector<std::shared_ptr<const ov::Node>>& outputs) override;
     InferenceEngine::IInferRequestInternal::Ptr CreateInferRequest() override;
 
     InferenceEngine::Parameter GetMetric(const std::string& name) const override;
     InferenceEngine::Parameter GetConfig(const std::string& name) const override;
     std::string newRequestName() {
-        return "Cuda" + std::to_string(cfg_.deviceId) + "_" + function_->get_friendly_name() + "_Req" +
+        return "Cuda" + std::to_string(cfg_.deviceId) + "_" + export_function_->get_friendly_name() + "_Req" +
                std::to_string(request_id_++);
     }
-    const ngraph::op::Parameter& parameter(const std::string& name) const {
+    const ov::op::v0::Parameter& parameter(const std::string& name) const {
         return *function_->get_parameters().at(input_index_.at(name));
     }
-    const ngraph::op::Result& result(const std::string& name) const {
+    const ov::op::v0::Result& result(const std::string& name) const {
         return *function_->get_results().at(output_index_.at(name));
     }
 
 private:
     friend class ::ExecNetworkTest;
     friend class CudaInferRequest;
-    void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function);
+    void CompileNetwork(const std::shared_ptr<const ngraph::Function>& function,
+                        const InferenceEngine::InputsDataMap& inputInfoMap,
+                        const InferenceEngine::OutputsDataMap& outputsInfoMap);
     void InitExecutor();
     std::size_t GetOptimalNumberOfStreams(std::size_t constBlobSize, std::size_t memoryBlobSize) const;
     InferenceEngine::IInferRequestInternal::Ptr CreateBenchmarkInferRequestImpl(
@@ -75,11 +82,11 @@ private:
     unsigned int RunBenchmarkFor(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);
 
     std::atomic<std::size_t> request_id_ = {0};
-    InferenceEngine::CNNNetwork cnn_network_;
     Configuration cfg_;
     InferenceEngine::ITaskExecutor::Ptr cuda_stream_executor_;
     std::shared_ptr<Plugin> plugin_;
-    std::shared_ptr<const ngraph::Function> function_;
+    std::shared_ptr<ngraph::Function> export_function_;
+    std::shared_ptr<ngraph::Function> function_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;
     std::unique_ptr<CudaGraph> graph_;

@@ -6,7 +6,7 @@
 
 #include <error.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/constant.hpp>
+#include <openvino/op/constant.hpp>
 #include <typeinfo>
 
 namespace CUDAPlugin::RNN::Details {
@@ -14,21 +14,21 @@ namespace CUDAPlugin::RNN::Details {
 namespace {
 
 template <typename T>
-const T& toRNNCell(const ngraph::Node& node) {
-    static_assert(std::is_base_of_v<ngraph::op::util::RNNCellBase, T>,
-                  "T node should have base ngraph::op::util::RNNCellBase");
+const T& toRNNCell(const ov::Node& node) {
+    static_assert(std::is_base_of_v<ov::op::util::RNNCellBase, T>,
+                  "T node should have base ov::op::util::RNNCellBase");
     try {
         return dynamic_cast<const T&>(node);
     } catch (const std::bad_cast&) {
-        throwIEException("Couldn't convert ngraph::Node node to the derived T of base ngraph::op::util::RNNCellBase");
+        throwIEException("Couldn't convert ov::Node node to the derived T of base ov::op::util::RNNCellBase");
     }
 }
 
 }  // namespace
 
-LSTMCellParams::LSTMCellParams(const ngraph::Node& node) : LSTMCellParams(toRNNCell<ngraph::op::v4::LSTMCell>(node)) {}
+LSTMCellParams::LSTMCellParams(const ov::Node& node) : LSTMCellParams(toRNNCell<ov::op::v4::LSTMCell>(node)) {}
 
-LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
+LSTMCellParams::LSTMCellParams(const ov::op::v4::LSTMCell& cell)
     : hidden_size_{cell.get_hidden_size()},
       activations_{cell.get_activations()},
       activations_alpha_{cell.get_activations_alpha()},
@@ -93,29 +93,29 @@ LSTMCellParams::LSTMCellParams(const ngraph::op::v4::LSTMCell& cell)
     const auto element_type_size = element_type_.size();
 
     const auto w_constant =
-        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::weights));
+        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::weights));
     const auto r_constant =
-        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::recurrence_weights));
+        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::recurrence_weights));
     const auto b_constant =
-        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::biases));
+        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::biases));
     Expects(w_constant && r_constant && b_constant);
 
     const auto w_data_host = w_constant->get_data_ptr<const uint8_t>();
     const auto r_data_host = r_constant->get_data_ptr<const uint8_t>();
     const auto b_data_host = b_constant->get_data_ptr<const uint8_t>();
 
-    const std::size_t w_size_bytes = ngraph::shape_size(w_shape) * element_type_size;
-    const std::size_t r_size_bytes = ngraph::shape_size(r_shape) * element_type_size;
-    const std::size_t b_size_bytes = ngraph::shape_size(b_shape) * element_type_size;
+    const std::size_t w_size_bytes = ov::shape_size(w_shape) * element_type_size;
+    const std::size_t r_size_bytes = ov::shape_size(r_shape) * element_type_size;
+    const std::size_t b_size_bytes = ov::shape_size(b_shape) * element_type_size;
 
     w_host_buffers_ = {w_data_host, w_size_bytes};
     r_host_buffers_ = {r_data_host, r_size_bytes};
     b_host_buffers_ = {b_data_host, b_size_bytes};
 }
 
-GRUCellParams::GRUCellParams(const ngraph::Node& node) : GRUCellParams(toRNNCell<ngraph::op::v3::GRUCell>(node)) {}
+GRUCellParams::GRUCellParams(const ov::Node& node) : GRUCellParams(toRNNCell<ov::op::v3::GRUCell>(node)) {}
 
-GRUCellParams::GRUCellParams(const ngraph::op::v3::GRUCell& cell)
+GRUCellParams::GRUCellParams(const ov::op::v3::GRUCell& cell)
     : hidden_size_{cell.get_hidden_size()},
       activations_{cell.get_activations()},
       activations_alpha_{cell.get_activations_alpha()},
@@ -173,19 +173,19 @@ GRUCellParams::GRUCellParams(const ngraph::op::v3::GRUCell& cell)
     const auto element_type_size = element_type_.size();
 
     const auto w_constant =
-        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::weights));
+        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::weights));
     const auto r_constant =
-        dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::recurrence_weights));
-    const auto b_constant = dynamic_cast<ngraph::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::biases));
+        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::recurrence_weights));
+    const auto b_constant = dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::biases));
     Expects(w_constant && r_constant && b_constant);
 
     const auto w_data_host = w_constant->get_data_ptr<const uint8_t>();
     const auto r_data_host = r_constant->get_data_ptr<const uint8_t>();
     const auto b_data_host = b_constant->get_data_ptr<const uint8_t>();
 
-    const std::size_t w_size_bytes = ngraph::shape_size(w_shape) * element_type_size;
-    const std::size_t r_size_bytes = ngraph::shape_size(r_shape) * element_type_size;
-    const std::size_t b_size_bytes = ngraph::shape_size(b_shape) * element_type_size;
+    const std::size_t w_size_bytes = ov::shape_size(w_shape) * element_type_size;
+    const std::size_t r_size_bytes = ov::shape_size(r_shape) * element_type_size;
+    const std::size_t b_size_bytes = ov::shape_size(b_shape) * element_type_size;
 
     w_host_buffers_ = {w_data_host, w_size_bytes};
     r_host_buffers_ = {r_data_host, r_size_bytes};

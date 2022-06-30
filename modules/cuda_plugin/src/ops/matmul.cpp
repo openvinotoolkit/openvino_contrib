@@ -9,8 +9,8 @@
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/matmul.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/matmul.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 #include <utility>
 
@@ -72,7 +72,7 @@ MatMulOp::MatMulOp(const CreationContext& context,
     Ensures(batch_count_ != 0);
 }
 template MatMulOp::MatMulOp(const CreationContext& context,
-                            const ngraph::op::MatMul&,
+                            const ov::op::v0::MatMul&,
                             IndexCollection&&,
                             IndexCollection&&);
 template MatMulOp::MatMulOp(const CreationContext& context,
@@ -117,34 +117,34 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
     }
 }
 
-int MatMulOp::GetMatrixNumBatches(const ngraph::Shape& matrixShape) {
+int MatMulOp::GetMatrixNumBatches(const ov::Shape& matrixShape) {
     return matrixShape.size() >= 2
                ? std::accumulate(matrixShape.begin(), matrixShape.end() - 2, 1, std::multiplies<size_t>())
                : 1;
 }
 
-void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
+void MatMulOp::BroadcastShapes(ov::Shape& matrixAShape,
                                bool& transposeA,
-                               ngraph::Shape& matrixBShape,
+                               ov::Shape& matrixBShape,
                                bool& transposeB,
-                               ngraph::Shape& matrixCShape) {
+                               ov::Shape& matrixCShape) {
     /**
      * NOTE: See NGraph documentation for broadcasting:
      * @reference https://docs.openvinotoolkit.org/latest/openvino_docs_ops_matrix_MatMul_1.html
      */
     if (matrixAShape.size() == 1 && matrixBShape.size() == 1) {
         // 1D x 1D: [X] x [X] -> [1, X] x [X, 1] -> [1, 1] => [] (scalar)
-        matrixAShape = ngraph::Shape{1, matrixAShape[0]};
-        matrixBShape = ngraph::Shape{matrixBShape[0], 1};
+        matrixAShape = ov::Shape{1, matrixAShape[0]};
+        matrixBShape = ov::Shape{matrixBShape[0], 1};
         transposeA = false;
         transposeB = false;
     } else if (matrixAShape.size() == 1 && matrixBShape.size() > 1) {
         // 1D x ND: [X] x [B, ..., X, Y] -> [1, X] x [B, ..., X, Y] -> [B, ..., 1, Y] => [B, ..., Y]
-        matrixAShape = ngraph::Shape{1, matrixAShape[0]};
+        matrixAShape = ov::Shape{1, matrixAShape[0]};
         transposeA = false;
     } else if (matrixAShape.size() > 1 && matrixBShape.size() == 1) {
         // ND x 1D: [B, ..., X, Y] x [Y] -> [B, ..., X, Y] x [Y, 1] -> [B, ..., X, 1] => [B, ..., X]
-        matrixBShape = ngraph::Shape{matrixBShape[0], 1};
+        matrixBShape = ov::Shape{matrixBShape[0], 1};
         transposeB = false;
     } else if (matrixAShape.size() > 1 && matrixBShape.size() > 1) {
         // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
@@ -155,7 +155,7 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
             newAxies.reserve(shapeToBroadcast.size());
             newAxies.insert(newAxies.end(), shapeToBroadcast.begin(), shapeToBroadcast.begin() + abShapeDiff);
             newAxies.insert(newAxies.end(), broadcastShape.begin(), broadcastShape.end());
-            broadcastShape = ngraph::Shape{newAxies};
+            broadcastShape = ov::Shape{newAxies};
         };
         const size_t batchA = GetMatrixNumBatches(matrixAShape);
         const size_t batchB = GetMatrixNumBatches(matrixBShape);
@@ -176,7 +176,7 @@ void MatMulOp::BroadcastShapes(ngraph::Shape& matrixAShape,
     *(matrixCShape.end() - 1) = *(matrixBShape.end() - transposeB - 1);
 }
 
-void MatMulOp::BroadcastToMatrix(ngraph::Shape& shape) {
+void MatMulOp::BroadcastToMatrix(ov::Shape& shape) {
     if (shape.size() < 2) {
         shape.insert(shape.begin(), 2 - shape.size(), 1);
     }

@@ -8,17 +8,17 @@
 
 #include <error.hpp>
 #include <gsl/span_ext>
-#include <ngraph/op/transpose.hpp>
+#include <openvino/op/transpose.hpp>
 #include <stdexcept>
 #include <transformer/nodes/concat_optimized.hpp>
 #include <utility>
 
-#include "ngraph/op/constant.hpp"
-#include "ngraph/op/reshape.hpp"
-#include "ngraph/op/result.hpp"
-#include "ngraph/op/squeeze.hpp"
-#include "ngraph/op/tensor_iterator.hpp"
-#include "ngraph/op/unsqueeze.hpp"
+#include <openvino/op/constant.hpp>
+#include <openvino/op/reshape.hpp>
+#include <openvino/op/result.hpp>
+#include <openvino/op/squeeze.hpp>
+#include <openvino/op/tensor_iterator.hpp>
+#include <openvino/op/unsqueeze.hpp>
 
 namespace CUDAPlugin {
 
@@ -65,7 +65,7 @@ OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> or
     }
 }
 
-std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ngraph::Node& node) const {
+std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ov::Node& node) const {
     std::vector<TensorID> result{};
     for (const auto& input : node.inputs()) {
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
@@ -74,7 +74,7 @@ std::vector<TensorID> OperationBuffersExtractor::inputTensorIds(const ngraph::No
     return result;
 }
 
-std::vector<TensorID> OperationBuffersExtractor::outputTensorIds(const ngraph::Node& node) const {
+std::vector<TensorID> OperationBuffersExtractor::outputTensorIds(const ov::Node& node) const {
     if (IsResultNode(node)) return {};
     std::vector<TensorID> result{};
     for (const auto& output : node.outputs()) {
@@ -244,7 +244,7 @@ void OperationBuffersExtractor::extractResultTensors(const NodePtr& node) {
 }
 
 void OperationBuffersExtractor::extractImmutableTensors(const NodePtr& node) {
-    auto constant = std::dynamic_pointer_cast<ngraph::op::v0::Constant>(node);
+    auto constant = std::dynamic_pointer_cast<ov::op::v0::Constant>(node);
     const Byte* ptr = reinterpret_cast<const Byte*>(constant->get_data_ptr());
     auto span = gsl::make_span(ptr, GetTensorByteSize(node->output(0)));
     auto tensor = std::make_shared<TensorID>(next_buffer_id_);
@@ -306,29 +306,29 @@ MemoryModel::Ptr OperationBuffersExtractor::createImmutableMemoryModel() const {
     return immutable_workbuffer_model_builder.build();
 }
 
-bool OperationBuffersExtractor::IsParameterNode(const ngraph::Node& node) {
-    return dynamic_cast<const ngraph::op::v0::Parameter*>(&node) != nullptr;
+bool OperationBuffersExtractor::IsParameterNode(const ov::Node& node) {
+    return dynamic_cast<const ov::op::v0::Parameter*>(&node) != nullptr;
 }
 
-bool OperationBuffersExtractor::IsResultNode(const ngraph::Node& node) {
-    return dynamic_cast<const ngraph::op::v0::Result*>(&node) != nullptr;
+bool OperationBuffersExtractor::IsResultNode(const ov::Node& node) {
+    return dynamic_cast<const ov::op::v0::Result*>(&node) != nullptr;
 }
 
-bool OperationBuffersExtractor::IsConstantNode(const ngraph::Node& node) {
-    return dynamic_cast<const ngraph::op::v0::Constant*>(&node) != nullptr;
+bool OperationBuffersExtractor::IsConstantNode(const ov::Node& node) {
+    return dynamic_cast<const ov::op::v0::Constant*>(&node) != nullptr;
 }
 
-bool OperationBuffersExtractor::IsConcatOptimizedNode(const ngraph::Node& node) {
+bool OperationBuffersExtractor::IsConcatOptimizedNode(const ov::Node& node) {
     return dynamic_cast<const nodes::ConcatOptimized*>(&node) != nullptr;
 }
 
-bool OperationBuffersExtractor::isReshapeOnlyNode(const ngraph::Node& node) {
-    return ngraph::is_type<const ngraph::op::v1::Reshape>(&node) ||
-           ngraph::is_type<const ngraph::op::v0::Squeeze>(&node) ||
-           ngraph::is_type<const ngraph::op::v0::Unsqueeze>(&node);
+bool OperationBuffersExtractor::isReshapeOnlyNode(const ov::Node& node) {
+    return ov::is_type<const ov::op::v1::Reshape>(&node) ||
+           ov::is_type<const ov::op::v0::Squeeze>(&node) ||
+           ov::is_type<const ov::op::v0::Unsqueeze>(&node);
 }
 
-void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input) {
+void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ov::Input<ov::Node>& input) {
     throwIEException(
         fmt::format("Buffer size of Input #{} of {} node and corresponding "
                     "output #{} of {} node are not equal.",
@@ -338,7 +338,7 @@ void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ngraph::I
                     input.get_source_output().get_node()->get_name()));
 }
 
-void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input) {
+void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ov::Input<ov::Node>& input) {
     throwIEException(
         fmt::format("Provided graph is bad formed. Input #{} of \"{}\" node "
                     "isn't connected to any output",

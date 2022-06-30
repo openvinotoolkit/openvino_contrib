@@ -10,7 +10,7 @@
 namespace CUDAPlugin {
 
 OperationBase::OperationBase(const CreationContext& /*context*/,
-                             const ngraph::Node& node,
+                             const ov::Node& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
     : node_name_{node.get_name()},

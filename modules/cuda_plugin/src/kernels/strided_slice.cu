@@ -131,7 +131,7 @@ StridedSliceKernelOp::StridedSliceKernelOp(const std::vector<int64_t> src_matrix
                                            const unsigned max_threads_per_block,
                                            const unsigned blocks_number,
                                            const unsigned threads_per_block,
-                                           const ngraph::element::Type_t element_type)
+                                           const ov::element::Type_t element_type)
     : src_matrix_sizes_{src_matrix_sizes},
       dst_matrix_sizes_{dst_matrix_sizes},
       reverse_axes_{reverse_axes},
@@ -149,21 +149,21 @@ void StridedSliceKernelOp::operator()(const cudaStream_t stream,
                                       const int64_t* dst_matrix_sizes,
                                       void* dst) const {
     switch (element_type_) {
-        case ngraph::element::Type_t::f32:
+        case ov::element::Type_t::f32:
             return callKernels<float>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ngraph::element::Type_t::i32:
+        case ov::element::Type_t::i32:
             return callKernels<int32_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ngraph::element::Type_t::f16:
+        case ov::element::Type_t::f16:
             return callKernels<__half>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ngraph::element::Type_t::i16:
+        case ov::element::Type_t::i16:
             return callKernels<int16_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ngraph::element::Type_t::i8:
+        case ov::element::Type_t::i8:
             return callKernels<int8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ngraph::element::Type_t::u8:
+        case ov::element::Type_t::u8:
             return callKernels<uint8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         default:
             throwIEException(fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
-                                         ngraph::element::Type(element_type_).get_type_name()));
+                                         ov::element::Type(element_type_).get_type_name()));
     }
 }
 

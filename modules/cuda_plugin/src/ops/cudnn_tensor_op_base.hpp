@@ -14,7 +14,7 @@ public:
     static constexpr std::size_t max_supported_shape_size = 5;
 
     CuDnnTensorOpBase(const CreationContext& context,
-                      const std::shared_ptr<ngraph::Node>& node,
+                      const std::shared_ptr<ov::Node>& node,
                       IndexCollection&& inputIds,
                       IndexCollection&& outputIds,
                       const cudnnOpTensorOp_t& opType,
@@ -27,12 +27,12 @@ public:
 private:
     struct IoParams {
         const cudnnDataType_t type_;
-        const ngraph::Shape shape_;
+        const ov::Shape shape_;
         std::array<int, 5> array_;
         CUDA::DnnTensorDescriptor desc_;
         enum class Type { INPUT, OUTPUT };
 
-        IoParams(const ngraph::Node& node, const Type& io_type, int index);
+        IoParams(const ov::Node& node, const Type& io_type, int index);
     };
 
     static CUDA::DnnOpTensorDescriptor makeDnnOpTensorDescriptor(cudnnOpTensorOp_t opType,

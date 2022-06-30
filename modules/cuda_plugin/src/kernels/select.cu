@@ -45,7 +45,7 @@ static __global__ void select(const bool* condition,
 SelectKernelOp::SelectKernelOp(const size_t max_size,
                                const unsigned blocks_number,
                                const unsigned threads_per_block,
-                               const ngraph::element::Type_t operation_type)
+                               const ov::element::Type_t operation_type)
     : max_size_{max_size},
       blocks_number_{blocks_number},
       threads_per_block_{threads_per_block},
@@ -61,7 +61,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                 const BrcstOffsetType* output_sizes,
                                 void* buffer) const {
     switch (operation_type_) {
-        case ngraph::element::u8:
+        case ov::element::u8:
             return callKernel<uint8_t>(stream,
                                        condition,
                                        then_node,
@@ -71,7 +71,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                        else_brcst_offsets,
                                        output_sizes,
                                        buffer);
-        case ngraph::element::i16:
+        case ov::element::i16:
             return callKernel<int16_t>(stream,
                                        condition,
                                        then_node,
@@ -81,7 +81,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                        else_brcst_offsets,
                                        output_sizes,
                                        buffer);
-        case ngraph::element::f16:
+        case ov::element::f16:
             return callKernel<__half>(stream,
                                       condition,
                                       then_node,
@@ -91,7 +91,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                       else_brcst_offsets,
                                       output_sizes,
                                       buffer);
-        case ngraph::element::f32:
+        case ov::element::f32:
             return callKernel<float>(stream,
                                      condition,
                                      then_node,

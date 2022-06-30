@@ -10,7 +10,7 @@
 #include <cuda_operation_base.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
 #include <kernels/concat.hpp>
-#include <ngraph/op/concat.hpp>
+#include <openvino/op/concat.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 
@@ -18,7 +18,7 @@ namespace CUDAPlugin {
 
 class ConcatOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::Concat;
+    using NodeOp = ov::op::v0::Concat;
     ConcatOp(const CreationContext& context,
              const NodeOp& node,
              IndexCollection&& inputIds,

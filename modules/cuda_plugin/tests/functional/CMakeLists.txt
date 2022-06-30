@@ -10,9 +10,9 @@ addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-        CUDAPlugin
+        openvino_cuda_plugin
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        CUDAPlugin_OBJ
+        openvino_cuda_plugin_obj
         LINK_LIBRARIES
         IE::funcSharedTests
         gmock

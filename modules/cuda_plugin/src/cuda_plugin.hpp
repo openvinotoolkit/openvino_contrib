@@ -51,7 +51,7 @@ class Plugin : public InferenceEngine::IInferencePlugin {
 
     int cudaDeviceID() const noexcept { return 0; } //TODO implement
 
-    bool isOperationSupported(const std::shared_ptr<ngraph::Node>& node) const;
+    bool isOperationSupported(const std::shared_ptr<ov::Node>& node) const;
 
     std::mutex mtx_;
     GraphTransformer transformer_{};

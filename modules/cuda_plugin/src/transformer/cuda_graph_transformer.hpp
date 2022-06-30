@@ -8,11 +8,18 @@
 #include <ngraph/function.hpp>
 
 #include "cuda_config.hpp"
+#include "cpp/ie_cnn_network.h"
 
 namespace CUDAPlugin {
 
 class GraphTransformer {
  public:
+    std::shared_ptr<ngraph::Function> export_transform(
+        const CUDA::Device& device,
+        const std::shared_ptr<const ngraph::Function>& function,
+        const InferenceEngine::InputsDataMap& inputInfoMap,
+        const InferenceEngine::OutputsDataMap& outputsInfoMap,
+        const Configuration& config) const;
   /**
    * @brief Transform takes an ngraph::Function and applies all the necessary
    *        graph transofrmations to achieve the maximum optimization of the
@@ -29,6 +36,8 @@ class GraphTransformer {
   std::shared_ptr<ngraph::Function> transform(
       const CUDA::Device& device,
       const std::shared_ptr<const ngraph::Function>& function,
+      const InferenceEngine::InputsDataMap& inputInfoMap,
+      const InferenceEngine::OutputsDataMap& outputsInfoMap,
       const Configuration& config) const;
 };
 

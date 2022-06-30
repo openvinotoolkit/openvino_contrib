@@ -10,22 +10,21 @@
 #include <ie_blob.h>
 #include <ie_layouts.h>
 #include <ie_memcpy.h>
-#include <precision_utils.h>
 
 #include <algorithm>
-#include <blob_transform.hpp>
 #include <description_buffer.hpp>
-#include <ie_parallel.hpp>
 #include <map>
 #include <memory>
 #include <string>
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
+#include <gsl/span_ext>
 
-#include "cuda/cuda_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
+#include "ie_ngraph_utils.hpp"
+#include "ngraph/util.hpp"
 
 using namespace InferenceEngine;
 
@@ -33,6 +32,68 @@ namespace CUDAPlugin {
 using namespace utils;
 
 using Time = std::chrono::steady_clock;
+
+namespace {
+
+template <typename BlobData, typename GetNetworkPrecisionF>
+void allocateBlobImpl(BlobMap& blobMap,
+                      BlobMap& networkBlobMap,
+                      const BlobData& blobData,
+                      GetNetworkPrecisionF&& getNetworkPrecision,
+                      const SizeVector& dims,
+                      bool isInputBlob) {
+    const auto& precision = blobData.second->getTensorDesc().getPrecision();
+    auto layout = blobData.second->getTensorDesc().getLayout();
+    const auto deviceLayout = TensorDesc::getLayoutByDims(dims);
+    Blob::Ptr& blob = blobMap[blobData.first];
+    if (!blob) {
+        blob = make_blob_with_precision({precision, dims, layout});
+        blob->allocate();
+    } else {
+        blob->setShape(dims);
+    }
+
+    auto networkPrecision = InferenceEngine::details::convertPrecision(getNetworkPrecision(blobData.first));
+    Blob::Ptr networkBlob;
+    if (precision == networkPrecision && layout == deviceLayout) {
+        networkBlob = blob;
+    } else {
+        if (isInputBlob) {
+            networkBlob = make_blob_with_precision({InferenceEngine::Precision::FP32, dims, deviceLayout});
+            networkBlob->allocate();
+        } else {
+            networkBlob = make_blob_with_precision({networkPrecision, dims, deviceLayout});
+            networkBlob->allocate();
+        }
+    }
+    networkBlobMap[blobData.first] = networkBlob;
+}
+
+template <typename BlobDataMap, typename GetNetworkPrecisionF>
+void allocateBlobsImpl(const BlobDataMap& userDataMap,
+                       BlobMap& userBlobMap,
+                       BlobMap& deviceBlobMap,
+                       GetNetworkPrecisionF&& getNetworkPrecision,
+                       bool isInputBlob) {
+    for (const auto& userData : userDataMap) {
+        auto tensorDesc = userData.second->getTensorDesc();
+        allocateBlobImpl(userBlobMap, deviceBlobMap, userData, getNetworkPrecision, tensorDesc.getDims(), isInputBlob);
+    }
+}
+
+}
+
+CudaInferRequest::CudaInferRequest(const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+                                   const std::vector<std::shared_ptr<const ov::Node>>& outputs,
+                                   const std::shared_ptr<ExecutableNetwork>& executableNetwork,
+                                   bool isBenchmarkMode)
+    : IInferRequestInternal(inputs, outputs),
+      _executableNetwork(executableNetwork),
+      cancellation_token_{[this] { memory_proxy_.reset(); }},
+      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_},
+      is_benchmark_mode_{isBenchmarkMode} {
+    createInferRequest();
+}
 
 CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& networkInputs,
                                    const InferenceEngine::OutputsDataMap& networkOutputs,
@@ -43,6 +104,38 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_},
       is_benchmark_mode_{isBenchmarkMode} {
+    createInferRequest();
+}
+
+void CudaInferRequest::allocateDeviceBuffers() {
+    // Allocate plugin backend specific memory handles
+    input_tensors_.resize(_networkInputs.size());
+    output_tensors_.resize(_networkOutputs.size());
+}
+
+void CudaInferRequest::allocateBlobs() {
+    auto&& parameters = _executableNetwork->function_->get_parameters();
+    allocateBlobsImpl(_networkInputs, _inputs, _deviceInputs, [&](const std::string &blobName) {
+        return parameters.at(_executableNetwork->input_index_.at(blobName))->get_element_type();
+    }, true);
+    for (auto&& [inputName, userInputInfo] : _networkInputs) {
+        const auto& inputDescr = userInputInfo->getTensorDesc();
+        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
+        const auto& deviceInputDescr = _deviceInputs[inputName]->getTensorDesc();
+        if (deviceInputDescr.getPrecision() != networkPrecision) {
+            Blob::Ptr networkBlob;
+            networkBlob = make_blob_with_precision({networkPrecision, inputDescr.getDims(), TensorDesc::getLayoutByDims(inputDescr.getDims())});
+            networkBlob->allocate();
+            network_input_blobs_[inputName] = networkBlob;
+        }
+    }
+    auto&& results = _executableNetwork->function_->get_results();
+    allocateBlobsImpl(_networkOutputs, _outputs, network_output_blobs_, [&](const std::string &blobName) {
+        return results.at(_executableNetwork->output_index_.at(blobName))->get_element_type();
+    }, false);
+}
+
+void CudaInferRequest::createInferRequest() {
     // TODO: allocate infer request device and host buffers if needed, fill
     // actual list of profiling tasks
 
@@ -54,44 +147,18 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
         openvino::itt::handle(name + "_WaitPipline"),
     };
 
-    for (auto&& [inputName, userInputInfo] : _networkInputs) {
-        const auto& inputDescr = userInputInfo->getTensorDesc();
-        auto userInputBlob = allocateBlob(inputDescr.getDims(), inputDescr.getPrecision(), inputDescr.getLayout());
-        _inputs[inputName] = userInputBlob;
-        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
-        if (inputDescr.getPrecision() != networkPrecision) {
-            _deviceInputs[inputName] =
-                allocateBlob(inputDescr.getDims(), Precision::FP32, TensorDesc::getLayoutByDims(inputDescr.getDims()));
-        } else {
-            _deviceInputs[inputName] = userInputBlob;
-        }
-        const auto& deviceInputDescr = _deviceInputs[inputName]->getTensorDesc();
-        if (deviceInputDescr.getPrecision() != networkPrecision) {
-            network_input_blobs_[inputName] =
-                allocateBlob(inputDescr.getDims(), networkPrecision, TensorDesc::getLayoutByDims(inputDescr.getDims()));
-        }
-    }
-    for (auto&& [outputName, userOutputInfo] : _networkOutputs) {
-        const auto& descr = userOutputInfo->getTensorDesc();
-        auto userOutputBlob = allocateBlob(descr.getDims(), descr.getPrecision(), descr.getLayout());
-        _outputs[outputName] = userOutputBlob;
-        const auto networkPrecision = convertType(_executableNetwork->result(outputName).get_element_type());
-        if (descr.getPrecision() != networkPrecision) {
-            network_output_blobs_[outputName] =
-                allocateBlob(descr.getDims(), networkPrecision, TensorDesc::getLayoutByDims(descr.getDims()));
-        } else {
-            network_output_blobs_[outputName] = userOutputBlob;
-        }
-    }
+    allocateDeviceBuffers();
+    allocateBlobs();
 }
 
 void CudaInferRequest::inferPreprocess() {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::Preprocess]);
     cancellation_token_.Check();
     profiler_.StartStage();
+    IInferRequestInternal::convertBatchedInputBlobs();
     IInferRequestInternal::execDataPreprocessing(_deviceInputs);
     // NOTE: After InferRequestInternal::execDataPreprocessing call
-    //       input can points to other memory region than it was allocated in
+    //       input can point to other memory region than it was allocated in
     //       constructor. That is why we assign network_input_blobs_[inputName]
     //       after InferRequestInternal::execDataPreprocessing(...)
     for (auto&& netInput : _networkInputs) {
@@ -101,13 +168,89 @@ void CudaInferRequest::inferPreprocess() {
             network_input_blobs_[inputName] = _deviceInputs[inputName];
         }
     }
-    // InferRequestInternal::execDataPreprocessing() doesn't support conversion from fp32 to fp16.
-    // It converts floats to int8_t values instead.
-    // To avoid such behavior, CudaInferRequest creates network blob in fp32 format.
-    // Subsequent conversion is performed here.
-    for (auto&& [inputName, networkInput] : network_input_blobs_) {
-        convertPrecision(_deviceInputs.at(inputName), networkInput);
+    for (auto&& networkInput : network_input_blobs_) {
+        auto inputName = networkInput.first;
+        auto index = _executableNetwork->input_index_.at(networkInput.first);
+        const auto& parameter = _executableNetwork->function_->get_parameters().at(index);
+        auto parameterShape = networkInput.second->getTensorDesc().getDims();
+        auto srcShape = networkInput.second->getTensorDesc().getBlockingDesc().getBlockDims();
+        const auto& parameterType = parameter->get_element_type();
+        auto mem_blob = InferenceEngine::as<InferenceEngine::MemoryBlob>(networkInput.second);
+        auto isNonRoiDesc = [](const BlockingDesc& desc) {
+            size_t exp_stride = 1;
+            const auto& blockDims = desc.getBlockDims();
+            const auto& order = desc.getOrder();
+            const auto& strides = desc.getStrides();
+            const auto& offsetPaddingToData = desc.getOffsetPaddingToData();
+            for (size_t i = 0; i < blockDims.size(); i++) {
+                const size_t rev_idx = blockDims.size() - i - 1;
+                OPENVINO_ASSERT(order.at(rev_idx) == rev_idx,
+                                "CUDAPlugin: unsupported tensors with mixed axes order: ",
+                                ngraph::vector_to_string(order));
+                if (strides.at(rev_idx) != exp_stride || offsetPaddingToData.at(rev_idx) != 0) {
+                    return false;
+                }
+                exp_stride *= blockDims.at(rev_idx);
+            }
+            return true;
+        };
+        convertPrecision(_deviceInputs.at(inputName), networkInput.second);
+        if (isNonRoiDesc(networkInput.second->getTensorDesc().getBlockingDesc())) {
+            // No ROI extraction is needed
+            input_tensors_.at(index) = std::make_shared<ngraph::HostTensor>(
+                parameterType,
+                parameterShape,
+                mem_blob->rmap().as<void*>());
+        } else {
+            OPENVINO_ASSERT(parameterType.bitwidth() % 8 == 0,
+                            "CUDAPlugin: Unsupported ROI tensor with element type having ",
+                            std::to_string(parameterType.bitwidth()),
+                            " bits size");
+            // Perform manual extraction of ROI tensor
+            // Basic implementation doesn't take axis order into account `desc.getBlockingDesc().getOrder()`
+            // Performance of manual extraction is not optimal, but it is ok for template implementation
+            input_tensors_.at(index) = std::make_shared<ngraph::HostTensor>(parameterType, parameterShape);
+            auto desc = mem_blob->getTensorDesc();
+            auto* src_data = mem_blob->rmap().as<uint8_t*>();
+            auto dst_tensor = std::dynamic_pointer_cast<ngraph::runtime::HostTensor>(input_tensors_.at(index));
+            OPENVINO_ASSERT(dst_tensor, "CUDAPlugin error: Can't cast created tensor to HostTensor");
+            auto* dst_data = dst_tensor->get_data_ptr<uint8_t>();
+            std::vector<size_t> indexes(parameterShape.size());
+            for (size_t dst_idx = 0; dst_idx < ov::shape_size(parameterShape); dst_idx++) {
+                size_t val = dst_idx;
+                size_t src_idx = 0;
+                for (size_t j1 = 0; j1 < indexes.size(); j1++) {
+                    size_t j = indexes.size() - j1 - 1;
+                    indexes.at(j) = val % parameterShape.at(j) + desc.getBlockingDesc().getOffsetPaddingToData().at(j);
+                    val /= parameterShape.at(j);
+                    src_idx += indexes.at(j) * desc.getBlockingDesc().getStrides().at(j);
+                }
+                std::copy(src_data + src_idx * parameterType.size(),
+                          src_data + (src_idx + 1) * parameterType.size(),
+                          dst_data + dst_idx * parameterType.size());
+            }
+        }
     }
+    for (auto&& output : _outputs) {
+        auto outputBlob = output.second;
+        auto networkOutput = network_output_blobs_.at(output.first);
+        auto index = _executableNetwork->output_index_.at(output.first);
+        if (outputBlob->getTensorDesc().getPrecision() == networkOutput->getTensorDesc().getPrecision()) {
+            networkOutput = outputBlob;
+        }
+        const auto& result = _executableNetwork->function_->get_results()[index];
+        if (result->get_output_partial_shape(0).is_dynamic()) {
+            output_tensors_.at(index) = std::make_shared<ngraph::HostTensor>();
+            continue;
+        }
+        const auto& resultShape = result->get_shape();
+        const auto& resultType = result->get_element_type();
+        output_tensors_.at(index) = std::make_shared<ngraph::HostTensor>(
+            resultType,
+            resultShape,
+            InferenceEngine::as<InferenceEngine::MemoryBlob>(networkOutput)->wmap().as<void*>());
+    }
+
     cancellation_token_.Check();
     profiler_.StopStage(Profiler::Preprocess);
 }
@@ -120,7 +263,9 @@ void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
         auto& memory = memory_proxy_->Get();
         auto& graph = *_executableNetwork->graph_;
         InferenceRequestContext inferRequestContext{
-            network_input_blobs_, network_output_blobs_, threadContext, cancellation_token_, profiler_, is_benchmark_mode_};
+            input_tensors_, _executableNetwork->input_index_,
+            output_tensors_, _executableNetwork->output_index_,
+            threadContext, cancellation_token_, profiler_, is_benchmark_mode_};
         graph.Run(inferRequestContext, memory);
         profiler_.StopStage(Profiler::StartPipeline);
     } catch (...) {
@@ -146,13 +291,20 @@ void CudaInferRequest::inferPostprocess() {
     cancellation_token_.Check();
     profiler_.StartStage();
     for (auto&& output : _outputs) {
-        cancellation_token_.Check();
-        auto outputBlob = output.second;
+        auto index = _executableNetwork->output_index_[output.first];
+        const auto& result = _executableNetwork->function_->get_results()[index];
+        if (result->get_output_partial_shape(0).is_dynamic()) {
+            // Touch blob to allocate it
+            GetBlob(output.first);
+        }
+        auto outputBlob = _outputs.at(output.first);
         auto networkOutput = network_output_blobs_[output.first];
-        // perform precision conversion of network output's precision and computational
-        // graph output's precision are different
         if (outputBlob->getTensorDesc().getPrecision() != networkOutput->getTensorDesc().getPrecision()) {
             convertPrecision(networkOutput, outputBlob);
+        } else if (result->get_output_partial_shape(0).is_dynamic()) {
+            auto tensor = output_tensors_[_executableNetwork->output_index_.at(output.first)];
+            tensor->read(InferenceEngine::as<InferenceEngine::MemoryBlob>(outputBlob)->wmap().as<char*>(),
+                         tensor->get_size_in_bytes());
         }
     }
     profiler_.StopStage(Profiler::Postprocess);
@@ -162,6 +314,188 @@ void CudaInferRequest::inferPostprocess() {
 void CudaInferRequest::Cancel() {
     cancellation_token_.Cancel();
     _executableNetwork->memory_pool_->Interrupt();
+}
+
+InferenceEngine::Blob::Ptr CudaInferRequest::GetBlob(const std::string& name) {
+    OV_ITT_SCOPED_TASK(itt::domains::TemplatePlugin, "GetBlob");
+    InputInfo::Ptr foundInput;
+    DataPtr foundOutput;
+    Blob::Ptr data;
+    const SizeVector oneVector = {1};
+    if (findInputAndOutputBlobByName(name, foundInput, foundOutput)) {
+        // ROI blob is returned only if it was set previously. Otherwise default blob is returned.
+        auto it = _preProcData.find(name);
+        if (it != _preProcData.end()) {
+            data = it->second->getRoiBlob();
+        } else {
+            data = _inputs[name];
+            SizeVector dims;
+            if (!data) {
+                auto&& parameters = _executableNetwork->function_->get_parameters();
+                const auto& pshape = parameters.at(_executableNetwork->input_index_.at(name))->get_partial_shape();
+                dims = pshape.is_dynamic() ? SizeVector({0}) : pshape.get_shape();
+                allocateBlobImpl(
+                    _inputs,
+                    _deviceInputs,
+                    *_networkInputs.find(name),
+                    [&](const std::string &blobName) {
+                        return parameters.at(_executableNetwork->input_index_.at(blobName))->get_element_type();
+                    },
+                    dims,
+                    true);
+                const auto& userInputInfo = _networkInputs[name];
+                const auto& inputDescr = userInputInfo->getTensorDesc();
+                const auto networkPrecision = convertType(_executableNetwork->parameter(name).get_element_type());
+                const auto& deviceInputDescr = _deviceInputs[name]->getTensorDesc();
+                if (deviceInputDescr.getPrecision() != networkPrecision) {
+                    Blob::Ptr networkBlob;
+                    networkBlob = make_blob_with_precision({networkPrecision, inputDescr.getDims(), TensorDesc::getLayoutByDims(inputDescr.getDims())});
+                    networkBlob->allocate();
+                    network_input_blobs_[name] = networkBlob;
+                }
+                data = _inputs[name];
+            } else {
+                dims = data->getTensorDesc().getDims();
+            }
+            checkBlob(data, name, true, foundInput->getTensorDesc().getLayout() != SCALAR ? dims : oneVector);
+            auto& devBlob = _deviceInputs[name];
+            if (preProcessingRequired(foundInput, data, devBlob)) {
+                // if no devBlob, performs inplace
+                addInputPreProcessingFor(name, data, devBlob ? devBlob : _inputs[name]);
+            }
+        }
+    } else {
+        data = _outputs[name];
+        SizeVector dims;
+        auto has_zeros = [](const SizeVector& vec) {
+            return std::any_of(vec.cbegin(), vec.cend(), [](size_t e) {
+                return e == 0;
+            });
+        };
+        if (!has_zeros(foundOutput->getTensorDesc().getDims())) {
+            dims = foundOutput->getTensorDesc().getDims();
+        } else if (output_tensors_[_executableNetwork->output_index_.at(name)] &&
+            output_tensors_[_executableNetwork->output_index_.at(name)]->get_partial_shape().is_static()) {
+            dims = output_tensors_[_executableNetwork->output_index_.at(name)]->get_shape();
+        } else {
+            auto rank = foundOutput->getTensorDesc().getDims().size();
+            dims = SizeVector(rank == 0 ? 1 : rank, 0);
+        }
+
+        if (data->getTensorDesc().getDims() != dims) {
+            auto&& results = _executableNetwork->function_->get_results();
+            allocateBlobImpl(
+                _outputs,
+                network_output_blobs_,
+                *_networkOutputs.find(name),
+                [&](const std::string &blobName) {
+                    return results.at(_executableNetwork->output_index_.at(blobName))->get_element_type();
+                },
+                dims,
+                false);
+            data = _outputs[name];
+        }
+        checkBlob(data, name, false, foundOutput->getTensorDesc().getLayout() != SCALAR ? dims : oneVector);
+    }
+    return data;
+}
+
+void CudaInferRequest::SetBlob(const std::string& name, const InferenceEngine::Blob::Ptr& userBlob) {
+    OV_ITT_SCOPED_TASK(itt::domains::TemplatePlugin, "SetBlob");
+    if (name.empty()) {
+        IE_THROW(NotFound) << "Failed to set blob with empty name";
+    }
+    if (!userBlob)
+        IE_THROW(NotAllocated) << "Failed to set empty blob with name: \'" << name << "\'";
+    InputInfo::Ptr foundInput;
+    DataPtr foundOutput;
+    auto has_zeros = [](const SizeVector& vec) {
+        return std::any_of(vec.cbegin(), vec.cend(), [](size_t e) {
+            return e == 0;
+        });
+    };
+    const bool isInput = findInputAndOutputBlobByName(name, foundInput, foundOutput);
+    const bool compoundBlobPassed = userBlob->is<CompoundBlob>();
+    const bool remoteBlobPassed = userBlob->is<RemoteBlob>();
+    if (!compoundBlobPassed && !remoteBlobPassed && userBlob->buffer() == nullptr)
+        IE_THROW(NotAllocated) << "Input data was not allocated. Input name: \'" << name << "\'";
+    bool input_dynamic = foundInput && has_zeros(foundInput->getInputData()->getDims());
+    bool output_dynamic = foundOutput && has_zeros(foundOutput->getDims());
+    if (userBlob->size() == 0 && !(input_dynamic || output_dynamic)) {
+        IE_THROW() << "Input data is empty. Input name: \'" << name << "\'";
+    }
+
+    size_t dataSize = userBlob->size();
+    if (isInput) {
+        // ilavreno: the condition below is obsolete, but we need an exact list of precisions
+        // which are supports by G-API preprocessing
+        if (foundInput->getPrecision() != userBlob->getTensorDesc().getPrecision()) {
+            IE_THROW(ParameterMismatch)
+                << "Failed to set Blob with precision not corresponding to user input precision";
+        }
+
+        auto& devBlob = _deviceInputs[name];
+        auto usrDims = userBlob->getTensorDesc().getDims();
+        auto usrLayout = userBlob->getTensorDesc().getLayout();
+        auto devDims = devBlob->getTensorDesc().getDims();
+        auto devLayout = devBlob->getTensorDesc().getLayout();
+        auto devPrecision = devBlob->getTensorDesc().getPrecision();
+        if (input_dynamic && (devDims != usrDims || devLayout != usrLayout)) {
+            devBlob = make_blob_with_precision({devPrecision, usrDims, TensorDesc::getLayoutByDims(usrDims)});
+            devBlob->allocate();
+            _deviceInputs[name] = devBlob;
+        }
+        const bool preProcRequired = preProcessingRequired(foundInput, userBlob, devBlob);
+        if (compoundBlobPassed && !preProcRequired) {
+            IE_THROW(NotImplemented) << "cannot set compound blob: supported only for input pre-processing";
+        }
+
+        if (preProcRequired) {
+            addInputPreProcessingFor(name, userBlob, devBlob ? devBlob : _inputs[name]);
+        } else {
+            size_t inputSize = devBlob->getTensorDesc().getLayout() != InferenceEngine::Layout::SCALAR
+                               ? InferenceEngine::details::product(devBlob->getTensorDesc().getDims())
+                               : 1;
+            if (dataSize != inputSize) {
+                IE_THROW() << "Input blob size is not equal network input size (" << dataSize << "!=" << inputSize
+                           << ").";
+            }
+            _inputs[name] = userBlob;
+            devBlob = userBlob;
+        }
+        _batched_inputs.erase(name);
+    } else {
+        if (compoundBlobPassed) {
+            IE_THROW(NotImplemented) << "cannot set compound blob: supported only for input pre-processing";
+        }
+        auto& devBlob = network_output_blobs_[name];
+        auto usrDims = userBlob->getTensorDesc().getDims();
+        auto usrLayout = userBlob->getTensorDesc().getLayout();
+        auto devDims = devBlob->getTensorDesc().getDims();
+        auto devLayout = devBlob->getTensorDesc().getLayout();
+        auto devPrecision = devBlob->getTensorDesc().getPrecision();
+        if (output_dynamic && (devDims != usrDims || devLayout != usrLayout)) {
+            devBlob = make_blob_with_precision({devPrecision, usrDims, TensorDesc::getLayoutByDims(usrDims)});
+            devBlob->allocate();
+            network_output_blobs_[name] = devBlob;
+        }
+        size_t outputSize = devBlob->getTensorDesc().getLayout() != InferenceEngine::Layout::SCALAR
+                            ? details::product(devBlob->getTensorDesc().getDims())
+                            : 1;
+        if (dataSize != outputSize) {
+            IE_THROW() << "Output blob size is not equal network output size (" << dataSize << "!=" << outputSize
+                       << ").";
+        }
+        if (foundOutput->getPrecision() != userBlob->getTensorDesc().getPrecision()) {
+            IE_THROW(ParameterMismatch)
+                << "Failed to set Blob with precision not corresponding to user output precision";
+        }
+        _outputs[name] = userBlob;
+    }
+}
+
+void CudaInferRequest::SetBlobsImpl(const std::string& name, const InferenceEngine::BatchedBlob::Ptr& batchedBlob) {
+    _batched_inputs[name] = batchedBlob;
 }
 
 InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
@@ -220,9 +554,9 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(const std::vector<std:
     return blob;
 }
 
-InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(ngraph::element::Type_t type) {
+InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(ov::element::Type_t type) {
     using InferenceEngine::Precision;
-    using ngraph::element::Type_t;
+    using ov::element::Type_t;
     switch (type) {
         case Type_t::f16:
             return Precision::FP16;

@@ -9,13 +9,13 @@
 
 namespace CUDAPlugin::nodes {
 
-LSTMSequenceOptimized::LSTMSequenceOptimized(const ngraph::Output<Node>& X,
-                                             const ngraph::Output<Node>& initial_hidden_state,
-                                             const ngraph::Output<Node>& initial_cell_state,
-                                             const ngraph::Output<Node>& sequence_lengths,
-                                             const ngraph::Output<Node>& W,
-                                             const ngraph::Output<Node>& R,
-                                             const ngraph::Output<Node>& B,
+LSTMSequenceOptimized::LSTMSequenceOptimized(const ov::Output<Node>& X,
+                                             const ov::Output<Node>& initial_hidden_state,
+                                             const ov::Output<Node>& initial_cell_state,
+                                             const ov::Output<Node>& sequence_lengths,
+                                             const ov::Output<Node>& W,
+                                             const ov::Output<Node>& R,
+                                             const ov::Output<Node>& B,
                                              const std::int64_t hidden_size,
                                              const direction lstm_direction,
                                              MajorFormat major_format,
@@ -23,7 +23,7 @@ LSTMSequenceOptimized::LSTMSequenceOptimized(const ngraph::Output<Node>& X,
                                              const std::vector<float>& activations_beta,
                                              const std::vector<std::string>& activations,
                                              const float clip)
-    : ngraph::op::v5::LSTMSequence::LSTMSequence(X,
+    : ov::op::v5::LSTMSequence::LSTMSequence(X,
                                                  initial_hidden_state,
                                                  initial_cell_state,
                                                  sequence_lengths,
@@ -38,7 +38,7 @@ LSTMSequenceOptimized::LSTMSequenceOptimized(const ngraph::Output<Node>& X,
                                                  clip),
       m_major_format{major_format} {}
 
-std::shared_ptr<ngraph::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ngraph::OutputVector& new_args) const {
+std::shared_ptr<ov::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ov::OutputVector& new_args) const {
     check_new_args_count(this, new_args);
     if (new_args.size() == 7) {
         auto lstmSequence = std::make_shared<LSTMSequenceOptimized>(new_args.at(0),  // X
@@ -65,19 +65,19 @@ std::shared_ptr<ngraph::Node> LSTMSequenceOptimized::clone_with_new_inputs(const
 void LSTMSequenceOptimized::validate_and_infer_types() {
     for (const auto& input : inputs()) {
         if (input.get_partial_shape().rank().is_dynamic()) {
-            set_output_type(0, get_input_element_type(0), ngraph::PartialShape::dynamic());
-            set_output_type(1, get_input_element_type(0), ngraph::PartialShape::dynamic());
-            set_output_type(2, get_input_element_type(0), ngraph::PartialShape::dynamic());
+            set_output_type(0, get_input_element_type(0), ov::PartialShape::dynamic());
+            set_output_type(1, get_input_element_type(0), ov::PartialShape::dynamic());
+            set_output_type(2, get_input_element_type(0), ov::PartialShape::dynamic());
             return;
         }
     }
-    std::vector<ngraph::PartialShape> input_param{};
+    std::vector<ov::PartialShape> input_param{};
 
     auto lstm_seq_gates_count = 4;
-    auto merged_batch_size = ngraph::Dimension::dynamic();
-    auto merged_hidden_size = ngraph::Dimension::dynamic();
-    auto merged_num_directions = ngraph::Dimension::dynamic();
-    auto result_et = ngraph::element::dynamic;
+    auto merged_batch_size = ov::Dimension::dynamic();
+    auto merged_hidden_size = ov::Dimension::dynamic();
+    auto merged_num_directions = ov::Dimension::dynamic();
+    auto result_et = ov::element::dynamic;
 
     // Copy all inputs without initial_cell_state information for further validation
     for (size_t i = 0; i < get_input_size(); i++) {
@@ -103,38 +103,38 @@ void LSTMSequenceOptimized::validate_and_infer_types() {
 
     // Validate input types and save result for output type
     NODE_VALIDATION_CHECK(this,
-                          ngraph::element::Type::merge(result_et, result_et, get_input_element_type(0)) &&
-                              ngraph::element::Type::merge(result_et, result_et, get_input_element_type(1)) &&
-                              ngraph::element::Type::merge(result_et, result_et, get_input_element_type(2)) &&
-                              ngraph::element::Type::merge(result_et, result_et, get_input_element_type(4)) &&
-                              ngraph::element::Type::merge(result_et, result_et, get_input_element_type(5)) &&
-                              ngraph::element::Type::merge(result_et, result_et, get_input_element_type(6)),
+                          ov::element::Type::merge(result_et, result_et, get_input_element_type(0)) &&
+                              ov::element::Type::merge(result_et, result_et, get_input_element_type(1)) &&
+                              ov::element::Type::merge(result_et, result_et, get_input_element_type(2)) &&
+                              ov::element::Type::merge(result_et, result_et, get_input_element_type(4)) &&
+                              ov::element::Type::merge(result_et, result_et, get_input_element_type(5)) &&
+                              ov::element::Type::merge(result_et, result_et, get_input_element_type(6)),
                           "Element types for X, initial_hidden_state, initial_cell_state, W, R and B inputs do "
                           "not "
                           "match.");
 
     // Merge batch_size dimension across all inputs to evaluate output[0] dimension
     NODE_VALIDATION_CHECK(this,
-                          ngraph::Dimension::merge(merged_batch_size, merged_batch_size, ht_pshape[0]) &&
-                              ngraph::Dimension::merge(merged_batch_size, merged_batch_size, ct_pshape[0]) &&
-                              ngraph::Dimension::merge(merged_batch_size, merged_batch_size, x_pshape[0]) &&
-                              ngraph::Dimension::merge(merged_batch_size, merged_batch_size, sl_pshape[0]),
+                          ov::Dimension::merge(merged_batch_size, merged_batch_size, ht_pshape[0]) &&
+                              ov::Dimension::merge(merged_batch_size, merged_batch_size, ct_pshape[0]) &&
+                              ov::Dimension::merge(merged_batch_size, merged_batch_size, x_pshape[0]) &&
+                              ov::Dimension::merge(merged_batch_size, merged_batch_size, sl_pshape[0]),
                           "Parameter batch_size not matched in LSTMSequence.");
 
     // Merge hidden_size dimension across all inputs to evaluate output dimension
     NODE_VALIDATION_CHECK(this,
-                          ngraph::Dimension::merge(merged_hidden_size, merged_hidden_size, ht_pshape[2]) &&
-                              ngraph::Dimension::merge(merged_hidden_size, merged_hidden_size, ct_pshape[2]) &&
-                              ngraph::Dimension::merge(merged_hidden_size, merged_hidden_size, r_pshape[2]),
+                          ov::Dimension::merge(merged_hidden_size, merged_hidden_size, ht_pshape[2]) &&
+                              ov::Dimension::merge(merged_hidden_size, merged_hidden_size, ct_pshape[2]) &&
+                              ov::Dimension::merge(merged_hidden_size, merged_hidden_size, r_pshape[2]),
                           "Parameter hidden_size not matched LSTMSequence.");
 
     // Merge num_directions dimension across all inputs to evaluate output dimension
     NODE_VALIDATION_CHECK(this,
-                          ngraph::Dimension::merge(merged_num_directions, merged_num_directions, ht_pshape[1]) &&
-                              ngraph::Dimension::merge(merged_num_directions, merged_num_directions, ct_pshape[1]) &&
-                              ngraph::Dimension::merge(merged_num_directions, merged_num_directions, w_pshape[0]) &&
-                              ngraph::Dimension::merge(merged_num_directions, merged_num_directions, r_pshape[0]) &&
-                              ngraph::Dimension::merge(merged_num_directions, merged_num_directions, b_pshape[0]),
+                          ov::Dimension::merge(merged_num_directions, merged_num_directions, ht_pshape[1]) &&
+                              ov::Dimension::merge(merged_num_directions, merged_num_directions, ct_pshape[1]) &&
+                              ov::Dimension::merge(merged_num_directions, merged_num_directions, w_pshape[0]) &&
+                              ov::Dimension::merge(merged_num_directions, merged_num_directions, r_pshape[0]) &&
+                              ov::Dimension::merge(merged_num_directions, merged_num_directions, b_pshape[0]),
                           "Parameter num_directions not matched in LSTMSequence.");
 
     // Validate hidden_size value for W, R, B inputs

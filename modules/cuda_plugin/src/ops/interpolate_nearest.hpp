@@ -6,13 +6,13 @@
 
 #include "cuda_operation_base.hpp"
 #include "kernels/interpolate_nearest.hpp"
-#include "ngraph/op/interpolate.hpp"
+#include <openvino/op/interpolate.hpp>
 
 namespace CUDAPlugin {
 
 class InterpolateNearestOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v4::Interpolate;
+    using NodeOp = ov::op::v4::Interpolate;
     InterpolateNearestOp(const CreationContext& context,
                          const NodeOp& stridedSliceOp,
                          IndexCollection&& inputIds,

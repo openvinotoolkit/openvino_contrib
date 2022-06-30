@@ -14,7 +14,7 @@
 #include <memory>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
-#include <ngraph/op/util/attr_types.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <ngraph/opsets/opset1.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
@@ -103,8 +103,8 @@ protected:
         ngraph::helpers::ActivationTypes activation;
         std::tie(convParamSet, activation) = this->GetParam();
 
-        ngraph::element::Type ngNetPrc = ngraph::element::Type_t::undefined;
-        ngraph::ParameterVector params;
+        ov::element::Type ngNetPrc = ov::element::Type_t::undefined;
+        ov::ParameterVector params;
         std::shared_ptr<typename Traits::ConvNode> convLayer;
         std::tie(ngNetPrc, params, convLayer) = setUpConvolutionTestParams(convParamSet);
 
@@ -118,7 +118,7 @@ protected:
 
         auto biasAddLayer = ngraph::builder::makeEltwise(convLayer, biasLayer, ngraph::helpers::EltwiseTypes::ADD);
 
-        std::shared_ptr<ngraph::Node> lastNode;
+        std::shared_ptr<ov::Node> lastNode;
         if constexpr (HasAddNode) {
             auto addParam = std::make_shared<ngraph::opset1::Parameter>(ngNetPrc, convLayer->get_output_shape(0));
             params.push_back(addParam);
@@ -131,11 +131,11 @@ protected:
             lastNode = ngraph::builder::makeActivation(lastNode, ngNetPrc, activation);
         }
 
-        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(lastNode)};
+        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(lastNode)};
         function = std::make_shared<ngraph::Function>(results, params, Traits::name);
     }
 
-    std::tuple<ngraph::element::Type, ngraph::ParameterVector, std::shared_ptr<typename Traits::ConvNode>>
+    std::tuple<ov::element::Type, ov::ParameterVector, std::shared_ptr<typename Traits::ConvNode>>
     setUpConvolutionTestParams(const typename Traits::ConvParamSet& convParamsSet) {
         typename Traits::ConvSpecParamsSet convParams;
         constexpr size_t convParamsSize = std::tuple_size<typename Traits::ConvSpecParamsSet>();
@@ -149,7 +149,7 @@ protected:
         std::vector<ptrdiff_t> padEnd = std::get<3>(convParams);
         InferenceEngine::SizeVector dilation = std::get<4>(convParams);
         size_t convOutChannels = std::get<5>(convParams);
-        ngraph::op::PadType padType = std::get<convParamsSize - 1>(convParams);
+        ov::op::PadType padType = std::get<convParamsSize - 1>(convParams);
         size_t numGroups = 0;
         constexpr bool isGroup = std::is_same_v<TConvLayerTest, GroupConvolutionLayerTest>;
         if constexpr (isGroup) {
@@ -159,10 +159,10 @@ protected:
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
         auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ngraph::op::Parameter>(params));
+            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         std::vector<float> filter_weights;
 
-        std::shared_ptr<ngraph::Node> convNode = nullptr;
+        std::shared_ptr<ov::Node> convNode = nullptr;
         if constexpr (!isGroup) {
             convNode = ngraph::builder::makeConvolution(paramOuts[0],
                                                         ngPrc,

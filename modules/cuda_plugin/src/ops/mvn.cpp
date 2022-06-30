@@ -15,17 +15,17 @@
 namespace CUDAPlugin {
 
 MvnOp::MvnOp(const CreationContext& context,
-             const ngraph::Node& node,
+             const ov::Node& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
-      mvn_op_v1_{dynamic_cast<const ngraph::op::v0::MVN*>(&node)},
-      mvn_op_v6_{dynamic_cast<const ngraph::op::v6::MVN*>(&node)},
+      mvn_op_v1_{dynamic_cast<const ov::op::v0::MVN*>(&node)},
+      mvn_op_v6_{dynamic_cast<const ov::op::v6::MVN*>(&node)},
       version_{validateAndGetVersion(node)},
       normalize_variance_{version_ == MvnV1 ? mvn_op_v1_->get_normalize_variance()
                                             : mvn_op_v6_->get_normalize_variance()},
       epsilon_{version_ == MvnV1 ? mvn_op_v1_->get_eps() : mvn_op_v6_->get_eps()},
-      eps_mode_{version_ == MvnV1 ? ngraph::op::MVNEpsMode::INSIDE_SQRT : mvn_op_v6_->get_eps_mode()},
+      eps_mode_{version_ == MvnV1 ? ov::op::MVNEpsMode::INSIDE_SQRT : mvn_op_v6_->get_eps_mode()},
       comp_type_{CUDAPlugin::convertDataType<cudnnDataType_t>(node.get_input_element_type(0))},
       op_desc_type_{comp_type_ != CUDNN_DATA_DOUBLE ? CUDNN_DATA_FLOAT : CUDNN_DATA_DOUBLE},
       reduce_mean_desc_{op_desc_type_},
@@ -49,7 +49,7 @@ MvnOp::MvnOp(const CreationContext& context,
             epsilon_,
             size,
             convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0)),
-            eps_mode_ == ngraph::op::MVNEpsMode::INSIDE_SQRT);
+            eps_mode_ == ov::op::MVNEpsMode::INSIDE_SQRT);
     }
 }
 
@@ -123,9 +123,9 @@ void MvnOp::Context::computeVarianceNormalizationFactor(Tensor in_out) {
     (*op.variance_normalization_factor_kernel_)(context.getThreadContext().stream().get(), in_out.data.get());
 }
 
-MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ngraph::Node& node) {
-    auto mvnOp_v1 = dynamic_cast<const ngraph::op::v0::MVN*>(&node);
-    auto mvnOp_v6 = dynamic_cast<const ngraph::op::v6::MVN*>(&node);
+MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
+    auto mvnOp_v1 = dynamic_cast<const ov::op::v0::MVN*>(&node);
+    auto mvnOp_v6 = dynamic_cast<const ov::op::v6::MVN*>(&node);
     MvnVersion version;
     Expects(mvnOp_v1 || mvnOp_v6);
     if (mvnOp_v1) {
@@ -178,7 +178,7 @@ size_t MvnOp::reduceWorkSpaceSizeCompute(const CreationContext& context) {
     return 0;
 }
 
-ngraph::Shape MvnOp::makeReducedShape(const ngraph::Node& node) {
+ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
     if (version_ == MvnV1) {
         auto reducedShape = node.get_input_shape(0);
         if (mvn_op_v1_->get_reduction_axes().empty()) {
@@ -211,7 +211,7 @@ ngraph::Shape MvnOp::makeReducedShape(const ngraph::Node& node) {
     return {};
 }
 
-CUDA::DnnTensorDescriptor MvnOp::makeReducedTensorDescriptor(const ngraph::Node& node) {
+CUDA::DnnTensorDescriptor MvnOp::makeReducedTensorDescriptor(const ov::Node& node) {
     if (reduced_shape_.empty()) return {};
     return CUDA::makeDnnTensorDescr(node.get_input_element_type(0), reduced_shape_);
 }

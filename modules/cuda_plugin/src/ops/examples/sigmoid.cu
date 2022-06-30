@@ -19,7 +19,7 @@ static __global__ void sigmoid(const size_t inputSize, const float* x, float* y)
 }
 
 SigmoidOp::SigmoidOp(const CreationContext& context,
-                     const std::shared_ptr<ngraph::Node>& node,
+                     const std::shared_ptr<ov::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {

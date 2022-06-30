@@ -12,7 +12,7 @@
 namespace CUDAPlugin {
 
 TanhOp::TanhOp(const CreationContext& context,
-               const std::shared_ptr<ngraph::Node>& node,
+               const std::shared_ptr<ov::Node>& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds)
     : ActivationForwardCuDnnOpBase{

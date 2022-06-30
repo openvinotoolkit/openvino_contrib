@@ -13,8 +13,8 @@
 namespace CUDAPlugin {
 
 /**
- * @brief Implements both `ngraph::op::v1::ConvolutionBackpropData`
- * and `ngraph::op::v1::GroupConvolutionBackpropData` using cuDNN API
+ * @brief Implements both `ov::op::v1::ConvolutionBackpropData`
+ * and `ov::op::v1::GroupConvolutionBackpropData` using cuDNN API
  * which doesn't support asymmetric padding.
  */
 template <typename T>
@@ -53,11 +53,11 @@ inline WorkbufferRequest ConvBackpropDataOp<T>::GetWorkBufferRequest() const {
     }
 }
 
-class ConvolutionBackpropDataOp : public ConvBackpropDataOp<ngraph::op::v1::ConvolutionBackpropData> {
+class ConvolutionBackpropDataOp : public ConvBackpropDataOp<ov::op::v1::ConvolutionBackpropData> {
 public:
     using ConvBackpropDataOp::ConvBackpropDataOp;
 };
-class GroupConvolutionBackpropDataOp : public ConvBackpropDataOp<ngraph::op::v1::GroupConvolutionBackpropData> {
+class GroupConvolutionBackpropDataOp : public ConvBackpropDataOp<ov::op::v1::GroupConvolutionBackpropData> {
 public:
     using ConvBackpropDataOp::ConvBackpropDataOp;
 };

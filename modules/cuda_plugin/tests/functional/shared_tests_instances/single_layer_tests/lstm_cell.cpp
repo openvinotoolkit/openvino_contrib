@@ -18,7 +18,7 @@ namespace LayerTestsDefinitions {
 
 class CUDNNLSTMCellTest : public LSTMCellTest {
 public:
-    void SetUp() {
+    void SetUp() override {
         LSTMCellTest::SetUp();
         constexpr float up_to = 5.0f;
         constexpr float start_from = -5.0f;
@@ -233,11 +233,12 @@ void testOneShape(const LSTMCellTestParams& params) {
     std::vector<CDevPtr> inputs{x_alloc, hi_alloc, ci_alloc, w_alloc, r_alloc, b_alloc};
     std::vector<DevPtr> outputs{ho_alloc, co_alloc};
 
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<ElementType> x_host(x_size);
     std::vector<ElementType> hi_host(hi_size);
     std::vector<ElementType> ci_host(ci_size);
@@ -271,23 +272,23 @@ void testOneShape(const LSTMCellTestParams& params) {
     stream.upload(hi_alloc, hi_host.data(), hi_size * sizeof(ElementType));
     stream.upload(ci_alloc, ci_host.data(), ci_size * sizeof(ElementType));
 
-    const auto& type = ngraph::element::from<ElementType>();
-    auto w_constant = std::make_shared<ngraph::op::v0::Constant>(
-        type, ngraph::Shape({4 * params.hidden_size, params.input_size}), w_host);
-    auto r_constant = std::make_shared<ngraph::op::v0::Constant>(
-        type, ngraph::Shape({4 * params.hidden_size, params.hidden_size}), r_host);
-    auto b_constant = std::make_shared<ngraph::op::v0::Constant>(type, ngraph::Shape({4 * params.hidden_size}), b_host);
+    const auto& type = ov::element::from<ElementType>();
+    auto w_constant = std::make_shared<ov::op::v0::Constant>(
+        type, ov::Shape({4 * params.hidden_size, params.input_size}), w_host);
+    auto r_constant = std::make_shared<ov::op::v0::Constant>(
+        type, ov::Shape({4 * params.hidden_size, params.hidden_size}), r_host);
+    auto b_constant = std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size}), b_host);
 
     CUDAPlugin::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
 
         auto x_param =
-            std::make_shared<ngraph::op::v0::Parameter>(type, ngraph::Shape{params.batch, params.input_size});
+            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.input_size});
         auto hi_param =
-            std::make_shared<ngraph::op::v0::Parameter>(type, ngraph::Shape{params.batch, params.hidden_size});
+            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
         auto ci_param =
-            std::make_shared<ngraph::op::v0::Parameter>(type, ngraph::Shape{params.batch, params.hidden_size});
-        auto node = std::make_shared<ngraph::op::v4::LSTMCell>(x_param->output(0),
+            std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.hidden_size});
+        auto node = std::make_shared<ov::op::v4::LSTMCell>(x_param->output(0),
                                                                hi_param->output(0),
                                                                ci_param->output(0),
                                                                w_constant,
@@ -295,8 +296,8 @@ void testOneShape(const LSTMCellTestParams& params) {
                                                                b_constant,
                                                                params.hidden_size);
 
-        Ensures(ho_size == ngraph::shape_size(node->get_output_shape(0)));
-        Ensures(co_size == ngraph::shape_size(node->get_output_shape(1)));
+        Ensures(ho_size == ov::shape_size(node->get_output_shape(0)));
+        Ensures(co_size == ov::shape_size(node->get_output_shape(1)));
 
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
@@ -373,7 +374,7 @@ TEST_F(LSTMCellBenchmark, DISABLED_benchmark) {
     testAllShapes<float>(all_params);
 
     std::cout << "-----FP16:-----\n";
-    testAllShapes<ngraph::float16>(all_params);
+    testAllShapes<ov::float16>(all_params);
 }
 
 }  // namespace

@@ -24,8 +24,8 @@
 #include <memory>
 #include <memory_manager/cuda_workbuffers.hpp>
 #include <memory_manager/tensor_types.hpp>
-#include <ngraph/op/clamp.hpp>
-#include <ngraph/op/parameter.hpp>
+#include <openvino/op/clamp.hpp>
+#include <openvino/op/parameter.hpp>
 #include <ngraph/shape.hpp>
 #include <random>
 #include <single_layer_tests/activation.hpp>
@@ -2620,9 +2620,9 @@ struct ClampBenchmark : testing::Test {
         CUDAPlugin::ThreadContext threadContext{{}};
         CUDAPlugin::OperationBase::Ptr operation = [&] {
             const bool optimizeOption = false;
-            auto param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::from<T>(),
-                                                                     ngraph::PartialShape{shape.first});
-            auto node = std::make_shared<ngraph::op::Clamp>(param->output(0), minMax[0], minMax[1]);
+            auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<T>(),
+                                                                     ov::PartialShape{shape.first});
+            auto node = std::make_shared<ov::op::v0::Clamp>(param->output(0), minMax[0], minMax[1]);
 
             auto& registry = CUDAPlugin::OperationRegistry::getInstance();
             auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
@@ -2631,7 +2631,7 @@ struct ClampBenchmark : testing::Test {
                                                std::array{CUDAPlugin::TensorID{0}});
             return op;
         }();
-        const int tesnorSize = ngraph::shape_size(shape.first);
+        const int tesnorSize = ov::shape_size(shape.first);
         const auto tensorSizeBytes = tesnorSize * sizeof(T);
         auto& stream = threadContext.stream();
         CUDA::Allocation inAlloc = stream.malloc(tensorSizeBytes);
@@ -2639,11 +2639,12 @@ struct ClampBenchmark : testing::Test {
         std::vector<CDevPtr> inputs{inAlloc};
         std::vector<DevPtr> outputs{outAlloc};
 
-        InferenceEngine::BlobMap empty;
+        std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+        std::map<std::string, std::size_t> emptyMapping;
         CUDAPlugin::CancellationToken token{};
         CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
         CUDAPlugin::Profiler profiler{false, graph};
-        CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+        CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;
@@ -2700,14 +2701,14 @@ TEST_F(ClampBenchmark, DISABLED_benchmark) {
     for (const auto& p : autogen_Clamp_all_params) {
         testOneShape<float>(p.get().first, p.get().second);
     }
-    std::cout << "---Clamp Generated shapes - ngraph::float16---\n";
+    std::cout << "---Clamp Generated shapes - ov::float16---\n";
     for (const auto& p : autogen_Clamp_all_params) {
         testOneShape<float>(p.get().first, p.get().second);
     }
     std::cout << "---Clamp Big shapes - float---\n";
     testOneShape<float>(clampParamsBig, clampInShapeBig);
-    std::cout << "---Clamp Big shapes - ngraph::float16---\n";
-    testOneShape<ngraph::float16>(clampParamsBig, clampInShapeBig);
+    std::cout << "---Clamp Big shapes - ov::float16---\n";
+    testOneShape<ov::float16>(clampParamsBig, clampInShapeBig);
 }
 
 }  // namespace benchmark

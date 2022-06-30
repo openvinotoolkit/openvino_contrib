@@ -6,7 +6,7 @@
 
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
-#include <ngraph/op/group_conv.hpp>
+#include <openvino/op/group_conv.hpp>
 #include <ngraph/validation_util.hpp>
 
 namespace CUDAPlugin::Convolution::Details {
@@ -28,7 +28,7 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
 
-    if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolution> ||
+    if constexpr (std::is_same_v<TConvNode, ov::op::v1::GroupConvolution> ||
                   std::is_same_v<TConvNode, nodes::FusedGroupConvolution>) {
         groups_ = node.get_input_shape(1)[0];
         Expects(input_shape_[1] % groups_ == 0);
@@ -55,31 +55,31 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     Ensures(padding_before_.size() == spatial_dims_number);
     Ensures(padding_after_.size() == spatial_dims_number);
 }
-template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::GroupConvolution& node);
-template ConvolutionParams::ConvolutionParams(const ngraph::op::v1::Convolution& node);
+template ConvolutionParams::ConvolutionParams(const ov::op::v1::GroupConvolution& node);
+template ConvolutionParams::ConvolutionParams(const ov::op::v1::Convolution& node);
 template ConvolutionParams::ConvolutionParams(const nodes::FusedConvolution& node);
 template ConvolutionParams::ConvolutionParams(const nodes::FusedGroupConvolution& node);
 
 template <typename TConvNode>
 void ConvolutionParams::InferPadding(const TConvNode& node) {
-    const ngraph::op::PadType pad_type = node.get_auto_pad();
+    const ov::op::PadType pad_type = node.get_auto_pad();
     switch (pad_type) {
-        case ngraph::op::PadType::EXPLICIT:
+        case ov::op::PadType::EXPLICIT:
             break;
         // TODO: potentially it can be removed, because paddings are assigned in ngraph operation
-        case ngraph::op::PadType::SAME_LOWER:
-        case ngraph::op::PadType::SAME_UPPER: {
-            const ngraph::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
+        case ov::op::PadType::SAME_LOWER:
+        case ov::op::PadType::SAME_UPPER: {
+            const ov::Shape filter_spatial_shape{filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER,
                                                      filter_shape_.end()};
             padding_before_.clear();
             padding_after_.clear();
-            ngraph::infer_auto_padding(
+            ov::infer_auto_padding(
                 input_shape_, filter_spatial_shape, strides_, dilations_, pad_type, padding_after_, padding_before_);
         } break;
-        case ngraph::op::PadType::VALID: {
+        case ov::op::PadType::VALID: {
             size_t spatial_dims_number = NumberOfSpatialDims();
-            padding_before_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
-            padding_after_ = ngraph::CoordinateDiff(spatial_dims_number, 0);
+            padding_before_ = ov::CoordinateDiff(spatial_dims_number, 0);
+            padding_after_ = ov::CoordinateDiff(spatial_dims_number, 0);
         } break;
         default:
             Expects(false);
@@ -106,7 +106,7 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
     : element_type_{node.get_input_element_type(ConvBackArgIndices::doutput)},
       doutput_shape_{node.get_input_shape(ConvBackArgIndices::doutput)},
       filter_shape_{node.get_input_shape(ConvBackArgIndices::filter)},
-      dinput_shape_{static_cast<const ngraph::Node&>(node).get_output_shape(0)},
+      dinput_shape_{static_cast<const ov::Node&>(node).get_output_shape(0)},
       strides_{node.get_strides()},
       dilations_{node.get_dilations()},
       pads_begin_{node.get_pads_begin()},
@@ -118,7 +118,7 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
     Expects(element_type_ == node.get_input_element_type(ConvBackArgIndices::filter));
     Expects(element_type_ == node.get_output_element_type(ConvBackArgIndices::dinput));
 
-    if constexpr (std::is_same_v<TConvNode, ngraph::op::v1::GroupConvolutionBackpropData>) {
+    if constexpr (std::is_same_v<TConvNode, ov::op::v1::GroupConvolutionBackpropData>) {
         groups_ = node.get_input_shape(1)[0];
         Expects(groups_ >= 1U);
         Expects(dinput_shape_[1] % groups_ == 0);
@@ -145,9 +145,9 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
     Ensures(pads_end_.size() == spatial_dims_number);
 }
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
-    const ngraph::op::v1::GroupConvolutionBackpropData& node);
+    const ov::op::v1::GroupConvolutionBackpropData& node);
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
-    const ngraph::op::v1::ConvolutionBackpropData& node);
+    const ov::op::v1::ConvolutionBackpropData& node);
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const nodes::FusedConvBackpropData& node);
 
 void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {

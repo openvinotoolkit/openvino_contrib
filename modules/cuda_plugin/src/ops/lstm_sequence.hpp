@@ -9,11 +9,11 @@
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v5::LSTMSequence` using cuDNN API
+ * @brief Implements `ov::op::v5::LSTMSequence` using cuDNN API
  */
 class LSTMSequenceOp : public LSTMSequenceOpBase {
 public:
-    using NodeOp = ngraph::op::v5::LSTMSequence;
+    using NodeOp = ov::op::v5::LSTMSequence;
     LSTMSequenceOp(const CreationContext& context,
                    const NodeOp& node,
                    IndexCollection&& inputIds,

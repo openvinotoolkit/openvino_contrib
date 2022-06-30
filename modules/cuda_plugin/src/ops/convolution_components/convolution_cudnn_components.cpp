@@ -62,7 +62,7 @@ CUDA::DnnTensorDescriptor ConvolutionParamsCuDnn::MakeOutputDescriptor() const {
 }
 
 CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor(cudnnDataType_t convDataType) const {
-    // According to `ngraph::op::v1::Convolution` spec, it "computes 1D, 2D or 3D convolution
+    // According to `ov::op::v1::Convolution` spec, it "computes 1D, 2D or 3D convolution
     // (cross-correlation to be precise)".
     constexpr cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
 
@@ -293,7 +293,7 @@ CUDA::DnnTensorDescriptor ConvolutionBackpropDataParamsCuDnn::MakeDInputDescript
 
 CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvolutionDescriptor(
     cudnnDataType_t convDataType) const {
-    // According to `ngraph::op::v1::Convolution` spec, it "computes 1D, 2D or 3D convolution
+    // According to `ov::op::v1::Convolution` spec, it "computes 1D, 2D or 3D convolution
     // (cross-correlation to be precise)".
     constexpr cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
 
@@ -484,8 +484,8 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA:
     return (status == CUDNN_STATUS_SUCCESS) && (algo_perf_.status == CUDNN_STATUS_SUCCESS) && (returnedAlgoCount > 0);
 }
 
-std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ngraph::Shape& shape,
-                                                                  ngraph::element::Type_t element_type) {
+std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ov::Shape& shape,
+                                                                  ov::element::Type_t element_type) {
     std::array<int, CUDNN_DIM_MAX> int_shape;
     std::copy(shape.begin(), shape.end(), int_shape.begin());
     auto desc = std::make_shared<CUDA::DnnTensorDescriptor>();

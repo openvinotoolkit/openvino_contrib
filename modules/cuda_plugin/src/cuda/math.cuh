@@ -146,7 +146,7 @@ inline __device__ __half max<__half>(__half x, __half y) {
 
 template <>
 inline __device__ __half exp<__half>(__half x) {
-    return exp(static_cast<float>(x));
+    return exp<float>(static_cast<float>(x));
 }
 
 template <>

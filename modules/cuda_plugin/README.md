@@ -61,7 +61,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2021.4_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to tag _2022.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`

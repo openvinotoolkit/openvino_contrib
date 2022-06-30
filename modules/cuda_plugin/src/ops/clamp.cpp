@@ -6,7 +6,7 @@
 
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
-#include <ngraph/op/clamp.hpp>
+#include <openvino/op/clamp.hpp>
 #include <sstream>
 
 #include "clamp_cuda.hpp"
@@ -18,10 +18,10 @@ namespace CUDAPlugin {
 using IndexCollection = OperationBase::IndexCollection;
 
 static OperationBase::Ptr clampFactory(const CreationContext& context,
-                                       const std::shared_ptr<ngraph::Node>& node,
+                                       const std::shared_ptr<ov::Node>& node,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds) {
-    const ngraph::op::Clamp& node_op{downcast<const ngraph::op::Clamp>(node)};
+    const ov::op::v0::Clamp& node_op{downcast<const ov::op::v0::Clamp>(node)};
 
     const IndexCollection inputs{inputIds};
     const IndexCollection outputs{outputIds};

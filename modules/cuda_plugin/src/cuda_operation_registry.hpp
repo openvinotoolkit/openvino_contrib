@@ -18,7 +18,7 @@ namespace details {
 template <typename TOperation>
 inline constexpr bool isConstructibleWithNodeRef = std::is_constructible_v<TOperation,
                                                                            const CreationContext&,
-                                                                           const ngraph::Node&,
+                                                                           const ov::Node&,
                                                                            OperationBase::IndexCollection&&,
                                                                            OperationBase::IndexCollection&&>;
 
@@ -47,7 +47,7 @@ class OperationRegistry final {
 public:
     using IndexCollection = OperationBase::IndexCollection;
     using OperationBuilder = std::function<OperationBase::Ptr(
-        const CreationContext&, const std::shared_ptr<ngraph::Node>&, IndexCollection&&, IndexCollection&&)>;
+        const CreationContext&, const std::shared_ptr<ov::Node>&, IndexCollection&&, IndexCollection&&)>;
     template <typename TOperation>
     class Register {
     public:
@@ -56,7 +56,7 @@ public:
             getInstance().registerOp(
                 opName,
                 [](const CreationContext& context,
-                   const std::shared_ptr<ngraph::Node>& node,
+                   const std::shared_ptr<ov::Node>& node,
                    IndexCollection&& inputs,
                    IndexCollection&& outputs) {
                     if constexpr (details::isConstructibleWithNodeOpRef<TOperation>) {
@@ -76,17 +76,17 @@ public:
 
     static OperationRegistry& getInstance();
 
-    bool hasOperation(const std::shared_ptr<ngraph::Node>& node);
+    bool hasOperation(const std::shared_ptr<ov::Node>& node);
 
-    std::optional<std::type_index> getOperationType(const std::shared_ptr<ngraph::Node>& node) const;
+    std::optional<std::type_index> getOperationType(const std::shared_ptr<ov::Node>& node) const;
 
     OperationBase::Ptr createOperation(const CreationContext& context,
-                                       const std::shared_ptr<ngraph::Node>& node,
+                                       const std::shared_ptr<ov::Node>& node,
                                        IndexCollection&& inIds,
                                        IndexCollection&& outIds);
 
     OperationBase::Ptr createOperation(const CreationContext& context,
-                                       const std::shared_ptr<ngraph::Node>& node,
+                                       const std::shared_ptr<ov::Node>& node,
                                        gsl::span<const TensorID> inIds,
                                        gsl::span<const TensorID> outIds);
 
@@ -121,8 +121,8 @@ public:
  * @brief Operator registration macro
  *
  * @param type - a class derived from OperationBase and having one of the following constructors
- *        1. type(const std::shared_ptr<ngraph::Node>&, IndexCollection&&, IndexCollection&&);
- *        2. type(const ngraph::Node&, IndexCollection&&, IndexCollection&&);
+ *        1. type(const std::shared_ptr<ov::Node>&, IndexCollection&&, IndexCollection&&);
+ *        2. type(const ov::Node&, IndexCollection&&, IndexCollection&&);
  *        3. type(const NodeOp&, IndexCollection&&, IndexCollection&&);
  *           where NodeOp is a type's inner alias for a concrete OpenVINO Node class
  * @param name - a textual operator's name

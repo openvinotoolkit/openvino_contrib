@@ -5,8 +5,8 @@
 #include "cuda_fullyconnected_transformation.hpp"
 
 #include <exec_graph_info.hpp>
-#include <ngraph/op/add.hpp>
-#include <ngraph/op/matmul.hpp>
+#include <openvino/op/add.hpp>
+#include <openvino/op/matmul.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
@@ -19,13 +19,13 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::FullyConnectedTransformation, "FullyConnect
 
 bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
     // Decompose Divide into Multiply with Power operations
-    auto matMulNode = std::dynamic_pointer_cast<ngraph::op::v0::MatMul>(m.get_match_root());
+    auto matMulNode = std::dynamic_pointer_cast<ov::op::v0::MatMul>(m.get_match_root());
     const auto matMulNodeOutputInputs = matMulNode->output(0).get_target_inputs();
     if (matMulNodeOutputInputs.empty()) {
         return false;
     }
     const auto addNode = matMulNodeOutputInputs.begin()->get_node()->shared_from_this();
-    if (!std::dynamic_pointer_cast<ngraph::op::v1::Add>(addNode)) {
+    if (!std::dynamic_pointer_cast<ov::op::v1::Add>(addNode)) {
         return false;
     }
 
@@ -35,7 +35,7 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
     } else {
         constantNode = addNode->get_input_node_shared_ptr(0);
     }
-    if (!std::dynamic_pointer_cast<ngraph::op::v0::Constant>(constantNode)) {
+    if (!std::dynamic_pointer_cast<ov::op::v0::Constant>(constantNode)) {
         return false;
     }
 
@@ -50,8 +50,8 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
     auto constShape = constantNode->get_output_shape(0);
     CUDAPlugin::MatMulOp::BroadcastToMatrix(constShape);
     const auto constBatch = CUDAPlugin::MatMulOp::GetMatrixNumBatches(constShape);
-    const auto constShapeSize = ngraph::shape_size(constShape);
-    const auto matrixShapeSize = ngraph::shape_size(matrixShape);
+    const auto constShapeSize = ov::shape_size(constShape);
+    const auto matrixShapeSize = ov::shape_size(matrixShape);
     const auto numAutoConstBatch = matrixShapeSize / constShapeSize;
     const auto matmulShapeDividable = matrixShapeSize % constShapeSize;
     if (matMulBatch < constBatch || matmulShapeDividable != 0 || numAutoConstBatch > 1) {
@@ -65,20 +65,19 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
                                                             matMulNode->get_transpose_a(),
                                                             matMulNode->get_transpose_b());
     fullyConnectedNode->set_friendly_name(addNode->get_friendly_name());
-    ngraph::copy_runtime_info({matMulNode, addNode}, fullyConnectedNode);
+    ov::copy_runtime_info({matMulNode, addNode}, fullyConnectedNode);
 
     const std::string originalLayers = matMulNode->get_friendly_name() + "," + addNode->get_friendly_name();
-    fullyConnectedNode->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] =
-        std::make_shared<ngraph::VariantWrapper<std::string>>(originalLayers);
+    fullyConnectedNode->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
 
-    ngraph::replace_node(addNode, fullyConnectedNode);
-    ngraph::replace_node(matMulNode, fullyConnectedNode);
+    ov::replace_node(addNode, fullyConnectedNode);
+    ov::replace_node(matMulNode, fullyConnectedNode);
 
     return true;
 }
 
 FullyConnectedTransformation::FullyConnectedTransformation() {
-    auto matmul = ngraph::pattern::wrap_type<ngraph::op::MatMul>(pattern::consumers_count(1));
+    auto matmul = ngraph::pattern::wrap_type<ov::op::v0::MatMul>(pattern::consumers_count(1));
 
     matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return fuse_matmul_and_add(m); };
 

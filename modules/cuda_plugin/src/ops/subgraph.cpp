@@ -10,9 +10,9 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <ngraph/function.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/op/result.hpp>
-#include <ngraph/op/tensor_iterator.hpp>
+#include <openvino/op/parameter.hpp>
+#include <openvino/op/result.hpp>
+#include <openvino/op/tensor_iterator.hpp>
 
 #include "nop_op.hpp"
 #include "parameter.hpp"
@@ -25,7 +25,7 @@ SubGraph::SubGraph(const CreationContext& context,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(context, op, std::move(inputIds), std::move(outputIds)), function_{op.get_function()} {
-    const bool isStableParamsAndResultsNeeded = nullptr != dynamic_cast<const ngraph::op::v0::TensorIterator*>(&op);
+    const bool isStableParamsAndResultsNeeded = nullptr != dynamic_cast<const ov::op::v0::TensorIterator*>(&op);
     initExecuteSequence(context, isStableParamsAndResultsNeeded, isStableParamsAndResultsNeeded);
 }
 
@@ -71,13 +71,13 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
         }
         if (dynamic_cast<ParameterOp*>(operation.get())) {
             const auto paramIdx =
-                function_->get_parameter_index(std::dynamic_pointer_cast<ngraph::op::Parameter>(node));
+                function_->get_parameter_index(std::dynamic_pointer_cast<ov::op::v0::Parameter>(node));
             params_[paramIdx] = operation;
             params_info_[paramIdx].size_ = getTensorByteSize(*node);
             params_info_[paramIdx].type_ = node->get_element_type();
             params_info_[paramIdx].shape_ = node->get_shape();
         } else if (dynamic_cast<ResultOp*>(operation.get())) {
-            const auto resultIdx = function_->get_result_index(std::dynamic_pointer_cast<ngraph::op::Result>(node));
+            const auto resultIdx = function_->get_result_index(std::dynamic_pointer_cast<ov::op::v0::Result>(node));
             results_[resultIdx] = operation;
             results_info_[resultIdx].size_ = getTensorByteSize(*node);
             results_info_[resultIdx].type_ = node->get_element_type();

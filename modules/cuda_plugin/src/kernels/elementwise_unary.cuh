@@ -14,6 +14,9 @@
 #include "elementtypeswitch.hpp"
 #include "error.hpp"
 #include "tensor_helpers.hpp"
+#ifdef __CUDACC__
+#include "cuda/math.cuh"
+#endif  // __CUDACC__
 
 namespace CUDAPlugin {
 namespace kernel {

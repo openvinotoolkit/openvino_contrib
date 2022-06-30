@@ -5,15 +5,15 @@
 
 #include <cuda_operation_base.hpp>
 #include <kernels/pad.cuh>
-#include <ngraph/op/pad.hpp>
+#include <openvino/op/pad.hpp>
 
 namespace CUDAPlugin {
 
 class PadOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v1::Pad;
+    using NodeOp = ov::op::v1::Pad;
     explicit PadOp(const CreationContext& context,
-                   const ngraph::op::v1::Pad& node,
+                   const ov::op::v1::Pad& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
@@ -41,8 +41,8 @@ private:
     };
 
     kernel::ConstModePad kernel_;
-    ngraph::Shape src_shape_;
-    ngraph::Shape dst_shape_;
+    ov::Shape src_shape_;
+    ov::Shape dst_shape_;
 };
 
 }  // namespace CUDAPlugin

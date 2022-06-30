@@ -7,8 +7,8 @@
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
-#include <ngraph/op/matmul.hpp>
-#include <ngraph/op/transpose.hpp>
+#include <openvino/op/matmul.hpp>
+#include <openvino/op/transpose.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
@@ -18,7 +18,7 @@ namespace ngraph::pass {
 NGRAPH_RTTI_DEFINITION(ngraph::pass::TransposeMatMulTransformation, "TransposeMatMulTransformation", 0);
 
 template <typename T>
-bool verify_permutation(std::shared_ptr<ngraph::op::v0::Constant> permConstant) {
+bool verify_permutation(std::shared_ptr<ov::op::v0::Constant> permConstant) {
     const auto perm2D = std::vector<T>{1, 0};
     const auto perm3D = std::vector<T>{0, 2, 1};
     const auto perm4D = std::vector<T>{0, 1, 3, 2};
@@ -40,8 +40,8 @@ bool verify_permutation(std::shared_ptr<ngraph::op::v0::Constant> permConstant) 
     }
 }
 
-bool verify_permutation(std::shared_ptr<ngraph::op::v0::Constant> permConstant) {
-    using ngraph::element::Type_t;
+bool verify_permutation(std::shared_ptr<ov::op::v0::Constant> permConstant) {
+    using ov::element::Type_t;
     switch (permConstant->get_element_type()) {
         case Type_t::i8:
             return verify_permutation<std::int8_t>(permConstant);
@@ -65,21 +65,21 @@ bool verify_permutation(std::shared_ptr<ngraph::op::v0::Constant> permConstant) 
 }
 
 bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
-    auto matmul = std::dynamic_pointer_cast<ngraph::op::v0::MatMul>(m.get_match_root());
+    auto matmul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(m.get_match_root());
     if (!matmul) {
         return false;
     }
 
-    auto transpose0 = std::dynamic_pointer_cast<ngraph::op::v1::Transpose>(
+    auto transpose0 = std::dynamic_pointer_cast<ov::op::v1::Transpose>(
         matmul->input(0).get_source_output().get_node_shared_ptr());
-    auto transpose1 = std::dynamic_pointer_cast<ngraph::op::v1::Transpose>(
+    auto transpose1 = std::dynamic_pointer_cast<ov::op::v1::Transpose>(
         matmul->input(1).get_source_output().get_node_shared_ptr());
     if (!transpose0 && !transpose1) {
         return false;
     }
 
     size_t input_idx;
-    std::shared_ptr<ngraph::op::v1::Transpose> transpose;
+    std::shared_ptr<ov::op::v1::Transpose> transpose;
     if (transpose0) {
         input_idx = 0;
         transpose = transpose0;
@@ -88,7 +88,7 @@ bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
         transpose = transpose1;
     }
 
-    auto permConstant = std::dynamic_pointer_cast<ngraph::op::v0::Constant>(
+    auto permConstant = std::dynamic_pointer_cast<ov::op::v0::Constant>(
         transpose->input(1).get_source_output().get_node_shared_ptr());
     if (!verify_permutation(permConstant)) {
         return false;
@@ -108,23 +108,22 @@ bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
         transpose_b = !transpose_b;
     }
 
-    auto newMatMul = std::make_shared<ngraph::op::v0::MatMul>(a, b, transpose_a, transpose_b);
+    auto newMatMul = std::make_shared<ov::op::v0::MatMul>(a, b, transpose_a, transpose_b);
 
     newMatMul->set_friendly_name(matmul->get_friendly_name());
 
-    ngraph::copy_runtime_info({transpose, matmul}, newMatMul);
+    ov::copy_runtime_info({transpose, matmul}, newMatMul);
 
     const std::string originalLayers = transpose->get_friendly_name() + "," + matmul->get_friendly_name();
-    newMatMul->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] =
-        std::make_shared<ngraph::VariantWrapper<std::string>>(originalLayers);
+    newMatMul->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
 
-    ngraph::replace_node(matmul, newMatMul);
+    ov::replace_node(matmul, newMatMul);
 
     return true;
 }
 
 TransposeMatMulTransformation::TransposeMatMulTransformation() {
-    auto matmul = ngraph::pattern::wrap_type<ngraph::op::v0::MatMul>({pattern::any_input(), pattern::any_input()});
+    auto matmul = ngraph::pattern::wrap_type<ov::op::v0::MatMul>({pattern::any_input(), pattern::any_input()});
     matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return fuse_transpose_with_matmul(m); };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(matmul, ngraph::pass::TransposeMatMulTransformation::Name);

@@ -7,7 +7,7 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/op/range.hpp>
+#include <openvino/op/range.hpp>
 #include <ngraph/validation_util.hpp>
 
 #include "converters.hpp"
@@ -19,7 +19,7 @@ namespace CUDAPlugin {
 static constexpr auto OUTPUT_INDX = 0u;
 
 RangeOp::RangeOp(const CreationContext& context,
-                 const ngraph::Node& node,
+                 const ov::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),

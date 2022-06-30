@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 
 ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA::DnnActivationDescriptor> opDesc,
                                                            const CreationContext& context,
-                                                           const ngraph::Node& node,
+                                                           const ov::Node& node,
                                                            IndexCollection&& inputIds,
                                                            IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},

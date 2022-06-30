@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::v5::LSTMSequence;
+    using NodeOp = ov::op::v5::LSTMSequence;
     using LSTMSequenceParams = RNN::Details::LSTMSequenceParams;
     using Config = RNN::Details::LSTMSequenceDescriptorsCuDnn::Config;
     LSTMSequenceOpBase(const CreationContext& context,

@@ -24,17 +24,17 @@ TEST(TransformationTests, DISABLED_TemplateTest) {
     // f_ref - ngraph::Function that is expected after applying transformation
     {
         // Example function
-        auto data = std::make_shared<ngraph::opset3::Parameter>(ngraph::element::f32, ngraph::Shape{3, 1, 2});
-        auto divide_constant = ngraph::opset3::Constant::create(ngraph::element::f32, ngraph::Shape{1}, {1.5});
-        auto divide = std::make_shared<ngraph::opset3::Divide>(data, divide_constant);
+        auto data = std::make_shared<ov::opset8::Parameter>(ov::element::f32, ov::Shape{3, 1, 2});
+        auto divide_constant = ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {1.5});
+        auto divide = std::make_shared<ov::opset8::Divide>(data, divide_constant);
 
-        f = std::make_shared<ngraph::Function>(ngraph::NodeVector{divide}, ngraph::ParameterVector{data});
+        f = std::make_shared<ngraph::Function>(ov::NodeVector{divide}, ov::ParameterVector{data});
 
         // This transformation init runtime info attributes
         ngraph::pass::InitNodeInfo().run_on_function(f);
 
         // Run transformation
-        // ngraph::pass::MyTransformation().run_on_function(f);
+        // ov::pass::MyTransformation().run_on_function(f);
 
         // Check that after applying transformation all runtime info attributes was correctly propagated
         ASSERT_NO_THROW(check_rt_info(f));
@@ -42,13 +42,13 @@ TEST(TransformationTests, DISABLED_TemplateTest) {
 
     {
         // Example reference function
-        auto data = std::make_shared<ngraph::opset3::Parameter>(ngraph::element::f32, ngraph::Shape{3, 1, 2});
-        auto divide_constant = ngraph::opset3::Constant::create(ngraph::element::f32, ngraph::Shape{1}, {1.5});
-        auto pow = std::make_shared<ngraph::opset3::Power>(divide_constant,
-                                                           ngraph::opset3::Constant::create(ngraph::element::f32, ngraph::Shape{1}, {-1}));
-        auto mul = std::make_shared<ngraph::opset3::Multiply>(data, pow);
+        auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 1, 2});
+        auto divide_constant = ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {1.5});
+        auto pow = std::make_shared<ov::opset8::Power>(divide_constant,
+                                                           ov::opset8::Constant::create(ov::element::f32, ov::Shape{1}, {-1}));
+        auto mul = std::make_shared<ov::opset8::Multiply>(data, pow);
 
-        f_ref = std::make_shared<ngraph::Function>(ngraph::NodeVector{mul}, ngraph::ParameterVector{data});
+        f_ref = std::make_shared<ngraph::Function>(ov::NodeVector{mul}, ov::ParameterVector{data});
     }
 
     // Compare that processed function and expected function are the same

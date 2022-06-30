@@ -45,9 +45,9 @@ void fillBlob(Blob::Ptr& inputBlob, T value) {
 }
 
 struct ConcatTest : testing::Test {
-    const std::array<std::array<ngraph::Shape, 3>, 2> shapes{
-        std::array<ngraph::Shape, 3>{ngraph::Shape{2, 2}, ngraph::Shape{3, 2}, ngraph::Shape{4, 2}},
-        std::array<ngraph::Shape, 3>{ngraph::Shape{2, 2}, ngraph::Shape{2, 3}, ngraph::Shape{2, 4}}};
+    const std::array<std::array<ov::Shape, 3>, 2> shapes{
+        std::array<ov::Shape, 3>{ov::Shape{2, 2}, ov::Shape{3, 2}, ov::Shape{4, 2}},
+        std::array<ov::Shape, 3>{ov::Shape{2, 2}, ov::Shape{2, 3}, ov::Shape{2, 4}}};
     static constexpr float masters[2][18] = {{2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4},
                                              {2, 2, 3, 3, 3, 4, 4, 4, 4, 2, 2, 3, 3, 3, 4, 4, 4, 4}};
     void SetUp() override {}
@@ -57,7 +57,7 @@ struct ConcatTest : testing::Test {
         const bool optimizeOption = false;
         allocate(axis);
         auto& registry{OperationRegistry::getInstance()};
-        auto concatNode = std::make_shared<ngraph::op::Concat>(params, axis);
+        auto concatNode = std::make_shared<ov::op::v0::Concat>(params, axis);
         auto inputIDs = std::vector<TensorID>{TensorID{0}, TensorID{1}, TensorID{2}};
         auto outputIDs = std::vector<TensorID>{TensorID{0}};
         ASSERT_TRUE(registry.hasOperation(concatNode));
@@ -69,7 +69,7 @@ struct ConcatTest : testing::Test {
         CancellationToken token{};
         CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
-        InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+        InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};
@@ -102,15 +102,16 @@ struct ConcatTest : testing::Test {
             blobs[i]->allocate();
             fillBlob<float>(blobs[i], i + 2.0);
             output_size += blobs[i]->byteSize();
-            params.emplace_back(std::make_shared<ngraph::op::Parameter>(
-                ngraph::element::Type{ngraph::element::Type_t::f32}, shapes[axis][i]));
+            params.emplace_back(std::make_shared<ov::op::v0::Parameter>(
+                ov::element::Type{ov::element::Type_t::f32}, shapes[axis][i]));
         }
     }
     ThreadContext threadContext{{}};
     std::array<Blob::Ptr, 3> blobs;
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
     size_t output_size{};
-    ngraph::OutputVector params{};
+    ov::OutputVector params{};
 };
 
 TEST_F(ConcatTest, axis_0) { run(0); }

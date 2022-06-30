@@ -11,7 +11,7 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <ngraph/node.hpp>
-#include <ngraph/op/range.hpp>
+#include <openvino/op/range.hpp>
 #include <ops/parameter.hpp>
 
 #include "kernels/cuda_type_traits.hpp"
@@ -22,8 +22,8 @@ namespace {
 using devptr_t = CUDA::DevicePointer<void*>;
 using cdevptr_t = CUDA::DevicePointer<const void*>;
 using dataType = float;
-using Type_t = ngraph::element::Type_t;
-using Type = ngraph::element::Type;
+using Type_t = ov::element::Type_t;
+using Type = ov::element::Type;
 
 typedef std::tuple<dataType,  // start
                    dataType,  // stop
@@ -236,16 +236,25 @@ protected:
     }
 };
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsuggest-override"
+#endif
 MATCHER_P(FloatNearPointwise, tol, "Out of range") {
     return (std::get<0>(arg) > std::get<1>(arg) - tol && std::get<0>(arg) < std::get<1>(arg) + tol);
 }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 TEST_P(CudaRangeTest, CompareWithRefs) {
     ASSERT_TRUE(outputSize > 0);
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     CudaRangeTest::upload(stream, startParamAlloc, &start, start_type, 1);
     CudaRangeTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);

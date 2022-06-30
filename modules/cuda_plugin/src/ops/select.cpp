@@ -7,8 +7,8 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/select.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/select.hpp>
 
 namespace CUDAPlugin {
 
@@ -45,12 +45,12 @@ void calcInOffset(std::vector<size_t>& offset, const std::vector<size_t>& inDims
 }  // namespace
 
 SelectOp::SelectOp(const CreationContext& context,
-                   const ngraph::Node& node,
+                   const ov::Node& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
       output_shape_{node.get_output_shape(OUTPUT)},
-      max_size_{ngraph::shape_size(output_shape_)},
+      max_size_{ov::shape_size(output_shape_)},
       operation_type_{node.get_output_element_type(OUTPUT)} {
     for (auto i = 0u; i < node.get_input_size(); ++i) {
         input_shapes_.push_back(node.get_input_shape(i));

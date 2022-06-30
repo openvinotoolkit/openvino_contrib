@@ -5,7 +5,7 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/op/strided_slice.hpp>
+#include <openvino/op/strided_slice.hpp>
 
 #include "ngraph/slice_plan.hpp"
 #include "kernels/strided_slice.hpp"
@@ -14,7 +14,7 @@ namespace CUDAPlugin {
 
 class StridedSliceOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v1::StridedSlice;
+    using NodeOp = ov::op::v1::StridedSlice;
     StridedSliceOp(const CreationContext& context,
                    const NodeOp& stridedSliceOp,
                    IndexCollection&& inputIds,
@@ -43,11 +43,11 @@ private:
     void callReverseAxesKernel(const InferenceRequestContext& context,
                                const std::vector<size_t>& matrixShapes,
                                const std::vector<int64_t>& matrixSizes,
-                               const ngraph::AxisSet& reverseAxes,
+                               const ov::AxisSet& reverseAxes,
                                CUDA::DevicePointer<void*> buffer) const;
     void uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, const std::vector<int64_t>& data);
 
-    std::vector<int64_t> getNodeConstantValues(const ngraph::Node* node) const;
+    std::vector<int64_t> getNodeConstantValues(const ov::Node* node) const;
 
 private:
     std::vector<int64_t> src_matrix_sizes_;
@@ -58,7 +58,7 @@ private:
     unsigned max_threads_per_block_{0};
     unsigned blocks_number_{0};
     unsigned threads_per_block_{0};
-    ngraph::element::Type_t element_type_;
+    ov::element::Type_t element_type_;
 
     std::optional<kernel::StridedSliceKernelOp> kernel_op_;
 };

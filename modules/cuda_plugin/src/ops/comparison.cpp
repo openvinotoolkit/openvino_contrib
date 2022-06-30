@@ -44,12 +44,12 @@ void calcInOffset(std::vector<size_t>& offset, const std::vector<size_t>& inDims
 }  // namespace
 
 Comparison::Comparison(const CreationContext& context,
-                       const ngraph::Node& node,
+                       const ov::Node& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds,
                        kernel::Comparison::Op_t operation_type)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)), output_shape_{node.get_output_shape(0)} {
-    const ngraph::element::Type element_type{node.get_input_element_type(0)};
+    const ov::element::Type element_type{node.get_input_element_type(0)};
     auto output_element_type = node.get_output_element_type(0);
 
     for (auto i = 0u; i < node.get_input_size(); ++i) {
@@ -63,13 +63,13 @@ Comparison::Comparison(const CreationContext& context,
         output_sizes_.push_back(output_offset_[idx] > 0 ? output_offset_[idx] : output_offset_[idx - 1]);
     }
 
-    Expects(output_element_type == ngraph::element::Type_t::boolean);
+    Expects(output_element_type == ov::element::Type_t::boolean);
     Expects(node.get_output_size() == 1);
     Expects(node.get_input_size() == 2);
     Expects(GetOutputIds().size() == 1);
     Expects(GetInputIds().size() == 2);
 
-    const size_t output_size = ngraph::shape_size(output_shape_);
+    const size_t output_size = ov::shape_size(output_shape_);
     const auto max_block_size = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
 
     const auto num_blocks =

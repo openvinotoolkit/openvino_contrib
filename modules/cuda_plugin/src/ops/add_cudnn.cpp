@@ -8,7 +8,7 @@
 namespace CUDAPlugin {
 
 AddCuDnnOp::AddCuDnnOp(const CreationContext& context,
-                       const std::shared_ptr<ngraph::Node>& node,
+                       const std::shared_ptr<ov::Node>& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds)
     : CuDnnTensorOpBase{context, node, move(inputIds), move(outputIds), cudnnOpTensorOp_t::CUDNN_OP_TENSOR_ADD} {}

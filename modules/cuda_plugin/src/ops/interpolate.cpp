@@ -11,6 +11,9 @@
 #include "interpolate_cubic.hpp"
 #include "interpolate_linear.hpp"
 #include "interpolate_nearest.hpp"
+#include <openvino/op/constant.hpp>
+#include "ngraph/shape.hpp"
+#include "ngraph/validation_util.hpp"
 
 namespace CUDAPlugin {
 

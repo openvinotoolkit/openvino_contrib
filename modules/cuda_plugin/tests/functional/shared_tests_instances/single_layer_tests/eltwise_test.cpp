@@ -26,162 +26,155 @@ const std::vector<ngraph::helpers::InputLayerType> input_layer_types = {
     ngraph::helpers::InputLayerType::PARAMETER
 };
 
-const std::map<std::string, std::string> additional_config = {};
+const ov::AnyMap additional_config = {};
 
 // Smoke parameters
-const std::vector<std::vector<std::vector<size_t>>> smoke_shapes = {{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}},
-                                                                    {{2, 3, 4, 5}, {2, 3, 4, 1}},
-                                                                    {{2, 3, 4, 5}, {2, 1, 1, 5}},
-                                                                    {{3, 1, 6, 1}, {1, 1, 1, 1}},
-                                                                    {{10, 10}, {10, 10}},
-                                                                    {{10, 10}, {1, 10}},
-                                                                    {{10, 10}, {1}},
-                                                                    {{8, 1, 6, 1}, {7, 1, 5}}};
+const std::vector<std::vector<ov::Shape>> smoke_shapes = {{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}},
+                                                          {{2, 3, 4, 5}, {2, 3, 4, 1}},
+                                                          {{2, 3, 4, 5}, {2, 1, 1, 5}},
+                                                          {{3, 1, 6, 1}, {1, 1, 1, 1}},
+                                                          {{10, 10}, {10, 10}},
+                                                          {{10, 10}, {1, 10}},
+                                                          {{10, 10}, {1}},
+                                                          {{8, 1, 6, 1}, {7, 1, 5}}};
 
 const std::vector<CommonTestUtils::OpType> smoke_op_types = {CommonTestUtils::OpType::SCALAR,
                                                              CommonTestUtils::OpType::VECTOR};
 
-const std::vector<InferenceEngine::Precision> add_precisions = {InferenceEngine::Precision::FP16,
-                                                                InferenceEngine::Precision::FP32,
-                                                                InferenceEngine::Precision::I32,
-                                                                InferenceEngine::Precision::I16,
-                                                                InferenceEngine::Precision::U8};
+const std::vector<ov::test::ElementType> add_precisions = {ov::test::ElementType::f16,
+                                                                ov::test::ElementType::f32,
+                                                                ov::test::ElementType::i32,
+                                                                ov::test::ElementType::i16,
+                                                                ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Add,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(add_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> mul_precisions = {
-    InferenceEngine::Precision::FP16, InferenceEngine::Precision::FP32, InferenceEngine::Precision::I32};
+const std::vector<ov::test::ElementType> mul_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Multiply,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(mul_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> sub_precisions = {
-    InferenceEngine::Precision::FP16, InferenceEngine::Precision::FP32, InferenceEngine::Precision::I32};
+const std::vector<ov::test::ElementType> sub_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Subtract,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(sub_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> div_precisions = {
-    InferenceEngine::Precision::FP16, InferenceEngine::Precision::FP32, InferenceEngine::Precision::I32};
+const std::vector<ov::test::ElementType> div_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Divide,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(div_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> sq_diff_precisions = {InferenceEngine::Precision::FP16,
-                                                                    InferenceEngine::Precision::FP32,
-                                                                    InferenceEngine::Precision::I32,
-                                                                    InferenceEngine::Precision::I16,
-                                                                    InferenceEngine::Precision::U8};
+const std::vector<ov::test::ElementType> sq_diff_precisions = {ov::test::ElementType::f16,
+                                                                    ov::test::ElementType::f32,
+                                                                    ov::test::ElementType::i32,
+                                                                    ov::test::ElementType::i16,
+                                                                    ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_SquaredDifference,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::SQUARED_DIFF),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(sq_diff_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> floor_mod_precisions = {InferenceEngine::Precision::FP16,
-                                                                      InferenceEngine::Precision::FP32,
-                                                                      InferenceEngine::Precision::I32,
-                                                                      InferenceEngine::Precision::U8};
+const std::vector<ov::test::ElementType> floor_mod_precisions = {ov::test::ElementType::f16,
+                                                                      ov::test::ElementType::f32,
+                                                                      ov::test::ElementType::i32,
+                                                                      ov::test::ElementType::u8};
 
 INSTANTIATE_TEST_CASE_P(
     smoke_FloorMod,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(floor_mod_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
-const std::vector<InferenceEngine::Precision> mod_precisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::I32,
-    InferenceEngine::Precision::I16,
-    InferenceEngine::Precision::U8,
+const std::vector<ov::test::ElementType> mod_precisions = {
+    ov::test::ElementType::f16,
+    ov::test::ElementType::f32,
+    ov::test::ElementType::i32,
+    ov::test::ElementType::i16,
+    ov::test::ElementType::u8,
 };
 
 INSTANTIATE_TEST_CASE_P(
     smoke_Mod,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(smoke_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(smoke_op_types),
                                           ::testing::ValuesIn(mod_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -190,7 +183,7 @@ INSTANTIATE_TEST_CASE_P(
 //
 // Resnet-50 and VGG-16
 //
-const std::vector<std::vector<std::vector<size_t>>> renset50_vgg16_add_shapes = {{{1, 1000}, {1, 1000}},
+const std::vector<std::vector<ov::Shape>> renset50_vgg16_add_shapes = {{{1, 1000}, {1, 1000}},
                                                                                  {{1, 1001}, {1, 1001}},
                                                                                  {{1, 1024, 14, 14}, {1, 1024, 1, 1}},
                                                                                  {{1, 1024, 14, 14}, {1, 1024, 14, 14}},
@@ -213,22 +206,21 @@ const std::vector<std::vector<std::vector<size_t>>> renset50_vgg16_add_shapes = 
                                                                                  {{1, 64, 224, 224}, {1, 64, 1, 1}},
                                                                                  {{1, 64, 56, 56}, {1, 64, 1, 1}}};
 
-const std::vector<InferenceEngine::Precision> renset50_vgg16_input_precisions = {InferenceEngine::Precision::FP16,
-                                                                                 InferenceEngine::Precision::FP32};
+const std::vector<ov::test::ElementType> renset50_vgg16_input_precisions = {ov::test::ElementType::f16,
+                                                                                 ov::test::ElementType::f32};
 
 const std::vector<CommonTestUtils::OpType> renset50_vgg16_op_types = {CommonTestUtils::OpType::VECTOR};
 
 INSTANTIATE_TEST_CASE_P(
     renset50_vgg16_Add,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(renset50_vgg16_add_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(renset50_vgg16_add_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
                                           ::testing::ValuesIn(input_layer_types),
                                           ::testing::ValuesIn(renset50_vgg16_op_types),
                                           ::testing::ValuesIn(renset50_vgg16_input_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -237,7 +229,7 @@ INSTANTIATE_TEST_CASE_P(
 //
 // Tacotron2
 //
-const std::vector<std::vector<std::vector<size_t>>> tacotron2_Multiply_shapes = {
+const std::vector<std::vector<ov::Shape>> tacotron2_Multiply_shapes = {
     {{1}, {1}},
     {{2}, {1}},
     {{1}, {2}},
@@ -245,21 +237,20 @@ const std::vector<std::vector<std::vector<size_t>>> tacotron2_Multiply_shapes = 
     {{1}, {10}},
 };
 
-const std::vector<InferenceEngine::Precision> tacotron2_Multiply_input_precisions = {
-    InferenceEngine::Precision::I32,
+const std::vector<ov::test::ElementType> tacotron2_Multiply_input_precisions = {
+    ov::test::ElementType::i32,
 };
 
 INSTANTIATE_TEST_CASE_P(
     tacotron2_Multiply,
     CudaEltwiseLayerTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(tacotron2_Multiply_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(tacotron2_Multiply_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(tacotron2_Multiply_input_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -268,7 +259,7 @@ INSTANTIATE_TEST_CASE_P(
 //
 // Benchmark
 //
-const std::vector<std::vector<std::vector<size_t>>> bench_shapes = {{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}},
+const std::vector<std::vector<ov::Shape>> bench_shapes = {{{1, 2, 3, 4, 5}, {1, 2, 3, 4, 5}},
                                                                     {{2, 3, 4, 5}, {2, 1, 1, 5}},
                                                                     {{10, 10}, {1, 10}},
                                                                     {{1, 96, 75, 75}, {1, 96, 75, 75}},
@@ -289,20 +280,19 @@ TEST_P(AddBenchmarkTest, DISABLED_Add_Benchmark) {
     Run("Add", std::chrono::milliseconds(2000), 100);
 }
 
-const std::vector<InferenceEngine::Precision> bench_add_precisions = {InferenceEngine::Precision::FP16,
-                                                                      InferenceEngine::Precision::FP32};
+const std::vector<ov::test::ElementType> bench_add_precisions = {ov::test::ElementType::f16,
+                                                                      ov::test::ElementType::f32};
 
 INSTANTIATE_TEST_CASE_P(
     Add_Benchmark,
     AddBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(bench_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(bench_add_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -318,20 +308,19 @@ TEST_P(MultiplyBenchmarkTest, DISABLED_Multiply_Benchmark) {
     Run("Multiply", std::chrono::milliseconds(2000), 100);
 }
 
-const std::vector<InferenceEngine::Precision> bench_mul_precisions = {InferenceEngine::Precision::FP16,
-                                                                      InferenceEngine::Precision::FP32};
+const std::vector<ov::test::ElementType> bench_mul_precisions = {ov::test::ElementType::f16,
+                                                                      ov::test::ElementType::f32};
 
 INSTANTIATE_TEST_CASE_P(
     Multiply_Benchmark,
     MultiplyBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(bench_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MULTIPLY),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(bench_mul_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -347,20 +336,19 @@ TEST_P(SubtractBenchmarkTest, DISABLED_Subtract_Benchmark) {
     Run("Subtract", std::chrono::milliseconds(2000), 10);
 }
 
-const std::vector<InferenceEngine::Precision> bench_sub_precisions = {
-    InferenceEngine::Precision::FP16, InferenceEngine::Precision::FP32, InferenceEngine::Precision::I32};
+const std::vector<ov::test::ElementType> bench_sub_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
 INSTANTIATE_TEST_CASE_P(
     Subtract_Benchmark,
     SubtractBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(bench_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::SUBTRACT),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(bench_sub_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
@@ -376,20 +364,19 @@ TEST_P(DivideBenchmarkTest, DISABLED_Divide_Benchmark) {
     Run("Divide", std::chrono::milliseconds(2000), 10);
 }
 
-const std::vector<InferenceEngine::Precision> bench_div_precisions = {
-    InferenceEngine::Precision::FP16, InferenceEngine::Precision::FP32, InferenceEngine::Precision::I32};
+const std::vector<ov::test::ElementType> bench_div_precisions = {
+    ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
 INSTANTIATE_TEST_CASE_P(
     Divide_Benchmark,
     DivideBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(bench_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(bench_div_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
@@ -405,25 +392,24 @@ TEST_P(ModBenchmarkTest, DISABLED_Mod_Benchmark) {
     Run("Mod", std::chrono::milliseconds(2000), 10);
 }
 
-const std::vector<InferenceEngine::Precision> bench_mod_precisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::I32,
-    InferenceEngine::Precision::I16,
-    InferenceEngine::Precision::U8,
+const std::vector<ov::test::ElementType> bench_mod_precisions = {
+    ov::test::ElementType::f16,
+    ov::test::ElementType::f32,
+    ov::test::ElementType::i32,
+    ov::test::ElementType::i16,
+    ov::test::ElementType::u8,
 };
 
 INSTANTIATE_TEST_CASE_P(
     Mod_Benchmark,
     ModBenchmarkTest,
-    ::testing::Combine(::testing::Combine(::testing::ValuesIn(bench_shapes),
+    ::testing::Combine(::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(bench_shapes)),
                                           ::testing::Values(ngraph::helpers::EltwiseTypes::MOD),
                                           ::testing::Values(ngraph::helpers::InputLayerType::PARAMETER),
                                           ::testing::Values(CommonTestUtils::OpType::VECTOR),
                                           ::testing::ValuesIn(bench_mod_precisions),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
+                                          ::testing::Values(ov::test::ElementType::undefined),
+                                          ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),

@@ -10,8 +10,8 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <ngraph/node.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/op/relu.hpp>
+#include <openvino/op/parameter.hpp>
+#include <openvino/op/relu.hpp>
 #include <ops/parameter.hpp>
 #include <typeinfo>
 namespace {
@@ -42,12 +42,13 @@ auto assertToThrow(F&& f,
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    InferenceEngine::BlobMap empty;
+     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+     std::map<std::string, std::size_t> emptyMapping;
     CUDAPlugin::OperationBase::Ptr operation = [this] {
         CUDA::Device device{};
         const bool optimizeOption = false;
-        auto param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{length});
-        auto node = std::make_shared<ngraph::op::v0::Relu>(param->output(0));
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{length});
+        auto node = std::make_shared<ov::op::v0::Relu>(param->output(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         TASSERT_TRUE(registry.hasOperation(node));
         auto op = registry.createOperation(CUDAPlugin::CreationContext{device, optimizeOption},
@@ -63,7 +64,7 @@ TEST_F(ReluTest, canExecuteSync) {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

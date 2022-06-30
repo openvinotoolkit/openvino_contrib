@@ -27,14 +27,14 @@ namespace CUDAPlugin {
  * @return Converted T data type
  */
 template <typename T>
-T convertDataType(ngraph::element::Type type);
+T convertDataType(ov::element::Type type);
 
 /**
  * @brief Converts OpenVINO data type to cuda data type
  */
 template <>
-inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::element::Type type) {
-    using ngraph::element::Type_t;
+inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ov::element::Type type) {
+    using ov::element::Type_t;
     switch (static_cast<Type_t>(type)) {
 #if CUDART_VERSION >= 11000
         case Type_t::bf16:
@@ -74,8 +74,8 @@ inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ngraph::el
  * @brief Converts OpenVINO data type to cuDNN data type
  */
 template <>
-inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::element::Type type) {
-    using ngraph::element::Type_t;
+inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ov::element::Type type) {
+    using ov::element::Type_t;
     switch (static_cast<Type_t>(type)) {
         case Type_t::boolean:
             return CUDNN_DATA_HALF;
@@ -102,8 +102,8 @@ inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ngraph::
 }
 
 template <>
-inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ngraph::element::Type type) {
-    using nType_t = ngraph::element::Type_t;
+inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ov::element::Type type) {
+    using nType_t = ov::element::Type_t;
     using kType_t = kernel::Type_t;
     switch (static_cast<nType_t>(type)) {
         case nType_t::boolean:

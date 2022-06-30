@@ -13,7 +13,7 @@ namespace CUDAPlugin {
 
 class BroadcastOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v3::Broadcast;
+    using NodeOp = ov::op::v3::Broadcast;
     BroadcastOp(const CreationContext& context,
                 const NodeOp& stridedSliceOp,
                 IndexCollection&& inputIds,
