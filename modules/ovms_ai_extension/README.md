@@ -1,10 +1,18 @@
 # OpenVINO™ Model Server - AI Extension
 
-This document describes on how to use the OpenVINO™ Model Server - AI Extension to run inference on Intel® CPU, iGPU and Intel® Movidius™ Myriad VPU. 
+<a id="about"> </a>
+## About OpenVINO™ Model Server - AI Extension 
+
+The OpenVINO™ Model Server - AI Extension contains [OpenVINO™ Model Server (2021.4)](https://docs.openvino.ai/2021.4/ovms_what_is_openvino_model_server.html), powered by the [Intel® OpenVINO toolkit](https://docs.openvino.ai/latest/get_started.html) and an extension to enable exchange of video frames and inference results between [Azure Video Analyzer (AVA)](https://docs.microsoft.com/en-us/azure/azure-video-analyzer/video-analyzer-docs/overview) and OpenVINO™ Model Server (OVMS).
+
+![archtecture](assets/AI_extension.png)
+
+OpenVINO™ Model Server - AI Extension exposes an REST API that conforms to the HTTP extension [contract](https://docs.microsoft.com/en-us/azure/azure-video-analyzer/video-analyzer-docs/edge/http-extension-protocol) specified for AVA. This interface supports a range of model categories and returns JSON response including model metadata like attribute, labels or classes names. 
+
+Beside the REST API, the server also exposes the complete OpenVINO™ Model Server REST and gRPC API, which could be used with an arbitrary OpenVINO™ model. 
 
 <a id="top"> </a>
 ## Table of Contents
-* [About OpenVINO™ Model Server - AI Extension](#about)
 * [Deploying OpenVINO™ Model Server - AI Extension](#deploy)
 * [Configuration of OpenVINO™ Model Server - AI Extension](#configuration)
 * [Running the OpenVINO™ Model Server - AI Extension on Linux machine](#run_on_linux)
@@ -18,16 +26,6 @@ This document describes on how to use the OpenVINO™ Model Server - AI Extensio
 * [Models configuration](#model_config)
 * [Running Tests](#running_tests)
 
-<a id="about"> </a>
-## About OpenVINO™ Model Server - AI Extension 
-
-The OpenVINO™ Model Server - AI Extension contains [OpenVINO™ Model Server (OVMS)](https://docs.openvino.ai/latest/openvino_docs_ovms.html), powered by the [Intel® OpenVINO toolkit](https://docs.openvino.ai/latest/get_started.html) and an extension to enable exchange of video frames and inference results between [Azure Video Analyzer (AVA)](https://docs.microsoft.com/en-us/azure/azure-video-analyzer/video-analyzer-docs/overview) and OpenVINO™ Model Server (OVMS).
-
-![archtecture](assets/AI_extension.png)
-
-OpenVINO™ Model Server - AI Extension exposes an REST API that conforms to the HTTP extension [contract](https://docs.microsoft.com/en-us/azure/azure-video-analyzer/video-analyzer-docs/edge/http-extension-protocol) specified for AVA. This interface supports a range of model categories and returns JSON response including model metadata like attribute, labels or classes names. 
-
-Beside the REST API, the server also exposes the complete OpenVINO™ Model Server REST and gRPC API, which could be used with an arbitrary OpenVINO™ model. 
 
 <a id="deploy"> </a>
 ## Deploying OpenVINO™ Model Server - AI Extension  
