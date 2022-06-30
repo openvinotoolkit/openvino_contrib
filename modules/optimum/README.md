@@ -40,7 +40,7 @@ To use PyTorch or TensorFlow models, these frameworks should be installed as wel
 
 This module provides an inference API for Hugging Face models. It is possible to use PyTorch or TensorFlow models, or to use the native OpenVINO IR format (a pair of files `ov_model.xml` and `ov_model.bin`). When using PyTorch or TensorFlow models, openvino-optimum converts the model in the background, for use with OpenVINO Runtime.
 
-To use the OpenVINO backend, import one of the `AutoModel` classes with an `OV` prefix. Specify a model name or local path in the `from_pretrained` method. When specifying a model name from [Hugging Face's Model Hub](https://huggingface.co/models), for example `bert-base-uncased`, the model will be downloaded and converted in the background. To load an OpenVINO IR file, `<name_or_path> should be the directory that contains `ov_model.xml` and `ov_model.bin`. If this directory does not contain a configuration file, a `config` parameter should also be specified.
+To use the OpenVINO backend, import one of the `AutoModel` classes with an `OV` prefix. Specify a model name or local path in the `from_pretrained` method. When specifying a model name from [Hugging Face's Model Hub](https://huggingface.co/models), for example `bert-base-uncased`, the model will be downloaded and converted in the background. To load an OpenVINO IR file, `<name_or_path>` should be the directory that contains `ov_model.xml` and `ov_model.bin`. If this directory does not contain a configuration file, a `config` parameter should also be specified.
 
 ```python
 from optimum.intel.openvino import OVAutoModel
