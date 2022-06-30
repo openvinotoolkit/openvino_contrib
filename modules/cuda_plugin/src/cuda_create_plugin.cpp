@@ -7,7 +7,7 @@
 namespace CUDAPlugin {
 namespace {
 
-const InferenceEngine::Version version{{2, 1}, CI_BUILD_NUMBER, "CUDAPlugin"};
+const InferenceEngine::Version version{{2, 1}, CI_BUILD_NUMBER, "openvino_cuda_plugin"};
 
 IE_DEFINE_PLUGIN_CREATE_FUNCTION(Plugin, version)
 

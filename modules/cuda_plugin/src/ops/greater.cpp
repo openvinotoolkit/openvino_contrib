@@ -9,7 +9,7 @@
 namespace CUDAPlugin {
 
 GreaterOp::GreaterOp(const CreationContext& context,
-                     const ngraph::Node& node,
+                     const ov::Node& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : Comparison(context, node, std::move(inputIds), std::move(outputIds), kernel::Comparison::Op_t::GREATER) {}

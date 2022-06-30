@@ -21,7 +21,7 @@
 namespace CUDAPlugin {
 
 OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
-                                           const std::shared_ptr<ngraph::Node>& node,
+                                           const std::shared_ptr<ov::Node>& node,
                                            OperationBase::IndexCollection&& inputIds,
                                            OperationBase::IndexCollection&& outputIds) {
     using ArgIndices = Convolution::Details::FusedConvolutionIndices;

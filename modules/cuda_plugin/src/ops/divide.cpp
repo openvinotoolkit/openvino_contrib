@@ -10,10 +10,10 @@
 namespace CUDAPlugin {
 
 static OperationBase::Ptr divideFactory(const CreationContext& context,
-                                        const std::shared_ptr<ngraph::Node>& in_node,
+                                        const std::shared_ptr<ov::Node>& in_node,
                                         OperationBase::IndexCollection&& inputIds,
                                         OperationBase::IndexCollection&& outputIds) {
-    auto node = std::dynamic_pointer_cast<ngraph::op::v1::Divide>(in_node);
+    auto node = std::dynamic_pointer_cast<ov::op::v1::Divide>(in_node);
     Expects(node);
 
     const OperationBase::IndexCollection inputs{inputIds};

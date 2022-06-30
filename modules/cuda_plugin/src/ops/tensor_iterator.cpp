@@ -55,7 +55,7 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
 
         // Set invariant input
         if (const auto& invariantInput =
-                std::dynamic_pointer_cast<ngraph::op::util::SubGraphOp::InvariantInputDescription>(loop_input_desc)) {
+                std::dynamic_pointer_cast<ov::op::util::SubGraphOp::InvariantInputDescription>(loop_input_desc)) {
             invariant_inputs_.push_back(invariantInput->m_input_index);
         }
 

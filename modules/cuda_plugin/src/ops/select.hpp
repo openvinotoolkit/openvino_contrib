@@ -16,7 +16,7 @@ class SelectOp : public OperationBase {
 
 public:
     SelectOp(const CreationContext& context,
-             const ngraph::Node& node,
+             const ov::Node& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
 
@@ -45,7 +45,7 @@ private:
     unsigned max_threads_per_block_{0};
     unsigned blocks_number_{0};
     unsigned threads_per_block_{0};
-    ngraph::element::Type_t operation_type_;
+    ov::element::Type_t operation_type_;
 
     std::optional<kernel::SelectKernelOp> kernel_op_;
 };

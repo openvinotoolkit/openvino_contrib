@@ -18,7 +18,7 @@ namespace CUDAPlugin {
 class TopKOp : public OperationBase {
 public:
     explicit TopKOp(const CreationContext& context,
-                    const ngraph::Node& node,
+                    const ov::Node& node,
                     IndexCollection&& inputIds,
                     IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

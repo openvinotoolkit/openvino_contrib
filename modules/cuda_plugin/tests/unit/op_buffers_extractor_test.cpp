@@ -35,31 +35,31 @@ class OperationBufferExtractorTest: public testing::Test {
      */
     void SetUp() override {
         auto input = std::make_shared<ngraph::opset1::Parameter>(
-                ngraph::element::f32, ngraph::Shape({ 3 }));
+                ov::element::f32, ov::Shape({ 3 }));
 
         std::vector<float> multiplier_values = { 0.23, 0.23, 0.23 };
         auto multiplier = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::f32, ngraph::Shape { 3 }, multiplier_values);
+                ov::element::f32, ov::Shape { 3 }, multiplier_values);
 
         auto multiply = std::make_shared<ngraph::opset1::Multiply>(input,
                 multiplier);
 
         std::vector<float> bias_values = { -0.03, 0.13, 0.65 };
         auto bias = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::f32, ngraph::Shape { 3 }, bias_values);
+                ov::element::f32, ov::Shape { 3 }, bias_values);
 
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiply, bias);
 
         std::vector<int32_t> unsqueese_axes_values = { 1 };
         auto unsqueese_axes = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::i32, ngraph::Shape { 1 }, unsqueese_axes_values);
+                ov::element::i32, ov::Shape { 1 }, unsqueese_axes_values);
         auto unsqueese = std::make_shared<ngraph::opset1::Unsqueeze>(add_0, unsqueese_axes);
 
         auto relu = std::make_shared<ngraph::opset1::Relu>(unsqueese);
 
         std::vector<int32_t> squeeze_axes_values = { 1 };
         auto squeeze_axes = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::i32, ngraph::Shape { 1 }, squeeze_axes_values);
+                ov::element::i32, ov::Shape { 1 }, squeeze_axes_values);
         auto squeeze = std::make_shared<ngraph::opset1::Squeeze>(relu, squeeze_axes);
         auto squeeze_id = squeeze->get_instance_id();
 
@@ -67,13 +67,12 @@ class OperationBufferExtractorTest: public testing::Test {
 
         std::vector<int32_t> reshape_pattern_values = { 0, 1 };
         auto reshape_pattern = std::make_shared<ngraph::opset1::Constant>(
-                ngraph::element::i32, ngraph::Shape { 2 }, reshape_pattern_values);
+                ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
-        ngraph::ParameterVector inputs { input };
-        ngraph::NodeVector outputs { reshape };
-        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs,
-                "SimpleGraph");
+        ov::ParameterVector inputs{input};
+        ov::NodeVector outputs{reshape};
+        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "SimpleGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
         extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
@@ -137,7 +136,7 @@ protected:
 
 protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
-    std::vector<std::shared_ptr<ngraph::Node>> exec_sequence_;
+    std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
     CUDAPlugin::WorkbufferIds buffer_indices_;
 };
@@ -338,34 +337,34 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
      */
     void SetUp() override {
         auto input = std::make_shared<ngraph::opset1::Parameter>(
-            ngraph::element::f32, ngraph::Shape({ 1, 8, 16, 16 }));
+            ov::element::f32, ov::Shape({ 1, 8, 16, 16 }));
 
         std::vector<float> multiplier_values = { 0.23 };
         auto multiplier = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::f32, ngraph::Shape { 1 }, multiplier_values);
+            ov::element::f32, ov::Shape { 1 }, multiplier_values);
 
         auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
 
         std::vector<float> adder_0_values = { 0.33 };
         auto adder_0 = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::f32, ngraph::Shape { 1, 8, 16, 16 }, adder_0_values);
+            ov::element::f32, ov::Shape { 1, 8, 16, 16 }, adder_0_values);
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
 
         auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(
-            ngraph::OutputVector{multiply, add_0}, 1);
+            ov::OutputVector{multiply, add_0}, 1);
 
         std::vector<float> adder_1_values = { 0.55 };
         auto adder_1 = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::f32, ngraph::Shape { 1, 16, 16, 16 }, adder_1_values);
+            ov::element::f32, ov::Shape { 1, 16, 16, 16 }, adder_1_values);
         auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
 
         std::vector<int32_t> reshape_pattern_values = { 0, 1 };
         auto reshape_pattern = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::i32, ngraph::Shape { 2 }, reshape_pattern_values);
+            ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
-        ngraph::ParameterVector inputs { input };
-        ngraph::NodeVector outputs { reshape };
+        ov::ParameterVector inputs{input};
+        ov::NodeVector outputs{reshape};
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
@@ -420,7 +419,7 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
 
    protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
-    std::vector<std::shared_ptr<ngraph::Node>> exec_sequence_;
+    std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
 };
 
@@ -475,37 +474,37 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(ngraph::element::f32, ngraph::Shape({1, 8, 16, 16}));
+        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
 
         std::vector<float> multiplier_values = {0.23};
         auto multiplier =
-            std::make_shared<ngraph::opset1::Constant>(ngraph::element::f32, ngraph::Shape{1}, multiplier_values);
+            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
 
         auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
 
         std::vector<float> adder_0_values = {0.33};
         auto adder_0 = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::f32, ngraph::Shape{1, 8, 16, 16}, adder_0_values);
+            ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
 
         auto reshape_const = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::i32, ngraph::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
+            ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
         auto reshape0 = std::make_shared<ngraph::opset1::Reshape>(multiply, reshape_const, true);
 
-        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ngraph::OutputVector{reshape0, add_0}, 1);
+        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
         auto adder_1 = std::make_shared<ngraph::opset1::Constant>(
-            ngraph::element::f32, ngraph::Shape{1, 16, 16, 16}, adder_1_values);
+            ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
         auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
 
         std::vector<int32_t> reshape_pattern_values = {0, 1};
         auto reshape_pattern =
-            std::make_shared<ngraph::opset1::Constant>(ngraph::element::i32, ngraph::Shape{2}, reshape_pattern_values);
+            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
         auto reshape1 = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
-        ngraph::ParameterVector inputs{input};
-        ngraph::NodeVector outputs{reshape1};
+        ov::ParameterVector inputs{input};
+        ov::NodeVector outputs{reshape1};
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
@@ -563,7 +562,7 @@ protected:
 
 protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
-    std::vector<std::shared_ptr<ngraph::Node>> exec_sequence_;
+    std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
 };
 

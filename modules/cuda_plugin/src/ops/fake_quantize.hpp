@@ -12,22 +12,22 @@
 
 namespace CUDAPlugin {
 
-class FakeQuatizeOp : public OperationBase {
+class FakeQuantizeOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::FakeQuantize;
-    FakeQuatizeOp(const CreationContext& context,
-                  const NodeOp& node,
-                  IndexCollection&& inputIds,
-                  IndexCollection&& outputIds);
+    using NodeOp = ov::op::v0::FakeQuantize;
+    FakeQuantizeOp(const CreationContext& context,
+                   const NodeOp& node,
+                   IndexCollection&& inputIds,
+                   IndexCollection&& outputIds);
 
 private:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) const final;
+                 const Workbuffers& workbuffers) const override final;
 
-    void InitSharedImmutableWorkbuffers(const Buffers& buffers) final;
-    WorkbufferRequest GetWorkBufferRequest() const final;
+    void InitSharedImmutableWorkbuffers(const Buffers& buffers) override final;
+    WorkbufferRequest GetWorkBufferRequest() const override final;
 
 private:
     std::unique_ptr<NumpyBroadcastParams> in_low_broadcast_params_;

@@ -25,7 +25,7 @@ struct DnnTensorID {
 };
 
 ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
-                                       const ngraph::Node& node,
+                                       const ov::Node& node,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds,
                                        const Convolution::Details::ConvolutionParams& params)

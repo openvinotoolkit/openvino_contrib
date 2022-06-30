@@ -9,14 +9,14 @@
 #include <cuda_operation_registry.hpp>
 
 #include "ngraph/axis_set.hpp"
-#include "ngraph/op/constant.hpp"
+#include <openvino/op/constant.hpp>
 #include "strided_slice.hpp"
 
 namespace CUDAPlugin {
 
 namespace {
-ngraph::AxisSet convert_mask_to_axis_set(const std::vector<int64_t>& mask) {
-    ngraph::AxisSet axis_set;
+ov::AxisSet convert_mask_to_axis_set(const std::vector<int64_t>& mask) {
+    ov::AxisSet axis_set;
     for (size_t i = 0; i < mask.size(); ++i) {
         if (mask[i] == 1) {
             axis_set.insert(i);
@@ -25,7 +25,7 @@ ngraph::AxisSet convert_mask_to_axis_set(const std::vector<int64_t>& mask) {
     return axis_set;
 }
 
-void calcMatrixSizes(const ngraph::Shape& shape, std::vector<int64_t>& matrix) {
+void calcMatrixSizes(const ov::Shape& shape, std::vector<int64_t>& matrix) {
     size_t prev_shape_size = 1;
 
     for (size_t src_shape_idx = shape.size(); src_shape_idx > 0; --src_shape_idx) {
@@ -50,7 +50,7 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
     const auto begin_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(1));
     const auto end_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(2));
     const auto stride_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(3));
-    slice_plan_ = ngraph::make_slice_plan(stridedSliceOp.get_input_shape(0),
+    slice_plan_ = make_slice_plan(stridedSliceOp.get_input_shape(0),
                                           begin_const,
                                           end_const,
                                           stride_const,
@@ -116,10 +116,10 @@ void StridedSliceOp::uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, c
     stream.upload(buffer, data.data(), size_bytes(data));
 }
 
-std::vector<int64_t> StridedSliceOp::getNodeConstantValues(const ngraph::Node* node) const {
-    auto constant = dynamic_cast<const ngraph::op::v0::Constant*>(node);
+std::vector<int64_t> StridedSliceOp::getNodeConstantValues(const ov::Node* node) const {
+    auto constant = dynamic_cast<const ov::op::v0::Constant*>(node);
     Expects(constant);
-    Expects(ngraph::element::Type_t::i64 == node->get_element_type());
+    Expects(ov::element::Type_t::i64 == node->get_element_type());
     const int64_t* begin = constant->get_data_ptr<int64_t>();
     return std::vector<int64_t>(begin, begin + shape_size(constant->get_shape()));
 }

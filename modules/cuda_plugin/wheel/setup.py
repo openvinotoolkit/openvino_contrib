@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2018-2021 Intel Corporation
+# Copyright (C) 2018-2022 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 import os.path
@@ -29,7 +29,7 @@ if not any(pl in sys.platform for pl in platforms):
 
 PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-cuda')
 OPENVINO_REPO_URI = config('OPENVINO_REPO_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino.git')
-WHEEL_VERSION = config('WHEEL_VERSION', '2021.4.1')
+WHEEL_VERSION = config('WHEEL_VERSION', '2022.1.0')
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', WHEEL_VERSION)
 CUDA_PLUGIN_CMAKE_TARGET_NAME = 'CUDAPlugin'
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'

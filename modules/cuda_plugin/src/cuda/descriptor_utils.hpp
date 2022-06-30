@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ngraph/node.hpp>
 #include <cuda/dnn.hpp>
+#include <ngraph/node.hpp>
 
 namespace CUDA {
 
-DnnTensorDescriptor makeDnnTensorDescr(const ngraph::element::Type& type,
-        const ngraph::Shape& shape);
+DnnTensorDescriptor makeDnnTensorDescr(const ov::element::Type& type, const ov::Shape& shape);
 
-CUDA::DnnTensorDescriptor makeInputDnnTensorDescr(const ngraph::Node& node, int n);
+CUDA::DnnTensorDescriptor makeInputDnnTensorDescr(const ov::Node& node, int n);
 
-CUDA::DnnTensorDescriptor makeOutputDnnTensorDescr(const ngraph::Node& node, int n);
+CUDA::DnnTensorDescriptor makeOutputDnnTensorDescr(const ov::Node& node, int n);
 
-} // namespace CUDA
+}  // namespace CUDA

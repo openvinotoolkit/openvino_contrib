@@ -10,9 +10,9 @@
 #include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/op/select.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/parameter.hpp>
+#include <openvino/op/select.hpp>
 #include <ops/parameter.hpp>
 #include <random>
 
@@ -26,9 +26,9 @@ struct SelectTest : testing::Test {
     using OffsetType = size_t;
     static constexpr auto kOffsetBufferSize = kNumOfDim * sizeof(OffsetType);
 
-    const ngraph::Shape tensorShape{32, 256, 256};
-    // const ngraph::Shape tensorShape{1, 8, 129};
-    const size_t bufferLength = ngraph::shape_size(tensorShape);
+    const ov::Shape tensorShape{32, 256, 256};
+    // const ov::Shape tensorShape{1, 8, 129};
+    const size_t bufferLength = ov::shape_size(tensorShape);
 
     const size_t conditionBufferSize = bufferLength * sizeof(uint8_t);
     const size_t thenBufferSize = bufferLength * sizeof(float);
@@ -42,17 +42,15 @@ struct SelectTest : testing::Test {
     CUDA::Allocation outputAlloc = threadContext.stream().malloc(outputBufferSize);
     std::vector<cdevptr_t> inputs{conditionAlloc, conditionAlloc, elseAlloc};
     std::vector<devptr_t> outputs{outputAlloc};
-    InferenceEngine::BlobMap empty;
-    std::function<std::shared_ptr<ngraph::op::v1::Select>()> create_node = [this]() {
-        auto condition =
-            std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::boolean, ngraph::PartialShape{tensorShape});
-        auto then_flow =
-            std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{tensorShape});
-        auto else_flow =
-            std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{tensorShape});
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
+    std::function<std::shared_ptr<ov::op::v1::Select>()> create_node = [this]() {
+        auto condition = std::make_shared<ov::op::v0::Parameter>(ov::element::boolean, ov::PartialShape{tensorShape});
+        auto then_flow = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
+        auto else_flow = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{tensorShape});
 
         auto node =
-            std::make_shared<ngraph::op::v1::Select>(condition->output(0), then_flow->output(0), else_flow->output(0));
+            std::make_shared<ov::op::v1::Select>(condition->output(0), then_flow->output(0), else_flow->output(0));
         return node;
     };
 
@@ -92,7 +90,7 @@ TEST_F(SelectTest, DISABLED_benchmark) {
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
 
     std::vector<uint8_t> conditions(bufferLength);

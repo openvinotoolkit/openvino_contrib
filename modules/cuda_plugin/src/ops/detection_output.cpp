@@ -54,23 +54,23 @@ DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
         kernel_ =
             std::make_optional<kernel::DetectionOutput>(convertDataType<CUDAPlugin::kernel::Type_t>(element_type_),
                                                         max_threads_per_block,
-                                                        ngraph::shape_size(node.get_input_shape(0)),
-                                                        ngraph::shape_size(node.get_input_shape(1)),
-                                                        ngraph::shape_size(node.get_input_shape(2)),
-                                                        ngraph::shape_size(node.get_input_shape(3)),
-                                                        ngraph::shape_size(node.get_input_shape(4)),
-                                                        ngraph::shape_size(node.get_output_shape(0)),
+                                                        ov::shape_size(node.get_input_shape(0)),
+                                                        ov::shape_size(node.get_input_shape(1)),
+                                                        ov::shape_size(node.get_input_shape(2)),
+                                                        ov::shape_size(node.get_input_shape(3)),
+                                                        ov::shape_size(node.get_input_shape(4)),
+                                                        ov::shape_size(node.get_output_shape(0)),
                                                         kernel_attrs);
     } else {
         kernel_ =
             std::make_optional<kernel::DetectionOutput>(convertDataType<CUDAPlugin::kernel::Type_t>(element_type_),
                                                         max_threads_per_block,
-                                                        ngraph::shape_size(node.get_input_shape(0)),
-                                                        ngraph::shape_size(node.get_input_shape(1)),
-                                                        ngraph::shape_size(node.get_input_shape(2)),
+                                                        ov::shape_size(node.get_input_shape(0)),
+                                                        ov::shape_size(node.get_input_shape(1)),
+                                                        ov::shape_size(node.get_input_shape(2)),
                                                         0,
                                                         0,
-                                                        ngraph::shape_size(node.get_output_shape(0)),
+                                                        ov::shape_size(node.get_output_shape(0)),
                                                         kernel_attrs);
     }
 }

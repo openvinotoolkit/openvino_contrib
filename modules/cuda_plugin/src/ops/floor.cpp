@@ -5,14 +5,14 @@
 #include "floor.hpp"
 
 #include <cuda_operation_registry.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
-#include "ngraph/op/constant.hpp"
 
 namespace CUDAPlugin {
 
 FloorOp::FloorOp(const CreationContext& context,
-                 const ngraph::Node& node,
+                 const ov::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
@@ -24,7 +24,7 @@ FloorOp::FloorOp(const CreationContext& context,
     const auto input_shape = node.get_input_shape(0);
     const auto output_shape = node.get_output_shape(0);
     Expects(input_shape == output_shape);
-    size_t num_elements = ngraph::shape_size(input_shape);
+    size_t num_elements = ov::shape_size(input_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_ = kernel::Floor{
         convertDataType<CUDAPlugin::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements};

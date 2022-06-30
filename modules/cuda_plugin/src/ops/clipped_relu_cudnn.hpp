@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/clamp.hpp>
+#include <openvino/op/clamp.hpp>
 
 #include "activation_forward_cudnn_base.hpp"
 
@@ -12,7 +12,7 @@ namespace CUDAPlugin {
 
 class ClippedReluCuDnnOp : public ActivationForwardCuDnnOpBase {
 public:
-    using NodeOp = ngraph::op::Clamp;
+    using NodeOp = ov::op::v0::Clamp;
 
     ClippedReluCuDnnOp(const CreationContext& context,
                        const NodeOp& node,

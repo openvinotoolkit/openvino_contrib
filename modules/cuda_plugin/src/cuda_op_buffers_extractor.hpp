@@ -26,7 +26,7 @@ namespace CUDAPlugin {
  */
 class OperationBuffersExtractor {
 public:
-    using NodePtr = std::shared_ptr<ngraph::Node>;
+    using NodePtr = std::shared_ptr<ov::Node>;
     using Byte = char;
     static constexpr char kOutputNumberSeparator = '_';
 
@@ -45,14 +45,14 @@ public:
      * @param node ngraph node for which input tensors ids should be provided
      * @returns Input tensors ids
      */
-    std::vector<TensorID> inputTensorIds(const ngraph::Node& node) const;
+    std::vector<TensorID> inputTensorIds(const ov::Node& node) const;
 
     /**
      * Provides output tensors ids of the given ngraph node
      * @param node ngraph node for which output tensors ids should be provided
      * @returns Output tensors ids
      */
-    std::vector<TensorID> outputTensorIds(const ngraph::Node& node) const;
+    std::vector<TensorID> outputTensorIds(const ov::Node& node) const;
 
     /**
      * Provides lifespan start of the given mutable buffer
@@ -155,7 +155,7 @@ public:
      * doesn't change tensor data itself. For such nodes, input and output
      * data tensors will reuse the same buffer allocation.
      */
-    static bool isReshapeOnlyNode(const ngraph::Node& node);
+    static bool isReshapeOnlyNode(const ov::Node& node);
 
 private:
     /**
@@ -171,14 +171,14 @@ private:
     };
 
     /**
-     * Encapsulates mutable tensors extraction for the ngraph::Parameter node
-     * @param node ngraph::Parameter node from which tensors to be extracted
+     * Encapsulates mutable tensors extraction for the ov::Parameter node
+     * @param node ov::Parameter node from which tensors to be extracted
      */
     void extractParameterTensors(const NodePtr& node, int node_idx);
 
     /**
-     * Encapsulates mutable tensors extraction for the ngraph::Result node
-     * @param node ngraph::Result node from which tensors to be extracted
+     * Encapsulates mutable tensors extraction for the ov::Result node
+     * @param node ov::Result node from which tensors to be extracted
      */
     void extractResultTensors(const NodePtr& node);
 
@@ -215,7 +215,7 @@ private:
      * @returns internal tensor name
      */
     template <class Node>
-    static inline std::string GetTensorNameInternal(const ngraph::Output<Node>& output) {
+    static inline std::string GetTensorNameInternal(const ov::Output<Node>& output) {
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
     }
 
@@ -225,7 +225,7 @@ private:
      * @returns internal tensor name
      */
     template <class Node>
-    static inline std::string GetTensorNameInternal(const ngraph::Input<Node>& input) {
+    static inline std::string GetTensorNameInternal(const ov::Input<Node>& input) {
         const auto output = input.get_source_output();
         return output.get_node()->get_name() + kOutputNumberSeparator + std::to_string(output.get_index());
     }
@@ -233,32 +233,32 @@ private:
     /**
      * Checks whether the given node is a parameter node
      */
-    static bool IsParameterNode(const ngraph::Node& node);
+    static bool IsParameterNode(const ov::Node& node);
 
     /**
      * Checks whether the given node is a result node
      */
-    static bool IsResultNode(const ngraph::Node& node);
+    static bool IsResultNode(const ov::Node& node);
 
     /**
      * Checks whether the given node is a constant node
      */
-    static bool IsConstantNode(const ngraph::Node& node);
+    static bool IsConstantNode(const ov::Node& node);
 
     /**
      * Checks whether the given node is a ConcatOptimized node (concat optimized)
      */
-    static bool IsConcatOptimizedNode(const ngraph::Node& node);
+    static bool IsConcatOptimizedNode(const ov::Node& node);
 
     /**
      * Exception helper
      */
-    static void ThrowBufferSizesAreNotMatchError(const ngraph::Input<ngraph::Node>& input);
+    static void ThrowBufferSizesAreNotMatchError(const ov::Input<ov::Node>& input);
 
     /**
      * Exception helper
      */
-    static void ThrowGraphIsBadFormedError(const ngraph::Input<ngraph::Node>& input);
+    static void ThrowGraphIsBadFormedError(const ov::Input<ov::Node>& input);
 
 private:
     std::unordered_map<BufferID, BufferDesc> mutable_buffers_;

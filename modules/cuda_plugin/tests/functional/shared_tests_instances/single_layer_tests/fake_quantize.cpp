@@ -38,7 +38,8 @@ const std::vector<float> inputParams = {};
 const auto fqParams = ::testing::Combine(::testing::ValuesIn(levels),
                                          ::testing::ValuesIn(constShapes),
                                          ::testing::Values(fqArgs),
-                                         ::testing::Values(inputParams));
+                                         ::testing::Values(inputParams),
+                                         ::testing::Values(ngraph::op::AutoBroadcastSpec()));
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantize,
                         FakeQuantizeLayerTest,
@@ -58,7 +59,8 @@ const std::vector<std::vector<size_t>> inputShapesBr = {{2, 8}};
 const auto fqParamsBr = ::testing::Combine(::testing::ValuesIn(levels),
                                            ::testing::ValuesIn(constShapesBr),
                                            ::testing::Values(fqArgs),
-                                           ::testing::Values(inputParams));
+                                           ::testing::Values(inputParams),
+                                           ::testing::Values(ngraph::op::AutoBroadcastSpec()));
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantizeBr,
                         FakeQuantizeLayerTest,

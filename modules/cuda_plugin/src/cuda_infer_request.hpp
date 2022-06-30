@@ -38,6 +38,10 @@ public:
                      const InferenceEngine::OutputsDataMap& networkOutputs,
                      const std::shared_ptr<ExecutableNetwork>& executableNetwork,
                      bool isBenchmarkMode = false);
+    CudaInferRequest(const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+                     const std::vector<std::shared_ptr<const ov::Node>>& outputs,
+                     const std::shared_ptr<ExecutableNetwork>& executableNetwork,
+                     bool isBenchmarkMode = false);
 
     Profiler::PerformaceCounters GetPerformanceCounts() const override;
     std::shared_ptr<ExecutableNetwork> GetExecNetwork();
@@ -54,6 +58,13 @@ public:
     void Cancel() override;
 
 private:
+    void createInferRequest();
+    void allocateDeviceBuffers();
+    void allocateBlobs();
+    InferenceEngine::Blob::Ptr GetBlob(const std::string& name) override;
+    void SetBlob(const std::string& name, const InferenceEngine::Blob::Ptr& userBlob) override;
+    void SetBlobsImpl(const std::string& name, const InferenceEngine::BatchedBlob::Ptr& batchedBlob) override;
+
     /**
      * Allocates blob with given shape, type and layout
      */
@@ -61,9 +72,9 @@ private:
                                                    InferenceEngine::Precision precision,
                                                    InferenceEngine::Layout layout);
     /**
-     * ngraph::element::Type_t to InferenceEngine::Precision::ePrecision conversion helper
+     * ov::element::Type_t to InferenceEngine::Precision::ePrecision conversion helper
      */
-    static InferenceEngine::Precision::ePrecision convertType(ngraph::element::Type_t);
+    static InferenceEngine::Precision::ePrecision convertType(ov::element::Type_t);
     /**
      * Converts blob data from src blob type to dst blob type. Writes result into dst
      */
@@ -81,6 +92,8 @@ private:
      * InferRequestInternal::execDataPreprocessing() doesn't support conversion from fp32 to fp16.
      * network_input_blobs_ holds fp16 network blobs while InferRequestInternal::execDataPreprocessing()
      * performs preprocessing on fp32 blobs.
+     * TODO: In OpenVINO 2022.1 conversion is done in graph, it makes @network_input_blobs_ deprecated.
+     *       Consider to remove it in next releases
      */
     InferenceEngine::BlobMap network_input_blobs_;
     InferenceEngine::BlobMap network_output_blobs_;
@@ -88,6 +101,8 @@ private:
     std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
     Profiler profiler_;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> input_tensors_;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> output_tensors_;
     bool is_benchmark_mode_;
 };
 // ! [infer_request:header]

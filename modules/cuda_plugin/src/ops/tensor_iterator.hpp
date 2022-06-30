@@ -8,7 +8,7 @@
 #include <cuda_operation_base.hpp>
 #include <kernels/insert.hpp>
 #include <kernels/slice.hpp>
-#include <ngraph/op/tensor_iterator.hpp>
+#include <openvino/op/tensor_iterator.hpp>
 
 #include "subgraph.hpp"
 
@@ -16,7 +16,7 @@ namespace CUDAPlugin {
 
 class TensorIteratorOp : public SubGraph {
 public:
-    using NodeOp = ngraph::op::TensorIterator;
+    using NodeOp = ov::op::v0::TensorIterator;
     TensorIteratorOp(const CreationContext& context,
                      const NodeOp& node,
                      IndexCollection&& inputIds,

@@ -57,7 +57,9 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
         ASSERT_TRUE(parameterOp);
         allocate();
         fillBlobRandom<uint8_t>(blob);
-        blobs.insert({node->get_friendly_name(), blob});
+        blobsMapping[node->get_friendly_name()] = 0;
+        blobs.push_back(std::make_shared<ngraph::HostTensor>(
+            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};
@@ -70,9 +72,11 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
     IOperationExec::Inputs inputs;
     std::vector<devptr_t> outputs{outAlloc};
     Blob::Ptr blob;
-    InferenceEngine::BlobMap blobs;
-    InferenceEngine::BlobMap empty;
-};
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> blobs;
+    std::map<std::string, std::size_t> blobsMapping;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
+ };
 
  TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ParameterStubNode>()));
@@ -82,7 +86,7 @@ TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
     CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
-    InferenceRequestContext context{blobs, empty, threadContext, token, profiler};
+    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
@@ -96,7 +100,7 @@ TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    InferenceRequestContext context{blobs, empty, threadContext, token, profiler};
+    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);

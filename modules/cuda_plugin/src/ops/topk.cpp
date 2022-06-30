@@ -39,11 +39,11 @@ std::vector<size_t> shapeStridesByAxis(const std::vector<size_t>& shape, const s
 }
 
 template <typename T>
-T getK(const ngraph::op::v0::Constant* k_constant) {
+T getK(const ov::op::v0::Constant* k_constant) {
     return *static_cast<const T*>(k_constant->get_data_ptr());
 }
 
-size_t getK(const ngraph::op::v0::Constant* k_constant) {
+size_t getK(const ov::op::v0::Constant* k_constant) {
     switch (k_constant->get_element_type()) {
         case ngraph::element::Type_t::i8:
             return getK<int8_t>(k_constant);
@@ -73,11 +73,11 @@ size_t getK(const ngraph::op::v0::Constant* k_constant) {
 }  // namespace
 
 TopKOp::TopKOp(const CreationContext& context,
-               const ngraph::Node& node,
+               const ov::Node& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    const auto& topKOp = dynamic_cast<const ngraph::op::v1::TopK&>(node);
+    const auto& topKOp = dynamic_cast<const ov::op::v1::TopK&>(node);
 
     const ngraph::element::Type element_type{topKOp.get_input_element_type(0)};
     const ngraph::element::Type index_element_type{topKOp.get_index_element_type()};
@@ -105,28 +105,28 @@ TopKOp::TopKOp(const CreationContext& context,
     std::copy(input_strides.begin(), input_strides.end(), kernel_param_.input_strides);
     std::copy(output_strides.begin(), output_strides.end(), kernel_param_.output_strides);
 
-    auto convertComputeType = [](const ngraph::op::v1::TopK::Mode& compute_mode) {
+    auto convertComputeType = [](const ov::op::v1::TopK::Mode& compute_mode) {
         switch (compute_mode) {
-            case ngraph::op::TopKMode::MAX:
+            case ov::op::TopKMode::MAX:
                 return kernel::TopK::ComputeType::Max;
-            case ngraph::op::TopKMode::MIN:
+            case ov::op::TopKMode::MIN:
                 return kernel::TopK::ComputeType::Min;
         }
         throwIEException(fmt::format("Unknown compute_mode {}", compute_mode));
     };
-    auto convertSortType = [](const ngraph::op::v1::TopK::SortType& sort_type) {
+    auto convertSortType = [](const ov::op::v1::TopK::SortType& sort_type) {
         switch (sort_type) {
-            case ngraph::op::TopKSortType::NONE:
+            case ov::op::TopKSortType::NONE:
                 return kernel::TopK::SortType::None;
-            case ngraph::op::TopKSortType::SORT_INDICES:
+            case ov::op::TopKSortType::SORT_INDICES:
                 return kernel::TopK::SortType::SortIndices;
-            case ngraph::op::TopKSortType::SORT_VALUES:
+            case ov::op::TopKSortType::SORT_VALUES:
                 return kernel::TopK::SortType::SortValues;
         }
         throwIEException(fmt::format("Unknown sort_type {}", sort_type));
     };
 
-    const auto k_constant = dynamic_cast<ngraph::op::v0::Constant*>(topKOp.get_input_node_ptr(1));
+    const auto k_constant = dynamic_cast<ov::op::v0::Constant*>(topKOp.get_input_node_ptr(1));
     Expects(k_constant);
     const size_t k = getK(k_constant);
 

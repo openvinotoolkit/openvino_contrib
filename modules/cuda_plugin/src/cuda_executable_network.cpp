@@ -28,6 +28,7 @@
 #include "ops/result.hpp"
 #include "transformations/serialize.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
+#include "transformations/utils/utils.hpp"
 
 namespace CUDAPlugin {
 
@@ -38,17 +39,17 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
                                      InferenceEngine::ITaskExecutor::Ptr waitExecutor,
                                      Plugin::Ptr plugin)
     : InferenceEngine::ExecutableNetworkThreadSafeDefault(nullptr, nullptr),  // Disable default threads creation
-      cnn_network_(cnnNetwork),
       cfg_(std::move(cfg)),
       cuda_stream_executor_(std::move(waitExecutor)),
       plugin_(std::move(plugin)) {
     // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
     // you should select proper device based on KEY_DEVICE_ID or automatic behavior
     // In this case, _waitExecutor should also be created per device.
-    setNetworkInputs(cnn_network_.getInputsInfo());
-    setNetworkOutputs(cnn_network_.getOutputsInfo());
+    setNetworkInputs(cnnNetwork.getInputsInfo());
+    setNetworkOutputs(cnnNetwork.getOutputsInfo());
+    SetPointerToPlugin(plugin_->shared_from_this());
     try {
-        CompileNetwork(cnn_network_.getFunction());
+        CompileNetwork(cnnNetwork.getFunction(), cnnNetwork.getInputsInfo(), cnnNetwork.getOutputsInfo());
         InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
     } catch (const InferenceEngine::Exception&) {
@@ -82,20 +83,19 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
         model.read(dataBlob->buffer(), dataSize);
     }
 
+    auto cnnNetwork = plugin_->GetCore()->ReadNetwork(xmlString, std::move(dataBlob));
+
     // TODO: implement Import / Export of configuration options and merge with `cfg`
     // TODO: implement Import / Export of network precisions, layouts, preprocessing info
+    InferenceEngine::InputsDataMap inputInfoMap = cnnNetwork.getInputsInfo();
+    InferenceEngine::OutputsDataMap outputInfoMap = cnnNetwork.getOutputsInfo();
 
-    cnn_network_ = plugin_->GetCore()->ReadNetwork(xmlString, std::move(dataBlob));
-
-    setNetworkInputs(cnn_network_.getInputsInfo());
-    setNetworkOutputs(cnn_network_.getOutputsInfo());
+    setNetworkInputs(inputInfoMap);
+    setNetworkOutputs(outputInfoMap);
     SetPointerToPlugin(plugin_->shared_from_this());
 
     try {
-        GraphTransformer transformer;
-        auto original_function = cnn_network_.getFunction();
-        auto transformed_function = transformer.transform(CUDA::Device{cfg_.deviceId}, original_function, cfg_);
-        CompileNetwork(transformed_function);
+        CompileNetwork(cnnNetwork.getFunction(), cnnNetwork.getInputsInfo(), cnnNetwork.getOutputsInfo());
         InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
     } catch (const InferenceEngine::Exception&) {
@@ -107,19 +107,26 @@ ExecutableNetwork::ExecutableNetwork(std::istream& model,
     }
 }
 
-void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function) {
+void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Function>& function,
+                                       const InferenceEngine::InputsDataMap& inputInfoMap,
+                                       const InferenceEngine::OutputsDataMap& outputsInfoMap) {
     CUDA::Device device{cfg_.deviceId};
-    function_ = function;
-    // Generate backend specific blob mappings. For example Inference Engine uses not ngraph::Result nodes friendly name
+    GraphTransformer transformer;
+    export_function_ =
+        transformer.export_transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
+    function_ = transformer.transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
+    // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
+        // TODO: Try to figure out why sometimes result_index >= device_function->get_results().size()
+        const auto& result_index = function_->get_result_index(result->input_value(0));
         for (const auto& outputName : ResultOp::GetOutputTensorName(*result)) {
-            const auto& result_index = function_->get_result_index(result);
             output_index_.emplace(outputName, result_index);
         }
     }
     for (auto&& parameter : function_->get_parameters()) {
-        input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), function_->get_parameter_index(parameter));
+        const auto& parameter_index = function_->get_parameter_index(parameter);
+        input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), parameter_index);
     }
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
@@ -236,16 +243,15 @@ void ExecutableNetwork::InitExecutor() {
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
     // So Inference Engone provides executors cache.
-    _taskExecutor = InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
-    _callbackExecutor =
-        InferenceEngine::ExecutorManager::getInstance()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
+    _taskExecutor = _plugin->executorManager()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
+    _callbackExecutor = _plugin->executorManager()->getIdleCPUStreamsExecutor({"CudaCallbackExecutor"});
 }
 
 std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize,
                                                          const std::size_t memoryBlobSize) const {
     static constexpr std::size_t reasonable_limit_of_streams = 10;
     if (memoryBlobSize == 0) {
-        throwIEException("Model is not loaded properly. Size of tensors for model is 0 !!");
+        return 0;
     }
     CUDA::Device device{cfg_.deviceId};
     device.setCurrent();
@@ -296,14 +302,30 @@ InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateBenchmarkIn
                                                    _callbackExecutor);
 }
 
-InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferRequestImpl(
+InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::ExecutableNetwork::CreateInferRequestImpl(
     InferenceEngine::InputsDataMap networkInputs, InferenceEngine::OutputsDataMap networkOutputs) {
     return std::make_shared<CudaInferRequest>(
         networkInputs, networkOutputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
 }
 
+InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::ExecutableNetwork::CreateInferRequestImpl(
+    const std::vector<std::shared_ptr<const ov::Node>>& inputs,
+    const std::vector<std::shared_ptr<const ov::Node>>& outputs) {
+    return std::make_shared<CudaInferRequest>(
+        inputs, outputs, std::static_pointer_cast<ExecutableNetwork>(shared_from_this()));
+}
+
 InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferRequest() {
-    auto internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
+    InferenceEngine::IInferRequestInternal::Ptr internalRequest;
+    if (this->_plugin) {
+        const auto& core = _plugin->GetCore();
+        if (core && core->isNewAPI()) {
+            internalRequest = CreateInferRequestImpl(_parameters, _results);
+        }
+    }
+    if (!internalRequest) {
+        internalRequest = CreateInferRequestImpl(_networkInputs, _networkOutputs);
+    }
     return std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(internalRequest),
                                                    _taskExecutor,
                                                    cuda_stream_executor_,
@@ -331,7 +353,7 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (EXEC_NETWORK_METRIC_KEY(NETWORK_NAME) == name) {
-        auto networkName = function_->get_friendly_name();
+        auto networkName = export_function_->get_friendly_name();
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
     } else if (EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
         const unsigned value = memory_pool_->Size();
@@ -341,16 +363,21 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
     }
 }
 
-InferenceEngine::CNNNetwork ExecutableNetwork::GetExecGraphInfo() { return cnn_network_; }
+std::shared_ptr<ngraph::Function> ExecutableNetwork::GetExecGraphInfo() { return function_; }
 
 void ExecutableNetwork::Export(std::ostream& modelStream) {
     OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "ExecutableNetwork::Export");
 
     // Note: custom ngraph extensions are not supported
-    std::map<std::string, ngraph::OpSet> custom_opsets;
     std::stringstream xmlFile, binFile;
-    ngraph::pass::Serialize serializer(xmlFile, binFile, ngraph::pass::Serialize::Version::IR_V10, custom_opsets);
-    serializer.run_on_function(ngraph::clone_function(*function_));
+    auto& rt_info = export_function_->get_rt_info();
+    int64_t version = 11;
+    if (rt_info.count("version")) {
+        version = rt_info.at("version").as<int64_t>();
+    }
+
+    ov::pass::Serialize serializer(xmlFile, binFile, static_cast<ov::pass::Serialize::Version>(version));
+    serializer.run_on_function(ngraph::clone_function(*export_function_));
 
     auto m_constants = binFile.str();
     auto m_model = xmlFile.str();

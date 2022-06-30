@@ -37,7 +37,7 @@ private:
     std::vector<DevicePointer<void*>> getSharedWorkbuffers(const IOperationExec& operation);
 
 protected:
-    using SubGraphOp = ngraph::op::util::SubGraphOp;
+    using SubGraphOp = ov::op::util::SubGraphOp;
 
     SubGraph(const CreationContext& context,
              const SubGraphOp& node,
@@ -54,11 +54,11 @@ protected:
 
     struct OperationInfo {
         OperationInfo() = default;
-        OperationInfo(const std::size_t size, const ngraph::element::Type type, ngraph::Shape shape)
+        OperationInfo(const std::size_t size, const ov::element::Type type, ov::Shape shape)
             : size_{size}, type_{type}, shape_{std::move(shape)} {}
         std::size_t size_{};
-        ngraph::element::Type type_{};
-        ngraph::Shape shape_{};
+        ov::element::Type type_{};
+        ov::Shape shape_{};
     };
 
     std::unique_ptr<MemoryManager> memory_manager_;

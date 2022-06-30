@@ -6,7 +6,7 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/op/scatter_nd_update.hpp>
+#include <openvino/op/scatter_nd_update.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 
@@ -15,20 +15,20 @@
 namespace CUDAPlugin {
 
 ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
-                                     const ngraph::Node& node,
+                                     const ov::Node& node,
                                      IndexCollection&& inputIds,
                                      IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     Expects(node.get_input_size() == 3);
     Expects(node.get_output_size() == 1);
 
-    const ngraph::element::Type_t input_type = node.get_input_element_type(0);
+    const ov::element::Type_t input_type = node.get_input_element_type(0);
     switch (input_type) {
-        case ngraph::element::Type_t::undefined:
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::u1:
+        case ov::element::Type_t::undefined:
+        case ov::element::Type_t::dynamic:
+        case ov::element::Type_t::u1:
             throwIEException(fmt::format("Params element type = {} is not supported by ScatterNDUpdate operation!",
-                                         static_cast<ngraph::element::Type_t>(input_type)));
+                                         static_cast<ov::element::Type_t>(input_type)));
     }
 
     // update type must be the same as the input type
@@ -36,8 +36,8 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
     // output type must be the same as the input type
     Expects(node.get_output_element_type(0) == input_type);
 
-    const ngraph::element::Type_t indices_type = node.get_input_element_type(1);
-    if (indices_type != ngraph::element::Type_t::i64 && indices_type != ngraph::element::Type_t::i32) {
+    const ov::element::Type_t indices_type = node.get_input_element_type(1);
+    if (indices_type != ov::element::Type_t::i64 && indices_type != ov::element::Type_t::i32) {
         throwIEException(
             fmt::format("Params index type = {} is not supported by ScatterNDUpdate operation!", indices_type));
     }

@@ -31,8 +31,8 @@ ClampCudaOp::ClampCudaOp(const CreationContext& context,
                         element_type.get_type_name(),
                         out_element_type.get_type_name()));
     }
-    const size_t num_elements = ngraph::shape_size(node.get_input_shape(0));
-    Expects(ngraph::shape_size(node.get_output_shape(0)) == num_elements);
+    const size_t num_elements = ov::shape_size(node.get_input_shape(0));
+    Expects(ov::shape_size(node.get_output_shape(0)) == num_elements);
 
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     const double min = node.get_min();

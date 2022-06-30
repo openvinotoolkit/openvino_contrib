@@ -11,8 +11,8 @@
 #include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
-#include <ngraph/op/not.hpp>
-#include <ngraph/op/parameter.hpp>
+#include <openvino/op/logical_not.hpp>
+#include <openvino/op/parameter.hpp>
 #include <ops/parameter.hpp>
 #include <random>
 #include <typeinfo>
@@ -33,11 +33,12 @@ struct LogicalNotBenchmark : testing::Test {
     CUDA::Allocation out_alloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{in_alloc};
     std::vector<devptr_t> outputs{out_alloc};
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
     CUDAPlugin::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
-        auto param = std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{length});
-        auto node = std::make_shared<ngraph::op::v1::LogicalNot>(param->output(0));
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{length});
+        auto node = std::make_shared<ov::op::v1::LogicalNot>(param->output(0));
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
         auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
                                            node,
@@ -52,7 +53,7 @@ TEST_F(LogicalNotBenchmark, DISABLED_benchmark) {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(length);
     std::random_device r_device;

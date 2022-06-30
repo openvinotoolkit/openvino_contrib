@@ -15,8 +15,8 @@ MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
     : MultiplyCudaOpBase{context, node, std::move(inputIds), std::move(outputIds)} {
     const auto broatcast_type = node.get_autob().m_type;
     switch (broatcast_type) {
-        case ngraph::op::AutoBroadcastType::NONE:
-        case ngraph::op::AutoBroadcastType::NUMPY:
+        case ov::op::AutoBroadcastType::NONE:
+        case ov::op::AutoBroadcastType::NUMPY:
             break;
         default:
             throwIEException(fmt::format("MultiplyCudaOp: unsupported broadcast type: {}", broatcast_type));

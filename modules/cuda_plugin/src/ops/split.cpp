@@ -8,8 +8,8 @@
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/split.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/split.hpp>
 #include <utility>
 #include <vector>
 
@@ -19,14 +19,14 @@
 namespace CUDAPlugin {
 
 SplitOp::SplitOp(const CreationContext& context,
-                 const ngraph::Node& node,
+                 const ov::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    auto splitOp = dynamic_cast<const ngraph::op::v1::Split*>(&node);
+    auto splitOp = dynamic_cast<const ov::op::v1::Split*>(&node);
     Expects(splitOp);
     auto input_element_type = splitOp->get_input_element_type(0);
-    auto axisNode = dynamic_cast<ngraph::op::v0::Constant*>(splitOp->get_input_node_ptr(1));
+    auto axisNode = dynamic_cast<ov::op::v0::Constant*>(splitOp->get_input_node_ptr(1));
     Expects(axisNode);
     auto output_element_type = splitOp->get_output_element_type(0);
     Expects(splitOp->get_input_size() == 2);
@@ -35,13 +35,13 @@ SplitOp::SplitOp(const CreationContext& context,
     Expects(splitOp->get_output_size() == num_splits_);
     Expects(input_element_type == output_element_type);
     switch (input_element_type) {
-        case ngraph::element::Type_t::undefined:
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::u1:
+        case ov::element::Type_t::undefined:
+        case ov::element::Type_t::dynamic:
+        case ov::element::Type_t::u1:
             throwIEException(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
-                            static_cast<ngraph::element::Type_t>(input_element_type)));
+                            static_cast<ov::element::Type_t>(input_element_type)));
     }
     const auto element_type = input_element_type;
 

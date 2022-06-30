@@ -21,7 +21,7 @@ struct KernelExecAttrs {
     dim3 block;
     unsigned elementsPerThread;
 #if !defined(__CUDACC__)
-    KernelExecAttrs(const ngraph::Shape&, unsigned threadsPerBlock, unsigned elementsPerThread);
+    KernelExecAttrs(const ov::Shape&, unsigned threadsPerBlock, unsigned elementsPerThread);
 #endif
 };
 

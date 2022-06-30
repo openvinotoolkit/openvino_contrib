@@ -15,7 +15,7 @@ namespace CUDAPlugin {
 class TransposeOp : public OperationCuTensor {
 public:
     TransposeOp(const CreationContext& context,
-                const std::shared_ptr<ngraph::Node>& node,
+                const std::shared_ptr<ov::Node>& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
@@ -26,25 +26,25 @@ public:
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;
 
-    static std::vector<std::int64_t> extractInputExtents(const ngraph::Node& node);
+    static std::vector<std::int64_t> extractInputExtents(const ov::Node& node);
 
-    static std::vector<std::int64_t> extractOutputExtents(const ngraph::Node& node);
+    static std::vector<std::int64_t> extractOutputExtents(const ov::Node& node);
 
     static std::vector<int> extractInputMode(std::size_t numDims);
 
-    static std::vector<std::int64_t> extractInputStrides(const ngraph::Node& node);
+    static std::vector<std::int64_t> extractInputStrides(const ov::Node& node);
 
-    static std::vector<std::int64_t> extractOutputStrides(const ngraph::Node& node);
+    static std::vector<std::int64_t> extractOutputStrides(const ov::Node& node);
 
     static ExtentsMap extractExtents(const std::vector<std::int64_t>& input_extents);
 
-    static bool isPermutationTensorSpecified(const ngraph::Node& node);
+    static bool isPermutationTensorSpecified(const ov::Node& node);
 
-    static std::optional<std::vector<int>> tryToExtractPermutation(const ngraph::Node& node);
+    static std::optional<std::vector<int>> tryToExtractPermutation(const ov::Node& node);
 
     std::vector<int> permutation(const InferenceRequestContext& context, Inputs inputTensors) const;
 
-    ngraph::element::Type_t extractPermutationElementsType(const ngraph::Node& node);
+    ov::element::Type_t extractPermutationElementsType(const ov::Node& node);
 
     template <typename T>
     static std::vector<int> downloadPermutationVector(const InferenceRequestContext& context,
@@ -61,7 +61,7 @@ private:
     std::optional<std::vector<int>> outputMode_;
     ExtentsMap extents_;
     cudaDataType_t inputElementsType_;
-    ngraph::element::Type_t permutationElementsType_;
+    ov::element::Type_t permutationElementsType_;
 };
 
 }  // namespace CUDAPlugin

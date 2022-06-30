@@ -33,7 +33,7 @@ struct Configuration {
     // Plugin configuration parameters
 
     int deviceId = 0;
-    bool perfCount = false;
+    bool perfCount = true;
     bool operation_benchmark = false;
     bool disabled_tensoriterator_transform = false;
     std::string cuda_throughput_streams_ = std::to_string(1);

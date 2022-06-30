@@ -9,8 +9,8 @@
 #include <cuda_test_constants.hpp>
 #include <functional_test_utils/skip_tests_config.hpp>
 #include <ie_precision.hpp>
-#include <ngraph/op/util/attr_types.hpp>
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <tuple>
 #include <vector>
 
@@ -58,7 +58,7 @@ const auto smoke_1D_AutoPadValid_Params =
                                                              ::testing::ValuesIn(dilations1D),
                                                              ::testing::ValuesIn(numOutChannels1D),
                                                              ::testing::ValuesIn(numGroups1D),
-                                                             ::testing::Values(ngraph::op::PadType::VALID)),
+                                                             ::testing::Values(ov::op::PadType::VALID)),
                                           ::testing::ValuesIn(netPrecisions),
                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -76,7 +76,7 @@ const auto smoke_1D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                                           ::testing::ValuesIn(dilations1D),
                                           ::testing::ValuesIn(numOutChannels1D),
                                           ::testing::ValuesIn(numGroups1D),
-                                          ::testing::Values(ngraph::op::PadType::EXPLICIT)),
+                                          ::testing::Values(ov::op::PadType::EXPLICIT)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -121,7 +121,7 @@ const auto smoke_2D_ExplicitPaddingSymmetric_Params = ::testing::Combine(
                                           ::testing::ValuesIn(dilations2D),
                                           ::testing::ValuesIn(numOutChannels2D),
                                           ::testing::ValuesIn(numGroups2D),
-                                          ::testing::Values(ngraph::op::PadType::EXPLICIT)),
+                                          ::testing::Values(ov::op::PadType::EXPLICIT)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -139,7 +139,7 @@ const auto smoke_2D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                                           ::testing::ValuesIn(dilations2D),
                                           ::testing::ValuesIn(numOutChannels2D),
                                           ::testing::ValuesIn(numGroups2D),
-                                          ::testing::Values(ngraph::op::PadType::EXPLICIT)),
+                                          ::testing::Values(ov::op::PadType::EXPLICIT)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -188,7 +188,7 @@ const auto smoke_3D_ExplicitPaddingSymmetric_Params = ::testing::Combine(
                                           ::testing::ValuesIn(dilations3D),
                                           ::testing::ValuesIn(numOutChannels3D),
                                           ::testing::ValuesIn(numGroups3D),
-                                          ::testing::Values(ngraph::op::PadType::EXPLICIT)),
+                                          ::testing::Values(ov::op::PadType::EXPLICIT)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
@@ -206,7 +206,7 @@ const auto smoke_3D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                                           ::testing::ValuesIn(dilations3D),
                                           ::testing::ValuesIn(numOutChannels3D),
                                           ::testing::ValuesIn(numGroups3D),
-                                          ::testing::Values(ngraph::op::PadType::EXPLICIT)),
+                                          ::testing::Values(ov::op::PadType::EXPLICIT)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),

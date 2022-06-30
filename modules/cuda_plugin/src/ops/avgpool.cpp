@@ -6,16 +6,16 @@
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/avg_pool.hpp>
+#include <openvino/op/avg_pool.hpp>
 
 namespace CUDAPlugin {
 
 AvgPoolOp::AvgPoolOp(const CreationContext& context,
-                     const std::shared_ptr<ngraph::Node>& node,
+                     const std::shared_ptr<ov::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
-      impl_{dynamic_cast<const ngraph::op::AvgPool&>(*node)} {}
+      impl_{dynamic_cast<const ov::op::v1::AvgPool&>(*node)} {}
 
 void AvgPoolOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,

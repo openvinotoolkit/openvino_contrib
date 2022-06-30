@@ -176,7 +176,7 @@ void LSTMCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
     for (int i = 0; i < lin_layer_count; ++i) {
         // OpenVINO: linear layer indices are FICO (forget, input, candidate, output)
-        //      https://docs.openvino.ai/2021.4/openvino_docs_ops_sequence_LSTMCell_1.html
+        //      https://docs.openvino.ai/2022.1/openvino_docs_ops_sequence_LSTMCell_1.html
         // In cuDNN they are IFCO
         //      https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnGetRNNWeightParams
         //

@@ -13,11 +13,11 @@
 namespace CUDAPlugin {
 
 GRUCellOp::GRUCellOp(const CreationContext& context,
-                     const ngraph::Node& node,
+                     const ov::Node& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
-      params_{dynamic_cast<const ngraph::op::v3::GRUCell&>(node)},
+      params_{dynamic_cast<const ov::op::v3::GRUCell&>(node)},
       descs_{{context, params_}} {}
 
 void GRUCellOp::Execute(const InferenceRequestContext& context,

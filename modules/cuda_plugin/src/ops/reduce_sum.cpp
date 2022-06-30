@@ -9,14 +9,14 @@
 
 namespace CUDAPlugin {
 
-cudnnDataType_t reduceCompType(const ngraph::Node& node) {
-    if (node.get_input_element_type(0) == ngraph::element::Type_t::f64) return CUDNN_DATA_DOUBLE;
+cudnnDataType_t reduceCompType(const ov::Node& node) {
+    if (node.get_input_element_type(0) == ov::element::Type_t::f64) return CUDNN_DATA_DOUBLE;
     return CUDNN_DATA_FLOAT;  // TODO: it's unclear from documentation, whether it can be half when both tensors are
                               // half, or int8 when both tensors are int8. we'll have to test it
 }
 
 ReduceSumOp::ReduceSumOp(const CreationContext& context,
-                         const ngraph::Node& node,
+                         const ov::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},

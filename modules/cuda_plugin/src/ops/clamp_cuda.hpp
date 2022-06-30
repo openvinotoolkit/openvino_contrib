@@ -5,7 +5,7 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/op/clamp.hpp>
+#include <openvino/op/clamp.hpp>
 
 #include "kernels/clamp.hpp"
 
@@ -13,7 +13,7 @@ namespace CUDAPlugin {
 
 class ClampCudaOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::Clamp;
+    using NodeOp = ov::op::v0::Clamp;
 
     ClampCudaOp(const CreationContext& context,
                 const NodeOp& node,

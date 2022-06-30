@@ -11,24 +11,24 @@
 
 namespace CUDA {
 
-template <ngraph::element::Type_t Type>
-struct cuda_type_traits : ngraph::element_type_traits<Type> {};
+template <ov::element::Type_t Type>
+struct cuda_type_traits : ov::element_type_traits<Type> {};
 
 #ifdef __CUDACC__
 template <>
-struct cuda_type_traits<ngraph::element::Type_t::f16> { /* 5bit exponent, 10bit mantissa */
+struct cuda_type_traits<ov::element::Type_t::f16> { /* 5bit exponent, 10bit mantissa */
     using value_type = __half;                          // 16-bit half-precision floating point (FP16) representation:
                                                         // 1 sign bit, 5 exponent bits, and 10 mantissa bits.
 };
 
 template <>
-struct cuda_type_traits<ngraph::element::Type_t::bf16> { /* 8bit exponent, 7bit mantissa */
+struct cuda_type_traits<ov::element::Type_t::bf16> { /* 8bit exponent, 7bit mantissa */
     using value_type = __nv_bfloat16;
 };
 
 #endif
 
-template <ngraph::element::Type_t Type>
+template <ov::element::Type_t Type>
 using cuda_type_traits_t = typename cuda_type_traits<Type>::value_type;
 
 }  // namespace CUDA

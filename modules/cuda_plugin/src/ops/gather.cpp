@@ -9,7 +9,7 @@
 #include <cuda_operation_registry.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/gather.hpp>
+#include <openvino/op/gather.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <numeric>
 
@@ -25,30 +25,30 @@ constexpr unsigned ELS_PER_THREAD_DICTS = 1;
 }  // namespace
 
 GatherOp::GatherOp(const CreationContext& context,
-                   const ngraph::Node& node,
+                   const ov::Node& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     Expects(node.get_input_size() == 3);
     Expects(node.get_output_size() == 1);
-    const auto gather_v7 = dynamic_cast<const ngraph::op::v7::Gather*>(&node);
-    const auto gather_v1 = dynamic_cast<const ngraph::op::v1::Gather*>(&node);
+    const auto gather_v7 = dynamic_cast<const ov::op::v7::Gather*>(&node);
+    const auto gather_v1 = dynamic_cast<const ov::op::v1::Gather*>(&node);
     Expects(gather_v7 || gather_v1);
 
-    const auto gather_base = dynamic_cast<const ngraph::op::util::GatherBase*>(&node);
+    const auto gather_base = dynamic_cast<const ov::op::util::GatherBase*>(&node);
     Expects(gather_base);
 
     // For now CUDA operators support only static shapes
     Expects(node.get_input_partial_shape(0).rank().is_static() && node.get_input_partial_shape(1).rank().is_static() &&
             node.get_input_partial_shape(2).rank().is_static());
 
-    const ngraph::element::Type_t element_type = node.get_input_element_type(0);
+    const ov::element::Type_t element_type = node.get_input_element_type(0);
     switch (element_type) {
-        case ngraph::element::Type_t::undefined:
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::u1:
+        case ov::element::Type_t::undefined:
+        case ov::element::Type_t::dynamic:
+        case ov::element::Type_t::u1:
             throwIEException(fmt::format("Params element type = {} is not supported by Gather operation!",
-                                         static_cast<ngraph::element::Type_t>(element_type)));
+                                         static_cast<ov::element::Type_t>(element_type)));
     }
     Expects(node.get_output_element_type(0) == element_type);
 
@@ -58,8 +58,8 @@ GatherOp::GatherOp(const CreationContext& context,
     const auto& out_shape = node.get_output_shape(0);
     const auto axis_shape = node.get_input_shape(2);
 
-    const ngraph::element::Type_t indices_type = node.get_input_element_type(1);
-    if (indices_type != ngraph::element::Type_t::i64 && indices_type != ngraph::element::Type_t::i32) {
+    const ov::element::Type_t indices_type = node.get_input_element_type(1);
+    if (indices_type != ov::element::Type_t::i64 && indices_type != ov::element::Type_t::i32) {
         throwIEException(fmt::format("Params index type = {} is not supported by Gather operation!", indices_type));
     }
 

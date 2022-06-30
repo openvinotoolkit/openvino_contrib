@@ -6,7 +6,7 @@
 #include <fmt/ostream.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/op/util/attr_types.hpp>
+#include <openvino/op/util/attr_types.hpp>
 
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
@@ -41,7 +41,7 @@ bool argTypesSupported(cudnnDataType_t in0, cudnnDataType_t in1, cudnnDataType_t
 }
 
 template <typename T, std::size_t N>
-std::array<T, N> toArray(const ngraph::Shape& shape) {
+std::array<T, N> toArray(const ov::Shape& shape) {
     std::array<T, N> a;
     a.fill(static_cast<T>(1));
     if (shape.empty()) return a;
@@ -60,7 +60,7 @@ CUDA::DnnTensorDescriptor desc(const cudnnDataType_t type, ShapeArray& dims) {
 }  // namespace
 
 CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
-                                     const std::shared_ptr<ngraph::Node>& node,
+                                     const std::shared_ptr<ov::Node>& node,
                                      IndexCollection&& inputIds,
                                      IndexCollection&& outputIds,
                                      const cudnnOpTensorOp_t& opType,
@@ -123,7 +123,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     dest_index_ = 1;
     if (has_0_broadcasts || has_1_broadcasts) {
         auto broadcast_spec = node->get_autob();
-        if (!(broadcast_spec == ngraph::op::AutoBroadcastSpec::NUMPY)) {
+        if (!(broadcast_spec == ov::op::AutoBroadcastSpec::NUMPY)) {
             throwIEException(
                 fmt::format("Unsupported broadcast type for CuDnnTensorOpBase operation: {}", broadcast_spec.m_type));
         }
@@ -165,7 +165,7 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
-CuDnnTensorOpBase::IoParams::IoParams(const ngraph::Node& node, const Type& io_type, int index)
+CuDnnTensorOpBase::IoParams::IoParams(const ov::Node& node, const Type& io_type, int index)
     : type_(convertDataType<cudnnDataType_t>(io_type == Type::INPUT ? node.get_input_element_type(index)
                                                                     : node.get_output_element_type(index))),
       shape_(io_type == Type::INPUT ? node.get_input_shape(index) : node.get_output_shape(index)),

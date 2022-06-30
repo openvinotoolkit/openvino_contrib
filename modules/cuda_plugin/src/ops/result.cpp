@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "nop_op.hpp"
+#include "transformations/utils/utils.hpp"
 
 namespace CUDAPlugin {
 
@@ -32,7 +33,7 @@ void ResultOp::Execute(const InferenceRequestContext& context,
                        const Workbuffers&) const {
     Expects(inputs.size() == 1);
     Expects(outputs.size() == 0);
-    Blob::Ptr blob;
+    std::shared_ptr<ngraph::runtime::Tensor> blob;
     for (const auto& outputName : output_tensor_names_) {
         if (context.HasOutputBlob(outputName)) {
             blob = context.GetOutputBlob(outputName);
@@ -40,14 +41,14 @@ void ResultOp::Execute(const InferenceRequestContext& context,
         }
     }
     Expects(blob != nullptr);
-    auto memory_ptr = blob->as<InferenceEngine::MemoryBlob>()->wmap();
-    context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->byteSize());
+    auto memory_ptr = std::static_pointer_cast<ngraph::HostTensor>(blob)->get_data_ptr();
+    context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->get_size_in_bytes());
 }
 
-std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ngraph::Node::RTMap& rtInfo,
+std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
                                                               const std::string& resultName) {
     if (auto found = rtInfo.find(RtInfo::CUDA_FUSED_NAMES_MAPPING); found != rtInfo.end()) {
-        const auto& original_names = std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(found->second)->get();
+        const auto& original_names = found->second.as<std::string>();
         const auto foundPos = original_names.find("FUSED:");
         if (foundPos == 0) {
             auto original_names_mapping = original_names.substr(std::strlen("FUSED:"));
@@ -71,7 +72,7 @@ std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ngraph::Node
     return std::nullopt;
 }
 
-std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ngraph::Output<ngraph::Node>& node) {
+std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov::Node>& node) {
     const auto& opRegistry = OperationRegistry::getInstance();
     const auto& opType = opRegistry.getOperationType(node.get_node()->shared_from_this());
     if (opType && std::type_index(typeid(NopOp)) == opType.value()) {
@@ -88,27 +89,24 @@ std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ngraph::Outpu
     return std::nullopt;
 }
 
-std::vector<std::string> ResultOp::GetOutputTensorName(const ngraph::op::Result& node) {
+std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result& node) {
     std::vector<std::string> outputNames;
 
-    auto previousOutput = node.get_input_source_output(0);
-    auto resultName = node.get_friendly_name();
+    const auto& input = node.input_value(0);
+    auto name = ngraph::op::util::get_ie_output_name(input);
+    outputNames.push_back(name);
 
-    const auto foundName = GetFusedOutputTensorName(previousOutput.get_node()->get_rt_info(), resultName);
+    auto resultName = node.get_friendly_name();
+    const auto foundName = GetFusedOutputTensorName(input.get_node()->get_rt_info(), resultName);
     if (foundName) {
         outputNames.push_back(foundName.value());
     }
 
-    outputNames.push_back(previousOutput.get_node()->get_friendly_name());
-    const auto& fusedNames = ngraph::getFusedNamesVector(previousOutput.get_node()->shared_from_this());
-    outputNames.insert(outputNames.end(), fusedNames.begin(), fusedNames.end());
-    const auto& outputIdx = GetOutputTensorSubIndex(previousOutput);
-    if (outputIdx) {
-        const auto copyOutputNames = outputNames;
-        for (const auto& outputName : copyOutputNames) {
-            outputNames.push_back(outputName + '.' + std::to_string(outputIdx.value()));
-        }
-    }
+    // NOTE: New way of getting the fused names for OpenVINO 2.0 API
+    // TODO: When support for old OpenVINO API will be stopped, consider using only this approach.
+    //       Also see any issues with Tacatron2 network
+    const auto& fusedResults = ngraph::getFusedNamesVector(input.get_node()->shared_from_this());
+    outputNames.insert(outputNames.end(), fusedResults.begin(), fusedResults.end());
 
     return outputNames;
 }

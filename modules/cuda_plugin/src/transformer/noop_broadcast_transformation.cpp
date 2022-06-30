@@ -5,8 +5,8 @@
 #include "noop_broadcast_transformation.hpp"
 
 #include <gsl/gsl_assert>
-#include <ngraph/op/broadcast.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
+#include <openvino/op/broadcast.hpp>
 
 namespace ngraph::pass {
 
@@ -15,7 +15,7 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::NoopBroadcastTransformation, "NoopBroadcast
 namespace {
 
 bool eliminate_noop_broadcast(ngraph::pattern::Matcher &m) {
-    auto node = std::dynamic_pointer_cast<ngraph::op::v3::Broadcast>(m.get_match_root());
+    auto node = std::dynamic_pointer_cast<ov::op::v3::Broadcast>(m.get_match_root());
     Expects(node);
 
     auto in_shape = node->get_input_shape(0);
@@ -24,13 +24,13 @@ bool eliminate_noop_broadcast(ngraph::pattern::Matcher &m) {
         return false;
     }
 
-    return ngraph::replace_output_update_name(node->output(0), node->input_value(0));
+    return ov::replace_output_update_name(node->output(0), node->input_value(0));
 }
 
 }  // namespace
 
 NoopBroadcastTransformation::NoopBroadcastTransformation() {
-    const auto op = ngraph::pattern::wrap_type<ngraph::op::v3::Broadcast>();
+    const auto op = ngraph::pattern::wrap_type<ov::op::v3::Broadcast>();
     const auto m = std::make_shared<ngraph::pattern::Matcher>(op, "NoopBroadcastTransformation");
 
     matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return eliminate_noop_broadcast(m); };

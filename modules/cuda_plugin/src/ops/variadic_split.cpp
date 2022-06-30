@@ -8,22 +8,22 @@
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/split.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/split.hpp>
+#include <openvino/op/variadic_split.hpp>
 #include <utility>
 #include <vector>
 
 #include "converters.hpp"
 #include "cuda/runtime.hpp"
 #include "cuda_op_buffers_extractor.hpp"
-#include "ngraph/op/variadic_split.hpp"
 
 namespace CUDAPlugin {
 
 namespace {
 
 template <typename T>
-std::vector<int64_t> getSplitLengths(const ngraph::op::v0::Constant* node) {
+std::vector<int64_t> getSplitLengths(const ov::op::v0::Constant* node) {
     const auto split_lengths_size = OperationBuffersExtractor::GetTensorByteSize(node->output(0)) / sizeof(T);
     const std::vector<T> split_lengths{node->get_data_ptr<T>(), node->get_data_ptr<T>() + split_lengths_size};
     std::vector<int64_t> converted_split_lengths;
@@ -35,29 +35,29 @@ std::vector<int64_t> getSplitLengths(const ngraph::op::v0::Constant* node) {
     return converted_split_lengths;
 }
 
-std::vector<int64_t> getSplitLengths(ngraph::op::v0::Constant* node) {
+std::vector<int64_t> getSplitLengths(ov::op::v0::Constant* node) {
     switch (node->get_element_type()) {
-        case ngraph::element::Type_t::i8:
+        case ov::element::Type_t::i8:
             return getSplitLengths<int8_t>(node);
-        case ngraph::element::Type_t::i16:
+        case ov::element::Type_t::i16:
             return getSplitLengths<int16_t>(node);
-        case ngraph::element::Type_t::i32:
+        case ov::element::Type_t::i32:
             return getSplitLengths<int32_t>(node);
-        case ngraph::element::Type_t::i64:
+        case ov::element::Type_t::i64:
             return getSplitLengths<int64_t>(node);
-        case ngraph::element::Type_t::u8:
+        case ov::element::Type_t::u8:
             return getSplitLengths<uint8_t>(node);
-        case ngraph::element::Type_t::u16:
+        case ov::element::Type_t::u16:
             return getSplitLengths<uint16_t>(node);
-        case ngraph::element::Type_t::u32:
+        case ov::element::Type_t::u32:
             return getSplitLengths<uint32_t>(node);
-        case ngraph::element::Type_t::u64:
+        case ov::element::Type_t::u64:
             return getSplitLengths<uint64_t>(node);
         default: {
             throwIEException(
                 fmt::format("split_lengths element type = {} is not supported by VariadicSplit operation "
                             "!!",
-                            static_cast<ngraph::element::Type_t>(node->get_element_type())));
+                            static_cast<ov::element::Type_t>(node->get_element_type())));
         }
     }
 }
@@ -65,28 +65,28 @@ std::vector<int64_t> getSplitLengths(ngraph::op::v0::Constant* node) {
 }  // namespace
 
 VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
-                                 const ngraph::Node& node,
+                                 const ov::Node& node,
                                  IndexCollection&& inputIds,
                                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    auto variadic_split_node = dynamic_cast<const ngraph::op::v1::VariadicSplit*>(&node);
+    auto variadic_split_node = dynamic_cast<const ov::op::v1::VariadicSplit*>(&node);
     Expects(variadic_split_node);
     auto input_element_type = variadic_split_node->get_input_element_type(0);
-    auto axis_node = dynamic_cast<ngraph::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(1));
-    auto split_lengths_node = dynamic_cast<ngraph::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(2));
+    auto axis_node = dynamic_cast<ov::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(1));
+    auto split_lengths_node = dynamic_cast<ov::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(2));
     Expects(axis_node);
     Expects(split_lengths_node);
     auto output_element_type = variadic_split_node->get_output_element_type(0);
     Expects(variadic_split_node->get_input_size() == 3);
     Expects(input_element_type == output_element_type);
     switch (input_element_type) {
-        case ngraph::element::Type_t::undefined:
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::u1:
+        case ov::element::Type_t::undefined:
+        case ov::element::Type_t::dynamic:
+        case ov::element::Type_t::u1:
             throwIEException(
                 fmt::format("Input element type = {} is not supported by VariadicSplit operation "
                             "!!",
-                            static_cast<ngraph::element::Type_t>(input_element_type)));
+                            static_cast<ov::element::Type_t>(input_element_type)));
     }
     const auto element_type = input_element_type;
 

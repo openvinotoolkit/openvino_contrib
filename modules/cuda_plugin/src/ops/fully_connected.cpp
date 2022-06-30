@@ -8,7 +8,7 @@
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
-#include <ngraph/op/matmul.hpp>
+#include <openvino/op/matmul.hpp>
 #include <utility>
 
 #include "converters.hpp"
@@ -29,8 +29,8 @@ FullyConnectedOp::FullyConnectedOp(const CreationContext& context,
     auto matrixShape = node.get_output_shape(0);
     Expects(biasShape.size() > 0);
     MatMulOp::BroadcastToMatrix(biasShape);
-    const auto biasShapeSize = ngraph::shape_size(biasShape);
-    const auto matrixShapeSize = ngraph::shape_size(matrixShape);
+    const auto biasShapeSize = ov::shape_size(biasShape);
+    const auto matrixShapeSize = ov::shape_size(matrixShape);
     Expects(matrixShapeSize >= biasShapeSize);
     auto batchBiasCount = MatMulOp::GetMatrixNumBatches(biasShape);
     auto matMulBatchCount = matmul_op_.GetBatchCount();

@@ -153,8 +153,8 @@ private:
     cudnnConvolutionBwdDataAlgoPerf_t algo_perf_;
 };
 
-std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ngraph::Shape& shape,
-                                                                  ngraph::element::Type_t element_type);
+std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ov::Shape& shape,
+                                                                  ov::element::Type_t element_type);
 std::shared_ptr<CUDA::DnnActivationDescriptor> MakeFusedActivationDescriptor(nodes::ActivationMode mode);
 
 }  // namespace CUDAPlugin::Convolution::Details

@@ -26,11 +26,11 @@ DnnTensorDescriptor makeDnnTensorDescr(const ngraph::element::Type& type, const 
         CUDAPlugin::convertDataType<cudnnDataType_t>(type), dims.size(), dims.data(), strides.data());
 }
 
-CUDA::DnnTensorDescriptor makeInputDnnTensorDescr(const ngraph::Node& node, int n) {
+CUDA::DnnTensorDescriptor makeInputDnnTensorDescr(const ov::Node& node, int n) {
     return makeDnnTensorDescr(node.get_input_element_type(n), node.get_input_shape(n));
 }
 
-CUDA::DnnTensorDescriptor makeOutputDnnTensorDescr(const ngraph::Node& node, int n) {
+CUDA::DnnTensorDescriptor makeOutputDnnTensorDescr(const ov::Node& node, int n) {
     return makeDnnTensorDescr(node.get_output_element_type(n), node.get_output_shape(n));
 }
 

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/convolution.hpp>
+#include <openvino/op/convolution.hpp>
 #include <optional>
 
 #include "transformer/nodes/fused_convolution.hpp"
@@ -15,7 +15,7 @@ namespace CUDAPlugin::Convolution::Details {
 constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v1::Convolution` node.
+ * @brief Defines tensor indices for `ov::op::v1::Convolution` node.
  */
 struct ConvArgIndices {
     static constexpr size_t input = 0;
@@ -30,20 +30,20 @@ struct ConvArgIndices {
  * This class performs the following common tasks:
  *  - Extracts and validates required parameter values from ngraph operation;
  *  - Converts 1D convolution to 2D convolution;
- *  - Eliminates `ngraph::op::PadType` providing actual padding values.
+ *  - Eliminates `ov::op::PadType` providing actual padding values.
  */
 struct ConvolutionParams {
     template <typename TConvNode>
     ConvolutionParams(const TConvNode& node);
 
-    ngraph::element::Type_t element_type_;
-    ngraph::Shape input_shape_;
-    ngraph::Shape filter_shape_;
-    ngraph::Shape output_shape_;
-    ngraph::Strides strides_;
-    ngraph::Strides dilations_;
-    ngraph::CoordinateDiff padding_before_;
-    ngraph::CoordinateDiff padding_after_;
+    ov::element::Type_t element_type_;
+    ov::Shape input_shape_;
+    ov::Shape filter_shape_;
+    ov::Shape output_shape_;
+    ov::Strides strides_;
+    ov::Strides dilations_;
+    ov::CoordinateDiff padding_before_;
+    ov::CoordinateDiff padding_after_;
     size_t groups_;
 
     size_t NumberOfDims() const { return input_shape_.size(); }
@@ -66,16 +66,16 @@ struct ConvolutionBackwardDataParams {
     template <typename TConvNode>
     ConvolutionBackwardDataParams(const TConvNode& node);
 
-    ngraph::element::Type_t element_type_;
-    ngraph::Shape doutput_shape_;
-    ngraph::Shape filter_shape_;
-    ngraph::Shape dinput_shape_;
-    ngraph::Strides strides_;
-    ngraph::Strides dilations_;
-    ngraph::CoordinateDiff pads_begin_;
-    ngraph::CoordinateDiff pads_end_;
-    ngraph::op::PadType auto_pad_;
-    ngraph::CoordinateDiff output_padding_;
+    ov::element::Type_t element_type_;
+    ov::Shape doutput_shape_;
+    ov::Shape filter_shape_;
+    ov::Shape dinput_shape_;
+    ov::Strides strides_;
+    ov::Strides dilations_;
+    ov::CoordinateDiff pads_begin_;
+    ov::CoordinateDiff pads_end_;
+    ov::op::PadType auto_pad_;
+    ov::CoordinateDiff output_padding_;
     size_t groups_;
 
     size_t NumberOfDims() const { return doutput_shape_.size(); }
@@ -106,8 +106,8 @@ struct FusedConvolutionParams {
     FusedConvolutionParams(const TConvNode& node);
 
     ConvolutionParams conv_;
-    ngraph::Shape bias_shape_;
-    std::optional<ngraph::Shape> add_shape_;
+    ov::Shape bias_shape_;
+    std::optional<ov::Shape> add_shape_;
     CUDAPlugin::nodes::ActivationMode activation_;
 };
 
@@ -143,7 +143,7 @@ struct FusedConvolutionBackwardDataParams {
     FusedConvolutionBackwardDataParams(const CUDAPlugin::nodes::FusedConvBackpropData& node);
 
     ConvolutionBackwardDataParams conv_;
-    ngraph::Shape add_shape_;
+    ov::Shape add_shape_;
 };
 
 }  // namespace CUDAPlugin::Convolution::Details

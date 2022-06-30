@@ -6,13 +6,13 @@
 
 #include <cuda_operation_base.hpp>
 #include <gsl/span>
-#include <ngraph/op/lstm_sequence.hpp>
+#include <openvino/op/lstm_sequence.hpp>
 #include <transformer/nodes/lstm_sequence_optimized.hpp>
 
 namespace CUDAPlugin::RNN::Details {
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v5::LSTMSequence` node.
+ * @brief Defines tensor indices for `ov::op::v5::LSTMSequence` node.
  */
 struct LSTMSequenceArgIndices {
     static constexpr size_t x = 0;
@@ -31,13 +31,13 @@ struct LSTMSequenceArgIndices {
  * @brief Extracted and validated parameters from ngraph operation.
  */
 struct LSTMSequenceParams {
-    LSTMSequenceParams(const ngraph::op::v5::LSTMSequence& node);
+    LSTMSequenceParams(const ov::op::v5::LSTMSequence& node);
     LSTMSequenceParams(const CUDAPlugin::nodes::LSTMSequenceOptimized& node);
 
     static constexpr int lin_layer_count = 4;
 
-    ngraph::element::Type element_type_;
-    using direction = ngraph::op::v5::LSTMSequence::direction;
+    ov::element::Type element_type_;
+    using direction = ov::op::v5::LSTMSequence::direction;
     direction direction_;
     std::vector<std::string> activations_;
     std::vector<float> activations_alpha_;
@@ -54,7 +54,7 @@ struct LSTMSequenceParams {
     size_t hidden_size_;
 
 private:
-    void validate(const ngraph::op::v5::LSTMSequence& node);
+    void validate(const ov::op::v5::LSTMSequence& node);
 };
 
 }  // namespace CUDAPlugin::RNN::Details

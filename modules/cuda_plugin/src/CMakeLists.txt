@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET_NAME CUDAPlugin)
-set(OBJ_NAME ${TARGET_NAME}_OBJ)
+set(TARGET_NAME openvino_cuda_plugin)
+set(OBJ_NAME ${TARGET_NAME}_obj)
 
 set(SOURCE_MASKS *.cpp *.cu)
 set(HEADER_MASKS *.hpp *.cuh)
@@ -60,13 +60,13 @@ target_link_libraries(${OBJ_NAME}
                       fmt-header-only
                       IE::inference_engine
                       IE::inference_engine_plugin_api
+                      ov_core_dev
                       PRIVATE
                       CUDA::cudart
                       CUDA::cublas
                       CUDA::cudnn
                       CUDA::cutensor
                       IE::inference_engine_transformations
-                      IE::interpreter_backend
                       ${NGRAPH_LIBRARIES}
 )
 

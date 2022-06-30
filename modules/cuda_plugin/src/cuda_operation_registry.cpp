@@ -18,11 +18,11 @@ void OperationRegistry::registerOp(const std::string& opName, OperationBuilder&&
         throw std::runtime_error{"Operation " + opName + " is already registered !!"};
 }
 
-bool OperationRegistry::hasOperation(const std::shared_ptr<ngraph::Node>& node) {
+bool OperationRegistry::hasOperation(const std::shared_ptr<ov::Node>& node) {
     return hasOperation(node->get_type_info().name);
 }
 
-std::optional<std::type_index> OperationRegistry::getOperationType(const std::shared_ptr<ngraph::Node>& node) const {
+std::optional<std::type_index> OperationRegistry::getOperationType(const std::shared_ptr<ov::Node>& node) const {
     if (registered_type_operations_.count(node->get_type_info().name) > 0) {
         return registered_type_operations_.at(node->get_type_info().name);
     }
@@ -34,7 +34,7 @@ bool OperationRegistry::hasOperation(const std::string& name) {
 }
 
 OperationBase::Ptr OperationRegistry::createOperation(const CreationContext& context,
-                                                      const std::shared_ptr<ngraph::Node>& node,
+                                                      const std::shared_ptr<ov::Node>& node,
                                                       std::vector<TensorID>&& inIds,
                                                       std::vector<TensorID>&& outIds) {
     auto& opBuilder = registered_operations_.at(node->get_type_info().name);
@@ -42,7 +42,7 @@ OperationBase::Ptr OperationRegistry::createOperation(const CreationContext& con
 }
 
 OperationBase::Ptr OperationRegistry::createOperation(const CreationContext& context,
-                                                      const std::shared_ptr<ngraph::Node>& node,
+                                                      const std::shared_ptr<ov::Node>& node,
                                                       gsl::span<const TensorID> inIds,
                                                       gsl::span<const TensorID> outIds) {
     auto toVector = [](gsl::span<const TensorID> s) { return std::vector<TensorID>(s.begin(), s.end()); };

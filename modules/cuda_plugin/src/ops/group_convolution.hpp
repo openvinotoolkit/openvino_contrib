@@ -6,7 +6,7 @@
 
 #include <memory.h>
 
-#include <ngraph/op/group_conv.hpp>
+#include <openvino/op/group_conv.hpp>
 
 #include "convolution_cudnn.hpp"
 #include "cuda_operation_base.hpp"
@@ -15,7 +15,7 @@ namespace CUDAPlugin {
 
 class GroupConvolutionOp : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::v1::GroupConvolution;
+    using NodeOp = ov::op::v1::GroupConvolution;
     GroupConvolutionOp(const CreationContext& context,
                        const NodeOp& node,
                        IndexCollection&& inputIds,
@@ -24,8 +24,8 @@ public:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers&) const final;
-    WorkbufferRequest GetWorkBufferRequest() const final;
+                 const Workbuffers&) const override final;
+    WorkbufferRequest GetWorkBufferRequest() const override final;
 
 private:
     ConvolutionCuDnn convolution_;

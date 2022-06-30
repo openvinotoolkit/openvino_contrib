@@ -22,7 +22,7 @@ public:
                          const unsigned max_threads_per_block,
                          const unsigned blocks_number,
                          const unsigned threads_per_block,
-                         const ngraph::element::Type_t element_type);
+                         const ov::element::Type_t element_type);
 
     void operator()(const cudaStream_t stream,
                     const int64_t* src_matrix_sizes,
@@ -62,7 +62,7 @@ private:
     unsigned max_threads_per_block_;
     unsigned blocks_number_;
     unsigned threads_per_block_;
-    ngraph::element::Type_t element_type_;
+    ov::element::Type_t element_type_;
 };
 
 }  // namespace kernel

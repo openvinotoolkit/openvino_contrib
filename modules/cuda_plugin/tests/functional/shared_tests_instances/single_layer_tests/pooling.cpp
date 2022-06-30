@@ -22,20 +22,21 @@ const std::vector<std::vector<size_t>> strides = {{1, 1}, {1, 2}, {2, 2}};
 // Note: asymmetric paddings (begin != end) are not supported in cuDNN.
 const std::vector<std::vector<size_t>> padBegins = {{0, 1} /*, {0, 0}*/};
 const std::vector<std::vector<size_t>> padEnds = {{0, 1} /*, {0, 0}*/};
-const std::vector<ngraph::op::RoundingType> roundingTypes = {
-    ngraph::op::RoundingType::CEIL, ngraph::op::RoundingType::FLOOR};
+const std::vector<ov::op::RoundingType> roundingTypes = {ov::op::RoundingType::CEIL, ov::op::RoundingType::FLOOR};
 
 ////* ========== Max Poolling ========== */
 /* +========== Explicit Pad Floor Rounding ========== */
-const auto maxPool_ExplicitPad_FloorRounding_Params = ::testing::Combine(
-    ::testing::Values(PoolingTypes::MAX), ::testing::ValuesIn(kernels),
-    ::testing::ValuesIn(strides), ::testing::ValuesIn(padBegins),
-    ::testing::ValuesIn(padEnds),
-    ::testing::Values(ngraph::op::RoundingType::FLOOR),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT),
-    ::testing::Values(false)  // placeholder value - exclude pad not applicable
-                              // for max pooling
-);
+const auto maxPool_ExplicitPad_FloorRounding_Params =
+    ::testing::Combine(::testing::Values(PoolingTypes::MAX),
+                       ::testing::ValuesIn(kernels),
+                       ::testing::ValuesIn(strides),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::FLOOR),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(false)  // placeholder value - exclude pad not applicable
+                                                 // for max pooling
+    );
 
 INSTANTIATE_TEST_CASE_P(
     smoke_MaxPool_ExplicitPad_FloorRounding, PoolingLayerTest,
@@ -51,17 +52,19 @@ INSTANTIATE_TEST_CASE_P(
     PoolingLayerTest::getTestCaseName);
 
 /* ========== Explicit Pad Ceil Rounding ========== */
-const auto maxPool_ExplicitPad_CeilRounding_Params = ::testing::Combine(
-    ::testing::Values(PoolingTypes::MAX), ::testing::ValuesIn(kernels),
-    // TODO: Non 1 strides fails in ngraph reference implementation with error
-    // "The end corner is out of bounds at axis 3" thrown in the test body.
-    ::testing::Values(std::vector<size_t>({1, 1})),
-    ::testing::ValuesIn(padBegins), ::testing::ValuesIn(padEnds),
-    ::testing::Values(ngraph::op::RoundingType::CEIL),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT),
-    ::testing::Values(false)  // placeholder value - exclude pad not applicable
-                              // for max pooling
-);
+const auto maxPool_ExplicitPad_CeilRounding_Params =
+    ::testing::Combine(::testing::Values(PoolingTypes::MAX),
+                       ::testing::ValuesIn(kernels),
+                       // TODO: Non 1 strides fails in ngraph reference implementation with error
+                       // "The end corner is out of bounds at axis 3" thrown in the test body.
+                       ::testing::Values(std::vector<size_t>({1, 1})),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::CEIL),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(false)  // placeholder value - exclude pad not applicable
+                                                 // for max pooling
+    );
 
 INSTANTIATE_TEST_CASE_P(
     smoke_MaxPool_ExplicitPad_CeilRounding, PoolingLayerTest,
@@ -78,15 +81,17 @@ INSTANTIATE_TEST_CASE_P(
 
 ////* ========== Avg Pooling ========== */
 /* +========== Explicit Pad Ceil Rounding ========== */
-const auto avgPoolExplicitPadCeilRoundingParams = ::testing::Combine(
-    ::testing::Values(PoolingTypes::AVG), ::testing::ValuesIn(kernels),
-    // TODO: Non 1 strides fails in ngraph reference implementation with error
-    // "The end corner is out of bounds at axis 3" thrown in the test body.
-    ::testing::Values(std::vector<size_t>({1, 1})),
-    ::testing::ValuesIn(padBegins), ::testing::ValuesIn(padEnds),
-    ::testing::Values(ngraph::op::RoundingType::CEIL),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT),
-    ::testing::Values(true, false));
+const auto avgPoolExplicitPadCeilRoundingParams =
+    ::testing::Combine(::testing::Values(PoolingTypes::AVG),
+                       ::testing::ValuesIn(kernels),
+                       // TODO: Non 1 strides fails in ngraph reference implementation with error
+                       // "The end corner is out of bounds at axis 3" thrown in the test body.
+                       ::testing::Values(std::vector<size_t>({1, 1})),
+                       ::testing::ValuesIn(padBegins),
+                       ::testing::ValuesIn(padEnds),
+                       ::testing::Values(ov::op::RoundingType::CEIL),
+                       ::testing::Values(ov::op::PadType::EXPLICIT),
+                       ::testing::Values(true, false));
 
 INSTANTIATE_TEST_CASE_P(
     smoke_AvgPool_ExplicitPad_CeilRounding, PoolingLayerTest,
@@ -102,13 +107,14 @@ INSTANTIATE_TEST_CASE_P(
     PoolingLayerTest::getTestCaseName);
 
 /* +========== Explicit Pad Floor Rounding ========== */
-const auto avgPoolExplicitPadFloorRoundingParams = ::testing::Combine(
-    ::testing::Values(PoolingTypes::AVG), ::testing::ValuesIn(kernels),
-    ::testing::ValuesIn(strides), ::testing::ValuesIn(padBegins),
-    ::testing::ValuesIn(padEnds),
-    ::testing::Values(ngraph::op::RoundingType::FLOOR),
-    ::testing::Values(ngraph::op::PadType::EXPLICIT),
-    ::testing::Values(true, false));
+const auto avgPoolExplicitPadFloorRoundingParams = ::testing::Combine(::testing::Values(PoolingTypes::AVG),
+                                                                      ::testing::ValuesIn(kernels),
+                                                                      ::testing::ValuesIn(strides),
+                                                                      ::testing::ValuesIn(padBegins),
+                                                                      ::testing::ValuesIn(padEnds),
+                                                                      ::testing::Values(ov::op::RoundingType::FLOOR),
+                                                                      ::testing::Values(ov::op::PadType::EXPLICIT),
+                                                                      ::testing::Values(true, false));
 
 INSTANTIATE_TEST_CASE_P(
     smoke_AvgPool_ExplicitPad_FloorRounding, PoolingLayerTest,
@@ -131,10 +137,10 @@ const auto allPools_ValidPad_Params = ::testing::Combine(
     ::testing::Values(std::vector<size_t>({0, 0})),
     ::testing::ValuesIn(padEnds),
     ::testing::Values(
-        ngraph::op::RoundingType::FLOOR),  // placeholder value - Rounding Type
+        ov::op::RoundingType::FLOOR),  // placeholder value - Rounding Type
                                            // not applicable for Valid pad type
     // TODO: PadType::VALID seems not to ignore padBegins
-    ::testing::Values(ngraph::op::PadType::VALID),
+    ::testing::Values(ov::op::PadType::VALID),
     ::testing::Values(false)  // placeholder value - exclude pad not applicable
                               // for max pooling
 );
@@ -169,8 +175,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{6, 6}), // pad begin
             ::testing::Values(std::vector<size_t>{6, 6}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -197,8 +203,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -225,8 +231,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -253,8 +259,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -281,8 +287,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -309,8 +315,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -337,8 +343,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -365,8 +371,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -393,8 +399,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::CEIL), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::CEIL), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -421,8 +427,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{1, 1}), // pad begin
             ::testing::Values(std::vector<size_t>{1, 1}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -449,8 +455,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{2, 2}), // pad begin
             ::testing::Values(std::vector<size_t>{2, 2}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -477,8 +483,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{4, 4}), // pad begin
             ::testing::Values(std::vector<size_t>{4, 4}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -505,8 +511,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -533,8 +539,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -561,8 +567,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -589,8 +595,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -617,8 +623,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -645,8 +651,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -673,8 +679,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -701,8 +707,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -729,8 +735,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -757,8 +763,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -785,8 +791,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -813,8 +819,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -841,8 +847,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -869,8 +875,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -897,8 +903,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -925,8 +931,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -953,8 +959,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -981,8 +987,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1009,8 +1015,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1037,8 +1043,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1065,8 +1071,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1093,8 +1099,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1121,8 +1127,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1149,8 +1155,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1177,8 +1183,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1205,8 +1211,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{2, 2}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(false) // 'exclude pad' is N/A to MaxPool
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1240,8 +1246,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::EXPLICIT), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::EXPLICIT), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1268,8 +1274,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1296,8 +1302,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1324,8 +1330,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1352,8 +1358,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1380,8 +1386,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1408,8 +1414,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1436,8 +1442,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::SAME_UPPER), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::SAME_UPPER), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),
@@ -1464,8 +1470,8 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(std::vector<size_t>{1, 1}), // strides
             ::testing::Values(std::vector<size_t>{0, 0}), // pad begin
             ::testing::Values(std::vector<size_t>{0, 0}), // pad end
-            ::testing::Values(ngraph::op::RoundingType::FLOOR), // rounding type
-            ::testing::Values(ngraph::op::PadType::VALID), // pad type
+            ::testing::Values(ov::op::RoundingType::FLOOR), // rounding type
+            ::testing::Values(ov::op::PadType::VALID), // pad type
             ::testing::Values(true) // exclude pad
         ),
         ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}),

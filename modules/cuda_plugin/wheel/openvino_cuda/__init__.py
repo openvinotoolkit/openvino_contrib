@@ -30,4 +30,4 @@ def _register_cuda_plugin():
 
 _register_cuda_plugin()
 
-__version__ = "2021.4.1"
+__version__ = "2022.1.0"

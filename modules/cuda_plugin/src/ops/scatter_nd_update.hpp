@@ -12,7 +12,7 @@ namespace CUDAPlugin {
 class ScatterNDUpdateOp : public OperationBase {
 public:
     ScatterNDUpdateOp(const CreationContext& context,
-                      const ngraph::Node& node,
+                      const ov::Node& node,
                       IndexCollection&& inputIds,
                       IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

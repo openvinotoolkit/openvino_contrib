@@ -15,10 +15,10 @@ namespace CUDAPlugin {
 
 enum InputIdx { ARG, INPUT_LOW, INPUT_HIGH, OUTPUT_LOW, OUTPUT_HIGH };
 
-FakeQuatizeOp::FakeQuatizeOp(const CreationContext &context,
-                             const NodeOp &node,
-                             IndexCollection &&inputIds,
-                             IndexCollection &&outputIds)
+FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
+                               const NodeOp &node,
+                               IndexCollection &&inputIds,
+                               IndexCollection &&outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
       in_low_broadcast_params_{NumpyBroadcastParams::create(node.get_input_shape(INPUT_LOW), node.get_output_shape(0))},
       in_high_broadcast_params_{
@@ -45,10 +45,10 @@ FakeQuatizeOp::FakeQuatizeOp(const CreationContext &context,
         convertDataType<CUDAPlugin::kernel::Type_t>(element_type), output_size, max_threads_per_block, levels};
 }
 
-void FakeQuatizeOp::Execute(const InferenceRequestContext &context,
-                            Inputs inputTensors,
-                            Outputs outputTensors,
-                            const Workbuffers &workbuffers) const {
+void FakeQuantizeOp::Execute(const InferenceRequestContext &context,
+                             Inputs inputTensors,
+                             Outputs outputTensors,
+                             const Workbuffers &workbuffers) const {
     Expects(kernel_);
     auto &stream = context.getThreadContext().stream();
 
@@ -65,14 +65,14 @@ void FakeQuatizeOp::Execute(const InferenceRequestContext &context,
                outputTensors[0].get());
 }
 
-void FakeQuatizeOp::InitSharedImmutableWorkbuffers(const Buffers &buffers) {
+void FakeQuantizeOp::InitSharedImmutableWorkbuffers(const Buffers &buffers) {
     in_low_broadcast_params_->initWorkbuffers(buffers);
     in_high_broadcast_params_->initWorkbuffers(buffers);
     out_low_broadcast_params_->initWorkbuffers(buffers);
     out_high_broadcast_params_->initWorkbuffers(buffers);
 }
 
-WorkbufferRequest FakeQuatizeOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
+WorkbufferRequest FakeQuantizeOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
 
-OPERATION_REGISTER(FakeQuatizeOp, FakeQuantize);
+OPERATION_REGISTER(FakeQuantizeOp, FakeQuantize);
 }  // namespace CUDAPlugin

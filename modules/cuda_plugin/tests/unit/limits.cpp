@@ -147,11 +147,12 @@ void run_zero_div_test() {
         correct[i] = finite_cast<T>(static_cast<float>(in1[i]) / static_cast<float>(in2[0]));
     }
 
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));
