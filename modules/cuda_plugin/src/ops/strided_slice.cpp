@@ -7,9 +7,9 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "ngraph/axis_set.hpp"
-#include <openvino/op/constant.hpp>
 #include "strided_slice.hpp"
 
 namespace CUDAPlugin {
@@ -51,14 +51,14 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
     const auto end_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(2));
     const auto stride_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(3));
     slice_plan_ = make_slice_plan(stridedSliceOp.get_input_shape(0),
-                                          begin_const,
-                                          end_const,
-                                          stride_const,
-                                          convert_mask_to_axis_set(stridedSliceOp.get_begin_mask()),
-                                          convert_mask_to_axis_set(stridedSliceOp.get_end_mask()),
-                                          convert_mask_to_axis_set(stridedSliceOp.get_new_axis_mask()),
-                                          convert_mask_to_axis_set(stridedSliceOp.get_shrink_axis_mask()),
-                                          convert_mask_to_axis_set(stridedSliceOp.get_ellipsis_mask()));
+                                  begin_const,
+                                  end_const,
+                                  stride_const,
+                                  convert_mask_to_axis_set(stridedSliceOp.get_begin_mask()),
+                                  convert_mask_to_axis_set(stridedSliceOp.get_end_mask()),
+                                  convert_mask_to_axis_set(stridedSliceOp.get_new_axis_mask()),
+                                  convert_mask_to_axis_set(stridedSliceOp.get_shrink_axis_mask()),
+                                  convert_mask_to_axis_set(stridedSliceOp.get_ellipsis_mask()));
     src_matrix_sizes_ = std::vector<int64_t>(stridedSliceOp.get_input_shape(0).size(), 0);
     dst_matrix_sizes_ = std::vector<int64_t>(slice_plan_.reshape_in_shape.size(), 0);
     calcMatrixSizes(stridedSliceOp.get_input_shape(0), src_matrix_sizes_);

@@ -219,8 +219,8 @@ public:
 class DnnReduceTensorDescriptor : public Handle<cudnnReduceTensorDescriptor_t> {
 public:
     DnnReduceTensorDescriptor()
-        : Handle<cudnnReduceTensorDescriptor_t>((cudnnCreateReduceTensorDescriptor), cudnnDestroyReduceTensorDescriptor) {
-    }
+        : Handle<cudnnReduceTensorDescriptor_t>((cudnnCreateReduceTensorDescriptor),
+                                                cudnnDestroyReduceTensorDescriptor) {}
     auto& set(cudnnReduceTensorOp_t op,
               cudnnDataType_t compType,
               cudnnNanPropagation_t nanOpt,

@@ -238,7 +238,8 @@ void testOneShape(const LSTMCellTestParams& params) {
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<ElementType> x_host(x_size);
     std::vector<ElementType> hi_host(hi_size);
     std::vector<ElementType> ci_host(ci_size);

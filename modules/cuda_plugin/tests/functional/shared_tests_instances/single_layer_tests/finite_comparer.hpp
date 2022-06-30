@@ -17,30 +17,30 @@ namespace LayerTestsDefinitions {
 
 namespace details {
 // A workaround for an MSVC 19 bug, complaining 'fpclassify': ambiguous call
-template<typename T>
-constexpr bool equal_infs(const T&, const T& b) {
-  static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
-  return false;
+template <typename T>
+constexpr bool equal_infs(const T &, const T &b) {
+    static_assert(std::is_integral_v<T>, "Default implementation is valid for integer types only");
+    return false;
 }
 
-template<>
-inline bool equal_infs<float>(const float& a, const float& b) {
-  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+template <>
+inline bool equal_infs<float>(const float &a, const float &b) {
+    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
 }
 
-template<>
-inline bool equal_infs<double>(const double& a, const double& b) {
-  return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
+template <>
+inline bool equal_infs<double>(const double &a, const double &b) {
+    return std::isinf(a) && std::isinf(b) && ((a > 0) == (b > 0));
 }
 
-template<>
-inline bool equal_infs<ngraph::float16>(const ngraph::float16& a, const ngraph::float16& b) {
-  return equal_infs<float>(a, b); // Explicit conversion to floats
+template <>
+inline bool equal_infs<ngraph::float16>(const ngraph::float16 &a, const ngraph::float16 &b) {
+    return equal_infs<float>(a, b);  // Explicit conversion to floats
 }
 
-template<>
-inline bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16& a, const ngraph::bfloat16& b) {
-  return equal_infs<float>(a, b); // Explicit conversion to floats
+template <>
+inline bool equal_infs<ngraph::bfloat16>(const ngraph::bfloat16 &a, const ngraph::bfloat16 &b) {
+    return equal_infs<float>(a, b);  // Explicit conversion to floats
 }
 
 template <typename T1, typename T2>

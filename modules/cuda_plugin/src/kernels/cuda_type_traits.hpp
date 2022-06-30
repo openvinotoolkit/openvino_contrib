@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <cuda/float16.hpp>
 #include <cstdint>
+#include <cuda/float16.hpp>
 
 namespace CUDAPlugin {
 namespace kernel {

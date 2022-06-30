@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "memory_manager/model/cuda_memory_model_builder.hpp"
+
 #include <gtest/gtest.h>
 
 #include <details/ie_exception.hpp>
-#include "memory_manager/model/cuda_memory_model_builder.hpp"
+
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
 /*
@@ -58,76 +60,77 @@
   MemorySolver correctly.
  */
 TEST(MemoryModelBuilder, Build) {
-  using namespace CUDAPlugin;
+    using namespace CUDAPlugin;
 
-  MemoryModelBuilder builder;
-  const size_t size = 1;
-  const size_t allocation_size = applyAllignment(size);
-  builder.addAllocation(0, 0, 1, size);
-  builder.addAllocation(1, 1, 2, size);
-  builder.addAllocation(2, 2, 3, size);
-  builder.addAllocation(3, 3, 4, size);
+    MemoryModelBuilder builder;
+    const size_t size = 1;
+    const size_t allocation_size = applyAllignment(size);
+    builder.addAllocation(0, 0, 1, size);
+    builder.addAllocation(1, 1, 2, size);
+    builder.addAllocation(2, 2, 3, size);
+    builder.addAllocation(3, 3, 4, size);
 
-  MemoryModel::Ptr model = builder.build();
-  auto existingOffset = [&model](BufferID id, ptrdiff_t& offset) {
-    ASSERT_TRUE(model->offsetForBuffer(id, offset));
-  };
-  auto offsetForId = [&existingOffset](BufferID id) {
-    ptrdiff_t offset = -1;
-    existingOffset(id, offset);
-    return offset;
-  };
+    MemoryModel::Ptr model = builder.build();
+    auto existingOffset = [&model](BufferID id, ptrdiff_t& offset) { ASSERT_TRUE(model->offsetForBuffer(id, offset)); };
+    auto offsetForId = [&existingOffset](BufferID id) {
+        ptrdiff_t offset = -1;
+        existingOffset(id, offset);
+        return offset;
+    };
 
-  // Expected offsets are:
-  //  - [t0: 0,               t1: allocation_size, t2: 0,               t3: allocation_size]
-  // or
-  //  - [t0: allocation_size, t1: 0,               t2: allocation_size, t3: 0]
-  EXPECT_EQ(offsetForId(0) + offsetForId(1), allocation_size);
-  EXPECT_EQ(offsetForId(1) + offsetForId(2), allocation_size);
-  EXPECT_EQ(offsetForId(2) + offsetForId(3), allocation_size);
+    // Expected offsets are:
+    //  - [t0: 0,               t1: allocation_size, t2: 0,               t3: allocation_size]
+    // or
+    //  - [t0: allocation_size, t1: 0,               t2: allocation_size, t3: 0]
+    EXPECT_EQ(offsetForId(0) + offsetForId(1), allocation_size);
+    EXPECT_EQ(offsetForId(1) + offsetForId(2), allocation_size);
+    EXPECT_EQ(offsetForId(2) + offsetForId(3), allocation_size);
 
-  // Expect 2 allocations at a time at max since each op consumes
-  // 1 input and produces 1 output
-  EXPECT_EQ(model->deviceMemoryBlockSize(), 2 * allocation_size);
+    // Expect 2 allocations at a time at max since each op consumes
+    // 1 input and produces 1 output
+    EXPECT_EQ(model->deviceMemoryBlockSize(), 2 * allocation_size);
 }
 
 TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
-  using namespace CUDAPlugin;
+    using namespace CUDAPlugin;
 
-  MemoryModelBuilder builder;
+    MemoryModelBuilder builder;
 
-  BufferID duplicate_buffer_id = 1;
-  size_t size1 = 128;
-  size_t size2 = 256;
+    BufferID duplicate_buffer_id = 1;
+    size_t size1 = 128;
+    size_t size2 = 256;
 
-  builder.addAllocation(duplicate_buffer_id, 0, 1, size1);
+    builder.addAllocation(duplicate_buffer_id, 0, 1, size1);
 
-  #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1), InferenceEngine::details::InferenceEngineException);
-  #else
+#ifdef NDEBUG
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1),
+                 InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2),
+                 InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1),
+                 InferenceEngine::details::InferenceEngineException);
+#else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), "Assertion");
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size2), "Assertion");
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 1, 2, size1), "Assertion");
-  #endif
+#endif
 }
 
 TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
-  using namespace CUDAPlugin;
+    using namespace CUDAPlugin;
 
-  MemoryModelBuilder builder;
+    MemoryModelBuilder builder;
 
-  BufferID buffer_id = 1;
-  const size_t size = 0;
+    BufferID buffer_id = 1;
+    const size_t size = 0;
 
-  #ifdef NDEBUG
+#ifdef NDEBUG
     ASSERT_THROW(builder.addAllocation(buffer_id, 0, 1, size), InferenceEngine::details::InferenceEngineException);
-  #else
+#else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(buffer_id, 0, 1, size), "Assertion");
-  #endif
+#endif
 }
 
 /*
@@ -135,10 +138,10 @@ TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
  * Just to clarify class behaviour.
  */
 TEST(MemoryModelBuilder, NoAllocations) {
-  using namespace CUDAPlugin;
+    using namespace CUDAPlugin;
 
-  MemoryModelBuilder builder;
-  MemoryModel::Ptr model = builder.build();
+    MemoryModelBuilder builder;
+    MemoryModel::Ptr model = builder.build();
 
-  EXPECT_EQ(model->deviceMemoryBlockSize(), 0);
+    EXPECT_EQ(model->deviceMemoryBlockSize(), 0);
 }

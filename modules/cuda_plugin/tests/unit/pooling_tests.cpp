@@ -92,7 +92,8 @@ struct PoolingTest : testing::Test {
         CancellationToken token{};
         CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
-        InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        InferenceRequestContext context{
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;
@@ -135,7 +136,7 @@ TEST_F(MaxPoolRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ov::op::v1::MaxPool>()));
 }
 
- class MaxPoolTest : public PoolingTest<ov::op::v1::MaxPool> {};
+class MaxPoolTest : public PoolingTest<ov::op::v1::MaxPool> {};
 
 TEST_F(MaxPoolTest, canExecuteOnFloat1DData) {
     // Input [4]
@@ -274,7 +275,7 @@ TEST_F(AvgPoolRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ov::op::v1::AvgPool>()));
 }
 
- class AvgPoolTest : public PoolingTest<ov::op::v1::AvgPool> {};
+class AvgPoolTest : public PoolingTest<ov::op::v1::AvgPool> {};
 
 TEST_F(AvgPoolTest, canExecuteOnFloat1DData) {
     // Input [4]

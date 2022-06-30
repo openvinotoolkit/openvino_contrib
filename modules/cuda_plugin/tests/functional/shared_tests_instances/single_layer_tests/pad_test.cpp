@@ -3,10 +3,11 @@
 //
 
 #include "single_layer_tests/pad.hpp"
-#include "benchmark.hpp"
 
 #include <cuda_test_constants.hpp>
 #include <vector>
+
+#include "benchmark.hpp"
 
 using namespace LayerTestsDefinitions;
 

@@ -4,11 +4,11 @@
 
 #pragma once
 
+#include <cuda/device_pointers.hpp>
 #include <gsl/pointers>
 #include <memory>
 #include <memory_manager/tensor_types.hpp>
 #include <unordered_map>
-#include <cuda/device_pointers.hpp>
 
 namespace CUDAPlugin {
 

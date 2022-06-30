@@ -12,7 +12,7 @@ namespace CUDAPlugin {
 
 class CudaAsyncInferRequest : public InferenceEngine::AsyncInferRequestThreadSafeDefault {
 public:
-    CudaAsyncInferRequest(const CudaInferRequest::Ptr&           inferRequest,
+    CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferRequest,
                           const InferenceEngine::ITaskExecutor::Ptr& taskExecutor,
                           const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
                           const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor);
@@ -27,7 +27,7 @@ public:
     void Infer_ThreadUnsafe() override;
 
 private:
-    CudaInferRequest::Ptr           _inferRequest;
+    CudaInferRequest::Ptr _inferRequest;
 };
 
 }  // namespace CUDAPlugin

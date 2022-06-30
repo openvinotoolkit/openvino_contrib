@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
 #include <ngraph/node.hpp>
+#include <ngraph/pass/graph_rewrite.hpp>
 
 namespace ngraph::pass {
 

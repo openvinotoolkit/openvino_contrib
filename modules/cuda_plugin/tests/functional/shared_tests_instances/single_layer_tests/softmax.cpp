@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
+#include "single_layer_tests/softmax.hpp"
 
 #include <cuda_test_constants.hpp>
+#include <vector>
 
-#include "single_layer_tests/softmax.hpp"
 #include "common_test_utils/test_constants.hpp"
 
 using namespace ov::test::subgraph;
@@ -29,9 +29,7 @@ const std::vector<ov::Shape> inputShapes2D = {
     {10, 10},
 };
 
-const std::vector<size_t> axis2D = {
-    0, 1
-};
+const std::vector<size_t> axis2D = {0, 1};
 
 const auto params2D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(ov::element::undefined),
@@ -41,12 +39,7 @@ const auto params2D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
                                        testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax2D,
-        SoftMaxLayerTest,
-        params2D,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax2D, SoftMaxLayerTest, params2D, SoftMaxLayerTest::getTestCaseName);
 
 /********************* SoftMax 3D tests **************************/
 
@@ -65,12 +58,7 @@ const auto params3D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
                                        testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax3D,
-        SoftMaxLayerTest,
-        params3D,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax3D, SoftMaxLayerTest, params3D, SoftMaxLayerTest::getTestCaseName);
 
 /********************* SoftMax 4D tests **************************/
 
@@ -92,12 +80,7 @@ const auto params4D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
                                        testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax4D,
-        SoftMaxLayerTest,
-        params4D,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax4D, SoftMaxLayerTest, params4D, SoftMaxLayerTest::getTestCaseName);
 
 /********************* SoftMax 5D tests **************************/
 
@@ -116,12 +99,7 @@ const auto params5D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
                                        testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax5D,
-        SoftMaxLayerTest,
-        params5D,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax5D, SoftMaxLayerTest, params5D, SoftMaxLayerTest::getTestCaseName);
 
 /**************** SoftMax NN specific tests **********************/
 // resnet5: shape (1, 1001), axis 1
@@ -140,12 +118,7 @@ const auto resnet5Params =
                      testing::Values(CommonTestUtils::DEVICE_CUDA),
                      testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax2Dresnet5,
-        SoftMaxLayerTest,
-        resnet5Params,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax2Dresnet5, SoftMaxLayerTest, resnet5Params, SoftMaxLayerTest::getTestCaseName);
 
 const std::vector<ov::Shape> vggShapes = {
     {1, 1000},
@@ -159,11 +132,6 @@ const auto vggParams = testing::Combine(testing::ValuesIn(netPrecisions),
                                         testing::Values(CommonTestUtils::DEVICE_CUDA),
                                         testing::Values(ov::AnyMap()));
 
-INSTANTIATE_TEST_CASE_P(
-        SoftMax2Dvgg,
-        SoftMaxLayerTest,
-        vggParams,
-        SoftMaxLayerTest::getTestCaseName
-);
+INSTANTIATE_TEST_CASE_P(SoftMax2Dvgg, SoftMaxLayerTest, vggParams, SoftMaxLayerTest::getTestCaseName);
 
 }  // namespace

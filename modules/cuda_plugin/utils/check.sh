@@ -19,10 +19,10 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-git diff --diff-filter=ACMR -U0 origin/releases/2021/4... | perl -ne '
+git diff --diff-filter=ACMR -U0 origin/master... | perl -ne '
   if (m|^\+\+\+ b/(.*)|) {
     $newname = $1;
-    if ($name =~ /^.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
+    if ($name =~ /^.+cuda_plugin.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
       print "clang-format'$ver'$lines -Werror -dry-run -style=file $name\n"
     }
     $name = $newname;
@@ -33,7 +33,7 @@ git diff --diff-filter=ACMR -U0 origin/releases/2021/4... | perl -ne '
     $lines = "$lines -lines=$1:$to"
   }
   END {
-    if ($name =~ /^.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
+    if ($name =~ /^.+cuda_plugin.+((\.cpp)|(\.hpp)|(\.h)|(\.cu)|(\.cuh))$/) {
       print "clang-format'$ver'$lines -Werror -dry-run -style=file $name\n"
     }
   }' | parallel

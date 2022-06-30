@@ -6,10 +6,10 @@
 
 #include <cuda_runtime_api.h>
 
-#include <functional>
+#include <atomic>
 #include <cuda/device_pointers.hpp>
 #include <error.hpp>
-#include <atomic>
+#include <functional>
 
 #include "props.hpp"
 
@@ -315,7 +315,9 @@ public:
     void download(void* dst, DevicePointer<const void*> src, std::size_t count) const {
         downloadImpl(dst, src.get(), count);
     }
-    void memset(const DefaultAllocation& dst, int value, std::size_t count) const { memsetImpl(dst.get(), value, count); }
+    void memset(const DefaultAllocation& dst, int value, std::size_t count) const {
+        memsetImpl(dst.get(), value, count);
+    }
     void memset(CUDA::DevicePointer<void*> dst, int value, std::size_t count) const {
         memsetImpl(dst.get(), value, count);
     }

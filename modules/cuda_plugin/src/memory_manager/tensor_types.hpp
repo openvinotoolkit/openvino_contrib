@@ -60,13 +60,9 @@ public:
         offset_ = offset;
     }
 
-    bool operator==(const TensorID& t) const {
-        return id_ == t.id_;
-    }
+    bool operator==(const TensorID& t) const { return id_ == t.id_; }
 
-    bool operator!=(const TensorID& t) const {
-        return !(operator==(t));
-    }
+    bool operator!=(const TensorID& t) const { return !(operator==(t)); }
 
 private:
     BufferID id_{};
@@ -74,8 +70,7 @@ private:
     unsigned offset_{};
 };
 
-inline
-std::ostream& operator<<(std::ostream& s, const TensorID& t) {
+inline std::ostream& operator<<(std::ostream& s, const TensorID& t) {
     s << "ID: " << t.GetId() << ", ";
     s << "BufferID: " << t.GetBuffer().GetId() << ", ";
     s << "Offset: " << t.GetOffset();

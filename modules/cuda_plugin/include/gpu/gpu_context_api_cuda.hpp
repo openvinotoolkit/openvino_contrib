@@ -28,16 +28,16 @@ namespace gpu {
  * GetContext() method of Executable network or using CreateContext() Core call.
  */
 class CudaContext : public RemoteContext, public details::param_map_obj_getter {
- public:
-  /**
-   * @brief A smart pointer to the ClContext object
-   */
-  using Ptr = std::shared_ptr<CudaContext>;
-  using WeakPtr = std::weak_ptr<CudaContext>;
+public:
+    /**
+     * @brief A smart pointer to the ClContext object
+     */
+    using Ptr = std::shared_ptr<CudaContext>;
+    using WeakPtr = std::weak_ptr<CudaContext>;
 
-  // TODO: Add additional functions
+    // TODO: Add additional functions
 };
 
-} // namespace gpu
+}  // namespace gpu
 
-} // namespace InferenceEngine
+}  // namespace InferenceEngine

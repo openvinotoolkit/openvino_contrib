@@ -15,4 +15,4 @@ public:
     FullyConnectedTransformation();
 };
 
-} // namespace ngraph::pass
+}  // namespace ngraph::pass

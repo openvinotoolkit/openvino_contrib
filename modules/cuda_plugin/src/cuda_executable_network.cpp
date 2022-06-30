@@ -27,8 +27,8 @@
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 #include "transformations/serialize.hpp"
-#include "transformer/cuda_graph_transformer.hpp"
 #include "transformations/utils/utils.hpp"
+#include "transformer/cuda_graph_transformer.hpp"
 
 namespace CUDAPlugin {
 

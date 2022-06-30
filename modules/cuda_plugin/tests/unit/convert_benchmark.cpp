@@ -18,7 +18,7 @@
 namespace {
 
 struct ConvertTest : testing::Test {
-    CUDAPlugin::ThreadContext threadContext { CUDA::Device {} };
+    CUDAPlugin::ThreadContext threadContext{CUDA::Device{}};
     const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
@@ -30,9 +30,10 @@ struct ConvertTest : testing::Test {
 
         static constexpr bool optimizeOption = false;
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        return registry.createOperation(
-            CUDAPlugin::CreationContext {threadContext.device(), optimizeOption},
-                node, std::vector<CUDAPlugin::TensorID> {CUDAPlugin::TensorID{0u}}, std::vector<CUDAPlugin::TensorID> {CUDAPlugin::TensorID{0u}});
+        return registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+                                        node,
+                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
+                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
     }
 };
 
@@ -44,25 +45,24 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
     using Type_t = ov::element::Type_t;
-    static constexpr auto supported_types = {
-        Type_t::boolean,
-        Type_t::bf16,
-        Type_t::f16,
-        Type_t::f32,
-        Type_t::f64,
-        Type_t::i8,
-        Type_t::i16,
-        Type_t::i32,
-        Type_t::i64,
-        /*Type_t::u1, convert doesn't support it*/
-        Type_t::u8,
-        Type_t::u16,
-        Type_t::u32,
-        Type_t::u64
-    };
+    static constexpr auto supported_types = {Type_t::boolean,
+                                             Type_t::bf16,
+                                             Type_t::f16,
+                                             Type_t::f32,
+                                             Type_t::f64,
+                                             Type_t::i8,
+                                             Type_t::i16,
+                                             Type_t::i32,
+                                             Type_t::i64,
+                                             /*Type_t::u1, convert doesn't support it*/
+                                             Type_t::u8,
+                                             Type_t::u16,
+                                             Type_t::u32,
+                                             Type_t::u64};
     for (auto inputIdx : supported_types) {
         for (auto outputIdx : supported_types) {
             const auto inputType = Type_t(static_cast<std::underlying_type<Type_t>::type>(inputIdx));
@@ -78,7 +78,7 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
             std::vector<CUDA::DevicePointer<void*>> outputs{outAlloc};
             std::vector<uint8_t> in(inputBufferSize);
             std::random_device r_device;
-            std::mt19937 mersenne_engine {r_device()};
+            std::mt19937 mersenne_engine{r_device()};
             std::uniform_int_distribution<> dist{std::numeric_limits<uint8_t>::min(),
                                                  std::numeric_limits<uint8_t>::max()};
             auto gen = [&dist, &mersenne_engine]() {
@@ -89,19 +89,18 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
 
             auto start = std::chrono::steady_clock::now();
             for (int i = 0; i < kNumAttempts; i++) {
-                CUDAPlugin::Workbuffers workbuffers {};
+                CUDAPlugin::Workbuffers workbuffers{};
                 op->Execute(context, inputs, outputs, workbuffers);
                 stream.synchronize();
             }
             auto end = std::chrono::steady_clock::now();
             microseconds average_exec_time = (end - start) / kNumAttempts;
-            if (inputType == outputType)
-                std::cout << "    ";
-            std::cout << std::fixed <<
-                    std::setfill('0') << "Input type:" << input_type.get_type_name() << " Output type:" << output_type.get_type_name()
+            if (inputType == outputType) std::cout << "    ";
+            std::cout << std::fixed << std::setfill('0') << "Input type:" << input_type.get_type_name()
+                      << " Output type:" << output_type.get_type_name()
                       << " Strided slice execution time: " << average_exec_time.count() << " microseconds\n";
         }
         std::cout << std::endl;
     }
 }
-} // namespace
+}  // namespace

@@ -6,8 +6,8 @@
 
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
-#include <openvino/op/group_conv.hpp>
 #include <ngraph/validation_util.hpp>
+#include <openvino/op/group_conv.hpp>
 
 namespace CUDAPlugin::Convolution::Details {
 
@@ -145,8 +145,7 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
 }
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
     const ov::op::v1::GroupConvolutionBackpropData& node);
-template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
-    const ov::op::v1::ConvolutionBackpropData& node);
+template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const ov::op::v1::ConvolutionBackpropData& node);
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const nodes::FusedConvBackpropData& node);
 
 void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {

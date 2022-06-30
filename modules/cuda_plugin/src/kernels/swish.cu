@@ -32,7 +32,7 @@ struct SwishOpImpl<__half> {
         return x / (static_cast<__half>(1.0f) + ::hexp(-x * static_cast<__half>(beta)));
 #else
         return SwishOpImpl<float>::op(static_cast<float>(x), beta);
-#endif // CUDA_HAS_HALF_MATH
+#endif  // CUDA_HAS_HALF_MATH
     }
 };
 

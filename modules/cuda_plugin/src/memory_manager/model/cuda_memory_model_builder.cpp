@@ -11,20 +11,19 @@
 namespace CUDAPlugin {
 
 void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastConsumerIndex, size_t bsize) {
-  IE_ASSERT(bsize > 0); // Verify that allocation size isn't zero.
-  auto res = offsets_.emplace(id, 0);
-  IE_ASSERT(res.second); // Verify that "id" is unique.
-  const int64_t aligned_size = static_cast<int64_t>(applyAllignment(bsize));
-  boxes_.emplace_back(MemorySolver::Box{ producerIndex, lastConsumerIndex, aligned_size, id });
+    IE_ASSERT(bsize > 0);  // Verify that allocation size isn't zero.
+    auto res = offsets_.emplace(id, 0);
+    IE_ASSERT(res.second);  // Verify that "id" is unique.
+    const int64_t aligned_size = static_cast<int64_t>(applyAllignment(bsize));
+    boxes_.emplace_back(MemorySolver::Box{producerIndex, lastConsumerIndex, aligned_size, id});
 }
 
 MemoryModel::Ptr MemoryModelBuilder::build() {
-  MemorySolver solver {boxes_};
-  const size_t blob_size = solver.solve();
-  for (auto& pair : offsets_)
-    pair.second = solver.getOffset(pair.first);
+    MemorySolver solver{boxes_};
+    const size_t blob_size = solver.solve();
+    for (auto& pair : offsets_) pair.second = solver.getOffset(pair.first);
 
-  return std::make_shared<MemoryModel>(blob_size, offsets_);
+    return std::make_shared<MemoryModel>(blob_size, offsets_);
 }
 
 }  // namespace CUDAPlugin

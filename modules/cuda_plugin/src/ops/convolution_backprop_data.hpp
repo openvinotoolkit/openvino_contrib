@@ -9,7 +9,6 @@
 #include "convolution_components/convolution_components.hpp"
 #include "convolution_components/convolution_cudnn_components.hpp"
 
-
 namespace CUDAPlugin {
 
 /**

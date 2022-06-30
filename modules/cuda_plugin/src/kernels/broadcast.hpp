@@ -6,10 +6,10 @@
 
 #include <vector>
 
-#include "elementtypeswitch.hpp"
 #include "cuda_type_traits.hpp"
-#include "numpy_broadcast_mapper.cuh"
+#include "elementtypeswitch.hpp"
 #include "error.hpp"
+#include "numpy_broadcast_mapper.cuh"
 
 namespace CUDAPlugin {
 namespace kernel {

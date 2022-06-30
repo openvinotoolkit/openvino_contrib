@@ -142,7 +142,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     manager.register_pass<ngraph::pass::ConcatTransformation>();
     manager.register_pass<ngraph::pass::NoopBroadcastTransformation>();
-    
+
     manager.run_passes(transformed_function);
 
     [[maybe_unused]] const auto& transformedOps = transformed_function->get_ordered_ops();

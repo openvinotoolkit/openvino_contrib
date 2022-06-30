@@ -5,8 +5,8 @@
 #pragma once
 
 #include <array>
-#include <openvino/op/convolution.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <openvino/op/convolution.hpp>
 
 #include "cuda_plugin_custom_node_types.hpp"
 #include "ngraph/attribute_adapter.hpp"

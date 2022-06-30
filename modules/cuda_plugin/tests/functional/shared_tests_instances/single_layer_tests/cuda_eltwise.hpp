@@ -36,7 +36,7 @@ public:
 
     static std::string getTestCaseName(testing::TestParamInfo<CudaEltwiseTestParams> obj);
 
-    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo &info) const override;
+    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override;
 
     void SetUp() override;
 

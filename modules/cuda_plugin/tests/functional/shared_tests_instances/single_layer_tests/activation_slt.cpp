@@ -2643,7 +2643,8 @@ struct ClampBenchmark : testing::Test {
         CUDAPlugin::CancellationToken token{};
         CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
         CUDAPlugin::Profiler profiler{false, graph};
-        CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        CUDAPlugin::InferenceRequestContext context{
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;

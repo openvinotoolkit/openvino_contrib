@@ -3,6 +3,7 @@
 //
 
 #include "nop_op.hpp"
+
 #include <cuda_operation_registry.hpp>
 
 namespace CUDAPlugin {
@@ -13,4 +14,4 @@ OPERATION_REGISTER(NopOp, Squeeze);
 OPERATION_REGISTER(NopOp, Unsqueeze);
 OPERATION_REGISTER(NopOp, ConcatOptimized);
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -9,9 +9,9 @@
 #include <cuda_operation_registry.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
-#include <openvino/op/gather.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <numeric>
+#include <openvino/op/gather.hpp>
 
 #include "converters.hpp"
 

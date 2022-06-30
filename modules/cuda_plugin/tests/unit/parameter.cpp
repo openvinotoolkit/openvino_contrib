@@ -34,13 +34,13 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
     }
 }
 
- class ParameterRegistryTest : public testing::Test {
+class ParameterRegistryTest : public testing::Test {
     void SetUp() override {}
 
     void TearDown() override {}
 };
 
- struct ParameterTest : testing::Test {
+struct ParameterTest : testing::Test {
     static constexpr size_t size = 16 * 1024;
     void SetUp() override {
         CUDA::Device device{};
@@ -76,9 +76,9 @@ void fillBlobRandom(Blob::Ptr& inputBlob) {
     std::map<std::string, std::size_t> blobsMapping;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
- };
+};
 
- TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
+TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
     ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ParameterStubNode>()));
 }
 

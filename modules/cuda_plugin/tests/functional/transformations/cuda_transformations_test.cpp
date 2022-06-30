@@ -4,12 +4,11 @@
 
 #include <gtest/gtest.h>
 
-#include <string>
 #include <memory>
-#include <queue>
-
 #include <ngraph/ngraph.hpp>
 #include <ngraph/opsets/opset3.hpp>
+#include <queue>
+#include <string>
 #include <transformations/init_node_info.hpp>
 #include <transformations/utils/utils.hpp>
 
