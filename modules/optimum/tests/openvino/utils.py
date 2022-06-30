@@ -33,7 +33,7 @@ class QAModel:
             add_special_tokens=True,
             max_length=512 if self.max_seq_length is None else min(self.max_seq_length, 512),
             padding="max_length" if self.max_seq_length is not None else "do_not_pad",
-            truncation="only_second",
+            truncation=True,
         )
         # Do inference
         result = self.model(**encoded_input, return_dict=True)
