@@ -13,7 +13,7 @@ namespace CUDAPlugin {
 class FloorOp : public OperationBase {
 public:
     FloorOp(const CreationContext& context,
-            const ngraph::Node& node,
+            const ov::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
 

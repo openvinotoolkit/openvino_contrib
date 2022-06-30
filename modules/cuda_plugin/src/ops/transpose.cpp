@@ -10,7 +10,7 @@
 #include <cuda/tensor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/constant.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
@@ -20,7 +20,7 @@ using namespace std::string_literals;
 namespace CUDAPlugin {
 
 TransposeOp::TransposeOp(const CreationContext& context,
-                         const std::shared_ptr<ngraph::Node>& node,
+                         const std::shared_ptr<ov::Node>& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
     : OperationCuTensor(context, node, std::move(inputIds), std::move(outputIds)),
@@ -76,7 +76,7 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                      context.getThreadContext().stream().get()));
 }
 
-std::vector<std::int64_t> TransposeOp::extractInputExtents(const ngraph::Node& node) {
+std::vector<std::int64_t> TransposeOp::extractInputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;
     auto inputShape = node.input(0).get_shape();
     result.reserve(inputShape.size());
@@ -84,7 +84,7 @@ std::vector<std::int64_t> TransposeOp::extractInputExtents(const ngraph::Node& n
     return result;
 }
 
-std::vector<std::int64_t> TransposeOp::extractOutputExtents(const ngraph::Node& node) {
+std::vector<std::int64_t> TransposeOp::extractOutputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;
     auto outputShape = node.output(0).get_shape();
     result.reserve(outputShape.size());
@@ -92,12 +92,12 @@ std::vector<std::int64_t> TransposeOp::extractOutputExtents(const ngraph::Node& 
     return result;
 }
 
-std::vector<std::int64_t> TransposeOp::extractInputStrides(const ngraph::Node& node) {
+std::vector<std::int64_t> TransposeOp::extractInputStrides(const ov::Node& node) {
     std::vector<std::int64_t> result;
     auto inputShape = node.input(0).get_shape();
     result.reserve(inputShape.size());
     const auto numInputShapeElements = inputShape.size();
-    for (std::size_t i = 0; i < numInputShapeElements; i++) result.push_back(ngraph::row_major_stride(inputShape, i));
+    for (std::size_t i = 0; i < numInputShapeElements; i++) result.push_back(ov::row_major_stride(inputShape, i));
     return result;
 }
 
@@ -114,28 +114,28 @@ std::vector<int> TransposeOp::extractInputMode(std::size_t numDims) {
     return result;
 }
 
-std::vector<std::int64_t> TransposeOp::extractOutputStrides(const ngraph::Node& node) {
+std::vector<std::int64_t> TransposeOp::extractOutputStrides(const ov::Node& node) {
     std::vector<std::int64_t> result;
     auto outputShape = node.output(0).get_shape();
     result.reserve(outputShape.size());
     const auto numOutputShapeElements = outputShape.size();
-    for (std::size_t i = 0; i < numOutputShapeElements; i++) result.push_back(ngraph::row_major_stride(outputShape, i));
+    for (std::size_t i = 0; i < numOutputShapeElements; i++) result.push_back(ov::row_major_stride(outputShape, i));
     return result;
 }
 
-bool TransposeOp::isPermutationTensorSpecified(const ngraph::Node& node) {
+bool TransposeOp::isPermutationTensorSpecified(const ov::Node& node) {
     const auto numInputs = node.get_input_size();
     Expects(numInputs == 1 || numInputs == 2);
     return numInputs == 2;
 }
 
-std::optional<std::vector<int> > TransposeOp::tryToExtractPermutation(const ngraph::Node& node) {
+std::optional<std::vector<int> > TransposeOp::tryToExtractPermutation(const ov::Node& node) {
     if (isPermutationTensorSpecified(node)) {
         auto nodeRawPtr = node.input(1).get_source_output().get_node();
-        if (ngraph::is_type<const ngraph::op::Constant>(nodeRawPtr)) {
+        if (ov::is_type<const ov::op::v0::Constant>(nodeRawPtr)) {
             // Typically permutation vector is small and comes from constant node.
             // That allows to optimize out copying it from device memory in most cases.
-            auto constant = dynamic_cast<const ngraph::op::Constant*>(nodeRawPtr);
+            auto constant = dynamic_cast<const ov::op::v0::Constant*>(nodeRawPtr);
             return constant->cast_vector<int>();
         } else {
             return std::nullopt;
@@ -152,7 +152,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
         return outputMode_.value();
     } else {  // Copies permutation vector from device memory. cuTENSOR API requires it in host memory
         Expects(inputTensors.size() == 2);
-        using ngraph::element::Type_t;
+        using ov::element::Type_t;
         switch (permutationElementsType_) {
             case Type_t::i8:
                 return downloadPermutationVector<std::int8_t>(context, inputTensors[1], dimsNumber_);
@@ -176,10 +176,10 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
     }
 }
 
-ngraph::element::Type_t TransposeOp::extractPermutationElementsType(const ngraph::Node& node) {
+ov::element::Type_t TransposeOp::extractPermutationElementsType(const ov::Node& node) {
     Expects(node.get_input_size() > 0 && node.get_input_size() <= 2);
     if (node.get_input_size() == 1)
-        return ngraph::element::Type_t::i32;
+        return ov::element::Type_t::i32;
     else
         return node.get_input_element_type(1);
 }

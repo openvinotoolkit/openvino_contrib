@@ -22,16 +22,16 @@ TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_ty
       src_mode_(mode.size()),
       dst_mode_{mode} {
     std::iota(src_mode_.begin(), src_mode_.end(), 0);
-    const auto num_elements = ngraph::shape_size(src_shape_);
+    const auto num_elements = ov::shape_size(src_shape_);
     Expects(num_elements > 0);
-    Expects(num_elements == ngraph::shape_size(dst_shape_));
+    Expects(num_elements == ov::shape_size(dst_shape_));
     Expects(src_shape_.size() == dst_shape_.size());
     Expects(src_shape_.size() == src_mode_.size());
     Expects(src_mode_.size() == dst_mode_.size());
 }
 
 void TransposeTensorAdapterBase::requestWorkbuffer(std::vector<size_t>& workbuffers_sizes) {
-    workbuffer_.addRequest(workbuffers_sizes, ngraph::shape_size(src_shape_) * element_size_);
+    workbuffer_.addRequest(workbuffers_sizes, ov::shape_size(src_shape_) * element_size_);
 }
 
 void* TransposeTensorAdapterBase::dnnApiPtr(const std::vector<Workbuffers::mutable_buffer>& mutable_buffers) const {
@@ -59,7 +59,7 @@ void TransposeTensorAdapterBase::initCuTensorDescriptor(const CUDA::CuTensorHand
                                                         cutensorTensorDescriptor_t& desc) const {
     std::vector<int64_t> strides;
     strides.reserve(shape.size());
-    for (size_t i = 0; i < shape.size(); i++) strides.push_back(ngraph::row_major_stride(shape, i));
+    for (size_t i = 0; i < shape.size(); i++) strides.push_back(ov::row_major_stride(shape, i));
     throwIfError(::cutensorInitTensorDescriptor(
         &handle.get(), &desc, shape.size(), shape.data(), strides.data(), element_type_, CUTENSOR_OP_IDENTITY));
 }

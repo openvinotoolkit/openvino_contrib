@@ -4,16 +4,16 @@
 
 #pragma once
 
+#include "components/numpy_broadcast_params.h"
 #include "cuda_operation_base.hpp"
 #include "kernels/broadcast.hpp"
 #include "ngraph/op/broadcast.hpp"
-#include "components/numpy_broadcast_params.h"
 
 namespace CUDAPlugin {
 
 class BroadcastOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v3::Broadcast;
+    using NodeOp = ov::op::v3::Broadcast;
     BroadcastOp(const CreationContext& context,
                 const NodeOp& stridedSliceOp,
                 IndexCollection&& inputIds,

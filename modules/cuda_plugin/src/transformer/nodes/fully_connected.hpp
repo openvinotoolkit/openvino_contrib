@@ -10,26 +10,25 @@
 
 namespace CUDAPlugin::nodes {
 
-class FullyConnected : public ngraph::op::Op {
+class FullyConnected : public ov::op::Op {
  public:
-  FullyConnected(const ngraph::Output<Node>& A,
-                 const ngraph::Output<Node>& B,
-                 const ngraph::Output<Node>& C,
-                 const bool& transpose_a,
-                 const bool& transpose_b);
+     FullyConnected(const ov::Output<Node>& A,
+                    const ov::Output<Node>& B,
+                    const ov::Output<Node>& C,
+                    const bool& transpose_a,
+                    const bool& transpose_b);
 
-  inline static constexpr type_info_t type_info{"FullyConnected", 0};
-  const type_info_t& get_type_info() const override { return type_info; }
+     inline static constexpr type_info_t type_info{"FullyConnected", 0ul};
+     const type_info_t& get_type_info() const override { return type_info; }
 
-  bool visit_attributes(ngraph::AttributeVisitor& visitor) override;
+     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
-  std::shared_ptr<ngraph::Node> clone_with_new_inputs(
-      const ngraph::OutputVector& new_args) const override;
+     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
 
-  void validate_and_infer_types() override;
+     void validate_and_infer_types() override;
 
-  bool get_transpose_a() const { return m_transpose_a; }
-  bool get_transpose_b() const { return m_transpose_b; }
+     bool get_transpose_a() const { return m_transpose_a; }
+     bool get_transpose_b() const { return m_transpose_b; }
 
  private:
   bool m_transpose_a;

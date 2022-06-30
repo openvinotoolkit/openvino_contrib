@@ -17,7 +17,7 @@
 namespace LayerTestsDefinitions {
 
 class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
-    void SetUp() {
+    void SetUp() override {
         LSTMSequenceTest::SetUp();
         threshold = 0.01;
         constexpr float up_to = -1.0f;
@@ -26,7 +26,7 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
         const auto& ops = function->get_ordered_ops();
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                if (op->get_element_type() == ngraph::element::Type_t::f32) {
+                if (op->get_element_type() == ov::element::Type_t::f32) {
                     const auto constant = ngraph::builder::makeConstant(op->get_element_type(),
                                                                         op->get_shape(),
                                                                         std::vector<float>{},
@@ -49,13 +49,13 @@ const auto testMode = ngraph::helpers::SequenceTestsMode::PURE_SEQ;
 const std::vector<std::string> activations{"sigmoid", "tanh", "tanh"};
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
-const std::vector<ngraph::op::RecurrentSequenceDirection> sequenceDirections = {
-    ngraph::op::RecurrentSequenceDirection::FORWARD, ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL};
+const std::vector<ov::op::RecurrentSequenceDirection> sequenceDirections = {
+    ov::op::RecurrentSequenceDirection::FORWARD, ov::op::RecurrentSequenceDirection::BIDIRECTIONAL};
 // Currently LSTMSequence cuDNN implementation doesn't support clipping
 const float no_clip = 0.0f;
 const std::vector<size_t> batches{1, 2, 3, 10};
 
-// // ------------- Smoke Tests -------------
+// ------------- Smoke Tests -------------
 
 const std::vector<size_t> smoke_max_seq_lengths{1, 2, 3, 10};
 
@@ -104,7 +104,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_01,
                                            ::testing::Values(768),        // input size
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
-                                           ::testing::Values(ngraph::op::RecurrentSequenceDirection::FORWARD),
+                                           ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -118,7 +118,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_02,
                                            ::testing::Values(1536),       // input size
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
-                                           ::testing::Values(ngraph::op::RecurrentSequenceDirection::FORWARD),
+                                           ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -132,7 +132,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_encoder_01,
                                            ::testing::Values(512),        // input size
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
-                                           ::testing::Values(ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL),
+                                           ::testing::Values(ov::op::RecurrentSequenceDirection::BIDIRECTIONAL),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
                         CUDALSTMSequenceTest::getTestCaseName);

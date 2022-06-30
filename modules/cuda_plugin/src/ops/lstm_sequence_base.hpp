@@ -6,17 +6,17 @@
 
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
+#include <ops/components/workbuffer_desc.hpp>
 
 #include "rnn_components/lstm_sequence_components.hpp"
 #include "rnn_components/lstm_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
-#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::v5::LSTMSequence;
+    using NodeOp = ov::op::v5::LSTMSequence;
     using LSTMSequenceParams = RNN::Details::LSTMSequenceParams;
     using Config = RNN::Details::LSTMSequenceDescriptorsCuDnn::Config;
     LSTMSequenceOpBase(const CreationContext& context,

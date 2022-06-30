@@ -16,7 +16,7 @@
 
 namespace CUDAPlugin {
 
-static int take(const ngraph::Shape& shape, size_t i) noexcept { return i < shape.size() ? shape[i] : 1; }
+static int take(const ov::Shape& shape, size_t i) noexcept { return i < shape.size() ? shape[i] : 1; }
 
 static constexpr long long prod(int a, int b) noexcept { return static_cast<long long>(a) * static_cast<long long>(b); }
 
@@ -72,7 +72,7 @@ static constexpr long long prod(int a, int b) noexcept { return static_cast<long
  *   5.3  - { d0*d1*d2,    d3,   d4,    1   },
  *   5.4  - { d0*d1*d2*d3, d4,    1,    1   },
  */
-void SoftmaxOp::mapRankAxis(const ngraph::Shape& shape, int axis) {
+void SoftmaxOp::mapRankAxis(const ov::Shape& shape, int axis) {
     constexpr long long maxint = std::numeric_limits<int>::max();
     const auto rank = shape.size();
     Expects(rank <= 5 && rank > 0);

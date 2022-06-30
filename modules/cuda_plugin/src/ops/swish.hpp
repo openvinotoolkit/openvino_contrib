@@ -5,7 +5,7 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/op/swish.hpp>
+#include <openvino/op/swish.hpp>
 
 #include "kernels/swish.hpp"
 
@@ -14,7 +14,7 @@ namespace CUDAPlugin {
 class SwishOp : public OperationBase {
 public:
     SwishOp(const CreationContext& context,
-            const ngraph::Node& node,
+            const ov::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
 

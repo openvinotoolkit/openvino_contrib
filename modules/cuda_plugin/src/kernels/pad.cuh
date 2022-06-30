@@ -14,7 +14,7 @@ namespace kernel {
 class ConstModePad {
 public:
     explicit ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
-                          ngraph::element::Type_t dtype,
+                          ov::element::Type_t dtype,
                           std::size_t outputRank,
                           int elementsPerThread,
                           size_t elementsNumber,
@@ -59,7 +59,7 @@ public:
 
 private:
     eltwise::KernelExecAttrs kernel_exec_attrs_;
-    ngraph::element::Type_t dtype_;
+    ov::element::Type_t dtype_;
     std::size_t output_rank_;
 
     int max_elements_per_thread_;

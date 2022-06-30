@@ -11,7 +11,7 @@ namespace CUDAPlugin {
 class AddCuDnnOp : public CuDnnTensorOpBase {
 public:
     AddCuDnnOp(const CreationContext& context,
-               const std::shared_ptr<ngraph::Node>& node,
+               const std::shared_ptr<ov::Node>& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds);
 };

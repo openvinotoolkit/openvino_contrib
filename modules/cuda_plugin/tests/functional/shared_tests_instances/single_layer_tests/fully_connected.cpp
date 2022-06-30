@@ -75,16 +75,16 @@ class FullyConnectedLayerTest : public testing::WithParamInterface<FullyConnecte
 
     auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, shapeRelatedParams.input2.first);
     if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-      params.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(secondaryInput));
+      params.push_back(std::dynamic_pointer_cast<ov::op::v0::Parameter>(secondaryInput));
     }
     auto thirdInput = ngraph::builder::makeInputLayer(ngPrc, ngraph::helpers::InputLayerType::CONSTANT, shapeRelatedParams.input3);
-    auto paramOuts = ngraph::helpers::convert2OutputVector(
-        ngraph::helpers::castOps2Nodes<ngraph::op::Parameter>(params));
-    auto MatMul = std::dynamic_pointer_cast<ngraph::opset3::MatMul>(
-        ngraph::builder::makeMatMul(paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second));
-    auto Add = std::dynamic_pointer_cast<ngraph::opset3::Add>(
+    auto paramOuts =
+        ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
+    auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(ngraph::builder::makeMatMul(
+        paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second));
+    auto Add = std::dynamic_pointer_cast<ov::op::v1::Add>(
         ngraph::builder::makeEltwise(MatMul, thirdInput, ngraph::helpers::EltwiseTypes::ADD));
-    ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
+    ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
     function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
   }
 };
@@ -180,29 +180,29 @@ protected:
         auto matmul0SecondaryInput =
             ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, shapeRelatedParams.matmul1_input2.first);
         if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-            params.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(matmul0SecondaryInput));
+            params.push_back(std::dynamic_pointer_cast<ov::op::v0::Parameter>(matmul0SecondaryInput));
         }
         auto matmul1SecondaryInput =
             ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, shapeRelatedParams.matmul2_input2.first);
         if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-            params.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(matmul1SecondaryInput));
+            params.push_back(std::dynamic_pointer_cast<ov::op::v0::Parameter>(matmul1SecondaryInput));
         }
 
         auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ngraph::op::Parameter>(params));
-        auto matMul0 = std::dynamic_pointer_cast<ngraph::opset3::MatMul>(
+            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
+        auto matMul0 = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
             ngraph::builder::makeMatMul(paramOuts[0],
                                         matmul0SecondaryInput,
                                         shapeRelatedParams.matmul1_input1.second,
                                         shapeRelatedParams.matmul1_input2.second));
-        auto matMul1 = std::dynamic_pointer_cast<ngraph::opset3::MatMul>(
+        auto matMul1 = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
             ngraph::builder::makeMatMul(paramOuts[1],
                                         matmul1SecondaryInput,
                                         shapeRelatedParams.matmul2_input1.second,
                                         shapeRelatedParams.matmul2_input2.second));
-        auto Add = std::dynamic_pointer_cast<ngraph::opset3::Add>(
+        auto Add = std::dynamic_pointer_cast<ov::op::v1::Add>(
             ngraph::builder::makeEltwise(matMul0, matMul1, ngraph::helpers::EltwiseTypes::ADD));
-        ngraph::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
+        ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
 };

@@ -16,7 +16,7 @@
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v1::Convolution` using cuDNN Backend API.
+ * @brief Implements `ov::op::v1::Convolution` using cuDNN Backend API.
  *
  * cuDNN Backend API was introduced in cuDNN version 8 and among other
  * features provides support for asymmetric padding.
@@ -24,7 +24,7 @@ namespace CUDAPlugin {
 class FusedConvolutionCuDnnBE : public OperationCuDnn {
 public:
     FusedConvolutionCuDnnBE(const CreationContext& context,
-                            const ngraph::Node& node,
+                            const ov::Node& node,
                             IndexCollection&& inputIds,
                             IndexCollection&& outputIds,
                             const Convolution::Details::FusedConvolutionParams& params);

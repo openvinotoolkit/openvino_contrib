@@ -16,7 +16,7 @@
 namespace CUDAPlugin {
 
 FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
-                                             const ngraph::Node& node,
+                                             const ov::Node& node,
                                              IndexCollection&& inputIds,
                                              IndexCollection&& outputIds,
                                              Convolution::Details::FusedConvolutionParams params)
@@ -32,7 +32,7 @@ FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
 
 FusedConvolutionCuDnn::FusedConvolutionCuDnn(
     const CreationContext& context,
-    const ngraph::Node& node,
+    const ov::Node& node,
     IndexCollection&& inputIds,
     IndexCollection&& outputIds,
     std::shared_ptr<Convolution::Details::ConvolutionDescriptorsCuDnn> convDescs,

@@ -10,9 +10,9 @@
 #include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/op/strided_slice.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/parameter.hpp>
+#include <openvino/op/strided_slice.hpp>
 #include <ops/parameter.hpp>
 #include <random>
 
@@ -25,15 +25,15 @@ struct StridedSliceTest : testing::Test {
     using ElementType = float;
     using AuxilaryElementType = int64_t;
 
-    const ngraph::Shape inputTensorShape{3, 256, 256};
-    const int inputBufferLength = ngraph::shape_size(inputTensorShape);
+    const ov::Shape inputTensorShape{3, 256, 256};
+    const int inputBufferLength = ov::shape_size(inputTensorShape);
     const size_t inputBufferSize = inputBufferLength * sizeof(ElementType);
 
-    const ngraph::Shape outputTensorShape{3, 128, 128};
-    const size_t ouputBufferSize = ngraph::shape_size(outputTensorShape) * sizeof(ElementType);
+    const ov::Shape outputTensorShape{3, 128, 128};
+    const size_t ouputBufferSize = ov::shape_size(outputTensorShape) * sizeof(ElementType);
 
-    const ngraph::Shape constTensorShape{3};
-    const size_t constantTensorSize = ngraph::shape_size(constTensorShape) * sizeof(AuxilaryElementType);
+    const ov::Shape constTensorShape{3};
+    const size_t constantTensorSize = ov::shape_size(constTensorShape) * sizeof(AuxilaryElementType);
 
     CUDAPlugin::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(inputBufferSize);
@@ -45,23 +45,23 @@ struct StridedSliceTest : testing::Test {
     CUDA::Allocation outAlloc = threadContext.stream().malloc(ouputBufferSize);
     std::vector<cdevptr_t> inputs{inAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    InferenceEngine::BlobMap empty;
-    std::function<std::shared_ptr<ngraph::op::v1::StridedSlice>()> create_node = [this]() {
-        auto param =
-            std::make_shared<ngraph::op::v0::Parameter>(ngraph::element::f32, ngraph::PartialShape{inputTensorShape});
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
+    std::function<std::shared_ptr<ov::op::v1::StridedSlice>()> create_node = [this]() {
+        auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});
         std::vector<int64_t> shapeBegin{0, 64, -65};
         auto begin_input =
-            std::make_shared<ngraph::op::v0::Constant>(ngraph::element::i64, ngraph::Shape{3}, shapeBegin);
+            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeBegin);
         std::vector<int64_t> shapeEnd{3, 192, -193};
-        auto end_input = std::make_shared<ngraph::op::v0::Constant>(ngraph::element::i64, ngraph::Shape{3}, shapeEnd);
+        auto end_input = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeEnd);
         std::vector<int64_t> stride{1, 1, -1};
-        auto stride_input = std::make_shared<ngraph::op::v0::Constant>(ngraph::element::i64, ngraph::Shape{3}, stride);
-        auto node = std::make_shared<ngraph::op::v1::StridedSlice>(param->output(0),
-                                                                   begin_input->output(0),
-                                                                   end_input->output(0),
-                                                                   stride_input->output(0),
-                                                                   std::vector<int64_t>{},
-                                                                   std::vector<int64_t>{});
+        auto stride_input = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, stride);
+        auto node = std::make_shared<ov::op::v1::StridedSlice>(param->output(0),
+                                                               begin_input->output(0),
+                                                               end_input->output(0),
+                                                               stride_input->output(0),
+                                                               std::vector<int64_t>{},
+                                                               std::vector<int64_t>{});
         return node;
     };
 
@@ -81,7 +81,7 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;

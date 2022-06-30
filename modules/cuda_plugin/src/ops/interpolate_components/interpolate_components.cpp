@@ -12,10 +12,10 @@
 
 namespace CUDAPlugin::Interpolate::Details {
 
-void getAxesAndScales(const ngraph::op::v4::Interpolate& node, std::vector<size_t>& axes, std::vector<float>& scales) {
+void getAxesAndScales(const ov::op::v4::Interpolate& node, std::vector<size_t>& axes, std::vector<float>& scales) {
     axes = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<size_t>();
     switch (node.get_attrs().shape_calculation_mode) {
-        case ngraph::op::v4::Interpolate::ShapeCalcMode::sizes: {
+        case ov::op::v4::Interpolate::ShapeCalcMode::sizes: {
             const auto& input_shape = node.get_input_shape(0);
             const auto& output_shape = node.get_output_shape(0);
             scales.resize(axes.size());
@@ -24,7 +24,7 @@ void getAxesAndScales(const ngraph::op::v4::Interpolate& node, std::vector<size_
                 scales[i] = static_cast<float>(output_shape[axe]) / static_cast<float>(input_shape[axe]);
             }
         } break;
-        case ngraph::op::v4::Interpolate::ShapeCalcMode::scales:
+        case ov::op::v4::Interpolate::ShapeCalcMode::scales:
             scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
             Expects(axes.size() == scales.size());
             break;

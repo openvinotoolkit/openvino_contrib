@@ -20,7 +20,7 @@ public:
     SelectKernelOp(const size_t max_size,
                    const unsigned blocks_number,
                    const unsigned threads_per_block,
-                   const ngraph::element::Type_t operation_type);
+                   const ov::element::Type_t operation_type);
 
     void operator()(const cudaStream_t stream,
                     const bool* condition,
@@ -48,7 +48,7 @@ private:
     size_t max_size_;
     unsigned blocks_number_;
     unsigned threads_per_block_;
-    ngraph::element::Type_t operation_type_;
+    ov::element::Type_t operation_type_;
 };
 
 }  // namespace kernel

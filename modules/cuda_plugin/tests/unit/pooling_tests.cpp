@@ -12,9 +12,9 @@
 #include <cuda_profiler.hpp>
 #include <gsl/span>
 #include <ngraph/node.hpp>
-#include <ngraph/op/avg_pool.hpp>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/max_pool.hpp>
+#include <openvino/op/avg_pool.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/max_pool.hpp>
 #include <ops/avgpool.hpp>
 #include <ops/maxpool.hpp>
 #include <type_traits>
@@ -22,40 +22,40 @@
 using namespace InferenceEngine;
 using namespace CUDAPlugin;
 
-static const ngraph::Shape min_supported_pooling_shape{1, 1, 4, 4};
-static const ngraph::Shape dummy_kernel{2, 2};
-static const ngraph::Shape dummy_padding{1, 1};
-static const ngraph::Strides dummy_strides{1, 1};
+static const ov::Shape min_supported_pooling_shape{1, 1, 4, 4};
+static const ov::Shape dummy_kernel{2, 2};
+static const ov::Shape dummy_padding{1, 1};
+static const ov::Strides dummy_strides{1, 1};
 static const std::vector<TensorID> dummy_index{TensorID{0}};
-static const auto default_data_type{ngraph::element::f32};
+static const auto default_data_type{ov::element::f32};
 static const bool exclude_padding_from_pooling{true};
 
-using NodePtr = std::shared_ptr<ngraph::Node>;
-using ngraph::Shape;
-using ngraph::Strides;
+using NodePtr = std::shared_ptr<ov::Node>;
+using ov::Shape;
+using ov::Strides;
 
 template <class NGraphPoolingNode>
 std::shared_ptr<NGraphPoolingNode> build_ngraph_pooling_node(
     NodePtr input, const Strides& strides, const Shape& pads_begin, const Shape& pads_end, const Shape& kernel) {}
 
 template <>
-std::shared_ptr<ngraph::op::v1::MaxPool> build_ngraph_pooling_node(
+std::shared_ptr<ov::op::v1::MaxPool> build_ngraph_pooling_node(
     NodePtr input, const Strides& strides, const Shape& pads_begin, const Shape& pads_end, const Shape& kernel) {
-    auto node = std::make_shared<ngraph::op::v1::MaxPool>(input->output(0), strides, pads_begin, pads_end, kernel);
+    auto node = std::make_shared<ov::op::v1::MaxPool>(input->output(0), strides, pads_begin, pads_end, kernel);
     return node;
 }
 
 template <>
-std::shared_ptr<ngraph::op::v1::AvgPool> build_ngraph_pooling_node(
+std::shared_ptr<ov::op::v1::AvgPool> build_ngraph_pooling_node(
     NodePtr input, const Strides& strides, const Shape& pads_begin, const Shape& pads_end, const Shape& kernel) {
-    auto node = std::make_shared<ngraph::op::v1::AvgPool>(
+    auto node = std::make_shared<ov::op::v1::AvgPool>(
         input->output(0), strides, pads_begin, pads_end, kernel, exclude_padding_from_pooling);
     return node;
 }
 
 template <class NGraphPoolingNode>
 std::shared_ptr<NGraphPoolingNode> build_ngraph_pooling_dummy() {
-    auto const_input_node = std::make_shared<ngraph::op::Constant>(default_data_type, min_supported_pooling_shape);
+    auto const_input_node = std::make_shared<ov::op::v0::Constant>(default_data_type, min_supported_pooling_shape);
     return build_ngraph_pooling_node<NGraphPoolingNode>(
         const_input_node, dummy_strides, dummy_padding, dummy_padding, dummy_kernel);
 }
@@ -92,9 +92,9 @@ struct PoolingTest : testing::Test {
         CancellationToken token{};
         CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
-        InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+        InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
         auto& registry{OperationRegistry::getInstance()};
-        auto const_input = std::make_shared<ngraph::op::Constant>(ngraph::element::f32, Shape{in_shape});
+        auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;
         const Strides strides(spatial_dims, spatial_stride);
         const Shape pads_begin(spatial_dims, padding);
@@ -125,16 +125,17 @@ struct PoolingTest : testing::Test {
     std::vector<CUDA::DevicePointer<void*>> outputs;
     Blob::Ptr blob;
     InferenceEngine::BlobMap blobs;
-    InferenceEngine::BlobMap empty;
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
 };
 
-class MaxPoolRegistryTest : public PoolingRegistryTest<ngraph::op::v1::MaxPool, MaxPoolOp> {};
+class MaxPoolRegistryTest : public PoolingRegistryTest<ov::op::v1::MaxPool, MaxPoolOp> {};
 
 TEST_F(MaxPoolRegistryTest, GetOperationBuilder_Available) {
-    ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ngraph::op::v1::MaxPool>()));
+    ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ov::op::v1::MaxPool>()));
 }
 
- class MaxPoolTest : public PoolingTest<ngraph::op::v1::MaxPool> {};
+ class MaxPoolTest : public PoolingTest<ov::op::v1::MaxPool> {};
 
 TEST_F(MaxPoolTest, canExecuteOnFloat1DData) {
     // Input [4]
@@ -267,13 +268,13 @@ TEST_F(MaxPoolTest, canExecuteOnFloat3DData) {
     EXPECT_NO_THROW(test(in_data, in_shape, result));
 }
 
-class AvgPoolRegistryTest : public PoolingRegistryTest<ngraph::op::v1::AvgPool, AvgPoolOp> {};
+class AvgPoolRegistryTest : public PoolingRegistryTest<ov::op::v1::AvgPool, AvgPoolOp> {};
 
 TEST_F(AvgPoolRegistryTest, GetOperationBuilder_Available) {
-    ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ngraph::op::v1::AvgPool>()));
+    ASSERT_TRUE(OperationRegistry::getInstance().hasOperation(std::make_shared<ov::op::v1::AvgPool>()));
 }
 
- class AvgPoolTest : public PoolingTest<ngraph::op::v1::AvgPool> {};
+ class AvgPoolTest : public PoolingTest<ov::op::v1::AvgPool> {};
 
 TEST_F(AvgPoolTest, canExecuteOnFloat1DData) {
     // Input [4]

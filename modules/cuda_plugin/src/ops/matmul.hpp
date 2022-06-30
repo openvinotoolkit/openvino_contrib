@@ -15,7 +15,7 @@ namespace CUDAPlugin {
 
 class MatMulOp : public OperationCuBlas {
 public:
-    using NodeOp = ngraph::op::MatMul;
+    using NodeOp = ov::op::v0::MatMul;
     template <typename TOperation>
     MatMulOp(const CreationContext& context,
              const TOperation& node,
@@ -34,7 +34,7 @@ public:
      * @param matrixShape Matrix to calculate number of batches
      * @return Number of batches
      */
-    static int GetMatrixNumBatches(const ngraph::Shape& matrixShape);
+    static int GetMatrixNumBatches(const ov::Shape& matrixShape);
     /**
      * Broadcast some shape to Matrix
      * For example:
@@ -43,7 +43,7 @@ public:
      * {3, 2} -> {3, 2} // Not changed
      * @param shape Shape to broadcast to matrix
      */
-    static void BroadcastToMatrix(ngraph::Shape& shape);
+    static void BroadcastToMatrix(ov::Shape& shape);
 
     /**
      * Get compute type according A/B matrix data type and C matrix data type
@@ -61,11 +61,8 @@ private:
      * @param matrixBShape Shape of matrix B
      * @param matrixCShape Shape of matrix C
      */
-    static void BroadcastShapes(ngraph::Shape& matrixAShape,
-                                bool& transposeA,
-                                ngraph::Shape& matrixBShape,
-                                bool& transposeB,
-                                ngraph::Shape& matrixCShape);
+    static void BroadcastShapes(
+        ov::Shape& matrixAShape, bool& transposeA, ov::Shape& matrixBShape, bool& transposeB, ov::Shape& matrixCShape);
 
     cudaDataType_t data_type_ = cudaDataType_t::CUDA_R_32F;
     cudaDataType_t compute_type_ = cudaDataType_t::CUDA_R_32F;

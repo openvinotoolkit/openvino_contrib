@@ -15,8 +15,8 @@
 namespace CUDAPlugin {
 
 static bool isNCHWConvolutionPadding(const PadOp::NodeOp& node) {
-    auto padsBegin = ngraph::get_constant_from_source(node.input_value(1));
-    auto padsEnd = ngraph::get_constant_from_source(node.input_value(2));
+    auto padsBegin = ov::get_constant_from_source(node.input_value(1));
+    auto padsEnd = ov::get_constant_from_source(node.input_value(2));
     const auto padsBeginCoord = padsBegin->cast_vector<size_t>();
     const auto padsEndCoord = padsEnd->cast_vector<size_t>();
     return node.get_input_shape(0).size() == 4 && padsBeginCoord[0] == 0 && padsBeginCoord[1] == 0 &&
@@ -35,11 +35,11 @@ PadOp::PadOp(const CreationContext& context,
               node.get_output_element_type(0),
               node.get_output_shape(0).size(),
               context.device().props().maxThreadsPerBlock,
-              ngraph::shape_size(node.get_output_shape(0)),
+              ov::shape_size(node.get_output_shape(0)),
               isNCHWConvolutionPadding(node)},
       src_shape_{node.get_input_shape(0)},
       dst_shape_{node.get_output_shape(0)} {
-    Expects(ngraph::op::PadMode::CONSTANT == node.get_pad_mode());
+    Expects(ov::op::PadMode::CONSTANT == node.get_pad_mode());
 }
 
 void PadOp::Execute(const InferenceRequestContext& context,

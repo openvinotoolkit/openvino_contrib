@@ -10,26 +10,26 @@
 #include <vector>
 
 #include "converters.hpp"
-#include "ngraph/op/constant.hpp"
+#include <openvino/op/constant.hpp>
 
 namespace CUDAPlugin {
 
 namespace {
-double beta_from_constant(const ngraph::Node& swish_node) {
+double beta_from_constant(const ov::Node& swish_node) {
     constexpr auto tensor_index = 1;
     constexpr auto default_value = 1.0;
     if (tensor_index >= swish_node.get_input_size()) {
         return default_value;
     }
-    const ngraph::Node* constant_node = swish_node.get_input_node_ptr(tensor_index);
-    const ngraph::op::v0::Constant* constant = dynamic_cast<const ngraph::op::v0::Constant*>(constant_node);
+    const ov::Node* constant_node = swish_node.get_input_node_ptr(tensor_index);
+    const ov::op::v0::Constant* constant = dynamic_cast<const ov::op::v0::Constant*>(constant_node);
     Expects(constant);
     switch (constant->get_output_element_type(0)) {
-        case ngraph::element::Type_t::f16:
-            return *constant->get_data_ptr<ngraph::float16>();
-        case ngraph::element::Type_t::f32:
+        case ov::element::Type_t::f16:
+            return *constant->get_data_ptr<ov::float16>();
+        case ov::element::Type_t::f32:
             return *constant->get_data_ptr<float>();
-        case ngraph::element::Type_t::f64:
+        case ov::element::Type_t::f64:
             return *constant->get_data_ptr<double>();
         default:
             Expects(false);
@@ -38,7 +38,7 @@ double beta_from_constant(const ngraph::Node& swish_node) {
 }  // namespace
 
 SwishOp::SwishOp(const CreationContext& context,
-                 const ngraph::Node& node,
+                 const ov::Node& node,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
@@ -50,7 +50,7 @@ SwishOp::SwishOp(const CreationContext& context,
     const auto input_shape = node.get_input_shape(0);
     const auto output_shape = node.get_output_shape(0);
     Expects(input_shape == output_shape);
-    size_t num_elements = ngraph::shape_size(input_shape);
+    size_t num_elements = ov::shape_size(input_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     const double beta = beta_from_constant(node);
     kernel_ = kernel::Swish{

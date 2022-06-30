@@ -21,7 +21,7 @@ ConcatOp::ConcatOp(const CreationContext& context,
                    IndexCollection&& outputIds)
     : OperationBase(context, concatOp, std::move(inputIds), std::move(outputIds)),
       num_inputs_{concatOp.get_input_size()} {
-    const ngraph::element::Type element_type{concatOp.get_input_element_type(0)};
+    const ov::element::Type element_type{concatOp.get_input_element_type(0)};
     auto output_element_type = concatOp.get_output_element_type(0);
     Expects(concatOp.get_output_size() == 1);
     Expects(element_type == output_element_type);

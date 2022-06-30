@@ -12,13 +12,13 @@
 
 #include <cuda/dnn.hpp>
 #include <cuda_operation_base.hpp>
-#include <ngraph/op/clamp.hpp>
+#include <openvino/op/clamp.hpp>
 
 namespace CUDAPlugin {
 
 class ClampCuDnnOp : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::Clamp;
+    using NodeOp = ov::op::v0::Clamp;
 
     static constexpr std::size_t max_shape_size = 5;
 

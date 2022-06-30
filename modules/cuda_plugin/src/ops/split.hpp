@@ -10,16 +10,16 @@
 #include <cuda_operation_base.hpp>
 #include <gpu/gpu_context_api_cuda.hpp>
 #include <kernels/split.hpp>
-#include <ngraph/op/softmax.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <openvino/op/softmax.hpp>
 
 namespace CUDAPlugin {
 
 class SplitOp : public OperationBase {
 public:
     SplitOp(const CreationContext& context,
-            const ngraph::Node& node,
+            const ov::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,

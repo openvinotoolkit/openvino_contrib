@@ -25,27 +25,27 @@ public:
     bool optimizeOption = false;
 };
 
-class ParameterDummyNode : public ngraph::Node {
+class ParameterDummyNode : public ov::Node {
 public:
-    static constexpr type_info_t type_info{"Parameter", 0};
+    static constexpr type_info_t type_info{"Parameter", 0ul};
     const type_info_t& get_type_info() const override { return type_info; }
 
-    std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& inputs) const override {
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
         return std::make_shared<ParameterDummyNode>();
     }
 };
-constexpr ngraph::Node::type_info_t ParameterDummyNode::type_info;
+constexpr ov::Node::type_info_t ParameterDummyNode::type_info;
 
-class SuperOperationDummyNode : public ngraph::Node {
+class SuperOperationDummyNode : public ov::Node {
 public:
-    static constexpr type_info_t type_info{"SuperOperation", 0};
+    static constexpr type_info_t type_info{"SuperOperation", 0ul};
     const type_info_t& get_type_info() const override { return type_info; }
 
-    std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& inputs) const override {
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
         return std::make_shared<SuperOperationDummyNode>();
     }
 };
-constexpr ngraph::Node::type_info_t SuperOperationDummyNode::type_info;
+constexpr ov::Node::type_info_t SuperOperationDummyNode::type_info;
 
 TEST_F(OperationRegistryTest, CheckOperation_Available) {
     auto parameterDummyNode = std::make_shared<ParameterDummyNode>();

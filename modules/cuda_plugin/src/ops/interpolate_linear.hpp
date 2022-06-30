@@ -6,13 +6,13 @@
 
 #include "cuda_operation_base.hpp"
 #include "kernels/interpolate_linear.hpp"
-#include "ngraph/op/interpolate.hpp"
+#include "openvino/op/interpolate.hpp"
 
 namespace CUDAPlugin {
 
 class InterpolateLinearOp : public OperationBase {
 public:
-    using NodeOp = ngraph::op::v4::Interpolate;
+    using NodeOp = ov::op::v4::Interpolate;
     InterpolateLinearOp(const CreationContext& context,
                         const NodeOp& stridedSliceOp,
                         IndexCollection&& inputIds,

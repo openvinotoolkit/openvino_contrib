@@ -22,7 +22,7 @@ unsigned majorGridDim(T majorShapeDim, unsigned elementsPerBlock) {
 }
 }  // anonymous namespace
 
-KernelExecAttrs::KernelExecAttrs(const ngraph::Shape& shape, unsigned threadsPerBlock, unsigned elementsPerThread)
+KernelExecAttrs::KernelExecAttrs(const ov::Shape& shape, unsigned threadsPerBlock, unsigned elementsPerThread)
     : grid{[&shape, threadsPerBlock, elementsPerThread]() {
           switch (shape.size()) {
               case 1:

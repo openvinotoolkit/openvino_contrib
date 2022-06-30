@@ -6,14 +6,14 @@
 
 #include <cuda_operation_base.hpp>
 #include <gsl/span>
-#include <ngraph/op/gru_sequence.hpp>
+#include <openvino/op/gru_sequence.hpp>
 
 #include "gru_sequence_components.hpp"
 
 namespace CUDAPlugin::RNN::Details {
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v5::GRUSequence` node.
+ * @brief Defines tensor indices for `ov::op::v5::GRUSequence` node.
  */
 struct GRUSequenceArgIndices {
     static constexpr size_t x = 0;
@@ -30,12 +30,12 @@ struct GRUSequenceArgIndices {
  * @brief Extracted and validated parameters from ngraph operation.
  */
 struct GRUSequenceParams {
-    GRUSequenceParams(const ngraph::op::v5::GRUSequence& node);
+    GRUSequenceParams(const ov::op::v5::GRUSequence& node);
 
     static constexpr int lin_layer_count = 3;
 
-    ngraph::element::Type element_type_;
-    ngraph::op::RecurrentSequenceDirection direction_;
+    ov::element::Type element_type_;
+    ov::op::RecurrentSequenceDirection direction_;
     std::vector<std::string> activations_;
     float clip_;
     bool linear_before_reset_;

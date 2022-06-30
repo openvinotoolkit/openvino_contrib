@@ -7,33 +7,33 @@
 #include <cuda_op_buffers_extractor.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/op/constant.hpp>
-#include <ngraph/op/reshape.hpp>
-#include <ngraph/op/squeeze.hpp>
-#include <ngraph/op/unsqueeze.hpp>
+#include <openvino/op/constant.hpp>
+#include <openvino/op/reshape.hpp>
+#include <openvino/op/squeeze.hpp>
+#include <openvino/op/unsqueeze.hpp>
 #include <typeinfo>
 
 namespace CUDAPlugin::RNN::Details {
 
 namespace {
 
-gsl::span<const uint8_t> findInputConstantBuffer(const ngraph::Node& inNode, int inputIdx) {
-    const ngraph::Node* node = inNode.get_input_node_ptr(inputIdx);
-    const ngraph::op::v0::Constant* constant = dynamic_cast<const ngraph::op::v0::Constant*>(node);
+gsl::span<const uint8_t> findInputConstantBuffer(const ov::Node& inNode, int inputIdx) {
+    const ov::Node* node = inNode.get_input_node_ptr(inputIdx);
+    const ov::op::v0::Constant* constant = dynamic_cast<const ov::op::v0::Constant*>(node);
     while (!constant) {
         Expects(OperationBuffersExtractor::isReshapeOnlyNode(*node));
         node = node->get_input_node_ptr(0);
-        constant = dynamic_cast<const ngraph::op::v0::Constant*>(node);
+        constant = dynamic_cast<const ov::op::v0::Constant*>(node);
     }
     Expects(constant);
     const size_t size_bytes =
-        ngraph::shape_size(constant->get_output_shape(0)) * constant->get_output_element_type(0).size();
+        ov::shape_size(constant->get_output_shape(0)) * constant->get_output_element_type(0).size();
     return {constant->get_data_ptr<const uint8_t>(), size_bytes};
 }
 
 }  // namespace
 
-GRUSequenceParams::GRUSequenceParams(const ngraph::op::v5::GRUSequence& node)
+GRUSequenceParams::GRUSequenceParams(const ov::op::v5::GRUSequence& node)
     : element_type_{node.get_input_element_type(GRUSequenceArgIndices::x)},
       direction_{node.get_direction()},
       activations_{node.get_activations()},
@@ -66,7 +66,7 @@ GRUSequenceParams::GRUSequenceParams(const ngraph::op::v5::GRUSequence& node)
     r_host_buffers_ = findInputConstantBuffer(node, GRUSequenceArgIndices::recurrence_weights);
     b_host_buffers_ = findInputConstantBuffer(node, GRUSequenceArgIndices::biases);
 
-    const size_t num_directions = (direction_ == ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL) ? 2 : 1;
+    const size_t num_directions = (direction_ == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL) ? 2 : 1;
 
     const auto& w_shape = node.get_input_shape(GRUSequenceArgIndices::weights);
     Expects(w_shape.size() == 3);
@@ -90,9 +90,9 @@ GRUSequenceParams::GRUSequenceParams(const ngraph::op::v5::GRUSequence& node)
     }
 
     const auto element_type_size = element_type_.size();
-    Expects(w_host_buffers_.size_bytes() == ngraph::shape_size(w_shape) * element_type_size);
-    Expects(r_host_buffers_.size_bytes() == ngraph::shape_size(r_shape) * element_type_size);
-    Expects(b_host_buffers_.size_bytes() == ngraph::shape_size(b_shape) * element_type_size);
+    Expects(w_host_buffers_.size_bytes() == ov::shape_size(w_shape) * element_type_size);
+    Expects(r_host_buffers_.size_bytes() == ov::shape_size(r_shape) * element_type_size);
+    Expects(b_host_buffers_.size_bytes() == ov::shape_size(b_shape) * element_type_size);
 }
 
 }  // namespace CUDAPlugin::RNN::Details

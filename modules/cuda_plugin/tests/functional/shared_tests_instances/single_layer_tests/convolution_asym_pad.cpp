@@ -22,7 +22,7 @@ const std::vector<std::vector<ptrdiff_t>> padBegins = {{1, 1}};
 const std::vector<std::vector<ptrdiff_t>> padEnds = {{0, 2}};
 const std::vector<std::vector<size_t>> dilations = {{1, 1}};
 const std::vector<size_t> numOutChannels = {2};
-const std::vector<ngraph::op::PadType> pad_types = {ngraph::op::PadType::EXPLICIT};
+const std::vector<ov::op::PadType> pad_types = {ov::op::PadType::EXPLICIT};
 const auto inputShapes = std::vector<size_t>({1, 4, 10, 10});
 
 const auto groupConv2DParams = ::testing::Combine(::testing::ValuesIn(kernels),

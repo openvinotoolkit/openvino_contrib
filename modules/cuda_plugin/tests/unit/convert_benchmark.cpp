@@ -10,8 +10,8 @@
 #include <cuda_profiler.hpp>
 #include <iomanip>
 #include <ngraph/node.hpp>
-#include <ngraph/op/convert.hpp>
-#include <ngraph/op/parameter.hpp>
+#include <openvino/op/convert.hpp>
+#include <openvino/op/parameter.hpp>
 #include <ops/parameter.hpp>
 #include <random>
 
@@ -19,15 +19,14 @@ namespace {
 
 struct ConvertTest : testing::Test {
     CUDAPlugin::ThreadContext threadContext { CUDA::Device {} };
-    const ngraph::Shape inputTensorShape {1, 1, 3, 1024, 1024};
-    InferenceEngine::BlobMap empty;
+    const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
+    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::map<std::string, std::size_t> emptyMapping;
 
-    auto create_operation(ngraph::element::Type_t input, ngraph::element::Type_t output) {
-        auto param = std::make_shared<ngraph::op::v0::Parameter>(
-                ngraph::element::Type(input), ngraph::PartialShape(inputTensorShape));
-        const auto node = std::make_shared<ngraph::op::v0::Convert>(
-                    param->output(0),
-                    ngraph::element::Type(output));
+    auto create_operation(ov::element::Type_t input, ov::element::Type_t output) {
+        auto param =
+            std::make_shared<ov::op::v0::Parameter>(ov::element::Type(input), ov::PartialShape(inputTensorShape));
+        const auto node = std::make_shared<ov::op::v0::Convert>(param->output(0), ov::element::Type(output));
 
         static constexpr bool optimizeOption = false;
         auto& registry = CUDAPlugin::OperationRegistry::getInstance();
@@ -45,9 +44,9 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{empty, empty, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
-    using Type_t = ngraph::element::Type_t;
+    using Type_t = ov::element::Type_t;
     static constexpr auto supported_types = {
         Type_t::boolean,
         Type_t::bf16,
@@ -69,11 +68,11 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
             const auto inputType = Type_t(static_cast<std::underlying_type<Type_t>::type>(inputIdx));
             const auto outputType = Type_t(static_cast<std::underlying_type<Type_t>::type>(outputIdx));
             auto op = create_operation(inputType, outputType);
-            const auto input_type = ngraph::element::Type(inputType);
-            const auto output_type = ngraph::element::Type(outputType);
-            const auto inputBufferSize = ngraph::shape_size(inputTensorShape) * input_type.size();
-            const auto ouputBufferSize = ngraph::shape_size(inputTensorShape) * output_type.size();
-            const CUDA::Allocation inAlloc =  stream.malloc(inputBufferSize);
+            const auto input_type = ov::element::Type(inputType);
+            const auto output_type = ov::element::Type(outputType);
+            const auto inputBufferSize = ov::shape_size(inputTensorShape) * input_type.size();
+            const auto ouputBufferSize = ov::shape_size(inputTensorShape) * output_type.size();
+            const CUDA::Allocation inAlloc = stream.malloc(inputBufferSize);
             const CUDA::Allocation outAlloc = stream.malloc(ouputBufferSize);
             std::vector<CUDA::DevicePointer<const void*>> inputs{inAlloc};
             std::vector<CUDA::DevicePointer<void*>> outputs{outAlloc};

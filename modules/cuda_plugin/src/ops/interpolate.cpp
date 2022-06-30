@@ -5,12 +5,15 @@
 #include <fmt/format.h>
 
 #include <gsl/gsl_assert>
+#include <openvino/op/constant.hpp>
 #include <sstream>
 
 #include "cuda_operation_registry.hpp"
 #include "interpolate_cubic.hpp"
 #include "interpolate_linear.hpp"
 #include "interpolate_nearest.hpp"
+#include "ngraph/shape.hpp"
+#include "ngraph/validation_util.hpp"
 
 namespace CUDAPlugin {
 
@@ -18,10 +21,10 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                                              const std::shared_ptr<ngraph::Node>& in_node,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
-    auto node = std::dynamic_pointer_cast<ngraph::op::v4::Interpolate>(in_node);
+    auto node = std::dynamic_pointer_cast<ov::op::v4::Interpolate>(in_node);
     Expects(node);
 
-    using InterpolateMode = ngraph::op::v4::Interpolate::InterpolateMode;
+    using InterpolateMode = ov::op::v4::Interpolate::InterpolateMode;
     using IndexCollection = OperationBase::IndexCollection;
     std::stringstream exception_msg;
 

@@ -16,13 +16,13 @@ namespace CUDAPlugin {
 class FusedConvolutionCuDnn : public OperationCuDnn {
 public:
     FusedConvolutionCuDnn(const CreationContext& context,
-                          const ngraph::Node& node,
+                          const ov::Node& node,
                           IndexCollection&& inputIds,
                           IndexCollection&& outputIds,
                           Convolution::Details::FusedConvolutionParams params);
 
     FusedConvolutionCuDnn(const CreationContext& context,
-                          const ngraph::Node& node,
+                          const ov::Node& node,
                           IndexCollection&& inputIds,
                           IndexCollection&& outputIds,
                           std::shared_ptr<Convolution::Details::ConvolutionDescriptorsCuDnn> conv_descs_,

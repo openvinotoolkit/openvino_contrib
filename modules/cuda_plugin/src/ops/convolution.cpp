@@ -17,21 +17,23 @@
 namespace CUDAPlugin {
 
 static OperationBase::Ptr convolutionFactory(const CreationContext& context,
-                                             const std::shared_ptr<ngraph::Node>& node,
+                                             const std::shared_ptr<ov::Node>& node,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
     using IndexCollection = OperationBase::IndexCollection;
-    const Convolution::Details::ConvolutionParams params{downcast<const ngraph::op::v1::Convolution>(node)};
+    const Convolution::Details::ConvolutionParams params{downcast<const ov::op::v1::Convolution>(node)};
     std::stringstream exception_msg;
 #ifdef ENABLE_CUDNN_BACKEND_API
     try {
-        return std::make_shared<ConvolutionCuDnnBE>(context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
+        return std::make_shared<ConvolutionCuDnnBE>(
+            context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create ConvolutionCuDnnBE impl: " << e.what();
     }
 #endif  // ENABLE_CUDNN_BACKEND_API
     try {
-        return std::make_shared<ConvolutionCuDnn>(context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
+        return std::make_shared<ConvolutionCuDnn>(
+            context, *node, IndexCollection{inputIds}, IndexCollection{outputIds}, params);
     } catch (const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what();
     }

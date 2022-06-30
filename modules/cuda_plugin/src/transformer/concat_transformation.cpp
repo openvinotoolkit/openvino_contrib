@@ -5,7 +5,7 @@
 #include "concat_transformation.hpp"
 
 #include <exec_graph_info.hpp>
-#include <ngraph/op/concat.hpp>
+#include <openvino/op/concat.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
@@ -17,18 +17,18 @@ namespace ngraph::pass {
 NGRAPH_RTTI_DEFINITION(ngraph::pass::ConcatTransformation,
                        "ConcatTransformation", 0);
 
-bool change_concat_to_concat_optimized(ngraph::pattern::Matcher &m) {
+bool change_concat_to_concat_optimized(pattern::Matcher &m) {
     using CUDAPlugin::nodes::ConcatOptimized;
 
-    auto concat = std::dynamic_pointer_cast<ngraph::op::v0::Concat>(m.get_match_root());
+    auto concat = std::dynamic_pointer_cast<ov::op::v0::Concat>(m.get_match_root());
     for (auto& in : concat->inputs()) {
         auto source_output = in.get_source_output();
-        if (dynamic_cast<ngraph::op::Constant*>(source_output.get_node())) {
+        if (dynamic_cast<ov::op::v0::Constant*>(source_output.get_node())) {
             return false;
         }
         unsigned num_concats = 0;
         for (auto& out : source_output.get_target_inputs()) {
-            if (dynamic_cast<ngraph::op::v0::Concat*>(out.get_node())) {
+            if (dynamic_cast<ov::op::v0::Concat*>(out.get_node())) {
                 num_concats += 1;
             }
         }
@@ -50,7 +50,7 @@ bool change_concat_to_concat_optimized(ngraph::pattern::Matcher &m) {
     }
 
     const auto &ins = concat->inputs();
-    ngraph::OutputVector inOuts;
+    ov::OutputVector inOuts;
     std::transform(ins.begin(), ins.end(), std::back_inserter(inOuts),
                    [](const auto& i) {
                      return i.get_source_output();
@@ -58,34 +58,30 @@ bool change_concat_to_concat_optimized(ngraph::pattern::Matcher &m) {
 
     auto concat_optimized = std::make_shared<ConcatOptimized>(inOuts, concat->get_axis());
     concat_optimized->set_friendly_name(concat->get_friendly_name());
-    ngraph::copy_runtime_info(concat, concat_optimized);
+    ov::copy_runtime_info(concat, concat_optimized);
 
     auto& rt_info = concat->get_rt_info();
     if (auto found = rt_info.find(ExecGraphInfoSerialization::ORIGINAL_NAMES);
         found != rt_info.end()) {
         auto& rt_info_layer_names = found->second;
-        const auto original_names =
-            std::dynamic_pointer_cast<ngraph::VariantImpl<std::string>>(
-                rt_info_layer_names);
-        const std::string original_names_with_activation =
-            concat->get_friendly_name() + "," + original_names->get();
-        rt_info_layer_names = std::make_shared<ngraph::VariantWrapper<std::string>>(
-            original_names_with_activation);
+        const auto original_names = rt_info_layer_names.as<std::string>();
+        const std::string original_names_with_activation = concat->get_friendly_name() + "," + original_names;
+        rt_info_layer_names = original_names_with_activation;
     }
 
-    ngraph::replace_node(concat, concat_optimized);
+    ov::replace_node(concat, concat_optimized);
 
     return true;
 }
 
 ConcatTransformation::ConcatTransformation() {
-    auto concat = ngraph::pattern::wrap_type<ngraph::op::v0::Concat>();
+    auto concat = pattern::wrap_type<ov::op::v0::Concat>();
 
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](pattern::Matcher &m) {
       return change_concat_to_concat_optimized(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(
+    auto m = std::make_shared<pattern::Matcher>(
         concat, "ConcatTransformation");
     register_matcher(m, callback);
 }

@@ -9,7 +9,7 @@
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
-#include <ngraph/op/constant.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "cuda/constant_factory.hpp"
 
@@ -22,21 +22,20 @@ FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CreationCon
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
       params_{node},
       conv_descs_{context, params_.conv_},
-      add_in_bytes_{ngraph::element::Type(params_.conv_.element_type_).size() *
-                    ngraph::shape_size(params_.add_shape_)} {
-    const auto size = ngraph::element::Type(params_.conv_.element_type_).size();
-    conv_in_bytes_ = size * ngraph::shape_size(params_.conv_.dinput_shape_);
-    add_in_bytes_ = size * ngraph::shape_size(params_.add_shape_);
+      add_in_bytes_{ov::element::Type(params_.conv_.element_type_).size() * ov::shape_size(params_.add_shape_)} {
+    const auto size = ov::element::Type(params_.conv_.element_type_).size();
+    conv_in_bytes_ = size * ov::shape_size(params_.conv_.dinput_shape_);
+    add_in_bytes_ = size * ov::shape_size(params_.add_shape_);
     Expects(conv_in_bytes_ >= add_in_bytes_);
 
-    ngraph::Output<ngraph::Node> addNode;
+    ov::Output<ov::Node> addNode;
     if (node.get_input_size() == 4) {
         addNode = node.input(3).get_source_output();
     } else {
         addNode = node.input(2).get_source_output();
     }
 
-    auto addConstant = dynamic_cast<ngraph::op::v0::Constant*>(addNode.get_node());
+    auto addConstant = dynamic_cast<ov::op::v0::Constant*>(addNode.get_node());
     add_node_ = addConstant->shared_from_this();
     const uint8_t* ptr = reinterpret_cast<const uint8_t*>(addConstant->get_data_ptr());
     add_constant_ = gsl::make_span(ptr, GetBufferSize(addNode.get_node()->output(0)));
@@ -93,7 +92,7 @@ WorkbufferRequest FusedConvolutionBackpropDataOp::GetWorkBufferRequest() const {
         return {{conv_in_bytes_}, {}};
 }
 
-std::size_t FusedConvolutionBackpropDataOp::GetBufferSize(const ngraph::Output<ngraph::Node>& output) {
+std::size_t FusedConvolutionBackpropDataOp::GetBufferSize(const ov::Output<ov::Node>& output) {
     return output.get_element_type().size() * shape_size(output.get_shape());
 }
 

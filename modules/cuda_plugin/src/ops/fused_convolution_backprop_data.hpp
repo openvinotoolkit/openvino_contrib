@@ -29,12 +29,12 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
 
 private:
-    static std::size_t GetBufferSize(const ngraph::Output<ngraph::Node>& output);
+    static std::size_t GetBufferSize(const ov::Output<ov::Node>& output);
 
 private:
     const Convolution::Details::FusedConvolutionBackwardDataParams params_;
     Convolution::Details::ConvolutionBackpropDataDescriptorCuDnn conv_descs_;
-    std::shared_ptr<ngraph::Node> add_node_;
+    std::shared_ptr<ov::Node> add_node_;
     gsl::span<const uint8_t, gsl::dynamic_extent> add_constant_;
     size_t conv_in_bytes_;
     size_t add_in_bytes_;

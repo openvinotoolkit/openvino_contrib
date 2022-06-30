@@ -6,21 +6,21 @@
 
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
+#include <openvino/op/gru_sequence.hpp>
+#include <ops/components/workbuffer_desc.hpp>
 
-#include "ngraph/op/gru_sequence.hpp"
 #include "rnn_components/gru_sequence_components.hpp"
 #include "rnn_components/gru_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
-#include <ops/components/workbuffer_desc.hpp>
 
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v5::GRUSequence` using cuDNN API
+ * @brief Implements `ov::op::v5::GRUSequence` using cuDNN API
  */
 class GRUSequenceOp : public OperationCuDnn {
 public:
-    using NodeOp = ngraph::op::v5::GRUSequence;
+    using NodeOp = ov::op::v5::GRUSequence;
     using Config = RNN::Details::GRUSequenceDescriptorsCuDnn::Config;
     GRUSequenceOp(const CreationContext& context,
                   const NodeOp& node,

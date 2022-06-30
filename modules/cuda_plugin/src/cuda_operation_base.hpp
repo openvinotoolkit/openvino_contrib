@@ -70,7 +70,7 @@ public:
     using WeakPtr = std::weak_ptr<OperationBase>;
     using IndexCollection = std::vector<TensorID>;
     OperationBase(const CreationContext& context,
-                  const ngraph::Node& node,
+                  const ov::Node& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
 
@@ -81,7 +81,7 @@ public:
 
 protected:
     OperationBase(const CreationContext& context,
-                  const std::shared_ptr<ngraph::Node>& node,
+                  const std::shared_ptr<ov::Node>& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds)
         : OperationBase(context, *node, move(inputIds), move(outputIds)) {}
@@ -125,7 +125,7 @@ using OperationCuTensor = CategorizedOperationBase<&IOperationMeta::Category::cu
  * @brief Downcasts a shared node pointer to a ConcreteOperator reference
  */
 template <class ConcreteOperator>
-ConcreteOperator& downcast(const std::shared_ptr<ngraph::Node>& node) {
+ConcreteOperator& downcast(const std::shared_ptr<ov::Node>& node) {
     return dynamic_cast<ConcreteOperator&>(*node.get());
 }
 }  // namespace CUDAPlugin

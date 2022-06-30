@@ -5,7 +5,7 @@
 
 #include <fmt/format.h>
 
-#include <ngraph/op/constant.hpp>
+#include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
 #include "cuda_operation_registry.hpp"
@@ -14,10 +14,10 @@
 namespace CUDAPlugin {
 
 namespace {
-ngraph::Shape shape_from_constant_value(const ngraph::Node* constant_node) {
-    const ngraph::op::v0::Constant* constant = dynamic_cast<const ngraph::op::v0::Constant*>(constant_node);
+ov::Shape shape_from_constant_value(const ov::Node* constant_node) {
+    const ov::op::v0::Constant* constant = dynamic_cast<const ov::op::v0::Constant*>(constant_node);
     Expects(constant);
-    return constant->cast_vector<ngraph::Shape::value_type>();
+    return constant->cast_vector<ov::Shape::value_type>();
 }
 }  // namespace
 
@@ -31,13 +31,13 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
     Expects(in_shape.size() <= out_shape.size());
 
     switch (node.get_broadcast_spec().m_type) {
-        case ngraph::op::BroadcastType::NUMPY:
-        case ngraph::op::BroadcastType::BIDIRECTIONAL:
+        case ov::op::BroadcastType::NUMPY:
+        case ov::op::BroadcastType::BIDIRECTIONAL:
             break;
-        case ngraph::op::BroadcastType::EXPLICIT: {
-            const ngraph::Shape axes_mapping = shape_from_constant_value(node.get_input_node_ptr(2));
+        case ov::op::BroadcastType::EXPLICIT: {
+            const ov::Shape axes_mapping = shape_from_constant_value(node.get_input_node_ptr(2));
             Expects(axes_mapping.size() == in_shape.size());
-            ngraph::Shape in_shape_reshaped(out_shape.size(), 1);
+            ov::Shape in_shape_reshaped(out_shape.size(), 1);
             for (size_t i = 0; i < axes_mapping.size(); ++i) {
                 in_shape_reshaped.at(axes_mapping.at(i)) = in_shape.at(i);
             }

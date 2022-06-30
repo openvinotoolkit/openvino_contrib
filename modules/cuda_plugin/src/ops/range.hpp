@@ -16,7 +16,7 @@ class RangeOp : public OperationBase {
 
 public:
     RangeOp(const CreationContext& context,
-            const ngraph::Node& node,
+            const ov::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
 

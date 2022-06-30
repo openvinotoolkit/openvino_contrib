@@ -14,7 +14,7 @@ namespace CUDAPlugin {
 class Comparison : public OperationBase {
 public:
     Comparison(const CreationContext& context,
-               const ngraph::Node& node,
+               const ov::Node& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds,
                kernel::Comparison::Op_t operation_type);
@@ -24,10 +24,10 @@ private:
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
-                 const Workbuffers& workbuffers) const final;
+                 const Workbuffers& workbuffers) const override final;
 
-    void InitSharedImmutableWorkbuffers(const Buffers& buffers) final;
-    WorkbufferRequest GetWorkBufferRequest() const final;
+    void InitSharedImmutableWorkbuffers(const Buffers& buffers) override final;
+    WorkbufferRequest GetWorkBufferRequest() const override final;
 
 private:
     std::vector<size_t> output_shape_;

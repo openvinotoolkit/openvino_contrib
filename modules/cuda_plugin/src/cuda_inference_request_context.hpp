@@ -25,8 +25,10 @@ public:
     using Ptr = std::shared_ptr<InferenceRequestContext>;
     using WeakPtr = std::weak_ptr<InferenceRequestContext>;
 
-    InferenceRequestContext(const InferenceEngine::BlobMap& inputs,
-                            const InferenceEngine::BlobMap& outputs,
+    InferenceRequestContext(const std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& inputs,
+                            const std::map<std::string, std::size_t>& inputMapping,
+                            const std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& outputs,
+                            const std::map<std::string, std::size_t>& outputMapping,
                             const ThreadContext& threadContext,
                             CancellationToken& token,
                             Profiler& profiler,
@@ -35,38 +37,44 @@ public:
           token{token},
           profiler{profiler},
           blob_inputs{inputs},
+          inputs_mapping{inputMapping},
           blob_outputs{outputs},
+          outputs_mapping{outputMapping},
           is_benchmark_mode_{isBenchmarkMode} {}
     // don't allow storing references to temporary
     template <typename... Args>
     InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
     template <typename... Args>
-    InferenceRequestContext(const InferenceEngine::BlobMap& inputs,
-                            InferenceEngine::BlobMap&& outputs,
+    InferenceRequestContext(std::vector<std::shared_ptr<ngraph::runtime::Tensor>>&& inputs,
+                            std::map<std::string, std::size_t>&& inputMapping,
+                            std::vector<std::shared_ptr<ngraph::runtime::Tensor>>&& outputs,
+                            std::map<std::string, std::size_t>&& outputMapping,
                             Args... args) = delete;
-    InferenceRequestContext(const InferenceEngine::BlobMap& inputs,
-                            const InferenceEngine::BlobMap& outputs,
-                            ThreadContext&& threadContext) = delete;
+    InferenceRequestContext(std::vector<std::shared_ptr<ngraph::runtime::Tensor>>&& inputs,
+                            std::map<std::string, std::size_t>&& inputMapping,
+                            std::vector<std::shared_ptr<ngraph::runtime::Tensor>>&& outputs,
+                            std::map<std::string, std::size_t>&& outputMapping,
+                            const ThreadContext& threadContext) = delete;
 
     /**
      * @brief GetInputBlob(name) returns an input blob with the given name
      */
-    Blob::Ptr GetInputBlob(const std::string& input_name) const { return blob_inputs.at(input_name); }
+    std::shared_ptr<ngraph::runtime::Tensor> GetInputBlob(const std::string& input_name) const { return blob_inputs.at(inputs_mapping.at(input_name)); }
     /**
      * @brief GetInputBlob(name) returns an input blob with the given name
      */
-    Blob::Ptr GetOutputBlob(const std::string& input_name) const { return blob_outputs.at(input_name); }
+    std::shared_ptr<ngraph::runtime::Tensor> GetOutputBlob(const std::string& output_name) const { return blob_outputs.at(outputs_mapping.at(output_name)); }
     /**
      * @brief HasInputBlob(name) returns true if it contains an input blob with the given name
      */
     bool HasInputBlob(const std::string& input_name) const noexcept {
-        return blob_inputs.find(input_name) != blob_inputs.end();
+        return inputs_mapping.find(input_name) != inputs_mapping.end();
     }
     /**
      * @brief HasOutputBlob(name) returns true if contains an output blob with the given name
      */
-    bool HasOutputBlob(const std::string& input_name) const noexcept {
-        return blob_outputs.find(input_name) != blob_outputs.end();
+    bool HasOutputBlob(const std::string& output_name) const noexcept {
+        return outputs_mapping.find(output_name) != outputs_mapping.end();
     }
     const ThreadContext& getThreadContext() const noexcept { return threadContext; }
     [[nodiscard]] CUDAPlugin::CancellationToken& getCancellationToken() const noexcept { return token; }
@@ -77,8 +85,10 @@ private:
     const ThreadContext& threadContext;
     CancellationToken& token;
     Profiler& profiler;
-    const InferenceEngine::BlobMap& blob_inputs;
-    const InferenceEngine::BlobMap& blob_outputs;
+    const std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& blob_inputs;
+    const std::map<std::string, std::size_t>& inputs_mapping;
+    const std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& blob_outputs;
+    const std::map<std::string, std::size_t>& outputs_mapping;
     bool is_benchmark_mode_;
 };
 

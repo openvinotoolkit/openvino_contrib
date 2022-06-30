@@ -13,12 +13,12 @@
 namespace CUDAPlugin {
 
 /**
- * @brief Implements `ngraph::op::v4::LSTMCell` using cuDNN API
+ * @brief Implements `ov::op::v4::LSTMCell` using cuDNN API
  */
 class LSTMCellOp : public OperationCuDnn {
 public:
     LSTMCellOp(const CreationContext& context,
-               const ngraph::Node& node,
+               const ov::Node& node,
                IndexCollection&& inputIds,
                IndexCollection&& outputIds);
 

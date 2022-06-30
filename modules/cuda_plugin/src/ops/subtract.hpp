@@ -11,7 +11,7 @@
 
 namespace CUDAPlugin {
 
-class SubtractOp : public ElementwiseBinaryOp<ngraph::op::v1::Subtract, kernel::Subtract> {
+class SubtractOp : public ElementwiseBinaryOp<ov::op::v1::Subtract, kernel::Subtract> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };

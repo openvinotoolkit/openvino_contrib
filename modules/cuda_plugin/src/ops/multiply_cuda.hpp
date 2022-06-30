@@ -11,10 +11,10 @@
 
 namespace CUDAPlugin {
 
-using MultiplyCudaOpBase = ElementwiseBinaryOp<ngraph::op::v1::Multiply, kernel::Multiply>;
+using MultiplyCudaOpBase = ElementwiseBinaryOp<ov::op::v1::Multiply, kernel::Multiply>;
 class MultiplyCudaOp : public MultiplyCudaOpBase {
 public:
-    using NodeOp = ngraph::op::v1::Multiply;
+    using NodeOp = ov::op::v1::Multiply;
     MultiplyCudaOp(const CreationContext& context,
                    const NodeOp& node,
                    IndexCollection&& inputIds,

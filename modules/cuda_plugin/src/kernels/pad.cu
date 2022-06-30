@@ -101,7 +101,7 @@ static inline __global__ void nchw_pad_const_mode(const T* src,
 }
 
 ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
-                           ngraph::element::Type_t dtype,
+                           ov::element::Type_t dtype,
                            std::size_t outputRank,
                            int maxElementsPerThread,
                            size_t elementsNumber,
@@ -130,7 +130,7 @@ void ConstModePad::operator()(cudaStream_t stream,
      * In sake of reducing code duplication and binary size, types of the same width are processed
      * by unsigned integer template instantiation version of appropriate width.
      * */
-    using Type_t = ngraph::element::Type_t;
+    using Type_t = ov::element::Type_t;
     switch (dtype_) {
         case Type_t::f32:
         case Type_t::i32:

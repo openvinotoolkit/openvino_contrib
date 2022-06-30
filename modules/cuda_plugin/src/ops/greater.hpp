@@ -11,7 +11,7 @@ namespace CUDAPlugin {
 class GreaterOp : public Comparison {
 public:
     GreaterOp(const CreationContext& context,
-              const ngraph::Node& node,
+              const ov::Node& node,
               IndexCollection&& inputIds,
               IndexCollection&& outputIds);
 };

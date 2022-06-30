@@ -23,10 +23,10 @@ GRUSequenceParamsCuDnn::GRUSequenceParamsCuDnn(const GRUSequenceParams& params)
       w_host_buffers_{params.w_host_buffers_},
       r_host_buffers_{params.r_host_buffers_},
       b_host_buffers_{params.b_host_buffers_} {
-    if (params.direction_ == ngraph::op::RecurrentSequenceDirection::REVERSE) {
+    if (params.direction_ == ov::op::RecurrentSequenceDirection::REVERSE) {
         throwIEException("Currently GRUSequence cuDNN implementation doesn't support REVERSE direction");
     }
-    if (params.direction_ == ngraph::op::RecurrentSequenceDirection::BIDIRECTIONAL) {
+    if (params.direction_ == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL) {
         throwIEException("Currently GRUSequence cuDNN implementation doesn't support BIDIRECTIONAL direction");
     }
 

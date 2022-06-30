@@ -6,13 +6,20 @@
 # [cmake:functional_tests]
 set(TARGET_NAME CudaFuncTests)
 
+if (ENABLE_INTEL_CPU)
+    set(OPENVINO_ADDITIONAL_DEPENDENCIES openvino_intel_cpu_plugin)
+else(ENABLE_INTEL_CPU)
+    set(OPENVINO_ADDITIONAL_DEPENDENCIES)
+endif (ENABLE_INTEL_CPU)
+
 addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-        CUDAPlugin
+        openvino_cuda_plugin
+        ${OPENVINO_ADDITIONAL_DEPENDENCIES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        CUDAPlugin_OBJ
+        openvino_cuda_plugin_obj
         LINK_LIBRARIES
         IE::funcSharedTests
         gmock

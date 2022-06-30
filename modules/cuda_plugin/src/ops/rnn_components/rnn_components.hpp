@@ -5,13 +5,13 @@
 #pragma once
 
 #include <gsl/span>
-#include <ngraph/op/gru_cell.hpp>
-#include <ngraph/op/lstm_cell.hpp>
+#include <openvino/op/gru_cell.hpp>
+#include <openvino/op/lstm_cell.hpp>
 
 namespace CUDAPlugin::RNN::Details {
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v4::LSTMCell` node.
+ * @brief Defines tensor indices for `ov::op::v4::LSTMCell` node.
  */
 struct LSTMCellArgIndices {
     static constexpr size_t x = 0;
@@ -31,8 +31,8 @@ struct LSTMCellArgIndices {
  * This class extracts and validates required parameter values from ngraph operation;
  */
 struct LSTMCellParams {
-    LSTMCellParams(const ngraph::Node& node);
-    LSTMCellParams(const ngraph::op::v4::LSTMCell& cell);
+    LSTMCellParams(const ov::Node& node);
+    LSTMCellParams(const ov::op::v4::LSTMCell& cell);
 
     static constexpr int lin_layer_count = 4;
 
@@ -44,14 +44,14 @@ struct LSTMCellParams {
 
     size_t input_size_;
     size_t batch_size_;
-    ngraph::element::Type element_type_;
+    ov::element::Type element_type_;
     gsl::span<const uint8_t> w_host_buffers_;
     gsl::span<const uint8_t> r_host_buffers_;
     gsl::span<const uint8_t> b_host_buffers_;
 };
 
 /**
- * @brief Defines tensor indices for `ngraph::op::v4::LSTMCell` node.
+ * @brief Defines tensor indices for `ov::op::v4::LSTMCell` node.
  */
 struct GRUCellArgIndices {
     static constexpr size_t x = 0;
@@ -69,8 +69,8 @@ struct GRUCellArgIndices {
  * This class extracts and validates required parameter values from ngraph operation;
  */
 struct GRUCellParams {
-    GRUCellParams(const ngraph::Node& node);
-    GRUCellParams(const ngraph::op::v3::GRUCell& cell);
+    GRUCellParams(const ov::Node& node);
+    GRUCellParams(const ov::op::v3::GRUCell& cell);
 
     static constexpr int lin_layer_count = 3;
 
@@ -83,7 +83,7 @@ struct GRUCellParams {
 
     size_t input_size_;
     size_t batch_size_;
-    ngraph::element::Type element_type_;
+    ov::element::Type element_type_;
     gsl::span<const uint8_t> w_host_buffers_;
     gsl::span<const uint8_t> r_host_buffers_;
     gsl::span<const uint8_t> b_host_buffers_;

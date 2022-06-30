@@ -11,7 +11,7 @@
 
 namespace CUDAPlugin {
 
-class ModOp : public ElementwiseBinaryOp<ngraph::op::v1::Mod, kernel::Mod> {
+class ModOp : public ElementwiseBinaryOp<ov::op::v1::Mod, kernel::Mod> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };

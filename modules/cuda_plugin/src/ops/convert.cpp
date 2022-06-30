@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "convert.hpp"
+
 #include <array>
 #include <cuda/cuda_type_traits.hpp>
 #include <cuda_operation_registry.hpp>
@@ -10,13 +12,12 @@
 #include <ngraph/node.hpp>
 #include <utility>
 
-#include "convert.hpp"
 #include "converters.hpp"
 
 namespace CUDAPlugin {
 
 ConvertOp::ConvertOp(const CreationContext& context,
-                     const std::shared_ptr<ngraph::Node>& node,
+                     const std::shared_ptr<ov::Node>& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {

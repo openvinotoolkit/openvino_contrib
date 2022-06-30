@@ -11,11 +11,11 @@
 
 namespace CUDAPlugin {
 
-class DivideOp : public ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::Divide> {
+class DivideOp : public ElementwiseBinaryOp<ov::op::v1::Divide, kernel::Divide> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };
-class PythonDivideOp : public ElementwiseBinaryOp<ngraph::op::v1::Divide, kernel::PythonDivide> {
+class PythonDivideOp : public ElementwiseBinaryOp<ov::op::v1::Divide, kernel::PythonDivide> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };

@@ -8,7 +8,7 @@
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_test_constants.hpp>
-#include <ngraph/op/util/attr_types.hpp>
+#include <openvino/op/util/attr_types.hpp>
 #include <vector>
 
 #include "benchmark.hpp"
@@ -45,9 +45,9 @@ std::vector<size_t> hidden_size{1, 10, 384, 512, 768};
 std::vector<size_t> sequence_axis{0, 1};
 std::vector<ngraph::helpers::TensorIteratorBody> body_type = {ngraph::helpers::TensorIteratorBody::LSTM};
 std::vector<float> clip_zeros{0.f};
-std::vector<ngraph::op::RecurrentSequenceDirection> direction = {
-    ngraph::op::RecurrentSequenceDirection::FORWARD,
-    ngraph::op::RecurrentSequenceDirection::REVERSE,
+std::vector<ov::op::RecurrentSequenceDirection> direction = {
+    ov::op::RecurrentSequenceDirection::FORWARD,
+    ov::op::RecurrentSequenceDirection::REVERSE,
 };
 std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                          InferenceEngine::Precision::FP16};
@@ -103,9 +103,9 @@ std::vector<size_t> hidden_size{1, 10};
 std::vector<size_t> sequence_axis{0, 1};
 std::vector<ngraph::helpers::TensorIteratorBody> body_type = {ngraph::helpers::TensorIteratorBody::LSTM};
 std::vector<float> clip_zeros{0.f};
-std::vector<ngraph::op::RecurrentSequenceDirection> direction = {
-    ngraph::op::RecurrentSequenceDirection::FORWARD,
-    ngraph::op::RecurrentSequenceDirection::REVERSE,
+std::vector<ov::op::RecurrentSequenceDirection> direction = {
+    ov::op::RecurrentSequenceDirection::FORWARD,
+    ov::op::RecurrentSequenceDirection::REVERSE,
 };
 std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                          InferenceEngine::Precision::FP16};

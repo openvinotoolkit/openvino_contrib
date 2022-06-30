@@ -12,7 +12,7 @@
 namespace LayerTestsDefinitions {
 
 template <typename BaseLayerTest>
-class BenchmarkLayerTest : public BaseLayerTest, virtual public LayerTestsUtils::LayerTestsCommon {
+class BenchmarkLayerTest : public BaseLayerTest {
     static_assert(std::is_base_of<LayerTestsUtils::LayerTestsCommon, BaseLayerTest>::value,
                   "BaseLayerTest should inherit from LayerTestsUtils::LayerTestsCommon");
 
@@ -23,7 +23,7 @@ public:
         bench_names_ = names;
         warmup_time_ = warmupTime;
         num_attempts_ = numAttempts;
-        configuration = {{"PERF_COUNT", "YES"}};
+        LayerTestsUtils::LayerTestsCommon::configuration = {{"PERF_COUNT", "YES"}};
         LayerTestsUtils::LayerTestsCommon::Run();
     }
 
@@ -46,7 +46,7 @@ protected:
         // Operation names search
         std::map<std::string, long long> results_us{};
         LayerTestsUtils::LayerTestsCommon::Infer();
-        const auto& perfResults = inferRequest.GetPerformanceCounts();
+        const auto& perfResults = LayerTestsUtils::LayerTestsCommon::inferRequest.GetPerformanceCounts();
         for (const auto& name : bench_names_) {
             bool found = false;
             for (const auto& result : perfResults) {
@@ -85,7 +85,7 @@ protected:
         // Benchmark
         for (int i = 0; i < num_attempts_; ++i) {
             LayerTestsUtils::LayerTestsCommon::Infer();
-            const auto& perfResults = inferRequest.GetPerformanceCounts();
+            const auto& perfResults = LayerTestsUtils::LayerTestsCommon::inferRequest.GetPerformanceCounts();
             for (auto& [name, time] : results_us) {
                 time += perfResults.at(name).realTime_uSec;
             }
