@@ -184,10 +184,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
     * Supported modes: `nearest`, `cubic`, `linear`;
     * Only default zero values are supported for `pads_begin` and `pads_end` attributes;
     * True value of `antialias` attribute is supported in `linear` mode only;
-    * Additional limitations of `nearest` mode:
-      * Only 4D data tensors are supported;
-      * Supported values of `nearest_mode` attribute are `simple` and `floor`;
-      * `coordinate_transformation_mode` attribute is limited to `asymmetric` and `tf_half_pixel_for_nn`;
+    * Only 4D data tensors are supported in `nearest` mode;
 * `'LSTMSequence'`
     * All limitations of LSTMCell
     * "REVERSE" direction is not supported

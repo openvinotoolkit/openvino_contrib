@@ -40,7 +40,25 @@ std::vector<float> getScalesVector(const CUDAPlugin::InterpolateNearestOp::NodeO
     return result_scales;
 }
 
-bool canApplyUpscaleOptimizing(const std::vector<float>& scales) {
+bool canApplyUpscaleOptimizing(const InterpolateNearestOp::NodeOp& node, const std::vector<float>& scales) {
+    using CoordinateTransformMode = ngraph::op::v4::Interpolate::CoordinateTransformMode;
+    switch (node.get_attrs().coordinate_transformation_mode) {
+        case CoordinateTransformMode::asymmetric:
+        case CoordinateTransformMode::tf_half_pixel_for_nn:
+            break;
+        default:
+            return false;
+    };
+
+    using NearestMode = ngraph::op::v4::Interpolate::NearestMode;
+    switch (node.get_attrs().nearest_mode) {
+        case NearestMode::simple:
+        case NearestMode::floor:
+            break;
+        default:
+            return false;
+    };
+
     bool is_downscale = false;
     bool can_be_optimized = false;
     for (const auto s : scales) {
@@ -60,24 +78,6 @@ void checkLimitations(const InterpolateNearestOp::NodeOp& node) {
         throwIEException(
             fmt::format("Unsupported shape rank {}. InterpolateNearestOp operation supports only 4d tensor",
                         node.get_input_shape(0).size()));
-    }
-    if (node.get_attrs().nearest_mode != Interpolate::NearestMode::simple &&
-        node.get_attrs().nearest_mode != Interpolate::NearestMode::floor) {
-        throwIEException(fmt::format(
-            "Unsupported nearest mode ({}). InterpolateNearestOp operation supports only simple ({}), floor({}) and "
-            "round_prefer_floor({}) modes",
-            node.get_attrs().nearest_mode,
-            Interpolate::NearestMode::simple,
-            Interpolate::NearestMode::floor));
-    }
-    if (node.get_attrs().coordinate_transformation_mode != Interpolate::CoordinateTransformMode::asymmetric &&
-        node.get_attrs().coordinate_transformation_mode != Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn) {
-        throwIEException(fmt::format(
-            "Unsupported coordinate transfrom mode ({}). InterpolateNearestOp operation asymmetric ({}) and "
-            "tf_half_pixel_for_nn ({}) modes",
-            node.get_attrs().coordinate_transformation_mode,
-            Interpolate::CoordinateTransformMode::asymmetric,
-            Interpolate::CoordinateTransformMode::tf_half_pixel_for_nn));
     }
     if (node.get_attrs().antialias != false) {
         throwIEException(fmt::format(
@@ -109,7 +109,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
       scales_{getScalesVector(node)},
       in_shape_{node.get_input_shape(0)},
       out_shape_{node.get_output_shape(0)},
-      can_use_upscale_optimizing_{canApplyUpscaleOptimizing(scales_)} {
+      can_use_upscale_optimizing_{canApplyUpscaleOptimizing(node, scales_)} {
     Expects(node.get_attrs().mode == ngraph::op::v4::Interpolate::InterpolateMode::nearest);
     checkLimitations(node);
 
@@ -127,7 +127,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
         element_type,
         can_use_upscale_optimizing_,
         static_cast<kernel::InterpolateNearest::NearestMode>(node.get_attrs().nearest_mode),
-        static_cast<kernel::InterpolateNearest::TransformMode>(node.get_attrs().coordinate_transformation_mode));
+        static_cast<kernel::InterpolateNearest::CoordinateTransformMode>(node.get_attrs().coordinate_transformation_mode));
 }
 
 void InterpolateNearestOp::Execute(const InferenceRequestContext& context,
