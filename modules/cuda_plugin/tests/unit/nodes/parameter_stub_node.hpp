@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include <typeinfo>
 #include <ngraph/node.hpp>
 #include <openvino/op/parameter.hpp>
+#include <typeinfo>
 
 struct ParameterStubNode : ov::op::v0::Parameter {
     using ov::op::v0::Parameter::Parameter;

@@ -15,31 +15,31 @@ namespace CUDAPlugin {
  */
 class ImmutableMemoryModelBuilder {
 public:
-  ImmutableMemoryModelBuilder();
+    ImmutableMemoryModelBuilder();
 
-  /**
-   * Defines a single tensor allocation.
-   * @param [in] id Buffer identifier. Will be used to obtain device side
-   * tensor pointer.
-   * @param [in] bsize Tensor memory size in bytes.
-   * @throws InferenceEngineException if allocation size is zero or tensor
-   * with specified id is already added.
-   */
-  void addAllocation(BufferID id, size_t bsize);
+    /**
+     * Defines a single tensor allocation.
+     * @param [in] id Buffer identifier. Will be used to obtain device side
+     * tensor pointer.
+     * @param [in] bsize Tensor memory size in bytes.
+     * @throws InferenceEngineException if allocation size is zero or tensor
+     * with specified id is already added.
+     */
+    void addAllocation(BufferID id, size_t bsize);
 
-  /**
-   * @returns The size of memory block
-   */
-  size_t deviceMemoryBlockSize() const;
+    /**
+     * @returns The size of memory block
+     */
+    size_t deviceMemoryBlockSize() const;
 
-  /**
-   * Creates and initializes MemoryModel object.
-   */
-  MemoryModel::Ptr build() const;
+    /**
+     * Creates and initializes MemoryModel object.
+     */
+    MemoryModel::Ptr build() const;
 
 private:
-  ptrdiff_t end_offset_;
-  std::unordered_map<BufferID, ptrdiff_t> offsets_;
+    ptrdiff_t end_offset_;
+    std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 
 }  // namespace CUDAPlugin

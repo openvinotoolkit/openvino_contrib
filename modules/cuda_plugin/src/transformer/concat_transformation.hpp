@@ -10,9 +10,9 @@
 namespace ngraph::pass {
 
 class ConcatTransformation : public ngraph::pass::MatcherPass {
-   public:
+public:
     NGRAPH_RTTI_DECLARATION;
     ConcatTransformation();
 };
 
-}
+}  // namespace ngraph::pass

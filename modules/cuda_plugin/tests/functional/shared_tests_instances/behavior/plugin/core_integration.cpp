@@ -21,56 +21,61 @@ INSTANTIATE_TEST_SUITE_P(smoke_IEClassBasicTestP,
                          IEClassBasicTestP,
                          ::testing::Values(std::make_pair("openvino_cuda_plugin", CommonTestUtils::DEVICE_CUDA)));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassNetworkTestP, IEClassNetworkTestP,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassNetworkTestP,
+                         IEClassNetworkTestP,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
 //
 // IE Class GetMetric
 //
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_SUPPORTED_CONFIG_KEYS,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_SUPPORTED_CONFIG_KEYS,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_SUPPORTED_METRICS,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_SUPPORTED_METRICS,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_AVAILABLE_DEVICES,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_AVAILABLE_DEVICES,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_FULL_DEVICE_NAME,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_FULL_DEVICE_NAME,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_OPTIMIZATION_CAPABILITIES,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_OPTIMIZATION_CAPABILITIES,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetMetricTest, IEClassGetMetricTest_ThrowUnsupported,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
+                         IEClassGetMetricTest_ThrowUnsupported,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetConfigTest, IEClassGetConfigTest_ThrowUnsupported,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetConfigTest,
+                         IEClassGetConfigTest_ThrowUnsupported,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetAvailableDevices, IEClassGetAvailableDevices,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
-
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetAvailableDevices,
+                         IEClassGetAvailableDevices,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
 //
 // IE Class SetConfig
 //
 
-using IEClassSetConfigTestHETERO = BehaviorTestsUtils::IEClassNetworkTest;
+class IEClassSetConfigTestHETERO : public BehaviorTestsUtils::IEClassNetworkTest,
+                                   public BehaviorTestsUtils::IEPluginTestBase {
+    void SetUp() override {
+        IEClassNetworkTest::SetUp();
+        IEPluginTestBase::SetUp();
+    }
+};
 
 TEST_F(IEClassSetConfigTestHETERO, smoke_SetConfigNoThrow) {
     {
@@ -112,11 +117,17 @@ TEST_F(IEClassSetConfigTestHETERO, smoke_SetConfigNoThrow) {
 // IE Class GetConfig
 //
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassGetConfigTest, IEClassGetConfigTest,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetConfigTest,
+                         IEClassGetConfigTest,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
-using IEClassGetConfigTestCUDA = BehaviorTestsUtils::IEClassNetworkTest;
+class IEClassGetConfigTestCUDA : public BehaviorTestsUtils::IEClassNetworkTest,
+                                 public BehaviorTestsUtils::IEPluginTestBase {
+    void SetUp() override {
+        IEClassNetworkTest::SetUp();
+        IEPluginTestBase::SetUp();
+    }
+};
 
 TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
     InferenceEngine::Core ie = BehaviorTestsUtils::createIECoreWithTemplate();
@@ -142,9 +153,9 @@ TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
 
 // IE Class Query network
 
-INSTANTIATE_TEST_SUITE_P(
-        smoke_IEClassQueryNetworkTest, IEClassQueryNetworkTest,
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassQueryNetworkTest,
+                         IEClassQueryNetworkTest,
+                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
 
 // IE Class Load network
 

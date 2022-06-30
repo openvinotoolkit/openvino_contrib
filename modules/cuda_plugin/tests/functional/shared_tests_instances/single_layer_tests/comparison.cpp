@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-
 #include "single_layer_tests/comparison.hpp"
 
 #include <vector>

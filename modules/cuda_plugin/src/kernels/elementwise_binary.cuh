@@ -13,8 +13,8 @@
 #include "cuda_type_traits.hpp"
 #include "elementtypeswitch.hpp"
 #include "error.hpp"
-#include "tensor_helpers.hpp"
 #include "numpy_broadcast_mapper.cuh"
+#include "tensor_helpers.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {

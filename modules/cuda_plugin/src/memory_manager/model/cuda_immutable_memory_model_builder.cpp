@@ -10,24 +10,19 @@
 
 namespace CUDAPlugin {
 
-ImmutableMemoryModelBuilder::ImmutableMemoryModelBuilder()
-  : end_offset_{ 0 }
-{
-}
+ImmutableMemoryModelBuilder::ImmutableMemoryModelBuilder() : end_offset_{0} {}
 
 void ImmutableMemoryModelBuilder::addAllocation(BufferID id, size_t bsize) {
-  IE_ASSERT(bsize > 0); // Verify that allocation size isn't zero.
-  auto res = offsets_.emplace(id, end_offset_);
-  IE_ASSERT(res.second); // Verify that "id" is unique.
-  end_offset_ += applyAllignment(bsize);
+    IE_ASSERT(bsize > 0);  // Verify that allocation size isn't zero.
+    auto res = offsets_.emplace(id, end_offset_);
+    IE_ASSERT(res.second);  // Verify that "id" is unique.
+    end_offset_ += applyAllignment(bsize);
 }
 
-size_t ImmutableMemoryModelBuilder::deviceMemoryBlockSize() const {
-    return end_offset_;
-}
+size_t ImmutableMemoryModelBuilder::deviceMemoryBlockSize() const { return end_offset_; }
 
 MemoryModel::Ptr ImmutableMemoryModelBuilder::build() const {
-  return std::make_shared<MemoryModel>(end_offset_, offsets_);
+    return std::make_shared<MemoryModel>(end_offset_, offsets_);
 }
 
 }  // namespace CUDAPlugin

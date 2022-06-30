@@ -70,10 +70,10 @@ bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
         return false;
     }
 
-    auto transpose0 = std::dynamic_pointer_cast<ov::op::v1::Transpose>(
-        matmul->input(0).get_source_output().get_node_shared_ptr());
-    auto transpose1 = std::dynamic_pointer_cast<ov::op::v1::Transpose>(
-        matmul->input(1).get_source_output().get_node_shared_ptr());
+    auto transpose0 =
+        std::dynamic_pointer_cast<ov::op::v1::Transpose>(matmul->input(0).get_source_output().get_node_shared_ptr());
+    auto transpose1 =
+        std::dynamic_pointer_cast<ov::op::v1::Transpose>(matmul->input(1).get_source_output().get_node_shared_ptr());
     if (!transpose0 && !transpose1) {
         return false;
     }
@@ -88,8 +88,8 @@ bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
         transpose = transpose1;
     }
 
-    auto permConstant = std::dynamic_pointer_cast<ov::op::v0::Constant>(
-        transpose->input(1).get_source_output().get_node_shared_ptr());
+    auto permConstant =
+        std::dynamic_pointer_cast<ov::op::v0::Constant>(transpose->input(1).get_source_output().get_node_shared_ptr());
     if (!verify_permutation(permConstant)) {
         return false;
     }

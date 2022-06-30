@@ -123,11 +123,8 @@ int MatMulOp::GetMatrixNumBatches(const ov::Shape& matrixShape) {
                : 1;
 }
 
-void MatMulOp::BroadcastShapes(ov::Shape& matrixAShape,
-                               bool& transposeA,
-                               ov::Shape& matrixBShape,
-                               bool& transposeB,
-                               ov::Shape& matrixCShape) {
+void MatMulOp::BroadcastShapes(
+    ov::Shape& matrixAShape, bool& transposeA, ov::Shape& matrixBShape, bool& transposeB, ov::Shape& matrixCShape) {
     /**
      * NOTE: See NGraph documentation for broadcasting:
      * @reference https://docs.openvinotoolkit.org/latest/openvino_docs_ops_matrix_MatMul_1.html

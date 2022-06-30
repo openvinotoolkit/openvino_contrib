@@ -60,7 +60,11 @@ void replace(InferenceEngine::Blob::Ptr& blob, float old_value, float new_value,
     }
 }
 
-void replace(InferenceEngine::Blob::Ptr& blob, InferenceEngine::Precision precision, float old_value, float new_value, bool is_integer) {
+void replace(InferenceEngine::Blob::Ptr& blob,
+             InferenceEngine::Precision precision,
+             float old_value,
+             float new_value,
+             bool is_integer) {
     switch (precision) {
         case InferenceEngine::Precision::FP32:
             replace<InferenceEngine::Precision::FP32>(blob, old_value, new_value, is_integer);

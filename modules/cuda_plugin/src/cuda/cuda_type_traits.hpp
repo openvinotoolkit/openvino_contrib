@@ -17,8 +17,8 @@ struct cuda_type_traits : ov::element_type_traits<Type> {};
 #ifdef __CUDACC__
 template <>
 struct cuda_type_traits<ov::element::Type_t::f16> { /* 5bit exponent, 10bit mantissa */
-    using value_type = __half;                          // 16-bit half-precision floating point (FP16) representation:
-                                                        // 1 sign bit, 5 exponent bits, and 10 mantissa bits.
+    using value_type = __half;                      // 16-bit half-precision floating point (FP16) representation:
+                                                    // 1 sign bit, 5 exponent bits, and 10 mantissa bits.
 };
 
 template <>

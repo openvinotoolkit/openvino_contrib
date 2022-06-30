@@ -254,7 +254,8 @@ inline constexpr std::size_t elementSize(cudnnDataType_t type) {
         case CUDNN_DATA_INT64:
             return sizeof(std::int64_t);
         default:
-            throwIEException(fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", toString(type)));
+            throwIEException(
+                fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", toString(type)));
     }
 }
 

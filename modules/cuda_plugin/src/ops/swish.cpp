@@ -6,11 +6,11 @@
 
 #include <cuda_operation_registry.hpp>
 #include <gsl/gsl_assert>
+#include <openvino/op/constant.hpp>
 #include <utility>
 #include <vector>
 
 #include "converters.hpp"
-#include <openvino/op/constant.hpp>
 
 namespace CUDAPlugin {
 

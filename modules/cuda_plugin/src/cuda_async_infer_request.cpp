@@ -2,22 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "cuda_async_infer_request.hpp"
+
 #include <threading/ie_cpu_streams_executor.hpp>
 
 #include "cuda_executable_network.hpp"
-#include "cuda_async_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_thread_pool.hpp"
 
 namespace CUDAPlugin {
 
-CudaAsyncInferRequest::CudaAsyncInferRequest(
-    const CudaInferRequest::Ptr&               inferRequest,
-    const InferenceEngine::ITaskExecutor::Ptr& cpuTaskExecutor,
-    const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
-    const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor) :
-    AsyncInferRequestThreadSafeDefault(inferRequest, cpuTaskExecutor, callbackExecutor),
-    _inferRequest(inferRequest) {
+CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferRequest,
+                                             const InferenceEngine::ITaskExecutor::Ptr& cpuTaskExecutor,
+                                             const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
+                                             const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor)
+    : AsyncInferRequestThreadSafeDefault(inferRequest, cpuTaskExecutor, callbackExecutor), _inferRequest(inferRequest) {
     // In current implementation we have CPU only tasks and no needs in 2 executors
     // So, by default single stage pipeline is created.
     // This stage executes InferRequest::Infer() using cpuTaskExecutor.
@@ -27,31 +26,27 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(
 
     auto cudaThreadPool = std::dynamic_pointer_cast<CudaThreadPool>(waitExecutor);
     if (remoteDevice) {
-        _pipeline = {
-            {cpuTaskExecutor, [this] {
-                OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                   "CudaAsyncInferRequest::Preprocessing");
-                _inferRequest->inferPreprocess();
-            }},
-            {waitExecutor, [this, cudaThreadPool] {
-                auto& threadContext = cudaThreadPool->GetThreadContext();
-                {
-                    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                       "CudaAsyncInferRequest::StartPipeline");
-                    _inferRequest->startPipeline(threadContext);
-                }
-                {
-                    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                       "CudaAsyncInferRequest::WaitPipeline");
-                    _inferRequest->waitPipeline(threadContext);
-                }
-            }},
-            {cpuTaskExecutor, [this] {
-                OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin,
-                                   "CudaAsyncInferRequest::Postprocessing");
-                _inferRequest->inferPostprocess();
-            }}
-        };
+        _pipeline = {{cpuTaskExecutor,
+                      [this] {
+                          OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::Preprocessing");
+                          _inferRequest->inferPreprocess();
+                      }},
+                     {waitExecutor,
+                      [this, cudaThreadPool] {
+                          auto& threadContext = cudaThreadPool->GetThreadContext();
+                          {
+                              OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::StartPipeline");
+                              _inferRequest->startPipeline(threadContext);
+                          }
+                          {
+                              OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::WaitPipeline");
+                              _inferRequest->waitPipeline(threadContext);
+                          }
+                      }},
+                     {cpuTaskExecutor, [this] {
+                          OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::Postprocessing");
+                          _inferRequest->inferPostprocess();
+                      }}};
     }
 }
 
@@ -60,8 +55,6 @@ void CudaAsyncInferRequest::Cancel() {
     _inferRequest->Cancel();
 }
 
-void CudaAsyncInferRequest::Infer_ThreadUnsafe() {
-    StartAsync_ThreadUnsafe();
-}
+void CudaAsyncInferRequest::Infer_ThreadUnsafe() { StartAsync_ThreadUnsafe(); }
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

@@ -14,7 +14,7 @@
 namespace CUDAPlugin {
 namespace itt {
 namespace domains {
-    OV_ITT_DOMAIN(CUDAPlugin);
+OV_ITT_DOMAIN(CUDAPlugin);
 }
-}
-}
+}  // namespace itt
+}  // namespace CUDAPlugin

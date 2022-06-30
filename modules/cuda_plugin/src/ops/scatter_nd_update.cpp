@@ -6,9 +6,9 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <openvino/op/scatter_nd_update.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <openvino/op/scatter_nd_update.hpp>
 
 #include "converters.hpp"
 

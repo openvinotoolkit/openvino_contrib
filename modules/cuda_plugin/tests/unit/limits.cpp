@@ -152,7 +152,8 @@ void run_zero_div_test() {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));

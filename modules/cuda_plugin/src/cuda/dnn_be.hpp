@@ -679,4 +679,4 @@ public:
     }
 };
 
-} // namespace CUDA
+}  // namespace CUDA

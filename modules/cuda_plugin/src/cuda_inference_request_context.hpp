@@ -59,11 +59,15 @@ public:
     /**
      * @brief GetInputBlob(name) returns an input blob with the given name
      */
-    std::shared_ptr<ngraph::runtime::Tensor> GetInputBlob(const std::string& input_name) const { return blob_inputs.at(inputs_mapping.at(input_name)); }
+    std::shared_ptr<ngraph::runtime::Tensor> GetInputBlob(const std::string& input_name) const {
+        return blob_inputs.at(inputs_mapping.at(input_name));
+    }
     /**
      * @brief GetInputBlob(name) returns an input blob with the given name
      */
-    std::shared_ptr<ngraph::runtime::Tensor> GetOutputBlob(const std::string& output_name) const { return blob_outputs.at(outputs_mapping.at(output_name)); }
+    std::shared_ptr<ngraph::runtime::Tensor> GetOutputBlob(const std::string& output_name) const {
+        return blob_outputs.at(outputs_mapping.at(output_name));
+    }
     /**
      * @brief HasInputBlob(name) returns true if it contains an input blob with the given name
      */

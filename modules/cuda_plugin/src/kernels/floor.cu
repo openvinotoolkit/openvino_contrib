@@ -3,6 +3,7 @@
 //
 
 #include <cuda/math.cuh>
+
 #include "floor.hpp"
 
 namespace CUDAPlugin {

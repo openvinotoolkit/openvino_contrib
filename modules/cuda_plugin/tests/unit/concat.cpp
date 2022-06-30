@@ -69,7 +69,8 @@ struct ConcatTest : testing::Test {
         CancellationToken token{};
         CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
-        InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        InferenceRequestContext context{
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};

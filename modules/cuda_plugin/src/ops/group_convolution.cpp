@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "group_convolution.hpp"
+
 #include <cuda_operation_registry.hpp>
 #include <ngraph/partial_shape.hpp>
 
-#include "group_convolution.hpp"
 #include "convolution_components/convolution_components.hpp"
 
 namespace CUDAPlugin {

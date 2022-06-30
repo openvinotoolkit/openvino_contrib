@@ -50,8 +50,7 @@ struct StridedSliceTest : testing::Test {
     std::function<std::shared_ptr<ov::op::v1::StridedSlice>()> create_node = [this]() {
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});
         std::vector<int64_t> shapeBegin{0, 64, -65};
-        auto begin_input =
-            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeBegin);
+        auto begin_input = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeBegin);
         std::vector<int64_t> shapeEnd{3, 192, -193};
         auto end_input = std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, shapeEnd);
         std::vector<int64_t> stride{1, 1, -1};
@@ -81,7 +80,8 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;

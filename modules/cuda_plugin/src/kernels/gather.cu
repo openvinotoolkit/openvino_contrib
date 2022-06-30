@@ -4,6 +4,7 @@
 
 #include <cuda_device_runtime_api.h>
 #include <fmt/format.h>
+
 #include <cuda/float16.hpp>
 
 #include "gather.hpp"

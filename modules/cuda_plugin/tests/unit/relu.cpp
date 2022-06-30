@@ -32,7 +32,7 @@ auto assertToThrow(F&& f,
         tassert_success = true;                \
     })
 
- struct ReluTest : testing::Test {
+struct ReluTest : testing::Test {
     using TensorID = CUDAPlugin::TensorID;
     using ElementType = float;
     static constexpr int length = 5;
@@ -64,7 +64,8 @@ TEST_F(ReluTest, canExecuteSync) {
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
     CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    CUDAPlugin::InferenceRequestContext context{
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

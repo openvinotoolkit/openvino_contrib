@@ -17,7 +17,7 @@
  * TODO: To be moved to functional tests once they are enabled for CUDAPlugin
  * */
 
-class OperationBufferExtractorTest: public testing::Test {
+class OperationBufferExtractorTest : public testing::Test {
     /**
      * Creates a graph with the following structure (left to right):
      * ```
@@ -34,40 +34,36 @@ class OperationBufferExtractorTest: public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(
-                ov::element::f32, ov::Shape({ 3 }));
+        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({3}));
 
-        std::vector<float> multiplier_values = { 0.23, 0.23, 0.23 };
-        auto multiplier = std::make_shared<ngraph::opset1::Constant>(
-                ov::element::f32, ov::Shape { 3 }, multiplier_values);
+        std::vector<float> multiplier_values = {0.23, 0.23, 0.23};
+        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{3}, multiplier_values);
 
-        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input,
-                multiplier);
+        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
 
-        std::vector<float> bias_values = { -0.03, 0.13, 0.65 };
-        auto bias = std::make_shared<ngraph::opset1::Constant>(
-                ov::element::f32, ov::Shape { 3 }, bias_values);
+        std::vector<float> bias_values = {-0.03, 0.13, 0.65};
+        auto bias = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{3}, bias_values);
 
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiply, bias);
 
-        std::vector<int32_t> unsqueese_axes_values = { 1 };
-        auto unsqueese_axes = std::make_shared<ngraph::opset1::Constant>(
-                ov::element::i32, ov::Shape { 1 }, unsqueese_axes_values);
+        std::vector<int32_t> unsqueese_axes_values = {1};
+        auto unsqueese_axes =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{1}, unsqueese_axes_values);
         auto unsqueese = std::make_shared<ngraph::opset1::Unsqueeze>(add_0, unsqueese_axes);
 
         auto relu = std::make_shared<ngraph::opset1::Relu>(unsqueese);
 
-        std::vector<int32_t> squeeze_axes_values = { 1 };
-        auto squeeze_axes = std::make_shared<ngraph::opset1::Constant>(
-                ov::element::i32, ov::Shape { 1 }, squeeze_axes_values);
+        std::vector<int32_t> squeeze_axes_values = {1};
+        auto squeeze_axes =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{1}, squeeze_axes_values);
         auto squeeze = std::make_shared<ngraph::opset1::Squeeze>(relu, squeeze_axes);
         auto squeeze_id = squeeze->get_instance_id();
 
         auto add_1 = std::make_shared<ngraph::opset1::Add>(squeeze, multiply);
 
-        std::vector<int32_t> reshape_pattern_values = { 0, 1 };
-        auto reshape_pattern = std::make_shared<ngraph::opset1::Constant>(
-                ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
+        std::vector<int32_t> reshape_pattern_values = {0, 1};
+        auto reshape_pattern =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
@@ -76,7 +72,7 @@ class OperationBufferExtractorTest: public testing::Test {
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
         extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
-        CUDAPlugin::WorkbufferRequest request {{128}, {256}};
+        CUDAPlugin::WorkbufferRequest request{{128}, {256}};
         buffer_indices_ = extractor_->processWorkbufferRequest(squeeze_id, request);
     }
 
@@ -102,19 +98,19 @@ protected:
     };
 
     struct OutputBufferIndex {
-      using Type = unsigned;
-      constexpr static Type Parameter = 0;
-      constexpr static Type Constant_Multiplier = 1;
-      constexpr static Type Multiply = 2;
-      constexpr static Type Constant_Bias = 3;
-      constexpr static Type Add_Bias = 4;
-      constexpr static Type Constant_Unsqueeze_Axes = 5;
-      constexpr static Type Relu = 6;
-      constexpr static Type Constant_Squeeze_Axes = 7;
-      constexpr static Type Add_Squeeze_Multiply = 8;
-      constexpr static Type Constant_Reshape_Pattern = 9;
-      constexpr static Type Squeeze_Imutable_Workbuffer = 10;
-      constexpr static Type Squeeze_Mutable_Workbuffer = 11;
+        using Type = unsigned;
+        constexpr static Type Parameter = 0;
+        constexpr static Type Constant_Multiplier = 1;
+        constexpr static Type Multiply = 2;
+        constexpr static Type Constant_Bias = 3;
+        constexpr static Type Add_Bias = 4;
+        constexpr static Type Constant_Unsqueeze_Axes = 5;
+        constexpr static Type Relu = 6;
+        constexpr static Type Constant_Squeeze_Axes = 7;
+        constexpr static Type Add_Squeeze_Multiply = 8;
+        constexpr static Type Constant_Reshape_Pattern = 9;
+        constexpr static Type Squeeze_Imutable_Workbuffer = 10;
+        constexpr static Type Squeeze_Mutable_Workbuffer = 11;
     };
 
     std::vector<TensorID> inputBufferIndices(OpIndex::Type op_idx) {
@@ -125,13 +121,13 @@ protected:
         return extractor_->outputTensorIds(*exec_sequence_.at(op_idx));
     }
 
-    template<typename T>
+    template <typename T>
     std::vector<T> immutableBuffer(OutputBufferIndex::Type idx) {
-      auto span = extractor_->immutableBuffer(idx);
-      const T* begin = reinterpret_cast<const T*>(span.data());
-      EXPECT_EQ(span.size() % sizeof(T), 0);
-      const size_t size = span.size() / sizeof(T);
-      return std::vector<T>(begin, begin + size);
+        auto span = extractor_->immutableBuffer(idx);
+        const T* begin = reinterpret_cast<const T*>(span.data());
+        EXPECT_EQ(span.size() % sizeof(T), 0);
+        const size_t size = span.size() / sizeof(T);
+        return std::vector<T>(begin, begin + size);
     }
 
 protected:
@@ -140,7 +136,6 @@ protected:
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
     CUDAPlugin::WorkbufferIds buffer_indices_;
 };
-
 
 TEST_F(OperationBufferExtractorTest, CheckTestIntegrity) {
     // auto expect_node = [this]()
@@ -161,33 +156,30 @@ TEST_F(OperationBufferExtractorTest, CheckTestIntegrity) {
     EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
 }
 
-
 TEST_F(OperationBufferExtractorTest, CheckMutableBuffersIndices) {
     using ::testing::ElementsAre;
     auto buffer_indices = extractor_->mutableBuffersIds();
     std::sort(buffer_indices.begin(), buffer_indices.end());
-    ASSERT_THAT(buffer_indices, ElementsAre(
-        OutputBufferIndex::Parameter,
-        OutputBufferIndex::Multiply,
-        OutputBufferIndex::Add_Bias,
-        OutputBufferIndex::Relu,
-        OutputBufferIndex::Add_Squeeze_Multiply,
-        OutputBufferIndex::Squeeze_Mutable_Workbuffer));
+    ASSERT_THAT(buffer_indices,
+                ElementsAre(OutputBufferIndex::Parameter,
+                            OutputBufferIndex::Multiply,
+                            OutputBufferIndex::Add_Bias,
+                            OutputBufferIndex::Relu,
+                            OutputBufferIndex::Add_Squeeze_Multiply,
+                            OutputBufferIndex::Squeeze_Mutable_Workbuffer));
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableBuffersIndices) {
     using ::testing::ElementsAre;
     auto buffer_indices = extractor_->immutableBuffersIds();
     std::sort(buffer_indices.begin(), buffer_indices.end());
-    ASSERT_THAT(buffer_indices, ElementsAre(
-        OutputBufferIndex::Constant_Multiplier,
-        OutputBufferIndex::Constant_Bias,
-        OutputBufferIndex::Constant_Unsqueeze_Axes,
-        OutputBufferIndex::Constant_Squeeze_Axes,
-        OutputBufferIndex::Constant_Reshape_Pattern));
+    ASSERT_THAT(buffer_indices,
+                ElementsAre(OutputBufferIndex::Constant_Multiplier,
+                            OutputBufferIndex::Constant_Bias,
+                            OutputBufferIndex::Constant_Unsqueeze_Axes,
+                            OutputBufferIndex::Constant_Squeeze_Axes,
+                            OutputBufferIndex::Constant_Reshape_Pattern));
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckNodeInputsAreValid) {
     using ::testing::ElementsAre;
@@ -200,10 +192,10 @@ TEST_F(OperationBufferExtractorTest, CheckNodeInputsAreValid) {
     ASSERT_THAT(inputBufferIndices(OpIndex::Add_Bias),
                 ElementsAre(TensorID{OutputBufferIndex::Multiply}, TensorID{OutputBufferIndex::Constant_Bias}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Unsqueeze_Axes).empty());
-    ASSERT_THAT(inputBufferIndices(OpIndex::Unsqueeze),
-                ElementsAre(TensorID{OutputBufferIndex::Add_Bias}, TensorID{OutputBufferIndex::Constant_Unsqueeze_Axes}));
-    ASSERT_THAT(inputBufferIndices(OpIndex::Relu),
-                ElementsAre(TensorID{OutputBufferIndex::Add_Bias}));
+    ASSERT_THAT(
+        inputBufferIndices(OpIndex::Unsqueeze),
+        ElementsAre(TensorID{OutputBufferIndex::Add_Bias}, TensorID{OutputBufferIndex::Constant_Unsqueeze_Axes}));
+    ASSERT_THAT(inputBufferIndices(OpIndex::Relu), ElementsAre(TensorID{OutputBufferIndex::Add_Bias}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Squeeze_Axes).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Squeeze),
                 ElementsAre(TensorID{OutputBufferIndex::Relu}, TensorID{OutputBufferIndex::Constant_Squeeze_Axes}));
@@ -211,11 +203,10 @@ TEST_F(OperationBufferExtractorTest, CheckNodeInputsAreValid) {
                 ElementsAre(TensorID{OutputBufferIndex::Relu}, TensorID{OutputBufferIndex::Multiply}));
     ASSERT_TRUE(inputBufferIndices(OpIndex::Constant_Reshape_Pattern).empty());
     ASSERT_THAT(inputBufferIndices(OpIndex::Reshape),
-                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}, TensorID{OutputBufferIndex::Constant_Reshape_Pattern}));
-    ASSERT_THAT(inputBufferIndices(OpIndex::Result),
-                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}));
+                ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply},
+                            TensorID{OutputBufferIndex::Constant_Reshape_Pattern}));
+    ASSERT_THAT(inputBufferIndices(OpIndex::Result), ElementsAre(TensorID{OutputBufferIndex::Add_Squeeze_Multiply}));
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckNodeOutputsAreValid) {
     using ::testing::ElementsAre;
@@ -241,11 +232,8 @@ TEST_F(OperationBufferExtractorTest, CheckNodeOutputsAreValid) {
     ASSERT_TRUE(outputBufferIndices(OpIndex::Result).empty());
 }
 
-
 TEST_F(OperationBufferExtractorTest, CheckMutableBuffersLifespanStart) {
-    auto lifespanStart = [this](OutputBufferIndex::Type idx) {
-      return extractor_->mutableBufferLifespanStart(idx);
-    };
+    auto lifespanStart = [this](OutputBufferIndex::Type idx) { return extractor_->mutableBufferLifespanStart(idx); };
 
     ASSERT_EQ(lifespanStart(OutputBufferIndex::Parameter), OpIndex::Parameter);
     ASSERT_EQ(lifespanStart(OutputBufferIndex::Multiply), OpIndex::Multiply);
@@ -254,11 +242,8 @@ TEST_F(OperationBufferExtractorTest, CheckMutableBuffersLifespanStart) {
     ASSERT_EQ(lifespanStart(OutputBufferIndex::Add_Squeeze_Multiply), OpIndex::Add_Squeeze_Multiply);
 }
 
-
 TEST_F(OperationBufferExtractorTest, CheckMutableBuffersLifespanEnd) {
-    auto lifespanEnd = [this](OutputBufferIndex::Type idx) {
-      return extractor_->mutableBufferLifespanEnd(idx);
-    };
+    auto lifespanEnd = [this](OutputBufferIndex::Type idx) { return extractor_->mutableBufferLifespanEnd(idx); };
 
     ASSERT_EQ(lifespanEnd(OutputBufferIndex::Parameter), OpIndex::Multiply);
     ASSERT_EQ(lifespanEnd(OutputBufferIndex::Multiply), OpIndex::Add_Squeeze_Multiply);
@@ -266,7 +251,6 @@ TEST_F(OperationBufferExtractorTest, CheckMutableBuffersLifespanEnd) {
     ASSERT_EQ(lifespanEnd(OutputBufferIndex::Relu), OpIndex::Add_Squeeze_Multiply);
     ASSERT_EQ(lifespanEnd(OutputBufferIndex::Add_Squeeze_Multiply), OpIndex::Result);
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckMutableBuffersSizes) {
     ASSERT_EQ(extractor_->mutableBufferSize(OutputBufferIndex::Parameter), 12);
@@ -276,7 +260,6 @@ TEST_F(OperationBufferExtractorTest, CheckMutableBuffersSizes) {
     ASSERT_EQ(extractor_->mutableBufferSize(OutputBufferIndex::Add_Squeeze_Multiply), 12);
 }
 
-
 TEST_F(OperationBufferExtractorTest, CheckImmutableBuffersSizes) {
     ASSERT_EQ(extractor_->immutableBuffer(OutputBufferIndex::Constant_Multiplier).size(), 12);
     ASSERT_EQ(extractor_->immutableBuffer(OutputBufferIndex::Constant_Bias).size(), 12);
@@ -285,14 +268,12 @@ TEST_F(OperationBufferExtractorTest, CheckImmutableBuffersSizes) {
     ASSERT_EQ(extractor_->immutableBuffer(OutputBufferIndex::Constant_Reshape_Pattern).size(), 8);
 }
 
-
 TEST_F(OperationBufferExtractorTest, CheckWrongBufferInfexBehavior) {
     EXPECT_THROW(extractor_->mutableBufferSize(128), InferenceEngine::details::InferenceEngineException);
     EXPECT_THROW(extractor_->mutableBufferLifespanEnd(128), InferenceEngine::details::InferenceEngineException);
     EXPECT_THROW(extractor_->mutableBufferLifespanStart(128), InferenceEngine::details::InferenceEngineException);
     EXPECT_THROW(extractor_->immutableBuffer(128), InferenceEngine::details::InferenceEngineException);
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableBufferContent) {
     using ::testing::ElementsAre;
@@ -302,7 +283,6 @@ TEST_F(OperationBufferExtractorTest, CheckImmutableBufferContent) {
     EXPECT_THAT(immutableBuffer<int32_t>(OutputBufferIndex::Constant_Squeeze_Axes), ElementsAre(1));
     EXPECT_THAT(immutableBuffer<int32_t>(OutputBufferIndex::Constant_Reshape_Pattern), ElementsAre(0, 1));
 }
-
 
 TEST_F(OperationBufferExtractorTest, CheckSameInputOutputForReshapeOnlyOps) {
     EXPECT_EQ(inputBufferIndices(OpIndex::Unsqueeze).at(0), outputBufferIndices(OpIndex::Unsqueeze).at(0));
@@ -316,9 +296,9 @@ TEST_F(OperationBufferExtractorTest, CheckMutableWorkbufferIndices) {
 }
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableWorkbufferIndices) {
-    using ::testing::ElementsAre;
     using CUDAPlugin::WorkbufferRequest;
-    WorkbufferRequest request {{246}, {}};
+    using ::testing::ElementsAre;
+    WorkbufferRequest request{{246}, {}};
     ASSERT_THAT(buffer_indices_.immutableIds, ElementsAre(OutputBufferIndex::Squeeze_Imutable_Workbuffer));
 }
 
@@ -336,31 +316,28 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(
-            ov::element::f32, ov::Shape({ 1, 8, 16, 16 }));
+        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
 
-        std::vector<float> multiplier_values = { 0.23 };
-        auto multiplier = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::f32, ov::Shape { 1 }, multiplier_values);
+        std::vector<float> multiplier_values = {0.23};
+        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
 
         auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
 
-        std::vector<float> adder_0_values = { 0.33 };
-        auto adder_0 = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::f32, ov::Shape { 1, 8, 16, 16 }, adder_0_values);
+        std::vector<float> adder_0_values = {0.33};
+        auto adder_0 =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
 
-        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(
-            ov::OutputVector{multiply, add_0}, 1);
+        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ov::OutputVector{multiply, add_0}, 1);
 
-        std::vector<float> adder_1_values = { 0.55 };
-        auto adder_1 = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::f32, ov::Shape { 1, 16, 16, 16 }, adder_1_values);
+        std::vector<float> adder_1_values = {0.55};
+        auto adder_1 =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
         auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
 
-        std::vector<int32_t> reshape_pattern_values = { 0, 1 };
-        auto reshape_pattern = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::i32, ov::Shape { 2 }, reshape_pattern_values);
+        std::vector<int32_t> reshape_pattern_values = {0, 1};
+        auto reshape_pattern =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
         auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
@@ -371,23 +348,23 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
         extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
     }
 
-   protected:
-       using TensorID = CUDAPlugin::TensorID;
+protected:
+    using TensorID = CUDAPlugin::TensorID;
 
-       struct OpIndex {
-           using Type = size_t;
-           constexpr static Type Parameter = 0;
-           constexpr static Type Constant_Multiplier = 1;
-           constexpr static Type Constant_Adder_0 = 2;
-           constexpr static Type Multiply = 3;
-           constexpr static Type Constant_Adder_1 = 4;
-           constexpr static Type Add_0 = 5;
-           constexpr static Type ConcatOptimized = 6;
-           constexpr static Type Add_1 = 7;
-           constexpr static Type Constant_Reshape_Pattern = 8;
-           constexpr static Type Reshape = 9;
-           constexpr static Type Result = 10;
-       };
+    struct OpIndex {
+        using Type = size_t;
+        constexpr static Type Parameter = 0;
+        constexpr static Type Constant_Multiplier = 1;
+        constexpr static Type Constant_Adder_0 = 2;
+        constexpr static Type Multiply = 3;
+        constexpr static Type Constant_Adder_1 = 4;
+        constexpr static Type Add_0 = 5;
+        constexpr static Type ConcatOptimized = 6;
+        constexpr static Type Add_1 = 7;
+        constexpr static Type Constant_Reshape_Pattern = 8;
+        constexpr static Type Reshape = 9;
+        constexpr static Type Result = 10;
+    };
 
     struct OutputBufferIndex {
         using Type = unsigned;
@@ -408,7 +385,7 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
         return extractor_->outputTensorIds(*exec_sequence_.at(op_idx));
     }
 
-    template<typename T>
+    template <typename T>
     std::vector<T> immutableBuffer(OutputBufferIndex::Type idx) {
         auto span = extractor_->immutableBuffer(idx);
         const T* begin = reinterpret_cast<const T*>(span.data());
@@ -417,7 +394,7 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
         return std::vector<T>(begin, begin + size);
     }
 
-   protected:
+protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
@@ -443,21 +420,20 @@ TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckMutableBuffersIndices) 
     using ::testing::ElementsAre;
     auto buffer_indices = extractor_->mutableBuffersIds();
     std::sort(buffer_indices.begin(), buffer_indices.end());
-    ASSERT_THAT(buffer_indices, ElementsAre(
-        OutputBufferIndex::Parameter,
-        OutputBufferIndex::ConcatOptimized,
-        OutputBufferIndex::Add_1));
+    ASSERT_THAT(
+        buffer_indices,
+        ElementsAre(OutputBufferIndex::Parameter, OutputBufferIndex::ConcatOptimized, OutputBufferIndex::Add_1));
 }
 
 TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckImmutableBuffersIndices) {
     using ::testing::ElementsAre;
     auto immutable_buffer_indices = extractor_->immutableBuffersIds();
     std::sort(immutable_buffer_indices.begin(), immutable_buffer_indices.end());
-    ASSERT_THAT(immutable_buffer_indices, ElementsAre(
-        OutputBufferIndex::Constant_Multiplier,
-        OutputBufferIndex::Constant_Adder_0,
-        OutputBufferIndex::Constant_Adder_1,
-        OutputBufferIndex::Constant_Reshape_Pattern));
+    ASSERT_THAT(immutable_buffer_indices,
+                ElementsAre(OutputBufferIndex::Constant_Multiplier,
+                            OutputBufferIndex::Constant_Adder_0,
+                            OutputBufferIndex::Constant_Adder_1,
+                            OutputBufferIndex::Constant_Reshape_Pattern));
 }
 
 class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
@@ -477,14 +453,13 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
         auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
 
         std::vector<float> multiplier_values = {0.23};
-        auto multiplier =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
+        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
 
         auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
 
         std::vector<float> adder_0_values = {0.33};
-        auto adder_0 = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
+        auto adder_0 =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
 
         auto reshape_const = std::make_shared<ngraph::opset1::Constant>(
@@ -494,8 +469,8 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
         auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
-        auto adder_1 = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
+        auto adder_1 =
+            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
         auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
 
         std::vector<int32_t> reshape_pattern_values = {0, 1};

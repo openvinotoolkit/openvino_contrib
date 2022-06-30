@@ -11,8 +11,7 @@ namespace CUDAPlugin {
 namespace kernel {
 
 template <typename TOutput, typename TInput>
-__global__
-    void convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
+__global__ void convert_impl(size_t inputSize, TOutput* out, const TInput* in) {
     const size_t i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < inputSize) {
         out[i] = cast<TOutput>(in[i]);

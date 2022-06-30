@@ -46,7 +46,7 @@ Workbuffers MemoryManager::workBuffers(const IOperationExec& operation,
                                        CUDA::DevicePointer<void*> mutableBufferPtr) const {
     Workbuffers result{};
     const auto& indices = operation.GetWorkbufferIds();
-    for(const auto immutable_id : indices.immutableIds) {
+    for (const auto immutable_id : indices.immutableIds) {
         void* ptr = immutable_workbuffers_->deviceBufferPtr(immutable_id);
         IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
         result.immutable_buffers.emplace_back(ptr);

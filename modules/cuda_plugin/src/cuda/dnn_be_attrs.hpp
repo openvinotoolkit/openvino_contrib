@@ -4,8 +4,9 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cudnn_backend.h>
+
+#include <cstdint>
 
 namespace CUDA {
 
@@ -14,9 +15,11 @@ namespace CUDA {
  *
  * Binds together attribute type identifier and attribute value type.
  */
-template<cudnnBackendAttributeType_t TypeId> struct DnnBEAttrType;
+template <cudnnBackendAttributeType_t TypeId>
+struct DnnBEAttrType;
 
-template<> struct DnnBEAttrType<CUDNN_TYPE_HANDLE> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_HANDLE> {
     using ValueType = cudnnHandle_t;
 };
 template <>
@@ -27,10 +30,12 @@ template <>
 struct DnnBEAttrType<CUDNN_TYPE_DATA_TYPE> {
     using ValueType = cudnnDataType_t;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_CONVOLUTION_MODE> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_CONVOLUTION_MODE> {
     using ValueType = cudnnConvolutionMode_t;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_BACKEND_DESCRIPTOR> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_BACKEND_DESCRIPTOR> {
     using ValueType = cudnnBackendDescriptor_t;
 };
 template <>
@@ -45,16 +50,20 @@ template <>
 struct DnnBEAttrType<CUDNN_TYPE_VOID_PTR> {
     using ValueType = const void*;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_DOUBLE> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_DOUBLE> {
     using ValueType = double;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_FLOAT> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_FLOAT> {
     using ValueType = float;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_INT64> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_INT64> {
     using ValueType = int64_t;
 };
-template<> struct DnnBEAttrType<CUDNN_TYPE_BOOLEAN> {
+template <>
+struct DnnBEAttrType<CUDNN_TYPE_BOOLEAN> {
     using ValueType = bool;
 };
 
@@ -142,4 +151,4 @@ constexpr cudnnBackendAttributeType_t GetDnnBEAttrTypeId() {
     }
 }
 
-} // namespace CUDA
+}  // namespace CUDA

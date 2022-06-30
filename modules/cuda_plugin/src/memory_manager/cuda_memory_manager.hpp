@@ -51,7 +51,8 @@ public:
      * @returns An array of corresponding input tensor pointers.
      * @throws InferenceEngineException if any of tensor pointers is not found
      */
-    InputTensors inputTensorPointers(const IOperationMeta& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
+    InputTensors inputTensorPointers(const IOperationMeta& operation,
+                                     CUDA::DevicePointer<void*> mutableBufferPtr) const;
 
     /**
      * Maps output tensor identifiers into device side tensor pointers.
@@ -60,7 +61,8 @@ public:
      * @returns An array of corresponding output tensor pointers.
      * @throws InferenceEngineException if any of tensor pointers is not found
      */
-    OutputTensors outputTensorPointers(const IOperationMeta& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
+    OutputTensors outputTensorPointers(const IOperationMeta& operation,
+                                       CUDA::DevicePointer<void*> mutableBufferPtr) const;
 
     /**
      * Maps operation onto device side work work buffer pointers.

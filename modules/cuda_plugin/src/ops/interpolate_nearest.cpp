@@ -121,13 +121,14 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
     const auto threads_per_block = (blocks_number == 1) ? strides : max_threads_per_block;
     const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
 
-    interpolate_ = kernel::InterpolateNearest(
-        blocks_number,
-        threads_per_block,
-        element_type,
-        can_use_upscale_optimizing_,
-        static_cast<kernel::InterpolateNearest::NearestMode>(node.get_attrs().nearest_mode),
-        static_cast<kernel::InterpolateNearest::CoordinateTransformMode>(node.get_attrs().coordinate_transformation_mode));
+    interpolate_ =
+        kernel::InterpolateNearest(blocks_number,
+                                   threads_per_block,
+                                   element_type,
+                                   can_use_upscale_optimizing_,
+                                   static_cast<kernel::InterpolateNearest::NearestMode>(node.get_attrs().nearest_mode),
+                                   static_cast<kernel::InterpolateNearest::CoordinateTransformMode>(
+                                       node.get_attrs().coordinate_transformation_mode));
 }
 
 void InterpolateNearestOp::Execute(const InferenceRequestContext& context,

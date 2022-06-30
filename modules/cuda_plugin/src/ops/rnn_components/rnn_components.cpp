@@ -91,12 +91,10 @@ LSTMCellParams::LSTMCellParams(const ov::op::v4::LSTMCell& cell)
 
     const auto element_type_size = element_type_.size();
 
-    const auto w_constant =
-        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::weights));
+    const auto w_constant = dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::weights));
     const auto r_constant =
         dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::recurrence_weights));
-    const auto b_constant =
-        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::biases));
+    const auto b_constant = dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(LSTMCellArgIndices::biases));
     Expects(w_constant && r_constant && b_constant);
 
     const auto w_data_host = w_constant->get_data_ptr<const uint8_t>();
@@ -171,8 +169,7 @@ GRUCellParams::GRUCellParams(const ov::op::v3::GRUCell& cell)
 
     const auto element_type_size = element_type_.size();
 
-    const auto w_constant =
-        dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::weights));
+    const auto w_constant = dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::weights));
     const auto r_constant =
         dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::recurrence_weights));
     const auto b_constant = dynamic_cast<ov::op::v0::Constant*>(cell.get_input_node_ptr(GRUCellArgIndices::biases));

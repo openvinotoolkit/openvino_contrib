@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "power.hpp"
 #include "convert.cuh"
+#include "power.hpp"
 
 namespace CUDAPlugin {
 namespace kernel {

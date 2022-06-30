@@ -51,4 +51,4 @@ std::unordered_set<std::string> int8SupportedArchitecture = {
     "6.1",
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDA

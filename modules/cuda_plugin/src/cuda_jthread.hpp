@@ -9,12 +9,10 @@
 namespace CUDAPlugin {
 
 class CudaJThread final {
- public:
-    template<typename Function, typename ... Args>
+public:
+    template <typename Function, typename... Args>
     explicit CudaJThread(Function&& f, Args&&... args) {
-        thread_ = std::thread(
-            std::forward<Function>(f),
-            std::forward<Args>(args)...);
+        thread_ = std::thread(std::forward<Function>(f), std::forward<Args>(args)...);
     }
     CudaJThread(CudaJThread&&) noexcept = default;
     CudaJThread& operator=(CudaJThread&&) noexcept = default;
@@ -27,8 +25,8 @@ class CudaJThread final {
         }
     }
 
- private:
+private:
     std::thread thread_;
 };
 
-} // namespace CUDAPlugin
+}  // namespace CUDAPlugin

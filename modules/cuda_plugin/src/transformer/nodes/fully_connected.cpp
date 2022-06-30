@@ -24,9 +24,9 @@ FullyConnected::FullyConnected(const ov::Output<Node>& A,
 }
 
 bool FullyConnected::visit_attributes(ov::AttributeVisitor& visitor) {
-  visitor.on_attribute("transpose_a", m_transpose_a);
-  visitor.on_attribute("transpose_b", m_transpose_b);
-  return true;
+    visitor.on_attribute("transpose_a", m_transpose_a);
+    visitor.on_attribute("transpose_b", m_transpose_b);
+    return true;
 }
 
 std::shared_ptr<ov::Node> FullyConnected::clone_with_new_inputs(const ov::OutputVector& new_args) const {
@@ -36,40 +36,37 @@ std::shared_ptr<ov::Node> FullyConnected::clone_with_new_inputs(const ov::Output
 }
 
 void FullyConnected::validate_and_infer_types() {
-  ov::element::Type result_et;
+    ov::element::Type result_et;
 
-  NODE_VALIDATION_CHECK(
-      this,
-      ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(1)),
-      "Arguments do not have the same element type (arg0 element type: ",
-      get_input_element_type(0),
-      ", arg1 element type: ",
-      get_input_element_type(1),
-      ").");
-  NODE_VALIDATION_CHECK(
-      this,
-      ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(2)),
-      "Arguments do not have the same element type (arg0 element type: ",
-      get_input_element_type(0),
-      ", arg2 element type: ",
-      get_input_element_type(2),
-      ").");
+    NODE_VALIDATION_CHECK(this,
+                          ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(1)),
+                          "Arguments do not have the same element type (arg0 element type: ",
+                          get_input_element_type(0),
+                          ", arg1 element type: ",
+                          get_input_element_type(1),
+                          ").");
+    NODE_VALIDATION_CHECK(this,
+                          ov::element::Type::merge(result_et, get_input_element_type(0), get_input_element_type(2)),
+                          "Arguments do not have the same element type (arg0 element type: ",
+                          get_input_element_type(0),
+                          ", arg2 element type: ",
+                          get_input_element_type(2),
+                          ").");
 
-  const auto& A_partial_shape = get_input_partial_shape(0);
-  const auto& B_partial_shape = get_input_partial_shape(1);
-  if (A_partial_shape.rank().is_static() && B_partial_shape.rank().is_static()) {
-    ov::PartialShape output_shape;
+    const auto& A_partial_shape = get_input_partial_shape(0);
+    const auto& B_partial_shape = get_input_partial_shape(1);
+    if (A_partial_shape.rank().is_static() && B_partial_shape.rank().is_static()) {
+        ov::PartialShape output_shape;
 
-    const bool transpose_a = get_transpose_a();
-    const bool transpose_b = get_transpose_b();
+        const bool transpose_a = get_transpose_a();
+        const bool transpose_b = get_transpose_b();
 
-    output_shape = matmul::validate_matmul_output_shape(
-        A_partial_shape, B_partial_shape, transpose_a, transpose_b);
+        output_shape = matmul::validate_matmul_output_shape(A_partial_shape, B_partial_shape, transpose_a, transpose_b);
 
-    set_output_type(0, result_et, output_shape);
-  } else {
-    set_output_type(0, result_et, ov::PartialShape::dynamic());
-  }
+        set_output_type(0, result_et, output_shape);
+    } else {
+        set_output_type(0, result_et, ov::PartialShape::dynamic());
+    }
 }
 
 namespace matmul {
@@ -208,6 +205,6 @@ ov::PartialShape validate_matmul_output_shape(const ov::PartialShape& arg0_shape
     return ov::PartialShape(output_shape);
 }
 
-} // namespace matmul
+}  // namespace matmul
 
-} // namespace CUDAPlugin::nodes
+}  // namespace CUDAPlugin::nodes

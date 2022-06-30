@@ -42,11 +42,9 @@ Clamp::Clamp(Type_t element_type, size_t max_threads_per_block, size_t num_eleme
       min_{min},
       max_{max} {}
 
-void Clamp::operator()(
-    cudaStream_t stream, const void* in, void* out) const {
+void Clamp::operator()(cudaStream_t stream, const void* in, void* out) const {
     MinMaxSwitch<AllElementTypesSwitch> switcher{};
-    AllElementTypesSwitch::switch_(
-        element_type_, switcher, ew_clamp_, stream, in, out, min_, max_);
+    AllElementTypesSwitch::switch_(element_type_, switcher, ew_clamp_, stream, in, out, min_, max_);
 }
 
 }  // namespace kernel

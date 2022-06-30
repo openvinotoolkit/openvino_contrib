@@ -172,25 +172,25 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
 
     auto lstm_sequence_bidirectional =
         std::make_shared<ov::op::v5::LSTMSequence>(x,
-                                                       initial_hidden_state,
-                                                       initial_cell_state,
-                                                       sequence_lengths,
-                                                       weights,
-                                                       recurrent_weights,
-                                                       bias,
-                                                       hidden_size,
-                                                       ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
-                                                       activations_alpha,
-                                                       activations_beta,
-                                                       activations,
-                                                       clip);
+                                                   initial_hidden_state,
+                                                   initial_cell_state,
+                                                   sequence_lengths,
+                                                   weights,
+                                                   recurrent_weights,
+                                                   bias,
+                                                   hidden_size,
+                                                   ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
+                                                   activations_alpha,
+                                                   activations_beta,
+                                                   activations,
+                                                   clip);
 
     auto y = lstm_sequence_bidirectional->output(0);
     auto ho = lstm_sequence_bidirectional->output(1);
     auto co = lstm_sequence_bidirectional->output(2);
 
     ov::copy_runtime_info({lstm_sequence_forward->shared_from_this(), lstm_sequence_reverse->shared_from_this()},
-                              lstm_sequence_bidirectional);
+                          lstm_sequence_bidirectional);
     ov::replace_node(lstm_sequence_forward->shared_from_this(), lstm_sequence_bidirectional);
     ov::replace_node(lstm_sequence_reverse->shared_from_this(), lstm_sequence_bidirectional);
 
@@ -374,9 +374,7 @@ bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
 Convert2LSTMSequenceToBidirectionalLSTMSequence::Convert2LSTMSequenceToBidirectionalLSTMSequence() {
     auto transpose = ngraph::pattern::wrap_type<ov::op::v1::Transpose>(pattern::consumers_count(2));
 
-    ov::matcher_pass_callback callback = [](pattern::Matcher& m) {
-        return bidirectional_lstm_sequence_composition(m);
-    };
+    ov::matcher_pass_callback callback = [](pattern::Matcher& m) { return bidirectional_lstm_sequence_composition(m); };
 
     auto m = std::make_shared<ngraph::pattern::Matcher>(transpose, "Convert2LSTMSequenceToBidirectionalLSTMSequence");
     this->register_matcher(m, callback);

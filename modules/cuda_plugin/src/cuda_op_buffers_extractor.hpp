@@ -38,7 +38,9 @@ public:
      * @param [in] is_stable_results Makes output results alive for till end of the graph's life time
      * @throws InferenceEngineException if the given subgraph is bad formed
      */
-    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes, bool is_stable_params = false, bool is_stable_results = false);
+    OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes,
+                              bool is_stable_params = false,
+                              bool is_stable_results = false);
 
     /**
      * Provides input tensors ids of the given ngraph node

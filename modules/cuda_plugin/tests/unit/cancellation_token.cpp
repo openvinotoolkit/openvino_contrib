@@ -9,11 +9,9 @@
 using namespace CUDAPlugin;
 
 class CancellationTokenTest : public testing::Test {
-    void SetUp() override {
-    }
+    void SetUp() override {}
 
-    void TearDown() override {
-    }
+    void TearDown() override {}
 };
 
 TEST_F(CancellationTokenTest, Cancel_Throw) {
@@ -24,9 +22,7 @@ TEST_F(CancellationTokenTest, Cancel_Throw) {
 
 TEST_F(CancellationTokenTest, Cancel_Throw_Callback) {
     bool is_cancelled = false;
-    CancellationToken token{[&is_cancelled] {
-        is_cancelled = true;
-    }};
+    CancellationToken token{[&is_cancelled] { is_cancelled = true; }};
     token.Cancel();
     ASSERT_THROW(token.Check(), InferenceEngine::details::InferenceEngineException);
     ASSERT_TRUE(is_cancelled);
