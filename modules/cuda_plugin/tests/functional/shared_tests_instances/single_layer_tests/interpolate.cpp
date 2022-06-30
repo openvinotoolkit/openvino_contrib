@@ -57,13 +57,11 @@ const std::vector<std::vector<size_t>> yolov5From40To80Shape = {
     {1, 128, 80, 80},
 };
 
-const std::vector<CoordinateTransformMode> coordinateTransformModes = {
-    CoordinateTransformMode::asymmetric, CoordinateTransformMode::tf_half_pixel_for_nn,
-    // TODO CoordinateTransform mode not supported yet
-    // CoordinateTransformMode::pytorch_half_pixel,
-    // CoordinateTransformMode::half_pixel,
-    // CoordinateTransformMode::align_corners,
-};
+const std::vector<CoordinateTransformMode> coordinateTransformModes = {CoordinateTransformMode::half_pixel,
+                                                                       CoordinateTransformMode::pytorch_half_pixel,
+                                                                       CoordinateTransformMode::asymmetric,
+                                                                       CoordinateTransformMode::tf_half_pixel_for_nn,
+                                                                       CoordinateTransformMode::align_corners};
 
 const std::vector<ShapeCalcMode> shapeCalculationMode = {
     ShapeCalcMode::sizes,
@@ -71,11 +69,11 @@ const std::vector<ShapeCalcMode> shapeCalculationMode = {
 };
 
 const std::vector<NearestMode> nearestModes = {
-    NearestMode::simple, NearestMode::floor,
-    // TODO nearest modes not supported yet
-    // NearestMode::round_prefer_floor,
-    // NearestMode::ceil,
-    // NearestMode::round_prefer_ceil,
+    NearestMode::round_prefer_floor,
+    NearestMode::round_prefer_ceil,
+    NearestMode::floor,
+    NearestMode::ceil,
+    NearestMode::simple,
 };
 
 const std::vector<std::vector<size_t>> pads = {
