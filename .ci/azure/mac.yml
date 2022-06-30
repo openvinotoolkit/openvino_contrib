@@ -1,3 +1,21 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+
 resources:
   repositories:
   - repository: openvino
