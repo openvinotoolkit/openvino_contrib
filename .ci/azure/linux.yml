@@ -6,7 +6,6 @@ trigger:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
 
 pr:
   branches:
@@ -16,7 +15,6 @@ pr:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
 
 resources:
   repositories:
@@ -36,13 +34,12 @@ jobs:
   timeoutInMinutes: 60
 
   pool:
-    name: LIN_VMSS_VENV_F16S_WU2
+    name: LIN_VMSS_VENV_F16S_U20_WU2
 
   variables:
     system.debug: true
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
-    WORKERS_NUMBER: 16
     BUILD_TYPE: Release
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
@@ -50,6 +47,9 @@ jobs:
     WORK_DIR: $(Pipeline.Workspace)/_w
     BUILD_DIR: $(WORK_DIR)/build
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
+    INSTALL_DIR: $(WORK_DIR)/install_pkg
+    SETUPVARS: $(INSTALL_DIR)/setupvars.sh
+    GRADLE_VER: 7.1.1
 
   steps:
   - script: |
@@ -60,6 +60,7 @@ jobs:
       echo Python info ; which python ; python --version
       echo Java info ; which java ; java -version
       echo gcc info ; which gcc ; gcc --version
+      echo cmake info ; which cmake ; cmake --version
       lsb_release
       env
       cat /proc/cpuinfo
@@ -88,21 +89,29 @@ jobs:
     submodules: recursive
     path: openvino
 
+  - script: |
+      set -e
+      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      # Move jdk into contrib install_build_dependencies.sh
+      sudo apt --assume-yes install default-jdk
+      wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
+      unzip gradle-$(GRADLE_VER)-bin.zip
+      # For opencv-python: python3-setuptools and pip upgrade
+      python3 -m pip install --upgrade pip
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements.txt
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/requirements_test.txt
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+      # Speed up build
+      wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
+      unzip ninja-linux.zip
+      sudo cp -v ninja /usr/local/bin/
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Install dependencies'
+
   - checkout: testdata
     clean: true
     lfs: true
     path: testdata
-
-  - script: |
-      sudo apt --assume-yes install libusb-1.0-0-dev
-      # Speed up build
-      wget https://github.com/ninja-build/ninja/releases/download/v1.10.0/ninja-linux.zip
-      unzip ninja-linux.zip
-      sudo cp -v ninja /usr/local/bin/
-      python3 -m pip install --upgrade pip
-      python3 -m pip install cython
-    workingDirectory: $(WORK_DIR)
-    displayName: 'Install dependencies'
 
   - task: CMake@1
     inputs:
@@ -114,62 +123,71 @@ jobs:
         -DBUILD_cuda_plugin=OFF
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         -DENABLE_PYTHON=ON
-        -DPYTHON_EXECUTABLE=/usr/bin/python3
-        -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.6m.so
-        -DPYTHON_INCLUDE_DIR=/usr/include/python3.6
+        -DPYTHON_EXECUTABLE=/usr/bin/python3.8
+        -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.8.so
+        -DPYTHON_INCLUDE_DIR=/usr/include/python3.8
+        -DENABLE_WHEEL=ON
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
+
+  - script: ls -alR $(OPENVINO_REPO_DIR)/temp/
+    displayName: 'List temp SDKs'
 
   - script: ninja
     workingDirectory: $(BUILD_DIR)
     displayName: 'Build Lin'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
-    displayName: 'List files'
+    displayName: 'List bin files'
 
-  - script: |
-      mkdir native
-      cp $(BIN_DIR)/lib/*.so native
-      cp $(BIN_DIR)/lib/cache.json native
-      cp $(BIN_DIR)/lib/plugins.xml native
-      cp $(BIN_DIR)/lib/*.mvcmd native
-      cp $(OPENVINO_REPO_DIR)/inference-engine/temp/tbb/lib/lib* native
-      cp $(OPENVINO_REPO_DIR)/inference-engine/temp/gna_*/linux/x64/lib* native
-      ls native > resources_list.txt && cat resources_list.txt && mv resources_list.txt native
-      gradle clean build
-      for d in CPU HETERO:CPU; do
-        gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
-      done
-    workingDirectory: $(REPO_DIR)/modules/java_api
-    displayName: 'Java tests'
+  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
+    workingDirectory: $(BUILD_DIR)
+    displayName: 'Install'
 
-  # Temporarily disable failing tests
-  # - script: |
-  #     python3 -m pip install -U setuptools==51.0.0
-  #     python3 -m pip install -r requirements.txt
-  #     python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
-  #   workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-  #   displayName: 'Install PyTorch tests dependencies'
+  - script: ls -alR $(INSTALL_DIR)
+    displayName: 'List install files'
 
-  # - script: python3 run_tests.py
-  #   env:
-  #     LD_LIBRARY_PATH: $(BIN_DIR)/lib
-  #     PYTHONPATH: "$(OPENVINO_REPO_DIR)/model-optimizer:$(BIN_DIR)/lib/python_api/python3.6:$(REPO_DIR)/modules/mo_pytorch"
-  #   workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-  #   displayName: 'PyTorch conversion tests'
+# Temporarily disable failing tests
+#
+#   - script: |
+#       set -e
+#       export PATH=$(WORK_DIR)/gradle-$(GRADLE_VER)/bin:${PATH}
+#       . $(SETUPVARS) gradle clean build --info
+#       for d in CPU HETERO:CPU; do
+#         gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
+#       done
+#     workingDirectory: $(REPO_DIR)/modules/java_api
+#     displayName: 'Java tests'
+#
+#   - script: |
+#       python3 -m pip install $(INSTALL_DIR)/tools/*.whl
+#       python3 -m pip install -U setuptools==51.0.0
+#       python3 -m pip install -r requirements.txt
+#       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
+#       git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
+#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+#     displayName: 'Install PyTorch tests dependencies'
+#
+#     # tests should be installed and PYTHONPATH must be set by tests
+#   - script: |
+#       export PYTHONPATH=$(REPO_DIR)/modules/mo_pytorch
+#       . $(SETUPVARS) -pyver 3.8 && env && python3 run_tests.py
+#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+#     displayName: 'PyTorch conversion tests'
 
 - job: CUDAPlugin_Lin
   # About 200% of total time
   timeoutInMinutes: 30
 
   pool:
-    name: LIN_VMSS_VENV_F16S_WU2
+    name: LIN_VMSS_VENV_F16S_U20_WU2
 
   variables:
     system.debug: true
     VSTS_HTTP_RETRY: 5
     VSTS_HTTP_TIMEOUT: 200
     BUILD_TYPE: Release
+    HOME_DIR: $(Agent.HomeDirectory)
     REPO_DIR: $(Build.Repository.LocalPath)
     OPENVINO_REPO_DIR: $(REPO_DIR)/../openvino
     MODELS_PATH: $(REPO_DIR)/../testdata
@@ -231,10 +249,15 @@ jobs:
     displayName: 'Install dependencies'
 
   - script: >
-      sudo docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1 &&
+      sudo docker pull openvino.azurecr.io/openvino_ci/cuda-ubuntu2004:2022.1 && 
       sudo docker run --volume $(REPO_DIR)/../:/root/repos --volume $(WORK_DIR):/root/w
-      openvino.azurecr.io/openvino_ci/cuda-ubuntu1804:2021.6.1
-      bash -c "cd /root/w/build && cmake -GNinja
+      openvino.azurecr.io/openvino_ci/cuda-ubuntu2004:2022.1
+      bash -c "
+      /root/repos/openvino/install_build_dependencies.sh &&
+      python3 -m pip install -r /root/repos/openvino/src/bindings/python/requirements.txt &&
+      python3 -m pip install -r /root/repos/openvino/src/core/tests/requirements_test_onnx.txt &&
+      cd /root/w/build &&
+      cmake -GNinja
       -DVERBOSE_BUILD=ON
       -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
       -DIE_EXTRA_MODULES=/root/repos/openvino_contrib/modules
@@ -246,48 +269,12 @@ jobs:
       -DBUILD_arm_plugin=OFF
       -DBUILD_java_api=OFF
       -DENABLE_PYTHON=OFF
-      -DPYTHON_EXECUTABLE=/usr/bin/python3
       -DENABLE_CUDA=ON
       -DENABLE_TESTS=ON
       /root/repos/openvino &&
-      /root/w/ninja"
+      /root/w/ninja -v CudaFuncTests CudaUnitTests"
     workingDirectory: $(WORK_DIR)
     displayName: 'Docker build Lin'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List bin files'
-
-  - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
-    workingDirectory: $(BUILD_DIR)
-    displayName: 'Install'
-
-  - script: ls -alR $(INSTALL_DIR)
-    displayName: 'List install files'
-
-# Temporarily disable failing tests
-#
-#   - script: |
-#       set -e
-#       export PATH=$(WORK_DIR)/gradle-$(GRADLE_VER)/bin:${PATH}
-#       . $(SETUPVARS) gradle clean build --info
-#       for d in CPU HETERO:CPU; do
-#         gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=$d --info;
-#       done
-#     workingDirectory: $(REPO_DIR)/modules/java_api
-#     displayName: 'Java tests'
-#
-#   - script: |
-#       python3 -m pip install $(INSTALL_DIR)/tools/*.whl
-#       python3 -m pip install -U setuptools==51.0.0
-#       python3 -m pip install -r requirements.txt
-#       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
-#       git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'Install PyTorch tests dependencies'
-#
-#     # tests should be installed and PYTHONPATH must be set by tests
-#   - script: |
-#       export PYTHONPATH=$(REPO_DIR)/modules/mo_pytorch
-#       . $(SETUPVARS) -pyver 3.8 && env && python3 run_tests.py
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'PyTorch conversion tests'
