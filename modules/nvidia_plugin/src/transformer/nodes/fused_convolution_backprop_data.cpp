@@ -94,7 +94,7 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
     const ov::PartialShape& filters_pshape = get_input_partial_shape(1);
     ov::element::Type filters_et = get_input_element_type(1);
 
-    bool is_output_shape_present = inputs().size() == 3;
+    bool is_output_shape_present = inputs().size() == 4;
     ov::PartialShape output_pshape = get_output_shape();
 
     ov::element::Type result_et;
@@ -220,7 +220,7 @@ ov::PartialShape FusedConvBackpropData::get_output_shape() const {
     } else {
         shape = ov::PartialShape{std::vector<ov::Dimension>(strides_.size())};
     }
-    bool is_output_shape_present = inputs().size() == 3;
+    bool is_output_shape_present = inputs().size() == 4;
     if (is_output_shape_present) {
         if (auto const_op = get_constant_from_source(input_value(2))) {
             shape = const_op->get_shape_val();

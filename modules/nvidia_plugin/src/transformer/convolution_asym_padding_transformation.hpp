@@ -20,4 +20,22 @@ public:
     GroupConvolutionAsymPaddingTransformation();
 };
 
+class ConvolutionBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    ConvolutionBackpropDataAsymPaddingTransformation();
+};
+
+class GroupConvolutionBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    GroupConvolutionBackpropDataAsymPaddingTransformation();
+};
+
+class FusedConvBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+public:
+    NGRAPH_RTTI_DECLARATION;
+    FusedConvBackpropDataAsymPaddingTransformation();
+};
+
 }  // namespace ngraph::pass
