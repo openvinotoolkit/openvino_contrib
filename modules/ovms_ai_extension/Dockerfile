@@ -3,7 +3,6 @@
 FROM openvino/model_server:2021.4.1-gpu
 USER root 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     wget \
     python3-pip
 

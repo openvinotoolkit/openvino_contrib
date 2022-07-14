@@ -1012,7 +1012,7 @@ Follow the below steps to run functional test cases for the OpenVINO Model Serve
         ```
     2. Install the required python3 packages
         ```sh
-        pip3 install -r src/tests/requirements.txt
+        pip3 install -r Testing/src/tests/requirements.txt
 
         pip3 install -r src/ams_wrapper/requirements.txt
         ```
@@ -1026,7 +1026,7 @@ Follow the below steps to run functional test cases for the OpenVINO Model Serve
     Run the below command to run the functional tests
 
       ```sh
-      cd <path to repo>/src/tests/
+      cd <path to repo>/Testing/src/tests/
 
       pytest functional/test_single_model_vehicle_attributes.py functional/test_ams_inference.py --image <ovms-ext docker image name>
       ```
