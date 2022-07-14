@@ -237,3 +237,71 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             net_past = None
 
         return OVMBartForConditionalGeneration(model.config, encoder, net, net_past)
+
+    # Experimental
+
+    def create_mapping_config(self, output_keys_order, mapping_config_path):
+        import json
+        outputs_mapping = {output_name: str(output_index) if output_name != "output" else output_name for output_index, output_name in enumerate(output_keys_order)}
+        mapping_config = {"outputs": outputs_mapping}
+        with open(mapping_config_path, "w") as outfile:
+            json.dump(mapping_config, outfile)
+
+
+    def create_ovms_image(self, image_tag):
+        import json
+        import shutil
+
+        # Model to OVMS model name mapping
+        model_names_map = {
+            self.encoder: "encoder",
+            self.model: "model",
+            self.model_past: "model_past",
+        }
+
+        # Prepare models and configuration file
+        config = {}
+        config["model_config_list"] = []
+
+        for model, ovms_model_name in model_names_map.items():
+            if not model.model_initialized:
+                model._load_network()
+
+            model.save_pretrained(f"/tmp/optimum/models/{ovms_model_name}/1")
+            model_configuration = {
+                "name":ovms_model_name,
+                "base_path":f"/opt/models/{ovms_model_name}",
+            }
+            config["model_config_list"].append({"config": model_configuration})
+
+
+        with open("/tmp/optimum/models/config.json", "w") as outfile:
+            json.dump(config, outfile)
+
+        # Prepare mapping configs for model and model_past (to make outputs ordering possible)
+        model_outputs_key_order = list(self.model.inference_adapter.get_output_layers().keys())
+        model_past_outputs_key_order = list(self.model_past.inference_adapter.get_output_layers().keys())
+        
+        self.create_mapping_config(model_outputs_key_order, f"/tmp/optimum/models/{model_names_map[self.model]}/1/mapping_config.json")
+        self.create_mapping_config(model_past_outputs_key_order, f"/tmp/optimum/models/{model_names_map[self.model_past]}/1/mapping_config.json")
+
+        # Prepare Dockerfile
+        dockerfile_content = [
+            "FROM openvino/model_server:latest\n",
+            "COPY models /opt/models\n",
+            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--config_path\", \"/opt/models/config.json\"]\n"
+        ]
+
+        with open("/tmp/optimum/Dockerfile", "w") as f:
+            f.writelines(dockerfile_content)
+
+        print("Created Dockerfile")
+
+        import docker
+        client = docker.from_env()
+        client.images.build(path="/tmp/optimum", tag=image_tag)
+        print(f"Successfully built image: {image_tag}")
+        shutil.rmtree("/tmp/optimum/")
+        print("Cleanup successful")
+
+

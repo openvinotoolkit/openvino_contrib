@@ -8,6 +8,7 @@ import shutil
 import time
 
 import numpy as np
+from torch import Tensor
 
 from transformers.file_utils import cached_path, hf_bucket_url
 from transformers.file_utils import is_torch_available
@@ -437,7 +438,16 @@ class OVPreTrainedModel(GenerationMixin):
         if not self.model_initialized:
             self._load_network()
 
+        # ovmsclient not supporting torch.Tensor input type - needed conversion to numpy
+        inputs = {input_name: data.numpy() if type(data) is torch.Tensor else data for input_name, data in inputs.items()}
+
         outs = self.inference_adapter.infer_sync(inputs)
+
+        # OVMSAdapter does not guarantee output keys order
+        # For use cases where such order is required we use workaround with output names mapping
+        # OV model output names are mapped to numers and below we sort them to restore original order
+        if type(self.inference_adapter) is OVMSAdapter:
+            outs = dict(sorted(outs.items(),  key=lambda item: int(item[0]) if item[0] != "output" else -1))
 
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
@@ -509,21 +519,18 @@ class OVPreTrainedModel(GenerationMixin):
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
-"""
+
     # Experimental
+
     def create_ovms_image(self, image_tag):
 
         # Prepare configuration file
         if not self.model_initialized:
             self._load_network()
 
-        shapes = {}
-        for name, metadata in self.inference_adapter.get_input_layers().items():
-            shapes[name] = str(tuple(metadata.shape))
         model_configuration = {
             "name":"model",
             "base_path":"/opt/model",
-            "shape": shapes
          }
 
         config = {}
@@ -540,7 +547,8 @@ class OVPreTrainedModel(GenerationMixin):
         dockerfile_content = [
             "FROM openvino/model_server:latest\n",
             "COPY *.xml *.bin /opt/model/1/\n",
-            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--model_name\", \"model\", \"--model_path\", \"/opt/model\"]\n"
+            "COPY config.json /opt/config.json\n",
+            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--config_path\", \"/opt/config.json\"]\n"
             ]
 
         with open("/tmp/optimum/Dockerfile", "w") as f:
@@ -561,4 +569,4 @@ class OVPreTrainedModel(GenerationMixin):
         import docker
         client = docker.from_env()
         return client.containers.run(image_tag, "--port 9000", ports= {"9000/tcp": port}, detach=True)
-"""
+
