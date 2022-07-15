@@ -110,7 +110,7 @@ python3 downloader.py --name vehicle-detection-0200 --precision FP32
 
 - Add OpenCV dependency to project
 
-1. Download [OpenCV SDK for Android] and unpack it.
+1. Download [OpenCV SDK for Android](https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip) and unpack it.
 2. Import OpenCV module: select "File -> New -> ImportModule", and sepcify a path to unpacked SDK and set module name to "ocv".
 3. Replace `compileSdkVersion 26`, `targetSdkVersion 26` to `compileSdkVersion 32`, `targetSdkVersion 32` in `"$WORK_DIR/vehicle_detection_and_recognition_android_demo/ocv/build.gradle"`
 
