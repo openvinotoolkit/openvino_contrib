@@ -1,20 +1,16 @@
-package org.intel.openvino;
+package org.intel.openvinodemo;
 
-import androidx.annotation.NonNull;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.widget.Toast;
 import org.opencv.android.CameraActivity;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
-import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
-import org.opencv.core.Range;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
@@ -26,11 +22,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.sql.Time;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends CameraActivity implements CvCameraViewListener2 {
@@ -41,7 +33,9 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     private InferRequest re_inferRequest;
     private String re_inputName;
     private String re_outputName;
+    private String re_outputName2;
     private String modelDir;
+    public static final double CONFIDENCE_THRESHOLD = 0.5;
     public static final String OPENCV_LIBRARY_NAME = "opencv_java4";
     public static final String PLUGINS_XML = "plugins.xml";
     public static final String MODEL_XML = "vehicle-detection-0200.xml";
@@ -198,23 +192,13 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
                         (int)(scores[i * 7 + 5] * imread.cols() - scores[i * 7 + 3] * imread.cols()),
                         (int)(scores[i * 7 + 6] * imread.rows() - scores[i * 7 + 4] * imread.rows())));
 
-
                 // Resize to recognition model input dimension.
                 Imgproc.resize(car, car, new Size(RECOGNITION_INPUT_SIZE, RECOGNITION_INPUT_SIZE));
                 int[] re_dimsArr = {1, 3, car.height(), car.width()};
                 TensorDesc re_tDesc = new TensorDesc(Precision.U8, re_dimsArr, Layout.NHWC);
                 Blob re_imgBlob = new Blob(re_tDesc, car.dataAddr());
                 re_inferRequest.SetBlob(re_inputName, re_imgBlob);
-                // re_inferRequest.Infer();
-                re_inferRequest.StartAsync();
-                // Test async
-                try {
-                    Thread.sleep(900);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                re_inferRequest.Wait(WaitMode.RESULT_READY);
-
+                re_inferRequest.Infer();
 
                 Blob re_outputBlob = re_inferRequest.GetBlob(re_outputName);
                 float[] re_scores = new float[re_outputBlob.size()];
@@ -247,7 +231,6 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         Imgproc.putText(frameBGR, String.valueOf(1000 / (end - start)) + " FPS", new Point(10, 100),
                 Imgproc.FONT_HERSHEY_COMPLEX, 1.8, new Scalar(0, 255, 0), 6);
-
 
         return frameBGR;
     }
