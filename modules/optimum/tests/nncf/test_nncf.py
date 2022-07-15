@@ -6,9 +6,7 @@ from packaging import version
 
 import numpy as np
 
-from optimum.intel.openvino import (
-    OVAutoModel,
-)
+from optimum.intel.openvino import OVAutoModel
 import transformers
 from transformers import AutoConfig
 

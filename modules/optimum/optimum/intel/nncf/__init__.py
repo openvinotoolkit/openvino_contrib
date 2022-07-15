@@ -6,16 +6,9 @@ from packaging import version
 from .nncf_auto import NNCFAutoConfig
 
 import transformers
-from transformers import (
-    trainer,
-    trainer_callback,
-    training_args,
-    modeling_utils,
-)
+from transformers import trainer, trainer_callback, training_args, modeling_utils
 
-__all__ = [
-    "NNCFAutoConfig",
-]
+__all__ = ["NNCFAutoConfig"]
 
 
 # This code patches Transformers methods for NNCF. Source:

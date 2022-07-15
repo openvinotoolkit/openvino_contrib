@@ -8,7 +8,6 @@ import shutil
 import time
 
 import numpy as np
-from torch import Tensor
 
 from transformers.file_utils import cached_path, hf_bucket_url
 from transformers.file_utils import is_torch_available
@@ -213,7 +212,7 @@ class OVPreTrainedModel(GenerationMixin):
         self.model_initialized = False
 
         # Workaround for a bug with "input_ids:0" name
-        #for inp in self.net.inputs:
+        # for inp in self.net.inputs:
         #    name = inp.get_any_name().split(":")[0]
         #    inp.get_tensor().set_names(set([name]))
 
@@ -223,15 +222,15 @@ class OVPreTrainedModel(GenerationMixin):
         self.input_names = list(inputs.keys())
         self.output_names = list(outputs.keys())
 
-        #self.exec_net = None
+        # self.exec_net = None
         self.config = config
         self.max_length = 0
-        #self.ov_config = {"PERFORMANCE_HINT": "LATENCY"}
-        #self.ov_device = "CPU"
+        # self.ov_config = {"PERFORMANCE_HINT": "LATENCY"}
+        # self.ov_device = "CPU"
         self.use_dynamic_shapes = True
 
         self.main_input_name = None
-        for name in ["input_ids", "input_values", "decoder_input_ids"]:
+        for name in ["input_ids", "input_ids:0", "input_values", "decoder_input_ids"]:
             if name in self.input_names:
                 self.main_input_name = name
         if self.main_input_name is None:
@@ -301,14 +300,7 @@ class OVPreTrainedModel(GenerationMixin):
             #     archive_file = model_name_or_path
             else:
                 names = [OV_WEIGHTS_NAME, OV_BIN_NAME]
-                archive_files = [
-                    hf_bucket_url(
-                        model_name_or_path,
-                        filename=name,
-                        revision=revision,
-                    )
-                    for name in names
-                ]
+                archive_files = [hf_bucket_url(model_name_or_path, filename=name, revision=revision) for name in names]
 
             # redirect to the cache, if necessary
             try:
@@ -345,11 +337,7 @@ class OVPreTrainedModel(GenerationMixin):
 
         return load_ov_model_from_ir(*resolved_archive_files, config=config)
 
-    def save_pretrained(
-        self,
-        save_directory,
-        **kwargs,
-    ):
+    def save_pretrained(self, save_directory, **kwargs):
         """
         Save model in OpenVINO IR format into a directory
         """
@@ -363,7 +351,6 @@ class OVPreTrainedModel(GenerationMixin):
         pass_manager.register_pass("Serialize", xml_path, xml_path.replace(".xml", ".bin"))
         # TO DO: disable saving for OVMSAdapter as model is not in place
         pass_manager.run_passes(self.inference_adapter.model)
-
 
     def to(self, device):
         self.ov_device = device
@@ -439,20 +426,22 @@ class OVPreTrainedModel(GenerationMixin):
             self._load_network()
 
         # ovmsclient not supporting torch.Tensor input type - needed conversion to numpy
-        inputs = {input_name: data.numpy() if type(data) is torch.Tensor else data for input_name, data in inputs.items()}
+        inputs = {
+            input_name: data.numpy() if type(data) is torch.Tensor else data for input_name, data in inputs.items()
+        }
 
         outs = self.inference_adapter.infer_sync(inputs)
-
-        # OVMSAdapter does not guarantee output keys order
-        # For use cases where such order is required we use workaround with output names mapping
-        # OV model output names are mapped to numers and below we sort them to restore original order
-        if type(self.inference_adapter) is OVMSAdapter:
-            outs = dict(sorted(outs.items(),  key=lambda item: int(item[0]) if item[0] != "output" else -1))
-
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
         past_key_values = None
         if self.config.architectures[0].endswith("ForConditionalGeneration") and self.config.use_cache:
+
+            # OVMSAdapter does not guarantee output keys order
+            # For use cases where such order is required we use workaround with output names mapping
+            # OV model output names are mapped to numers and below we sort them to restore original order
+            if type(self.inference_adapter) is OVMSAdapter:
+                outs = dict(sorted(outs.items(), key=lambda item: int(item[0]) if item[0] != "output" else -1))
+
             past_key_values = [[]]
             for name in outs:
                 if name == "output":
@@ -487,7 +476,7 @@ class OVPreTrainedModel(GenerationMixin):
             return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 
     def forward(self, *args, **kwargs):
-        if self.main_input_name in ["input_ids", "decoder_input_ids"]:
+        if self.main_input_name in ["input_ids", "input_ids:0", "decoder_input_ids"]:
             inputs = self._prepare_nlp_inputs(*args, **kwargs)
         elif self.main_input_name == "input_values":
             inputs = self._prepare_audio_inputs(*args, **kwargs)
@@ -519,7 +508,6 @@ class OVPreTrainedModel(GenerationMixin):
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
-
     # Experimental
 
     def create_ovms_image(self, image_tag):
@@ -528,19 +516,18 @@ class OVPreTrainedModel(GenerationMixin):
         if not self.model_initialized:
             self._load_network()
 
-        model_configuration = {
-            "name":"model",
-            "base_path":"/opt/model",
-         }
+        model_configuration = {"name": "model", "base_path": "/opt/model"}
 
         config = {}
         config["model_config_list"] = [{"config": model_configuration}]
 
         import json
+
         with open("/tmp/optimum/config.json", "w") as outfile:
             json.dump(config, outfile)
 
         import shutil
+
         self.save_pretrained("/tmp/optimum/")
         print("Copied model to temporary location")
 
@@ -548,8 +535,8 @@ class OVPreTrainedModel(GenerationMixin):
             "FROM openvino/model_server:latest\n",
             "COPY *.xml *.bin /opt/model/1/\n",
             "COPY config.json /opt/config.json\n",
-            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--config_path\", \"/opt/config.json\"]\n"
-            ]
+            'ENTRYPOINT ["/ovms/bin/ovms", "--config_path", "/opt/config.json"]\n',
+        ]
 
         with open("/tmp/optimum/Dockerfile", "w") as f:
             f.writelines(dockerfile_content)
@@ -557,6 +544,7 @@ class OVPreTrainedModel(GenerationMixin):
         print("Created Dockerfile")
 
         import docker
+
         client = docker.from_env()
         client.images.build(path="/tmp/optimum", tag=image_tag)
         print(f"Successfully built image: {image_tag}")
@@ -567,6 +555,6 @@ class OVPreTrainedModel(GenerationMixin):
     @classmethod
     def start_ovms_container(cls, image_tag, port):
         import docker
-        client = docker.from_env()
-        return client.containers.run(image_tag, "--port 9000", ports= {"9000/tcp": port}, detach=True)
 
+        client = docker.from_env()
+        return client.containers.run(image_tag, "--port 9000", ports={"9000/tcp": port}, detach=True)

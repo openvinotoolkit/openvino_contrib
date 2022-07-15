@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from transformers.file_utils import is_torch_available
+from .modeling_ov_utils import OVPreTrainedModel, load_ov_model_from_pytorch
+from . import modeling_ov_utils
 
 if is_torch_available():
     import torch
@@ -13,14 +15,6 @@ else:
     class GenerationMixin(object):
         def __init__(self):
             pass
-
-
-from .modeling_ov_utils import (
-    OVPreTrainedModel,
-    load_ov_model_from_pytorch
-)
-
-from . import modeling_ov_utils
 
 
 def _prepare_nlp_inputs(
@@ -42,10 +36,7 @@ def _prepare_nlp_inputs(
     output_hidden_states=None,
     return_dict=None,
 ):
-    inputs = {
-        "attention_mask": attention_mask,
-        "decoder_input_ids": decoder_input_ids,
-    }
+    inputs = {"attention_mask": attention_mask, "decoder_input_ids": decoder_input_ids}
 
     if past_key_values is not None:
         for i in range(12):
@@ -148,12 +139,12 @@ class OVMBartForConditionalGeneration(GenerationMixin):
                 raise Exception("Config is required when using OVMS as a backend")
             if type(model_name_or_path) is not list:
                 raise Exception("Provide a list of URLs for MBart components in order: [encoder, model, model_past]")
-            
+
             encoder = OVPreTrainedModel.from_pretrained(model_name_or_path[0], *model_args, **kwargs)
             net = OVPreTrainedModel.from_pretrained(model_name_or_path[1], *model_args, **kwargs)
             net_past = OVPreTrainedModel.from_pretrained(model_name_or_path[2], *model_args, **kwargs)
             return OVMBartForConditionalGeneration(config, encoder, net, net_past)
-        
+
         from_pt = kwargs.pop("from_pt", False)
         use_cache = kwargs.get("from_pt", True)
 
@@ -197,10 +188,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
                     )
                 outputs.past_key_values = tuple(past_key_values)
 
-            return Seq2SeqLMOutput(
-                logits=outputs.logits,
-                past_key_values=outputs.past_key_values,
-            )
+            return Seq2SeqLMOutput(logits=outputs.logits, past_key_values=outputs.past_key_values)
 
         model.forward = lambda *args, **kwargs: forward(*args, **kwargs)
 
@@ -242,22 +230,21 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
     def create_mapping_config(self, output_keys_order, mapping_config_path):
         import json
-        outputs_mapping = {output_name: str(output_index) if output_name != "output" else output_name for output_index, output_name in enumerate(output_keys_order)}
+
+        outputs_mapping = {
+            output_name: str(output_index) if output_name != "output" else output_name
+            for output_index, output_name in enumerate(output_keys_order)
+        }
         mapping_config = {"outputs": outputs_mapping}
         with open(mapping_config_path, "w") as outfile:
             json.dump(mapping_config, outfile)
-
 
     def create_ovms_image(self, image_tag):
         import json
         import shutil
 
         # Model to OVMS model name mapping
-        model_names_map = {
-            self.encoder: "encoder",
-            self.model: "model",
-            self.model_past: "model_past",
-        }
+        model_names_map = {self.encoder: "encoder", self.model: "model", self.model_past: "model_past"}
 
         # Prepare models and configuration file
         config = {}
@@ -268,12 +255,8 @@ class OVMBartForConditionalGeneration(GenerationMixin):
                 model._load_network()
 
             model.save_pretrained(f"/tmp/optimum/models/{ovms_model_name}/1")
-            model_configuration = {
-                "name":ovms_model_name,
-                "base_path":f"/opt/models/{ovms_model_name}",
-            }
+            model_configuration = {"name": ovms_model_name, "base_path": f"/opt/models/{ovms_model_name}"}
             config["model_config_list"].append({"config": model_configuration})
-
 
         with open("/tmp/optimum/models/config.json", "w") as outfile:
             json.dump(config, outfile)
@@ -281,15 +264,20 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         # Prepare mapping configs for model and model_past (to make outputs ordering possible)
         model_outputs_key_order = list(self.model.inference_adapter.get_output_layers().keys())
         model_past_outputs_key_order = list(self.model_past.inference_adapter.get_output_layers().keys())
-        
-        self.create_mapping_config(model_outputs_key_order, f"/tmp/optimum/models/{model_names_map[self.model]}/1/mapping_config.json")
-        self.create_mapping_config(model_past_outputs_key_order, f"/tmp/optimum/models/{model_names_map[self.model_past]}/1/mapping_config.json")
+
+        self.create_mapping_config(
+            model_outputs_key_order, f"/tmp/optimum/models/{model_names_map[self.model]}/1/mapping_config.json"
+        )
+        self.create_mapping_config(
+            model_past_outputs_key_order,
+            f"/tmp/optimum/models/{model_names_map[self.model_past]}/1/mapping_config.json",
+        )
 
         # Prepare Dockerfile
         dockerfile_content = [
             "FROM openvino/model_server:latest\n",
             "COPY models /opt/models\n",
-            "ENTRYPOINT [\"/ovms/bin/ovms\", \"--config_path\", \"/opt/models/config.json\"]\n"
+            'ENTRYPOINT ["/ovms/bin/ovms", "--config_path", "/opt/models/config.json"]\n',
         ]
 
         with open("/tmp/optimum/Dockerfile", "w") as f:
@@ -298,10 +286,9 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         print("Created Dockerfile")
 
         import docker
+
         client = docker.from_env()
         client.images.build(path="/tmp/optimum", tag=image_tag)
         print(f"Successfully built image: {image_tag}")
         shutil.rmtree("/tmp/optimum/")
         print("Cleanup successful")
-
-

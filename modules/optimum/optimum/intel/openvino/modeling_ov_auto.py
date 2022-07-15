@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from transformers.file_utils import is_torch_available, is_tf_available
+from .modeling_ov_utils import OVPreTrainedModel
 
 
 if is_torch_available():
@@ -38,9 +39,6 @@ if is_tf_available():
         from transformers import TFAutoModelForMaskedLM
     except ImportError:
         from transformers import TFAutoModelWithLMHead as TFAutoModelForMaskedLM
-
-
-from .modeling_ov_utils import OVPreTrainedModel
 
 
 class _BaseOVAutoModelClass(OVPreTrainedModel):

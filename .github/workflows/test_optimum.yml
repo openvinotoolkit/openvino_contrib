@@ -40,11 +40,9 @@ jobs:
     strategy:
       matrix:
         transformers-version: [
-          "transformers[tf-cpu]==2.11.0",
-          "transformers[torch,tf-cpu] torch==1.9.1",
+          "transformers[torch] torch==1.9.1",
         ]
         openvino-version: [
-          "openvino-dev==2021.4.2",
           "openvino-dev==2022.1.0",
         ]
     steps:
@@ -68,7 +66,21 @@ jobs:
         python -m pip install ${{ matrix.transformers-version }} -r requirements.txt
         sudo apt-get install -y libsndfile1
 
+    - name: Install Docker for OVMS integration tests
+      working-directory: modules/optimum/tests/openvino
+      run: |
+        sudo apt-get update
+        sudo apt-get install ca-certificates curl gnupg lsb-release
+        sudo mkdir -p /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        python -m pip install docker
+        
     - name: Test OpenVINO backend
+      env:
+        TEST_WITH_OVMS: 1
       working-directory: modules/optimum/tests/openvino
       run: |
         python -m unittest discover

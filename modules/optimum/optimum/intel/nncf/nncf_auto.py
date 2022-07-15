@@ -60,11 +60,14 @@ def get_data_loader_cls(args, train_dataset):
 
             class SST2InitializingDataLoader(PTInitializingDataLoader):
                 def get_inputs(self, dataloader_output):
-                    return (), {
-                        "labels": dataloader_output["labels"],
-                        "attention_mask": dataloader_output["attention_mask"],
-                        "input_ids": dataloader_output["input_ids"],
-                    }
+                    return (
+                        (),
+                        {
+                            "labels": dataloader_output["labels"],
+                            "attention_mask": dataloader_output["attention_mask"],
+                            "input_ids": dataloader_output["input_ids"],
+                        },
+                    )
 
             return SST2InitializingDataLoader
 
@@ -72,12 +75,15 @@ def get_data_loader_cls(args, train_dataset):
 
             class MRPCInitializingDataLoader(PTInitializingDataLoader):
                 def get_inputs(self, dataloader_output):
-                    return (), {
-                        "labels": dataloader_output["labels"],
-                        "attention_mask": dataloader_output["attention_mask"],
-                        "input_ids": dataloader_output["input_ids"],
-                        "token_type_ids": dataloader_output["token_type_ids"],
-                    }
+                    return (
+                        (),
+                        {
+                            "labels": dataloader_output["labels"],
+                            "attention_mask": dataloader_output["attention_mask"],
+                            "input_ids": dataloader_output["input_ids"],
+                            "token_type_ids": dataloader_output["token_type_ids"],
+                        },
+                    )
 
             return MRPCInitializingDataLoader
 
@@ -85,11 +91,14 @@ def get_data_loader_cls(args, train_dataset):
 
             class MNLIInitializingDataLoader(PTInitializingDataLoader):
                 def get_inputs(self, dataloader_output):
-                    return (), {
-                        "labels": dataloader_output["labels"],
-                        "attention_mask": dataloader_output["attention_mask"],
-                        "input_ids": dataloader_output["input_ids"],
-                    }
+                    return (
+                        (),
+                        {
+                            "labels": dataloader_output["labels"],
+                            "attention_mask": dataloader_output["attention_mask"],
+                            "input_ids": dataloader_output["input_ids"],
+                        },
+                    )
 
             return MNLIInitializingDataLoader
     elif dataset_name == "xnli":
@@ -103,11 +112,14 @@ def get_data_loader_cls(args, train_dataset):
 
         class ConllInitializingDataloader(PTInitializingDataLoader):
             def get_inputs(self, dataloader_output):
-                return (), {
-                    "input_ids": dataloader_output["input_ids"],
-                    "attention_mask": dataloader_output["attention_mask"],
-                    "token_type_ids": dataloader_output["token_type_ids"],
-                }
+                return (
+                    (),
+                    {
+                        "input_ids": dataloader_output["input_ids"],
+                        "attention_mask": dataloader_output["attention_mask"],
+                        "token_type_ids": dataloader_output["token_type_ids"],
+                    },
+                )
 
         return ConllInitializingDataloader
     else:
