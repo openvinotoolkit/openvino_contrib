@@ -27,7 +27,7 @@ export WORK_DIR="$(pwd)/openvino_android"
 cd $WORK_DIR
 ```
 
-- Clone `OpenVINO` and `OpenVINO` Contrib repositories(Use 2021.4.1 branch).
+- Clone `OpenVINO` and `OpenVINO Contrib` repositories(Use 2021.4.1 branch).
 
 ```bash
 git clone --recurse-submodules --shallow-submodules --depth 1 --branch=2021.4.1 https://github.com/openvinotoolkit/openvino.git "$WORK_DIR/openvino"
@@ -93,12 +93,12 @@ git clone https://github.com/openvinotoolkit/openvino_contrib.git "$WORK_DIR/dem
 
 - Copy libraries and model files to the corresponding folder.
 
-1. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/inference_engine_java_api.jar"` to `app/libs` folder.
+  1. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/inference_engine_java_api.jar"` to `app/libs` folder.
 
-2. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/*.so"` and `"$WORK_DIR/android-ndk-r20/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so"` to `"app/src/main/jniLibs/arm64-v8a"`
-3. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/plugins.xml"` to `"app/src/main/assets"`
-4. Download model "vehicle-attributes-recognition-barrier-0039" and "vehicle-detection-0200" with Open Model Zoo in following steps and copy `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.xml"`, `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.bin"`, `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-detection-0200/FP32/vehicle-detection-0200.xml"` , `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-detection-0200/FP32/vehicle-detection-0200.bin"` to `"app/src/main/assets"`
-5. Download a test car image and rename to `"cars.png"`, then copy it to `"app/src/main/assets"` (Using video and camera is in progress)
+  2. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/*.so"` and `"$WORK_DIR/android-ndk-r20/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so"` to `"app/src/main/jniLibs/arm64-v8a"`
+  3. Clone `"$WORK_DIR/openvino/bin/aarch64/Release/lib/plugins.xml"` to `"app/src/main/assets"`
+  4. Download model "vehicle-attributes-recognition-barrier-0039" and "vehicle-detection-0200" with Open Model Zoo in following steps and copy `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.xml"`, `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-attributes-recognition-barrier-0039/FP32/vehicle-attributes-recognition-barrier-0039.bin"`, `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-detection-0200/FP32/vehicle-detection-0200.xml"` , `"$WORK_DIR/open_model_zoo/tools/downloader/intel/vehicle-detection-0200/FP32/vehicle-detection-0200.bin"` to `"app/src/main/assets"`
+  5. Download a test car image and rename to `"cars.png"`, then copy it to `"app/src/main/assets"` (Using video and camera is in progress)
 
 ```bash
 git clone --depth 1 https://github.com/openvinotoolkit/open_model_zoo "$WORK_DIR/open_model_zoo"
@@ -110,14 +110,14 @@ python3 downloader.py --name vehicle-detection-0200 --precision FP32
 
 - Add OpenCV dependency to project
 
-1. Download [OpenCV SDK for Android](https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip) and unpack it.
-2. Import OpenCV module: select "File -> New -> ImportModule", and sepcify a path to unpacked SDK and set module name to "ocv".
-3. Replace `compileSdkVersion 26`, `targetSdkVersion 26` to `compileSdkVersion 32`, `targetSdkVersion 32` in `"$WORK_DIR/vehicle_detection_and_recognition_android_demo/ocv/build.gradle"`
+  1. Download [OpenCV SDK for Android](https://github.com/opencv/opencv/releases/download/4.5.0/opencv-4.5.0-android-sdk.zip) and unpack it.
+  2. Import OpenCV module: select "File -> New -> ImportModule", and sepcify a path to unpacked SDK and set module name to "ocv".
+  3. Replace `compileSdkVersion 26`, `targetSdkVersion 26` to `compileSdkVersion 32`, `targetSdkVersion 32` in `"$WORK_DIR/vehicle_detection_and_recognition_android_demo/ocv/build.gradle"`
 
 - Start a ARM-based Android Emulator.
 
-1. Using `AVD Manager -> Create Virtual Device`, and choose one virtual device.
-2. Select a system image with `arm64-v8a`.
+  1. Using `AVD Manager -> Create Virtual Device`, and choose one virtual device.
+  2. Select a system image with `arm64-v8a`.
 
 - Run it!
 
