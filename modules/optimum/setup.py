@@ -23,6 +23,7 @@ nncf_deps = [
     "openvino-dev[onnx]",
     "nncf",
     "transformers<4.16.0",
+    "datasets",
 ]
 
 # Add patches as data
