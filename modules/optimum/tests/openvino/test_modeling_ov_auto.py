@@ -109,7 +109,7 @@ class OVBertForQuestionAnsweringTest(unittest.TestCase):
 
 
 @require_torch
-class SameOutputTest(unittest.TestCase):
+class MultiFrameworkSameOutputTest(unittest.TestCase):
     def check_same_ouput(self, model_name):
         """
         Sanity check that argmax and argmin output is the same for PyTorch and OpenVINO models
