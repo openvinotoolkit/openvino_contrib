@@ -21,12 +21,7 @@ install_requires = [
     "openmodelzoo-modelapi @ git+https://github.com/mzegla/open_model_zoo.git@adapters_changes#egg=openmodelzoo-modelapi&subdirectory=demos/common/python",  # noqa
 ]
 
-nncf_deps = [
-    "openvino-dev[onnx]",
-    "nncf",
-    "transformers<4.16.0",
-    "datasets",
-]
+nncf_deps = ["openvino-dev[onnx]", "nncf", "transformers<4.16.0", "datasets"]
 
 # Add patches as data
 folder = "optimum/intel/nncf/patches"

@@ -104,6 +104,24 @@ class OVBertForQuestionAnsweringTest(unittest.TestCase):
         )
         self.check_model(model, tok, "the garden")
 
+    @unittest.skipIf("TEST_WITH_OVMS" not in os.environ, "OVMS integration tests turned off")
+    def test_with_ovms(self):
+        try:
+            hf_model_name = "dkurt/bert-large-uncased-whole-word-masking-squad-int8-0001"
+            ovms_model_name = "bert"
+            ovms_container, tmp_model_dir = start_ovms_with_single_model(
+                hf_model_name, ovms_model_name, model_class=OVAutoModelForQuestionAnswering
+            )
+            config = AutoConfig.from_pretrained(hf_model_name)
+            tok = AutoTokenizer.from_pretrained(hf_model_name)
+            model = OVAutoModelForQuestionAnswering.from_pretrained(
+                f"localhost:9000/models/{ovms_model_name}", inference_backend="ovms", config=config
+            )
+            self.check_model(model, tok, "the garden")
+        finally:
+            ovms_container.kill()
+            shutil.rmtree(tmp_model_dir)
+
     @require_torch
     def test_tinybert_from_pt(self):
         model_name = "Intel/dynamic_tinybert"
@@ -158,24 +176,6 @@ class MultiFrameworkSameOutputTest(unittest.TestCase):
     def test_same_output_bert(self):
         model_name = "csarron/bert-base-uncased-squad-v1"
         self.check_same_ouput(model_name)
-
-    @unittest.skipIf("TEST_WITH_OVMS" not in os.environ, "OVMS integration tests turned off")
-    def test_with_ovms(self):
-        try:
-            hf_model_name = "dkurt/bert-large-uncased-whole-word-masking-squad-int8-0001"
-            ovms_model_name = "bert"
-            ovms_container, tmp_model_dir = start_ovms_with_single_model(
-                hf_model_name, ovms_model_name, model_class=OVAutoModelForQuestionAnswering
-            )
-            config = AutoConfig.from_pretrained(hf_model_name)
-            tok = AutoTokenizer.from_pretrained(hf_model_name)
-            model = OVAutoModelForQuestionAnswering.from_pretrained(
-                f"localhost:9000/models/{ovms_model_name}", inference_backend="ovms", config=config
-            )
-            self.check_model(model, tok)
-        finally:
-            ovms_container.kill()
-            shutil.rmtree(tmp_model_dir)
 
 
 @require_torch

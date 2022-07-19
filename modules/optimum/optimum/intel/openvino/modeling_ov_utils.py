@@ -65,12 +65,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
         elif model.main_input_name == "input_values":
             inputs = torch.zeros((1, 16000), dtype=torch.float32)
         else:
-            inputs = tuple(
-                [
-                    dummy_inputs,
-                ]
-                * len(input_names)
-            )
+            inputs = tuple([dummy_inputs] * len(input_names))
     else:
         input_names = []
         for name, tensor in inputs.items():
@@ -511,25 +506,23 @@ class OVPreTrainedModel(GenerationMixin):
     # Experimental
 
     def create_ovms_image(self, image_tag):
+        import docker
+        import json
+        import shutil
 
         # Prepare configuration file
         if not self.model_initialized:
             self._load_network()
+
+        self.save_pretrained("/tmp/optimum/")
 
         model_configuration = {"name": "model", "base_path": "/opt/model"}
 
         config = {}
         config["model_config_list"] = [{"config": model_configuration}]
 
-        import json
-
         with open("/tmp/optimum/config.json", "w") as outfile:
             json.dump(config, outfile)
-
-        import shutil
-
-        self.save_pretrained("/tmp/optimum/")
-        print("Copied model to temporary location")
 
         dockerfile_content = [
             "FROM openvino/model_server:latest\n",
@@ -541,20 +534,6 @@ class OVPreTrainedModel(GenerationMixin):
         with open("/tmp/optimum/Dockerfile", "w") as f:
             f.writelines(dockerfile_content)
 
-        print("Created Dockerfile")
-
-        import docker
-
         client = docker.from_env()
         client.images.build(path="/tmp/optimum", tag=image_tag)
-        print(f"Successfully built image: {image_tag}")
         shutil.rmtree("/tmp/optimum/")
-        print("Cleanup successful")
-
-    # Experimental
-    @classmethod
-    def start_ovms_container(cls, image_tag, port):
-        import docker
-
-        client = docker.from_env()
-        return client.containers.run(image_tag, "--port 9000", ports={"9000/tcp": port}, detach=True)

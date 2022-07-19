@@ -240,6 +240,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             json.dump(mapping_config, outfile)
 
     def create_ovms_image(self, image_tag):
+        import docker
         import json
         import shutil
 
@@ -283,12 +284,6 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         with open("/tmp/optimum/Dockerfile", "w") as f:
             f.writelines(dockerfile_content)
 
-        print("Created Dockerfile")
-
-        import docker
-
         client = docker.from_env()
         client.images.build(path="/tmp/optimum", tag=image_tag)
-        print(f"Successfully built image: {image_tag}")
         shutil.rmtree("/tmp/optimum/")
-        print("Cleanup successful")

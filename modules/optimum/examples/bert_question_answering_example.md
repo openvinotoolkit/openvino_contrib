@@ -105,17 +105,24 @@ print(f"Answer: {answer}")
 ## Work with OpenVINO model hosted in OpenVINO Model Server
 
 In this variant the inference is being delegated to the OpenVINO Model Server.
-Before running the sample we need to put OpenVINO model used in previous step in a directory structure accepted by the model server:
+We will use a separate method that will prepare OpenVINO Model Server image with Bert model already included and configured to run with Optimum.
+To do that first install `docker` package in your Python environment (note that you also must have Docker engine installed and running on the host).
 
-```bash
-mkdir -p bert/1
-cp -R bert-large-uncased-whole-word-masking-finetuned-squad_fp32/ov_model.* bert/1
+ - Install [Docker engine](https://docs.docker.com/engine/install/) on the machine you'll run OpenVINO Model Sever on.
+ - Run `pip install docker` to install Docker SDK on your Python environment
+
+Once you have it, run the following Python code:
+
+```python
+from optimum.intel.openvino import OVAutoModelForQuestionAnswering
+model = OVAutoModelForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad", from_pt=True)
+model.create_ovms_image("ovms_bert:latest")
 ```
 
-Then launch OpenVINO Model Server with BERT model and configure it to accept dynamic input shapes:
+Then use the newly created image to start a container. Now to make it work you just need to specify the gRPC port that OVMS will listen on and forward it to the container.
 
 ```bash
-docker run --rm -d -p 9000:9000 -v $PWD/bert:/bert openvino/model_server:latest --model_name bert --model_path /bert --port 9000 --shape "{\"input_ids\": \"(-1,-1)\", \"attention_mask\": \"(-1,-1)\"}"
+docker run --rm -d -p 9999:9999 ovms_bert:latest --port 9999
 ```
 
 Now that OpenVINO Model Server is running, let's run below sample to perform question answering just like in the variants presented earlier:
@@ -135,7 +142,7 @@ config = AutoConfig.from_pretrained(model_name)
 
 # Use model called "bert" hosted on port 9000 with OpenVINO Model Server (OVMS)
 model = OVAutoModelForQuestionAnswering.from_pretrained(
-     "localhost:9000/models/bert", inference_backend="ovms", config=config
+     "localhost:9999/models/bert", inference_backend="ovms", config=config
 )
 
 
