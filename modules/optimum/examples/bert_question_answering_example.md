@@ -140,9 +140,9 @@ model_name = "bert-large-uncased-whole-word-masking-finetuned-squad"
 
 config = AutoConfig.from_pretrained(model_name)
 
-# Use model called "bert" hosted on port 9000 with OpenVINO Model Server (OVMS)
+# Use model called "model" hosted on port 9999 with OpenVINO Model Server (OVMS)
 model = OVAutoModelForQuestionAnswering.from_pretrained(
-     "localhost:9999/models/bert", inference_backend="ovms", config=config
+     "localhost:9999/models/model", inference_backend="ovms", config=config
 )
 
 
