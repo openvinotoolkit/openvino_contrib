@@ -52,8 +52,9 @@ def _prepare_nlp_inputs(
 # first model run accepts only three inputs but next calls uses past_key_values.
 # We cannot keep a single model for both cases because the graph is dynamic and connections are different.
 class OVMBartForConditionalGeneration(GenerationMixin):
-    def __init__(self, config, encoder, model, model_past=None):
+    def __init__(self, ov_config, config, encoder, model, model_past=None):
         super().__init__()
+        self.ov_config = ov_config
         self.encoder = encoder
         self.model = model
         self.model_past = model_past
@@ -133,6 +134,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
         inference_backend = kwargs.get("inference_backend", "openvino")
+        ov_config = kwargs.get("ov_config", {"PERFORMANCE_HINT": "LATENCY"})
         if inference_backend == "ovms":
             config = kwargs.get("config")
             if config is None:
@@ -143,7 +145,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             encoder = OVPreTrainedModel.from_pretrained(model_name_or_path[0], *model_args, **kwargs)
             net = OVPreTrainedModel.from_pretrained(model_name_or_path[1], *model_args, **kwargs)
             net_past = OVPreTrainedModel.from_pretrained(model_name_or_path[2], *model_args, **kwargs)
-            return OVMBartForConditionalGeneration(config, encoder, net, net_past)
+            return OVMBartForConditionalGeneration(ov_config, config, encoder, net, net_past)
 
         from_pt = kwargs.pop("from_pt", False)
         use_cache = kwargs.get("from_pt", True)
@@ -163,8 +165,9 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             modeling_ov_utils.OV_WEIGHTS_NAME = "ov_model.xml"
             net_past = OVPreTrainedModel.from_pretrained(model_name_or_path, *model_args, **kwargs)
 
-            return OVMBartForConditionalGeneration(config, encoder, net, net_past)
+            return OVMBartForConditionalGeneration(ov_config, config, encoder, net, net_past)
 
+        kwargs.pop("ov_config")
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path, *model_args, **kwargs)
         use_cache = model.config.use_cache
 
@@ -193,7 +196,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
         model.forward = lambda *args, **kwargs: forward(*args, **kwargs)
 
         # Create a separate network for encoder - it will be called just once.
-        encoder = load_ov_model_from_pytorch(model.get_encoder())
+        encoder = load_ov_model_from_pytorch(model.get_encoder(), ov_config=ov_config)
 
         inputs = {
             "input_ids": None,
@@ -206,7 +209,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
             "encoder_outputs": [torch.zeros([1, 11, 1024], dtype=torch.float32)],
         }
 
-        net = load_ov_model_from_pytorch(model, inputs)
+        net = load_ov_model_from_pytorch(model, inputs, ov_config=ov_config)
 
         # Fix for 2022.1 release
         net.inference_adapter.model.inputs[2].get_tensor().set_names(set(["encoder_outputs"]))
@@ -220,11 +223,11 @@ class OVMBartForConditionalGeneration(GenerationMixin):
                     torch.zeros([1, 16, 11, 64], dtype=torch.float32),
                 ]
             ] * 12
-            net_past = load_ov_model_from_pytorch(model, inputs)
+            net_past = load_ov_model_from_pytorch(model, inputs, ov_config=ov_config)
         else:
             net_past = None
 
-        return OVMBartForConditionalGeneration(model.config, encoder, net, net_past)
+        return OVMBartForConditionalGeneration(ov_config, model.config, encoder, net, net_past)
 
     # Experimental
 
@@ -257,6 +260,8 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
             model.save_pretrained(f"/tmp/optimum/models/{ovms_model_name}/1")
             model_configuration = {"name": ovms_model_name, "base_path": f"/opt/models/{ovms_model_name}"}
+            if self.ov_config:
+                model_configuration["plugin_config"] = self.ov_config
             config["model_config_list"].append({"config": model_configuration})
 
         with open("/tmp/optimum/models/config.json", "w") as outfile:

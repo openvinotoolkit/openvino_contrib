@@ -39,7 +39,7 @@ OV_WEIGHTS_NAME = "ov_model.xml"
 ie = Core()
 
 
-def load_ov_model_from_pytorch(model, inputs=None):
+def load_ov_model_from_pytorch(model, inputs=None, ov_config=None):
     import io
 
     buf = io.BytesIO()
@@ -107,7 +107,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
         )
 
     if use_external_data_format:
-        inference_adapter = OpenvinoAdapter(ie, (os.path.join(model_cache_dir, "model.onnx")))
+        inference_adapter = OpenvinoAdapter(ie, (os.path.join(model_cache_dir, "model.onnx")), plugin_config=ov_config)
 
         try:
             shutil.rmtree(model_cache_dir)
@@ -115,11 +115,11 @@ def load_ov_model_from_pytorch(model, inputs=None):
             if e.errno != errno.ENOENT:
                 raise
     else:
-        inference_adapter = OpenvinoAdapter(ie, buf.getvalue(), b"")
-    return OVPreTrainedModel(inference_adapter, model.config)
+        inference_adapter = OpenvinoAdapter(ie, buf.getvalue(), b"", plugin_config=ov_config)
+    return OVPreTrainedModel(inference_adapter, ov_config, model.config)
 
 
-def load_ov_model_from_tf(model, tf_weights_path):
+def load_ov_model_from_tf(model, tf_weights_path, ov_config=None):
     import subprocess  # nosec
 
     import tensorflow as tf
@@ -170,22 +170,22 @@ def load_ov_model_from_tf(model, tf_weights_path):
         if e.errno != errno.ENOENT:
             raise
 
-    inference_adapter = OpenvinoAdapter(ie, tf_weights_path + ".xml")
-    return OVPreTrainedModel(inference_adapter, model.config)
+    inference_adapter = OpenvinoAdapter(ie, tf_weights_path + ".xml", plugin_config=ov_config)
+    return OVPreTrainedModel(inference_adapter, ov_config, model.config)
 
 
-def load_ov_model_from_ir(xml_path, bin_path, config):
+def load_ov_model_from_ir(xml_path, bin_path, config, ov_config=None):
     if not xml_path.endswith(".xml"):
         import shutil
 
         shutil.copyfile(xml_path, xml_path + ".xml")
         xml_path += ".xml"
 
-    inference_adapter = OpenvinoAdapter(ie, xml_path, bin_path)
-    return OVPreTrainedModel(inference_adapter, config)
+    inference_adapter = OpenvinoAdapter(ie, xml_path, bin_path, plugin_config=ov_config)
+    return OVPreTrainedModel(inference_adapter, ov_config, config)
 
 
-def load_model_from_cache(model_name_or_path, model_arch, cache_dir, filename, config):
+def load_model_from_cache(model_name_or_path, model_arch, cache_dir, filename, config, ov_config=None):
     url = hf_bucket_url(model_name_or_path, filename=filename)
     path = cached_path(url, cache_dir=cache_dir) + "." + model_arch
     xml_path = path + ".xml"
@@ -193,7 +193,7 @@ def load_model_from_cache(model_name_or_path, model_arch, cache_dir, filename, c
     model = None
     if os.path.exists(xml_path) and os.path.exists(bin_path):
         logger.info(f"Load OpenVINO model from cache: {xml_path}")
-        model = load_ov_model_from_ir(xml_path, bin_path, config)
+        model = load_ov_model_from_ir(xml_path, bin_path, config, ov_config)
     return model, path
 
 
@@ -201,9 +201,10 @@ class OVPreTrainedModel(GenerationMixin):
     _pt_auto_model = None
     _tf_auto_model = None
 
-    def __init__(self, inference_adapter, config):
+    def __init__(self, inference_adapter, ov_config, config):
         super().__init__()
         self.inference_adapter = inference_adapter
+        self.ov_config = ov_config
         self.model_initialized = False
 
         # Workaround for a bug with "input_ids:0" name
@@ -237,12 +238,13 @@ class OVPreTrainedModel(GenerationMixin):
     @classmethod
     def from_pretrained(cls, model_name_or_path, *model_args, **kwargs):
         inference_backend = kwargs.get("inference_backend", "openvino")
+        ov_config = kwargs.get("ov_config", {"PERFORMANCE_HINT": "LATENCY"})
         if inference_backend == "ovms":
             inference_adapter = OVMSAdapter(model_name_or_path)
             config = kwargs.get("config")
             if config is None:
                 raise Exception("Config is required when using OVMS as a backend")
-            return OVPreTrainedModel(inference_adapter, config)
+            return OVPreTrainedModel(inference_adapter, ov_config, config)
 
         cache_dir = kwargs.get("cache_dir", None)
         from_pt = kwargs.pop("from_pt", False)
@@ -261,15 +263,15 @@ class OVPreTrainedModel(GenerationMixin):
 
         if from_pt:
             model = cls._pt_auto_model.from_pretrained(model_name_or_path, *model_args, **kwargs)
-            return load_ov_model_from_pytorch(model)
+            return load_ov_model_from_pytorch(model, ov_config=ov_config)
         elif from_tf:
             model, cache_path = load_model_from_cache(
-                model_name_or_path, cls.__name__, cache_dir, TF2_WEIGHTS_NAME, config
+                model_name_or_path, cls.__name__, cache_dir, TF2_WEIGHTS_NAME, config, ov_config=ov_config
             )
             if model is not None:
                 return model
             model = cls._tf_auto_model.from_pretrained(model_name_or_path, *model_args, **kwargs)
-            return load_ov_model_from_tf(model, cache_path)
+            return load_ov_model_from_tf(model, cache_path, ov_config=ov_config)
 
         user_agent = {"file_type": "model", "framework": "openvino", "from_auto_class": from_auto_class}
         if from_pipeline is not None:
@@ -330,7 +332,7 @@ class OVPreTrainedModel(GenerationMixin):
         else:
             resolved_archive_files = None
 
-        return load_ov_model_from_ir(*resolved_archive_files, config=config)
+        return load_ov_model_from_ir(*resolved_archive_files, config=config, ov_config=ov_config)
 
     def save_pretrained(self, save_directory, **kwargs):
         """
@@ -517,6 +519,8 @@ class OVPreTrainedModel(GenerationMixin):
         self.save_pretrained("/tmp/optimum/")
 
         model_configuration = {"name": "model", "base_path": "/opt/model"}
+        if self.ov_config:
+            model_configuration["plugin_config"] = self.ov_config
 
         config = {}
         config["model_config_list"] = [{"config": model_configuration}]
