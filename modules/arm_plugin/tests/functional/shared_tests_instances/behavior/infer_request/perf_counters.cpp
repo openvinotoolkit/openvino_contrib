@@ -4,6 +4,7 @@
 
 #include "multi-device/multi_device_config.hpp"
 #include "behavior/infer_request/perf_counters.hpp"
+#include "ie_plugin_config.hpp"
 
 using namespace BehaviorTestsDefinitions;
 namespace {
