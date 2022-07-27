@@ -240,7 +240,13 @@ class OVPreTrainedModel(GenerationMixin):
         self.exec_net = None
         self.config = config
         self.max_length = 0
-        self.ov_config = {"PERFORMANCE_HINT": "LATENCY"} if is_openvino_api_2 else {}
+        self.ov_config = {
+            "PERFORMANCE_HINT": "LATENCY",
+            # NUM_STREAMS set to 1 because:
+            #    the performance of eager-mode sync API dosn't benefit from multiple stream
+            #    multiple streams running on different NUMA nodes may duplicate weights memory
+            "NUM_STREAMS":1    
+        } if is_openvino_api_2 else {}
         self.ov_device = "CPU"
         self.use_dynamic_shapes = is_openvino_api_2
 
@@ -392,6 +398,9 @@ class OVPreTrainedModel(GenerationMixin):
 
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
+            # release memory taken by orginal model since
+            # we don't need it anymore afer compilation is done
+            self.net = None
             self.exec_net = compiled_model.create_infer_request()
         else:
             self.exec_net = ie.load_network(self.net, self.ov_device, self.ov_config)
