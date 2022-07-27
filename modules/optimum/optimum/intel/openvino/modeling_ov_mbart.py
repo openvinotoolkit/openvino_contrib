@@ -167,7 +167,7 @@ class OVMBartForConditionalGeneration(GenerationMixin):
 
             return OVMBartForConditionalGeneration(ov_config, config, encoder, net, net_past)
 
-        kwargs.pop("ov_config")
+        kwargs.pop("ov_config", None)
         model = MBartForConditionalGeneration.from_pretrained(model_name_or_path, *model_args, **kwargs)
         use_cache = model.config.use_cache
 
