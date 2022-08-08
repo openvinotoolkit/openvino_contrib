@@ -33,7 +33,7 @@ function build() {
     fi
 
     pushd "${CUDA_PACKAGES_PATH}"
-    docker build -t openvino/cudaplugin .
+    docker build -t openvino/cudaplugin-2022.1 .
     if [[ ! ./Dockerfile -ef ${CUDA_PACKAGES_PATH}/Dockerfile ]]; then
         rm -f "${CUDA_PACKAGES_PATH}"/Dockerfile
     fi
@@ -51,7 +51,7 @@ function run() {
                           -v "${PWD}:${PWD}" \
                           -v "${OPENVINO_TEMP_PATH}:${OPENVINO_TEMP_PATH}" \
                           -v "${USER_SHARE_PATH}:${USER_SHARE_PATH}" \
-                          -w "${PWD}" openvino/cudaplugin \
+                          -w "${PWD}" openvino/cudaplugin-2022.1 \
                           ${USER_APP}
 }
 

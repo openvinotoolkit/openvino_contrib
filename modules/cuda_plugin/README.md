@@ -156,13 +156,13 @@ In order to build CUDAPlugin in docker, follow the steps:
 
 1. Enter the docker container:
 ```bash
-docker run --gpus all -it openvino/cudaplugin bin/bash
+docker run --gpus all -it openvino/cudaplugin-2022.1 bin/bash
 ```
 2. Build the OpenVINO and CUDAPlugin according the steps described in [## How to build](#how-to-build),
    except 3), 4), 5) steps (this packages already installed in image)
 3. Commit all your changes in container:
 ```bash
-docker commit openvino/cudaplugin <name of new image>
+docker commit openvino/cudaplugin-2022.1 <name of new image>
 ```
 
 ## Supported Configuration Parameters
