@@ -6,8 +6,10 @@
 
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OPERATION_REGISTER(MaximumOp, Maximum)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

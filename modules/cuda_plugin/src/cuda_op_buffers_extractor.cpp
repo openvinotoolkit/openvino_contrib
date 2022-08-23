@@ -19,7 +19,8 @@
 #include <transformer/nodes/concat_optimized.hpp>
 #include <utility>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OperationBuffersExtractor::OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes,
                                                      bool is_stable_params,
@@ -344,4 +345,5 @@ void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ov::Input<ov::N
                     input.get_node()->get_name()));
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

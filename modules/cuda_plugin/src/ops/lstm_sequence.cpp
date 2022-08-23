@@ -11,14 +11,15 @@
 
 #include "rnn_components/lstm_sequence_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LSTMSequenceOp::LSTMSequenceOp(const CreationContext& context,
                                const NodeOp& node,
                                IndexCollection&& inputIds,
                                IndexCollection&& outputIds)
     : LSTMSequenceOpBase(context, LSTMSequenceParams{node}, config(), node, std::move(inputIds), std::move(outputIds)) {
-    using LSTMSequenceArgIndices = CUDAPlugin::RNN::Details::LSTMSequenceArgIndices;
+    using LSTMSequenceArgIndices = ov::nvidia_gpu::RNN::Details::LSTMSequenceArgIndices;
     const int64_t batch_size = params_.batch_size_;
     const int64_t num_directions = params_.numDirections();
     const int64_t hidden_size = params_.hidden_size_;
@@ -131,4 +132,5 @@ void LSTMSequenceOp::setupLayoutAdapters() {
 
 OPERATION_REGISTER(LSTMSequenceOp, LSTMSequence);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

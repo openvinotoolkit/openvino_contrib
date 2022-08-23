@@ -6,9 +6,11 @@
 
 #include "cuda_plugin.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 template <>
 std::string Plugin::getCudaAttribute<Plugin::cuda_attribute::name, std::string>() const {
     return CUDA::Device{cudaDeviceID()}.props().name;
 }
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

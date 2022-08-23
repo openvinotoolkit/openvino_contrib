@@ -9,7 +9,8 @@
 #include "convolution_components/convolution_cudnn_components.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements `ov::op::v1::Convolution` using cuDNN API
@@ -33,4 +34,5 @@ private:
     Convolution::Details::ConvolutionDescriptorsCuDnn descs_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

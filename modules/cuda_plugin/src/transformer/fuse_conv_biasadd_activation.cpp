@@ -25,11 +25,11 @@
 #include "nodes/fused_convolution.hpp"
 #include "nodes/fused_convolution_backprop_data.hpp"
 
-using CUDAPlugin::nodes::FusedConvolution;
-using CUDAPlugin::nodes::FusedGroupConvolution;
+using ov::nvidia_gpu::nodes::FusedConvolution;
+using ov::nvidia_gpu::nodes::FusedGroupConvolution;
 
-using ActivationMode = CUDAPlugin::nodes::ActivationMode;
-using FusedConvBackpropData = CUDAPlugin::nodes::FusedConvBackpropData;
+using ActivationMode = ov::nvidia_gpu::nodes::ActivationMode;
+using FusedConvBackpropData = ov::nvidia_gpu::nodes::FusedConvBackpropData;
 
 template <class A, class B>
 std::pair<std::shared_ptr<A>, std::shared_ptr<B>> parse_eltwise_inputs(std::shared_ptr<ov::Node> node) {

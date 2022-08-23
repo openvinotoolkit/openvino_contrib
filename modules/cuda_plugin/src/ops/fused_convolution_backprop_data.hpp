@@ -11,11 +11,12 @@
 #include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class FusedConvolutionBackpropDataOp : public OperationCuDnn {
 public:
-    using NodeOp = CUDAPlugin::nodes::FusedConvBackpropData;
+    using NodeOp = ov::nvidia_gpu::nodes::FusedConvBackpropData;
     FusedConvolutionBackpropDataOp(const CreationContext& context,
                                    const NodeOp& node,
                                    IndexCollection&& inputIds,
@@ -40,4 +41,5 @@ private:
     size_t add_in_bytes_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

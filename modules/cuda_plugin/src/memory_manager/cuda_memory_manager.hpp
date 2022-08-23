@@ -13,7 +13,8 @@
 #include "cuda_workbuffers.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class MemoryModel;
 class IOperationMeta;
@@ -97,4 +98,5 @@ private:
     DeviceMemBlock::Ptr immutable_workbuffers_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

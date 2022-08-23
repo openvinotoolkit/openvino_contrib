@@ -12,7 +12,8 @@
 
 class ExecNetworkTest;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SubGraph : public OperationBase {
 public:
@@ -74,4 +75,5 @@ inline SubGraph::~SubGraph() {}
 
 inline const std::vector<OperationBase::Ptr>& SubGraph::getExecSequence() const { return exec_sequence_; }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

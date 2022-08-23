@@ -15,7 +15,8 @@
 #include "ngraph/shape.hpp"
 #include "ngraph/validation_util.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                                              const std::shared_ptr<ngraph::Node>& in_node,
@@ -63,4 +64,5 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(interpolateFactory, Interpolate);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

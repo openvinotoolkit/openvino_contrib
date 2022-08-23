@@ -3,7 +3,7 @@
 #
 
 cmake_minimum_required(VERSION 3.13)
-project(InferenceEngineCUDAPlugin CXX CUDA)
+project(InferenceEngineNVIDIAGpuPlugin CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -20,7 +20,7 @@ if (ENABLE_CUDNN_BACKEND_API)
     add_definitions(-DENABLE_CUDNN_BACKEND_API)
 endif()
 
-set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineCUDAPlugin_SOURCE_DIR})
+set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineNVIDIAGpuPlugin_SOURCE_DIR})
 
 find_package(InferenceEngineDeveloperPackage REQUIRED)
 
@@ -78,10 +78,10 @@ find_library(CUTENSOR_PATH
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
 
-message("-- [CUDAPlugin] CUTENSOR_PATH ${CUTENSOR_PATH}")
-message("-- [CUDAPlugin] CUTENSOR_INCLUDE_DIR ${CUTENSOR_INCLUDE_DIR}")
-message("-- [CUDAPlugin] CUDNN_PATH ${CUDNN_PATH}")
-message("-- [CUDAPlugin] CUBLAS_PATH ${CUBLAS_PATH}")
+message("-- [nvidia_gpu] CUTENSOR_PATH ${CUTENSOR_PATH}")
+message("-- [nvidia_gpu] CUTENSOR_INCLUDE_DIR ${CUTENSOR_INCLUDE_DIR}")
+message("-- [nvidia_gpu] CUDNN_PATH ${CUDNN_PATH}")
+message("-- [nvidia_gpu] CUBLAS_PATH ${CUBLAS_PATH}")
 
 add_library(CUDA::cudnn SHARED IMPORTED)
 set_target_properties(CUDA::cudnn PROPERTIES IMPORTED_LOCATION "${CUDNN_PATH}")

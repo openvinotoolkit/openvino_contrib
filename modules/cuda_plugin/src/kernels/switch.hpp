@@ -6,7 +6,8 @@
 
 #include <utility>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename Int, Int First, Int... Indices, typename TypeT, typename Switch, typename... Args>
@@ -41,4 +42,5 @@ constexpr decltype(auto) templateSwitch(std::integer_sequence<Int>, TypeT v, Swi
 // auto n = templateSwitch(std::integer_sequence<int, 1, 2, 4, 6>{}, 4, SimpleSwitch{}, 2);
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -12,7 +12,8 @@
 #include "openvino/op/nv12_to_bgr.hpp"
 #include "openvino/op/nv12_to_rgb.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename TNGraphNode, typename TKernel>
 class NV12ConvertColorBase : public OperationBase {
@@ -50,7 +51,7 @@ public:
 
         const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
         if (single_plane) {
-            kernel_ = TKernel{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+            kernel_ = TKernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                               max_threads_per_block,
                               batch_size,
                               image_h,
@@ -58,7 +59,7 @@ public:
                               image_w * image_h * 3 / 2,
                               image_w * image_h * 3 / 2};
         } else {
-            kernel_ = TKernel{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+            kernel_ = TKernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                               max_threads_per_block,
                               batch_size,
                               image_h,
@@ -105,4 +106,5 @@ public:
     using NV12ConvertColorBase::NV12ConvertColorBase;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

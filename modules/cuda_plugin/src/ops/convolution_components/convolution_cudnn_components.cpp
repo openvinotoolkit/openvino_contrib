@@ -13,7 +13,7 @@
 #include <ngraph/util.hpp>
 #include <ops/converters.hpp>
 
-namespace CUDAPlugin::Convolution::Details {
+namespace ov::nvidia_gpu::Convolution::Details {
 
 ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::ConvolutionParams& params)
     : number_of_dims_{static_cast<int>(params.NumberOfDims())},
@@ -502,4 +502,4 @@ std::shared_ptr<CUDA::DnnActivationDescriptor> MakeFusedActivationDescriptor(nod
     return desc;
 }
 
-}  // namespace CUDAPlugin::Convolution::Details
+}  // namespace ov::nvidia_gpu::Convolution::Details

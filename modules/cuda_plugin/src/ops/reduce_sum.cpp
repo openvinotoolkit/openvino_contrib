@@ -7,7 +7,8 @@
 #include <cuda/descriptor_utils.hpp>
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 cudnnDataType_t reduceCompType(const ov::Node& node) {
     if (node.get_input_element_type(0) == ov::element::Type_t::f64) return CUDNN_DATA_DOUBLE;
@@ -40,4 +41,5 @@ void ReduceSumOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(ReduceSumOp, ReduceSum);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

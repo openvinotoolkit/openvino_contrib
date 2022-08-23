@@ -6,7 +6,8 @@
 
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class InterpolateBase {
@@ -31,4 +32,5 @@ public:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

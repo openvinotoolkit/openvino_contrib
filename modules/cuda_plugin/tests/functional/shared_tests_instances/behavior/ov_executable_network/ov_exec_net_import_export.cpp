@@ -16,14 +16,14 @@ const std::vector<ov::element::Type_t> netPrecisions = {
 const std::vector<ov::AnyMap> configs = {
     {},
 };
-const std::vector<ov::AnyMap> multiConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_CUDA)}};
+const std::vector<ov::AnyMap> multiConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
 
-const std::vector<ov::AnyMap> heteroConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_CUDA)}};
+const std::vector<ov::AnyMap> heteroConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVExecGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          OVExecGraphImportExportTest::getTestCaseName);
 

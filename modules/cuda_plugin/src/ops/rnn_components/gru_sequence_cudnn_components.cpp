@@ -8,12 +8,12 @@
 #include <gsl/gsl_assert>
 #include <ops/converters.hpp>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 GRUSequenceParamsCuDnn::GRUSequenceParamsCuDnn(const GRUSequenceParams& params)
     : element_type_{convertDataType<cudnnDataType_t>(params.element_type_)},
       element_type_cuda_{convertDataType<cudaDataType_t>(params.element_type_)},
-      element_size_{CUDAPlugin::elementSize(element_type_)},
+      element_size_{ov::nvidia_gpu::elementSize(element_type_)},
       direction_{CUDNN_UNIDIRECTIONAL},
       linear_before_reset_{params.linear_before_reset_},
       batch_size_{static_cast<int32_t>(params.batch_size_)},
@@ -260,7 +260,7 @@ void GRUSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
     const auto data_type = params_.element_type_;
     const auto input_size = params_.input_size_;
     const auto hidden_size = params_.hidden_size_;
-    const auto element_size = CUDAPlugin::elementSize(params_.element_type_);
+    const auto element_size = ov::nvidia_gpu::elementSize(params_.element_type_);
 
     w_dev_buffers_.clear();
     r_dev_buffers_.clear();
@@ -363,4 +363,4 @@ void GRUSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
             r_total_bytes >= params_.r_host_buffers_.size_bytes());
 }
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

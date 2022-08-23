@@ -10,7 +10,8 @@
 #include "kernels/numpy_broadcast_mapper.cuh"
 #include "workbuffer_desc.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class NumpyBroadcastParams {
 public:
@@ -55,4 +56,5 @@ private:
     WorkbufferDesc ib_broadcasted_dims_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

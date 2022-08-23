@@ -10,7 +10,8 @@
 #include <utility>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 GRUCellOp::GRUCellOp(const CreationContext& context,
                      const ov::Node& node,
@@ -24,7 +25,7 @@ void GRUCellOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,
                         Outputs outputs,
                         const Workbuffers& workbuffers) const {
-    using CUDAPlugin::RNN::Details::GRUCellArgIndices;
+    using ov::nvidia_gpu::RNN::Details::GRUCellArgIndices;
 
     Expects(inputs.size() == 5);
     Expects(outputs.size() == 1);
@@ -91,4 +92,5 @@ WorkbufferRequest GRUCellOp::GetWorkBufferRequest() const {
 
 OPERATION_REGISTER(GRUCellOp, GRUCell);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

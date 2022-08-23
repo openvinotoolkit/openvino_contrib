@@ -8,7 +8,8 @@
 #include "error.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 namespace cumath = CUDA::math;
@@ -48,4 +49,5 @@ void Clamp::operator()(cudaStream_t stream, const void* in, void* out) const {
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

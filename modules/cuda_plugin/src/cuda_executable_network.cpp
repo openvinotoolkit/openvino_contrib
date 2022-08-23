@@ -30,7 +30,8 @@
 #include "transformations/utils/utils.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using Time = std::chrono::steady_clock;
 
@@ -366,7 +367,7 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
 std::shared_ptr<ngraph::Function> ExecutableNetwork::GetExecGraphInfo() { return function_; }
 
 void ExecutableNetwork::Export(std::ostream& modelStream) {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "ExecutableNetwork::Export");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ExecutableNetwork::Export");
 
     // Note: custom ngraph extensions are not supported
     std::stringstream xmlFile, binFile;
@@ -393,4 +394,5 @@ void ExecutableNetwork::Export(std::ostream& modelStream) {
     // TODO: implement network precision, layout, preprocessing info serialization
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

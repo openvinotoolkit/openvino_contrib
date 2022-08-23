@@ -7,7 +7,8 @@
 #include "cuda_type_traits.hpp"
 #include "elementtypeswitch.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class TopK {
@@ -101,4 +102,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

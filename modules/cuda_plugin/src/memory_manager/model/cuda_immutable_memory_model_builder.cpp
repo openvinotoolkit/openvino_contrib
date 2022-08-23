@@ -8,7 +8,8 @@
 
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ImmutableMemoryModelBuilder::ImmutableMemoryModelBuilder() : end_offset_{0} {}
 
@@ -25,4 +26,5 @@ MemoryModel::Ptr ImmutableMemoryModelBuilder::build() const {
     return std::make_shared<MemoryModel>(end_offset_, offsets_);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

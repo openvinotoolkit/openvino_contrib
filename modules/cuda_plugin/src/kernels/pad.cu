@@ -9,7 +9,8 @@
 #include "error.hpp"
 #include "pad.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 // TODO: Would be optimized adding template specializations. Left without this optimization in sake of readability.
@@ -217,4 +218,5 @@ void ConstModePad::callNCHWFormatConvKernel(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

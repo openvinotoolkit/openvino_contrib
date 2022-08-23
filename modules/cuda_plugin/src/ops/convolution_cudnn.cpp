@@ -11,7 +11,8 @@
 
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ConvolutionCuDnn::ConvolutionCuDnn(const CreationContext& context,
                                    const ov::Node& node,
@@ -49,4 +50,5 @@ WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
     else
         return {{}, {}};
 }
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

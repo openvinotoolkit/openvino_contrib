@@ -10,7 +10,8 @@
 #include "cuda_itt.hpp"
 #include "cuda_thread_pool.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferRequest,
                                              const InferenceEngine::ITaskExecutor::Ptr& cpuTaskExecutor,
@@ -28,23 +29,23 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferR
     if (remoteDevice) {
         _pipeline = {{cpuTaskExecutor,
                       [this] {
-                          OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::Preprocessing");
+                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::Preprocessing");
                           _inferRequest->inferPreprocess();
                       }},
                      {waitExecutor,
                       [this, cudaThreadPool] {
                           auto& threadContext = cudaThreadPool->GetThreadContext();
                           {
-                              OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::StartPipeline");
+                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::StartPipeline");
                               _inferRequest->startPipeline(threadContext);
                           }
                           {
-                              OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::WaitPipeline");
+                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::WaitPipeline");
                               _inferRequest->waitPipeline(threadContext);
                           }
                       }},
                      {cpuTaskExecutor, [this] {
-                          OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CudaAsyncInferRequest::Postprocessing");
+                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::Postprocessing");
                           _inferRequest->inferPostprocess();
                       }}};
     }
@@ -57,4 +58,5 @@ void CudaAsyncInferRequest::Cancel() {
 
 void CudaAsyncInferRequest::Infer_ThreadUnsafe() { StartAsync_ThreadUnsafe(); }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

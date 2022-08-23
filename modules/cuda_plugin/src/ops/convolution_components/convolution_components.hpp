@@ -10,7 +10,7 @@
 #include "transformer/nodes/fused_convolution.hpp"
 #include "transformer/nodes/fused_convolution_backprop_data.hpp"
 
-namespace CUDAPlugin::Convolution::Details {
+namespace ov::nvidia_gpu::Convolution::Details {
 
 constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
 
@@ -87,7 +87,7 @@ private:
 
 /**
  * @brief Defines tensor indices for the following nodes:
- *  - `CUDAPlugin::nodes::FusedConvolution`
+ *  - `ov::nvidia_gpu::nodes::FusedConvolution`
  */
 struct FusedConvolutionIndices {
     static constexpr size_t input = 0;
@@ -99,7 +99,7 @@ struct FusedConvolutionIndices {
 
 /**
  * @brief Unified parameters as they are consumed by the following nodes:
- *  - `CUDAPlugin::nodes::FusedConvolution`
+ *  - `ov::nvidia_gpu::nodes::FusedConvolution`
  */
 struct FusedConvolutionParams {
     template <typename TConvNode>
@@ -108,12 +108,12 @@ struct FusedConvolutionParams {
     ConvolutionParams conv_;
     ov::Shape bias_shape_;
     std::optional<ov::Shape> add_shape_;
-    CUDAPlugin::nodes::ActivationMode activation_;
+    ov::nvidia_gpu::nodes::ActivationMode activation_;
 };
 
 /**
  * @brief Defines tensor indices for the following nodes:
- *  - `CUDAPlugin::nodes::FusedConvBackpropData`
+ *  - `ov::nvidia_gpu::nodes::FusedConvBackpropData`
  */
 template <std::size_t InputSize>
 struct FusedConvolutionBackwardDataIndices;
@@ -137,13 +137,13 @@ struct FusedConvolutionBackwardDataIndices<4> {
 
 /**
  * @brief Unified parameters as they are consumed by the following nodes:
- *  - `CUDAPlugin::nodes::FusedConvBackpropData`
+ *  - `ov::nvidia_gpu::nodes::FusedConvBackpropData`
  */
 struct FusedConvolutionBackwardDataParams {
-    FusedConvolutionBackwardDataParams(const CUDAPlugin::nodes::FusedConvBackpropData& node);
+    FusedConvolutionBackwardDataParams(const ov::nvidia_gpu::nodes::FusedConvBackpropData& node);
 
     ConvolutionBackwardDataParams conv_;
     ov::Shape add_shape_;
 };
 
-}  // namespace CUDAPlugin::Convolution::Details
+}  // namespace ov::nvidia_gpu::Convolution::Details

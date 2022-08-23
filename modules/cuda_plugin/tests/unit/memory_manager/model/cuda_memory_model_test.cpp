@@ -9,7 +9,7 @@
 #include <details/ie_exception.hpp>
 
 TEST(MemoryModel, Empty) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     constexpr size_t bsize = 0;
 
@@ -24,7 +24,7 @@ TEST(MemoryModel, Empty) {
 }
 
 TEST(MemoryModel, NotEmpty) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     constexpr size_t bsize = 0x354700;
 

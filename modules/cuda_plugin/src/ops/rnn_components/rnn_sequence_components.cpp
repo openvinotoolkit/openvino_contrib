@@ -8,7 +8,7 @@
 
 #include "ngraph/shape.hpp"
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_type,
                                                        size_t element_size,
@@ -76,4 +76,4 @@ void TransposeOutputTensorAdapter::execute(const InferenceRequestContext& contex
     TransposeTensorAdapterBase::execute(context, workbuffer_.requiredPtr(src), output.get());
 }
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

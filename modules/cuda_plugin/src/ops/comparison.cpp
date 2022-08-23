@@ -9,7 +9,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static constexpr auto kNumOfDim = 5u;
 static constexpr auto kOffsetBufferSize = kNumOfDim * sizeof(size_t);
@@ -77,7 +78,7 @@ Comparison::Comparison(const CreationContext& context,
     const auto threads_per_block = (num_blocks == 1) ? output_size : max_block_size;
 
     kernel_ = kernel::Comparison{operation_type,
-                                 convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+                                 convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                                  output_size,
                                  num_blocks,
                                  threads_per_block};
@@ -129,4 +130,5 @@ void Comparison::calculateOffsets() {
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

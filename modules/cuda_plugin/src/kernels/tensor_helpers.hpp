@@ -10,7 +10,8 @@
 #include <limits>
 #include <type_traits>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T, unsigned N>
@@ -148,4 +149,5 @@ std::enable_if_t<!std::is_integral<T>::value, T> double_round_cast(double x, dou
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

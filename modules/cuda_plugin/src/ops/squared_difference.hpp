@@ -9,11 +9,13 @@
 #include "elementwise_binary.hpp"
 #include "kernels/squared_difference.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SquaredDifferenceOp : public ElementwiseBinaryOp<ov::op::v0::SquaredDifference, kernel::SquaredDifference> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

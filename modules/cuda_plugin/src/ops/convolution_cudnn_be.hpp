@@ -12,7 +12,8 @@
 #include "cuda/dnn_be.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements `ov::op::v1::Convolution` using cuDNN Backend API.
@@ -48,4 +49,5 @@ private:
     int64_t workspace_size_ = 0;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

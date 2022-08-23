@@ -6,7 +6,7 @@ index b37495e5e..9dc5da800 100644
                HEADERS ${HDR}
                DEPENDENCIES format_reader ie_samples_utils
                OPENCV_DEPENDENCIES core)
-+add_dependencies(benchmark_app CUDAPlugin)
++add_dependencies(benchmark_app openvino_nvidia_gpu_plugin)
 diff --git a/inference-engine/samples/benchmark_app/benchmark_app.hpp b/inference-engine/samples/benchmark_app/benchmark_app.hpp
 index af18c908e..d55baa34c 100644
 --- a/inference-engine/samples/benchmark_app/benchmark_app.hpp
@@ -47,7 +47,7 @@ index cd7ddc641..c638f4f4e 100644
  
                  if (isFlagSetInCommandLine("nthreads"))
                      device_config[GNA_CONFIG_KEY(LIB_N_THREADS)] = std::to_string(FLAGS_nthreads);
-+            } else if (device == "CUDA") {
++            } else if (device == "NVIDIA") {
 +                setThroughputStreams();
 +                if (isFlagSetInCommandLine("op_bench")) {
 +                  device_config["CUDA_OPERATION_BENCHMARK"] = FLAGS_op_bench ?

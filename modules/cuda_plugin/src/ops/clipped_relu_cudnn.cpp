@@ -9,7 +9,8 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ClippedReluCuDnnOp::ClippedReluCuDnnOp(const CreationContext& context,
                                        const NodeOp& node,
@@ -23,11 +24,12 @@ ClippedReluCuDnnOp::ClippedReluCuDnnOp(const CreationContext& context,
     const auto min = node.get_min();
     const auto max = node.get_max();
     if (min != 0.0) {
-        throwIEException(fmt::format("CUDAPlugin::ClippedReluCuDnnOp: Clamp min != 0.0, min = {}", min));
+        throwIEException(fmt::format("ov::nvidia_gpu::ClippedReluCuDnnOp: Clamp min != 0.0, min = {}", min));
     }
     if (max < 0.0) {
-        throwIEException(fmt::format("CUDAPlugin::ClippedReluCuDnnOp: Clamp max < 0.0, max = {}", max));
+        throwIEException(fmt::format("ov::nvidia_gpu::ClippedReluCuDnnOp: Clamp max < 0.0, max = {}", max));
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

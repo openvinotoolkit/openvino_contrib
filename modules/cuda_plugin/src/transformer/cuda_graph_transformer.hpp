@@ -10,7 +10,8 @@
 #include "cpp/ie_cnn_network.h"
 #include "cuda_config.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class GraphTransformer {
 public:
@@ -39,4 +40,5 @@ public:
                                                 const Configuration& config) const;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

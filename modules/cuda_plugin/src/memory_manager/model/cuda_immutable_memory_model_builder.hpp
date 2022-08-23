@@ -6,7 +6,8 @@
 
 #include "memory_manager/model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Builds MemoryModel for immutable memory blob wich contains constant
@@ -42,4 +43,5 @@ private:
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

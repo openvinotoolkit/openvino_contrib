@@ -10,7 +10,8 @@
 #include <openvino/op/constant.hpp>
 #include <openvino/op/select.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static constexpr auto OUTPUT = 0u;
 static constexpr auto kNumOfDim = 5u;
@@ -116,4 +117,5 @@ void SelectOp::calculateOffsets() {
 }
 
 OPERATION_REGISTER(SelectOp, Select);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -14,7 +14,7 @@ const std::vector<ov::AnyMap> configs = {{}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVInferRequestIOTensorTest,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          OVInferRequestIOTensorTest::getTestCaseName);
 
@@ -25,14 +25,14 @@ std::vector<ov::element::Type> prcs = {
 
 const std::vector<ov::AnyMap> emptyConfigs = {{}};
 
-const std::vector<ov::AnyMap> HeteroConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_CUDA)}};
+const std::vector<ov::AnyMap> HeteroConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
 
-const std::vector<ov::AnyMap> Multiconfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_CUDA)}};
+const std::vector<ov::AnyMap> Multiconfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVInferRequestCheckTensorPrecision,
                          ::testing::Combine(::testing::ValuesIn(prcs),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(emptyConfigs)),
                          OVInferRequestCheckTensorPrecision::getTestCaseName);
 

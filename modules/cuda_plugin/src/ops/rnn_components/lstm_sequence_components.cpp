@@ -14,7 +14,7 @@
 #include <openvino/op/unsqueeze.hpp>
 #include <typeinfo>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 namespace {
 
@@ -58,7 +58,7 @@ LSTMSequenceParams::LSTMSequenceParams(const ov::op::v5::LSTMSequence& node)
     validate(node);
 }
 
-LSTMSequenceParams::LSTMSequenceParams(const CUDAPlugin::nodes::LSTMSequenceOptimized& node)
+LSTMSequenceParams::LSTMSequenceParams(const ov::nvidia_gpu::nodes::LSTMSequenceOptimized& node)
     : element_type_{node.get_input_element_type(LSTMSequenceArgIndices::x)},
       direction_{node.get_direction()},
       activations_{node.get_activations()},
@@ -71,7 +71,7 @@ LSTMSequenceParams::LSTMSequenceParams(const CUDAPlugin::nodes::LSTMSequenceOpti
 
     const auto& x_shape = node.get_input_shape(LSTMSequenceArgIndices::x);
     Expects(x_shape.size() == 3);
-    using LSTMSequenceOptimized = CUDAPlugin::nodes::LSTMSequenceOptimized;
+    using LSTMSequenceOptimized = ov::nvidia_gpu::nodes::LSTMSequenceOptimized;
     switch (node.get_major_format()) {
         case LSTMSequenceOptimized::BatchMajor:
             batch_size_ = x_shape[0];
@@ -134,4 +134,4 @@ void LSTMSequenceParams::validate(const ov::op::v5::LSTMSequence& node) {
     Expects(b_host_buffers_.size_bytes() == ov::shape_size(b_shape) * element_type_size);
 }
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

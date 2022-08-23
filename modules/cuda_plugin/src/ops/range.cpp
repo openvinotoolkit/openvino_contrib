@@ -14,7 +14,8 @@
 #include "kernels/cuda_type_traits.hpp"
 #include "kernels/range.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static constexpr auto OUTPUT_INDX = 0u;
 
@@ -43,10 +44,10 @@ RangeOp::RangeOp(const CreationContext& context,
     kernel_op_ = kernel::RangeKernelOp(max_size,
                                        blocks_number,
                                        threads_per_block,
-                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStart_type),
-                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStop_type),
-                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStep_type),
-                                       convertDataType<CUDAPlugin::kernel::Type_t>(output_type));
+                                       convertDataType<ov::nvidia_gpu::kernel::Type_t>(inputStart_type),
+                                       convertDataType<ov::nvidia_gpu::kernel::Type_t>(inputStop_type),
+                                       convertDataType<ov::nvidia_gpu::kernel::Type_t>(inputStep_type),
+                                       convertDataType<ov::nvidia_gpu::kernel::Type_t>(output_type));
 }
 
 void RangeOp::Execute(const InferenceRequestContext& context,
@@ -64,4 +65,5 @@ void RangeOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(RangeOp, Range);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

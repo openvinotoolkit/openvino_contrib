@@ -10,7 +10,8 @@
 #include "cuda_type_traits.hpp"
 #include "elementtypeswitch.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <ColorConversion Conversion>
@@ -57,4 +58,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

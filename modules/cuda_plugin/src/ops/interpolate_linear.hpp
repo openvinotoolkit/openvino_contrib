@@ -8,7 +8,8 @@
 #include "kernels/interpolate_linear.hpp"
 #include "openvino/op/interpolate.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class InterpolateLinearOp : public OperationBase {
 public:
@@ -29,4 +30,5 @@ private:
     std::optional<kernel::InterpolateLinear> interpolate_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -10,7 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class TransposeOp : public OperationCuTensor {
 public:
@@ -64,4 +65,5 @@ private:
     ov::element::Type_t permutationElementsType_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

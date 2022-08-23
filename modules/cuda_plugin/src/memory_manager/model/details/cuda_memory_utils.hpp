@@ -6,7 +6,8 @@
 
 #include <cstddef>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Applies CUDA device specific allignment.
@@ -17,4 +18,5 @@ namespace CUDAPlugin {
  */
 size_t applyAllignment(size_t value);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

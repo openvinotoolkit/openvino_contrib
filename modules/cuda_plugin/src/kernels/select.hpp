@@ -9,7 +9,8 @@
 #include "error.hpp"
 #include "ngraph/type/element_type.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class SelectKernelOp {
@@ -53,4 +54,5 @@ private:
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

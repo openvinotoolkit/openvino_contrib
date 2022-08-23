@@ -10,7 +10,7 @@
 
 #include "gru_sequence_components.hpp"
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 /**
  * @brief Defines tensor indices for `ov::op::v5::GRUSequence` node.
@@ -50,4 +50,4 @@ struct GRUSequenceParams {
     size_t hidden_size_;
 };
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

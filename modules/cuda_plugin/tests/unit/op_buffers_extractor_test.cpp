@@ -14,7 +14,7 @@
 #include <vector>
 
 /*
- * TODO: To be moved to functional tests once they are enabled for CUDAPlugin
+ * TODO: To be moved to functional tests once they are enabled for nvidia_gpu
  * */
 
 class OperationBufferExtractorTest : public testing::Test {
@@ -71,13 +71,13 @@ class OperationBufferExtractorTest : public testing::Test {
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "SimpleGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
-        extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
-        CUDAPlugin::WorkbufferRequest request{{128}, {256}};
+        extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
+        ov::nvidia_gpu::WorkbufferRequest request{{128}, {256}};
         buffer_indices_ = extractor_->processWorkbufferRequest(squeeze_id, request);
     }
 
 protected:
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
 
     struct OpIndex {
         using Type = size_t;
@@ -133,8 +133,8 @@ protected:
 protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
-    std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
-    CUDAPlugin::WorkbufferIds buffer_indices_;
+    std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
+    ov::nvidia_gpu::WorkbufferIds buffer_indices_;
 };
 
 TEST_F(OperationBufferExtractorTest, CheckTestIntegrity) {
@@ -296,7 +296,7 @@ TEST_F(OperationBufferExtractorTest, CheckMutableWorkbufferIndices) {
 }
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableWorkbufferIndices) {
-    using CUDAPlugin::WorkbufferRequest;
+    using ov::nvidia_gpu::WorkbufferRequest;
     using ::testing::ElementsAre;
     WorkbufferRequest request{{246}, {}};
     ASSERT_THAT(buffer_indices_.immutableIds, ElementsAre(OutputBufferIndex::Squeeze_Imutable_Workbuffer));
@@ -328,7 +328,7 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
             std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
         auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
 
-        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ov::OutputVector{multiply, add_0}, 1);
+        auto concat = std::make_shared<ov::nvidia_gpu::nodes::ConcatOptimized>(ov::OutputVector{multiply, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
         auto adder_1 =
@@ -345,11 +345,11 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
-        extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
+        extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
     }
 
 protected:
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
 
     struct OpIndex {
         using Type = size_t;
@@ -397,12 +397,12 @@ protected:
 protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
-    std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
+    std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
 };
 
 TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckTestIntegrity) {
     using namespace ngraph;
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
     EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
     EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
     EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
@@ -466,7 +466,7 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
             ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
         auto reshape0 = std::make_shared<ngraph::opset1::Reshape>(multiply, reshape_const, true);
 
-        auto concat = std::make_shared<CUDAPlugin::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);
+        auto concat = std::make_shared<ov::nvidia_gpu::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
         auto adder_1 =
@@ -483,11 +483,11 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
         ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
 
         exec_sequence_ = ngraph_function_->get_ordered_ops();
-        extractor_ = std::make_unique<CUDAPlugin::OperationBuffersExtractor>(exec_sequence_);
+        extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
     }
 
 protected:
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
 
     struct OpIndex {
         using Type = size_t;
@@ -538,12 +538,12 @@ protected:
 protected:
     std::unique_ptr<ngraph::Function> ngraph_function_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
-    std::unique_ptr<CUDAPlugin::OperationBuffersExtractor> extractor_;
+    std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
 };
 
 TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckTestIntegrity) {
     using namespace ngraph;
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
     EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
     EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
     EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));

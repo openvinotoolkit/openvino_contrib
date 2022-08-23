@@ -18,7 +18,8 @@
 #include "cuda/runtime.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
@@ -112,7 +113,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
                                                                            : (num_split_elements / max_block_size + 1);
     const unsigned threads_per_block = (num_blocks == 1) ? num_split_elements : max_block_size;
 
-    variadic_split_kernel_ = kernel::VariadicSplit{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+    variadic_split_kernel_ = kernel::VariadicSplit{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                                                    num_all_chunks,
                                                    axis_split_step_size,
                                                    orig_axis_size,
@@ -196,4 +197,5 @@ void VariadicSplitOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(VariadicSplitOp, VariadicSplit);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

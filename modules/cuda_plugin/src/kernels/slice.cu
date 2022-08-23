@@ -10,7 +10,8 @@
 #include "slice.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -81,4 +82,5 @@ void Slice::call(cudaStream_t stream, const void *src, void *dst, size_t start) 
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

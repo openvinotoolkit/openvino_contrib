@@ -12,7 +12,8 @@
 #include "tensor_helpers.hpp"
 #include "topk.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 using TopKShape = Shape<size_t, TopK::kNumKernelParamDim>;
@@ -308,4 +309,5 @@ void TopK::operator()(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

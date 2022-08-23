@@ -98,7 +98,7 @@ const auto basicCases = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(CommonTestUtils::combineParams(basic)),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 const auto basicPreluCases =
     ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(preluActivationParamTypes)),
@@ -108,7 +108,7 @@ const auto basicPreluCases =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(CommonTestUtils::combineParams(preluBasic)),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 const auto basicPReluConstParamCases =
     ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(preluActivationParamTypes)),
@@ -118,7 +118,7 @@ const auto basicPReluConstParamCases =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(CommonTestUtils::combineParams(preluBasic)),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 // TODO int parameter activation tests don't work for CUDA now
 // const auto basicIntegerOperations =
@@ -129,7 +129,7 @@ const auto basicPReluConstParamCases =
 //                       ::testing::Values(InferenceEngine::Layout::ANY),
 //                       ::testing::Values(InferenceEngine::Layout::ANY),
 //                       ::testing::ValuesIn(CommonTestUtils::combineParams(basic)),
-//                       ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+//                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 TEST_P(ActivationLayerTest, CompareWithRefs) { Run(); }
 

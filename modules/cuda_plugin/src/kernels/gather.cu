@@ -9,7 +9,8 @@
 
 #include "gather.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace kernel {
 
@@ -261,4 +262,5 @@ void Gather::Call(const cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

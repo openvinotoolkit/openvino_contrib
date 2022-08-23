@@ -8,7 +8,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
                                      const NodeOp& node,
@@ -52,7 +53,7 @@ DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     if (node.inputs().size() == 5) {
         kernel_ =
-            std::make_optional<kernel::DetectionOutput>(convertDataType<CUDAPlugin::kernel::Type_t>(element_type_),
+            std::make_optional<kernel::DetectionOutput>(convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type_),
                                                         max_threads_per_block,
                                                         ov::shape_size(node.get_input_shape(0)),
                                                         ov::shape_size(node.get_input_shape(1)),
@@ -63,7 +64,7 @@ DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
                                                         kernel_attrs);
     } else {
         kernel_ =
-            std::make_optional<kernel::DetectionOutput>(convertDataType<CUDAPlugin::kernel::Type_t>(element_type_),
+            std::make_optional<kernel::DetectionOutput>(convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type_),
                                                         max_threads_per_block,
                                                         ov::shape_size(node.get_input_shape(0)),
                                                         ov::shape_size(node.get_input_shape(1)),
@@ -110,4 +111,5 @@ WorkbufferRequest DetectionOutputOp::GetWorkBufferRequest() const {
 }
 
 OPERATION_REGISTER(DetectionOutputOp, DetectionOutput);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

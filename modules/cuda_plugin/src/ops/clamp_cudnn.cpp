@@ -17,7 +17,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
                            const NodeOp& node,
@@ -49,7 +50,7 @@ ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
     Expects(node.get_output_element_type(0) == node.get_input_element_type(0));
 
     if (min_ > max_) {
-        throwIEException(fmt::format("CUDAPlugin::ClampCuDnnOp: Clamp min_ > max_: min_ = {}, max_ = {}", min_, max_));
+        throwIEException(fmt::format("ov::nvidia_gpu::ClampCuDnnOp: Clamp min_ > max_: min_ = {}, max_ = {}", min_, max_));
     }
 }
 
@@ -143,4 +144,5 @@ void ClampCuDnnOp::initBuffers(const Buffers& buffers) const {
     stream.upload(buffers[min_index], &min, el_size);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -14,7 +14,8 @@
 
 #include "variadic_split.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -116,4 +117,5 @@ void VariadicSplit::call(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

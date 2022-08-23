@@ -6,7 +6,8 @@
 
 #include <cuda_operation_base.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief NOP - no operation. Common implementation for all operations which
@@ -39,4 +40,5 @@ public:
                  const Workbuffers& workbuffers) const override {}
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

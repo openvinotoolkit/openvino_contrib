@@ -6,7 +6,8 @@
 
 #include "lstm_sequence_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements `ov::op::v5::LSTMSequence` using cuDNN API
@@ -24,4 +25,5 @@ private:
     void setupLayoutAdapters();
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

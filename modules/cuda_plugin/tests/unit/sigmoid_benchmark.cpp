@@ -25,23 +25,23 @@ using devptr_t = CUDA::DevicePointer<void*>;
 using cdevptr_t = CUDA::DevicePointer<const void*>;
 
 struct SigmoidTest : testing::Test {
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
     using ElementType = float;
     static constexpr int length = 1024;
     static constexpr size_t size = length * sizeof(ElementType);
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::OperationBase::Ptr operation = [this] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{length});
         auto node = std::make_shared<ov::op::v0::Sigmoid>(param->output(0));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0u}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -52,10 +52,10 @@ struct SigmoidTest : testing::Test {
 TEST_F(SigmoidTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20;
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in;
@@ -65,7 +65,7 @@ TEST_F(SigmoidTest, DISABLED_benchmark) {
     auto gen = [&dist, &mersenne_engine]() { return 10.f * dist(mersenne_engine) / std::numeric_limits<int>::max(); };
     std::generate(in.begin(), in.end(), gen);
     stream.upload(inAlloc, in.data(), size);
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
     auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < kNumAttempts; i++) {
         operation->Execute(context, inputs, outputs, workbuffers);

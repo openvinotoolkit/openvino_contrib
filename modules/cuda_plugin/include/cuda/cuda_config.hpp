@@ -51,7 +51,7 @@ DECLARE_CUDA_CONFIG_VALUE(YES);
 DECLARE_CUDA_CONFIG_VALUE(NO);
 
 /**
- * @brief Defines the number of throutput streams used by CUDA plugin.
+ * @brief Defines the number of throutput streams used by NVIDIA GPU plugin.
  */
 DECLARE_CUDA_CONFIG_VALUE(THROUGHPUT_AUTO);
 DECLARE_CUDA_CONFIG_KEY(THROUGHPUT_STREAMS);

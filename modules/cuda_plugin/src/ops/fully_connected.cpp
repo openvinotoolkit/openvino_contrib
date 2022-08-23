@@ -15,7 +15,8 @@
 #include "cuda/constant_factory.hpp"
 #include "matmul.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 FullyConnectedOp::FullyConnectedOp(const CreationContext& context,
                                    const NodeOp& node,
@@ -55,4 +56,5 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(FullyConnectedOp, FullyConnected);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

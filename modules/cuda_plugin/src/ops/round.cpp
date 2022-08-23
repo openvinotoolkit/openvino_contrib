@@ -10,7 +10,8 @@
 #include "openvino/op/round.hpp"
 #include "round.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 RoundOp::RoundOp(const CreationContext& context,
                  const NodeOp& node,
@@ -33,7 +34,7 @@ RoundOp::RoundOp(const CreationContext& context,
 
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_ =
-        kernel::Round{convertDataType<CUDAPlugin::kernel::Type_t>(element_type), max_threads_per_block, num_elements};
+        kernel::Round{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), max_threads_per_block, num_elements};
 }
 
 void RoundOp::Execute(const InferenceRequestContext& context,
@@ -49,4 +50,5 @@ void RoundOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(RoundOp, Round);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

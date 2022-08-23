@@ -9,7 +9,8 @@
 #include <openvino/op/avg_pool.hpp>
 #include <openvino/op/max_pool.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class PoolingImpl {
 public:
@@ -43,4 +44,5 @@ private:
     CUDA::DnnTensorDescriptor output_tensor_descriptor_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

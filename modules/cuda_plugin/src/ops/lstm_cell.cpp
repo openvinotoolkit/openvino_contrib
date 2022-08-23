@@ -9,7 +9,8 @@
 #include <utility>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LSTMCellOp::LSTMCellOp(const CreationContext& context,
                        const ov::Node& node,
@@ -87,4 +88,5 @@ WorkbufferRequest LSTMCellOp::GetWorkBufferRequest() const {
 
 OPERATION_REGISTER(LSTMCellOp, LSTMCell);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

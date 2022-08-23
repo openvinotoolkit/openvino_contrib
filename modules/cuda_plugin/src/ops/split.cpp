@@ -16,7 +16,8 @@
 #include "converters.hpp"
 #include "cuda/runtime.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 SplitOp::SplitOp(const CreationContext& context,
                  const ov::Node& node,
@@ -62,7 +63,7 @@ SplitOp::SplitOp(const CreationContext& context,
                                                                            : (num_split_elements / max_block_size + 1);
     const unsigned threads_per_block = (num_blocks == 1) ? num_split_elements : max_block_size;
 
-    split_kernel_ = kernel::Split{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+    split_kernel_ = kernel::Split{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                                   num_splits_,
                                   num_split_chunks,
                                   split_step_size,
@@ -89,4 +90,5 @@ void SplitOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(SplitOp, Split);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -13,7 +13,7 @@
 #include "ngraph/ngraph_visibility.hpp"
 #include "ngraph/type.hpp"
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 // TODO: Try to use BasicFusedConvolution or derive from ov::op::v1::ConvolutionBackpropData
 class FusedConvBackpropData : public ov::op::Op {
@@ -76,4 +76,4 @@ private:
     ov::element::Type add_type_;
 };
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

@@ -7,7 +7,7 @@
 #include <cuda/runtime.hpp>
 #include <cuda/stl/vector.cuh>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class VectorTest : public testing::Test {
     void SetUp() override {}

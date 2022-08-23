@@ -65,7 +65,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 std::vector<size_t> seq_lengths_clip_non_zero{1000};
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 // ------------- Benchmark -------------
@@ -123,7 +123,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     TensorIteratorBenchmarkTest::getTestCaseName);
 
 }  // namespace benchmark

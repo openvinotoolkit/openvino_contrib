@@ -7,7 +7,7 @@
 #include <gsl/gsl_assert>
 #include <ngraph/validation_util.hpp>
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
                                              const ov::Output<Node>& filters,
@@ -264,4 +264,4 @@ void FusedConvBackpropData::validate_and_infer_types() {
     Expects(element_type == add_type_);
 }
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

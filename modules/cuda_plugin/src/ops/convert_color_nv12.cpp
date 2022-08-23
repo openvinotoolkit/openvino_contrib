@@ -6,9 +6,11 @@
 
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OPERATION_REGISTER(NV12toRGBOp, NV12toRGB);
 OPERATION_REGISTER(NV12toBGROp, NV12toBGR);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

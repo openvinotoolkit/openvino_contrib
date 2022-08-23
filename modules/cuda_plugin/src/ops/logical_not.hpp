@@ -6,7 +6,8 @@
 #include <cuda_operation_base.hpp>
 #include <kernels/logical_not.cuh>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class LogicalNotOp : public OperationBase {
 public:
@@ -23,4 +24,5 @@ private:
     kernel::LogicalNot kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

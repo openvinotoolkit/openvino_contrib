@@ -17,7 +17,8 @@
 
 #include "memory_manager/cuda_workbuffers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Extracts intermediate buffer ids from intermediate representation.
@@ -274,4 +275,5 @@ private:
     const unsigned long num_ordered_nodes_ = 0;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

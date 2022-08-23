@@ -14,7 +14,8 @@
 #include <unordered_map>
 #include <utility>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using BufferID = unsigned;
 
@@ -77,4 +78,5 @@ inline std::ostream& operator<<(std::ostream& s, const TensorID& t) {
     return s;
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -10,7 +10,8 @@
 
 #include "cuda_latch.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static thread_local ThreadContext* contextPtr = nullptr;
 
@@ -76,4 +77,5 @@ void CudaThreadPool::run(Task task) {
     queue_cond_var_.notify_one();
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -13,7 +13,8 @@
 
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CreationContext& context,
                                                                const NodeOp& node,
@@ -98,4 +99,5 @@ std::size_t FusedConvolutionBackpropDataOp::GetBufferSize(const ov::Output<ov::N
 
 OPERATION_REGISTER(FusedConvolutionBackpropDataOp, FusedConvBackpropData);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

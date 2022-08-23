@@ -14,7 +14,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ConvertOp::ConvertOp(const CreationContext& context,
                      const std::shared_ptr<ov::Node>& node,
@@ -35,8 +36,8 @@ ConvertOp::ConvertOp(const CreationContext& context,
     const auto max_block_size = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
     const auto num_blocks = (size % max_block_size == 0) ? (size / max_block_size) : (size / max_block_size + 1);
     const auto threads_per_block = (num_blocks == 1) ? size : max_block_size;
-    convert_kernel_ = kernel::Convert(convertDataType<CUDAPlugin::kernel::Type_t>(output_element_type),
-                                      convertDataType<CUDAPlugin::kernel::Type_t>(input_element_type),
+    convert_kernel_ = kernel::Convert(convertDataType<ov::nvidia_gpu::kernel::Type_t>(output_element_type),
+                                      convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type),
                                       size,
                                       num_blocks,
                                       threads_per_block);
@@ -55,4 +56,5 @@ void ConvertOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(ConvertOp, Convert);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

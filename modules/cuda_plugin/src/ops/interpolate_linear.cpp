@@ -8,7 +8,8 @@
 #include "interpolate_components/interpolate_components.hpp"
 #include "ops/converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
@@ -47,7 +48,7 @@ InterpolateLinearOp::InterpolateLinearOp(const CreationContext& context,
 
     const auto transform_mode = static_cast<kernel::InterpolateLinear::CoordinateTransformMode>(
         node.get_attrs().coordinate_transformation_mode);
-    const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
+    const auto element_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(node.get_input_element_type(0));
     const auto max_threads_per_block = context.device().props().maxThreadsPerBlock;
 
     interpolate_ = kernel::InterpolateLinear(node.get_input_shape(0),
@@ -77,4 +78,5 @@ void InterpolateLinearOp::InitSharedImmutableWorkbuffers(const Buffers& in_buffe
     interpolate_->initImmutableWorkbuffers(buffers);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

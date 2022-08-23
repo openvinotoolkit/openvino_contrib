@@ -6,7 +6,8 @@
 
 #include <details/ie_exception.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 void ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
     IE_ASSERT(data != nullptr);
@@ -27,4 +28,5 @@ std::pair<DeviceMemBlock::Ptr, MemoryModel::Ptr> ImmutableMemoryBlockBuilder::bu
     return {memory_block, memory_model};
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

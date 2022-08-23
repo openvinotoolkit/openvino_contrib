@@ -9,11 +9,13 @@
 #include "elementwise_binary.hpp"
 #include "kernels/add.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class AddCudaOp : public ElementwiseBinaryOp<ov::op::v1::Add, kernel::Add> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

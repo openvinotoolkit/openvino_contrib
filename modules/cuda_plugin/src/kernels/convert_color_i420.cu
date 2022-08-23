@@ -12,7 +12,8 @@
 #include "error.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <ColorConversion ColorFormat, typename T>
@@ -134,4 +135,5 @@ template class I420ColorConvert<ColorConversion::RGB>;
 template class I420ColorConvert<ColorConversion::BGR>;
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

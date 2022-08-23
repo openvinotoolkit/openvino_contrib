@@ -23,19 +23,19 @@ const std::vector<std::vector<int>> orders = {
 
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests,
                         HoldersTest,
-                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::ValuesIn(orders)),
                         HoldersTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests,
                         HoldersTestImportNetwork,
-                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA, "HETERO:CUDA"),
+                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA, "HETERO:NVIDIA"),
                                            ::testing::ValuesIn(orders)),
                         HoldersTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests,
                         HoldersTestOnImportedNetwork,
-                        ::testing::Values(CommonTestUtils::DEVICE_CUDA, "HETERO:CUDA"),
+                        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA, "HETERO:NVIDIA"),
                         HoldersTestOnImportedNetwork::getTestCaseName);
 
 }  // namespace

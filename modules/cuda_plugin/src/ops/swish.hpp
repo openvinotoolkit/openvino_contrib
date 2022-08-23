@@ -9,7 +9,8 @@
 
 #include "kernels/swish.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SwishOp : public OperationBase {
 public:
@@ -27,4 +28,5 @@ private:
     std::optional<kernel::Swish> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

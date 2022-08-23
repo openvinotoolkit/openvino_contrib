@@ -7,7 +7,8 @@
 #include "error.hpp"
 #include "typed_functor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename TOutput, typename TInput>
@@ -42,7 +43,7 @@ struct ConvertFunctor<TOutput, TInput, typename std::enable_if<!std::is_same<TOu
                          const void* input,
                          unsigned numBlocks,
                          unsigned threadsPerBlock) {
-        CUDAPlugin::kernel::convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream>>>(
+        ov::nvidia_gpu::kernel::convert_impl<TOutput, TInput><<<numBlocks, threadsPerBlock, 0, stream>>>(
             size, static_cast<TOutput*>(output), static_cast<const TInput*>(input));
     }
 };
@@ -59,4 +60,5 @@ void Convert::operator()(cudaStream_t stream, void* output, const void* src) con
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

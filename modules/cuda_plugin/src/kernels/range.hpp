@@ -9,7 +9,8 @@
 #include "cuda_type_traits.hpp"
 #include "ngraph/type/element_type.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class RangeKernelOp {
@@ -33,4 +34,5 @@ private:
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -8,7 +8,8 @@
 #include <gsl/gsl_assert>
 #include <openvino/op/avg_pool.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 AvgPoolOp::AvgPoolOp(const CreationContext& context,
                      const std::shared_ptr<ov::Node>& node,
@@ -31,4 +32,5 @@ void AvgPoolOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(AvgPoolOp, AvgPool);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -8,7 +8,7 @@
 
 #include "cuda/event.hpp"
 
-namespace CUDAPlugin::utils {
+namespace ov::nvidia_gpu::utils {
 /**
  * @brief class PerformaceTiming measures time between two events
  * and accumulates results from sequential start/stop calls
@@ -40,4 +40,4 @@ private:
     std::optional<CUDA::Event> stop_{};
     float duration_{};
 };
-}  // namespace CUDAPlugin::utils
+}  // namespace ov::nvidia_gpu::utils

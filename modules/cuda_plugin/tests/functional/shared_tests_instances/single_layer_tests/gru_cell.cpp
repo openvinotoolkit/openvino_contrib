@@ -82,7 +82,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_01,
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 const size_t smoke_batch_02 = 9;
@@ -99,7 +99,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP32,
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::Values(InferenceEngine::Precision::FP32),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
@@ -112,7 +112,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::Values(InferenceEngine::Precision::FP16),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 // ------------- LPCNet shapes -------------
@@ -130,7 +130,7 @@ INSTANTIATE_TEST_CASE_P(GRUCell_LPCNet,
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 }  // namespace
@@ -144,7 +144,7 @@ const auto benchmark_params = ::testing::Combine(::testing::Values(should_decomp
                                                  ::testing::Values(clips[0]),
                                                  ::testing::Values(linear_before_reset[0]),
                                                  ::testing::Values(net_precisions[0]),
-                                                 ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                 ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 namespace benchmark {
 

@@ -8,7 +8,8 @@
 
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastConsumerIndex, size_t bsize) {
     IE_ASSERT(bsize > 0);  // Verify that allocation size isn't zero.
@@ -26,4 +27,5 @@ MemoryModel::Ptr MemoryModelBuilder::build() {
     return std::make_shared<MemoryModel>(blob_size, offsets_);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

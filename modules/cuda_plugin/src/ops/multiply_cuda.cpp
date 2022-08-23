@@ -6,7 +6,8 @@
 
 #include <fmt/ostream.h>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
                                const NodeOp& node,
@@ -23,4 +24,5 @@ MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

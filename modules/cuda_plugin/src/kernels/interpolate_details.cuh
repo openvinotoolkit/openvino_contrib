@@ -11,7 +11,8 @@
 #include "convert.cuh"
 #include "interpolate_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class InterpolateBase::details {
@@ -84,4 +85,5 @@ public:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

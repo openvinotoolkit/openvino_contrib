@@ -12,7 +12,8 @@
 #include "ngraph/axis_set.hpp"
 #include "strided_slice.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 ov::AxisSet convert_mask_to_axis_set(const std::vector<int64_t>& mask) {
@@ -126,4 +127,5 @@ std::vector<int64_t> StridedSliceOp::getNodeConstantValues(const ov::Node* node)
 
 OPERATION_REGISTER(StridedSliceOp, StridedSlice);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

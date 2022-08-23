@@ -17,7 +17,8 @@
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename TOperation>
 MatMulOp::MatMulOp(const CreationContext& context,
@@ -226,4 +227,5 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(MatMulOp, MatMul);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -11,7 +11,8 @@
 #include "ngraph/op/mvn.hpp"
 #include "ngraph/shape.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class MvnOp : public OperationCuDnn {
 public:
@@ -103,4 +104,5 @@ inline WorkbufferRequest MvnOp::GetWorkBufferRequest() const {
     return {};
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

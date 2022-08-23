@@ -10,7 +10,8 @@
 #include "cuda/dnn.hpp"
 #include "cuda/tensor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CreationContext {
     CUDA::Device device_;
@@ -25,4 +26,5 @@ public:
     bool opBenchOption() const noexcept { return op_bench_option_; }
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

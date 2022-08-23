@@ -35,7 +35,7 @@ struct SelectTest : testing::Test {
     const size_t elseBufferSize = bufferLength * sizeof(float);
     const size_t outputBufferSize = bufferLength * sizeof(float);
 
-    CUDAPlugin::ThreadContext threadContext{CUDA::Device{}};
+    ov::nvidia_gpu::ThreadContext threadContext{CUDA::Device{}};
     CUDA::Allocation conditionAlloc = threadContext.stream().malloc(conditionBufferSize);
     CUDA::Allocation thenAlloc = threadContext.stream().malloc(thenBufferSize);
     CUDA::Allocation elseAlloc = threadContext.stream().malloc(elseBufferSize);
@@ -54,13 +54,13 @@ struct SelectTest : testing::Test {
         return node;
     };
 
-    CUDAPlugin::OperationBase::Ptr operation = [this] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        return registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        return registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                         create_node(),
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}},
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}});
     }();
 };
 
@@ -87,10 +87,10 @@ void fillArrayWithRandomData(std::vector<T>& v) {
 TEST_F(SelectTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
 
@@ -111,7 +111,7 @@ TEST_F(SelectTest, DISABLED_benchmark) {
     CUDA::Allocation thenOffsetAlloc = threadContext.stream().malloc(kOffsetBufferSize);
     CUDA::Allocation elseOffsetAlloc = threadContext.stream().malloc(kOffsetBufferSize);
     CUDA::Allocation outputSizesAlloc = threadContext.stream().malloc(kOffsetBufferSize);
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
     workbuffers.immutable_buffers = {condOffsetAlloc, thenOffsetAlloc, elseOffsetAlloc, outputSizesAlloc};
     operation->InitSharedImmutableWorkbuffers({condOffsetAlloc, thenOffsetAlloc, elseOffsetAlloc, outputSizesAlloc});
 

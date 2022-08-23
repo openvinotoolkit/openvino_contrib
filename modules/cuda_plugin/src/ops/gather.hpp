@@ -7,7 +7,8 @@
 #include <cuda_operation_base.hpp>
 #include <kernels/gather.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class GatherOp : public OperationBase {
 public:
@@ -24,4 +25,5 @@ private:
     std::optional<kernel::Gather> gather_kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

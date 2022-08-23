@@ -26,7 +26,7 @@ INSTANTIATE_TEST_CASE_P(ReshapeCheckDynBatch,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
                                            ::testing::Values(std::vector<int64_t>({30, 30, 30, 30})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>({}))),
                         ReshapeLayerTest::getTestCaseName);
 
@@ -40,7 +40,7 @@ INSTANTIATE_TEST_CASE_P(ReshapeCheck,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({10, 10, 10, 10})),
                                            ::testing::Values(std::vector<int64_t>({10, 0, 100})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>({}))),
                         ReshapeLayerTest::getTestCaseName);
 }  // namespace

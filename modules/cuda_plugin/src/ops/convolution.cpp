@@ -14,7 +14,8 @@
 #include "convolution_cudnn_be.hpp"
 #endif  // ENABLE_CUDNN_BACKEND_API
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static OperationBase::Ptr convolutionFactory(const CreationContext& context,
                                              const std::shared_ptr<ov::Node>& node,
@@ -42,4 +43,5 @@ static OperationBase::Ptr convolutionFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(convolutionFactory, Convolution);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

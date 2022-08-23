@@ -9,7 +9,8 @@
 
 #include <gsl/gsl_assert>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class NumpyBroadcastMapper {
@@ -64,4 +65,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

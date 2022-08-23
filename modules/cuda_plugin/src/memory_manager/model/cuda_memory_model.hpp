@@ -10,7 +10,8 @@
 #include <memory_manager/tensor_types.hpp>
 #include <unordered_map>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief MemoryModel describes a size of continous memory block on CUDA device
@@ -51,4 +52,5 @@ private:
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

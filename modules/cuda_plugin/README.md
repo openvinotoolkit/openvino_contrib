@@ -1,24 +1,24 @@
 
-# [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - CUDA plugin
+# [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - NVIDIA GPU plugin
 
-OpenVINO™ CUDA plugin is developed in order to enable deep neural networks inference on NVIDIA GPUs, using OpenVINO™ API.
+OpenVINO™ NVIDIA GPU plugin is developed in order to enable deep neural networks inference on NVIDIA GPUs, using OpenVINO™ API.
 The plugin uses custom kernels and [cuBLAS, cuDNN, cuTENSOR libraries\*] as a backend.
 
 ## Supported Platforms
-OpenVINO™ CUDA plugin is supported and validated on the following platforms: 
+OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platforms: 
 
 OS                     | GPU
 ---------------------- | ----------------------
 Ubuntu* 18.04 (64-bit) | Geforce 1080 Ti, NVIDIA T4
 
 ## Distribution
-OpenVINO™ CUDA plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
+OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
 
 ## How to build
 
 ### Prerequisites
 
-In order to build CUDA plugin the next dependencies must be installed.
+In order to build NVIDIA GPU plugin the next dependencies must be installed.
 
 1. Install one of the following compilers with support of **C++17**:
 - Install **gcc-7** compiler
@@ -89,7 +89,7 @@ mkdir build && cd build
   Run the following command:
   ```bash
   cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
-  cmake --build . --target CUDAPlugin -j `nproc`
+  cmake --build . --target nvidia_gpu -j `nproc`
   ```
 
 ### Build with _setup.py_
@@ -122,7 +122,7 @@ python3 ${CUDA_PLUGIN_SRC_ROOT_DIR}/wheel/setup.py build
 ```
 This will automatically download, build OpenVINO and build CUDA Plugin finally. The location of the resulting library file will be like the next.
 ```
-${CUDA_PLUGIN_SRC_ROOT_DIR}/build/temp.linux-x86_64-3.6/deps/openvino/bin/intel64/Debug/lib/libCUDAPlugin.so
+${CUDA_PLUGIN_SRC_ROOT_DIR}/build/temp.linux-x86_64-3.6/deps/openvino/bin/intel64/Debug/lib/libopenvino_nvidia_gpu_plugin.so
 ```
 
 ## Install as python package with `setup.py`
@@ -133,7 +133,7 @@ After that installation could be done by running setup.py install command as fol
 export OPENVINO_CONTRIB=</path/to/openvino_contrib>
 python3 ${OPENVINO_CONTRIB}/modules/cuda_plugin/wheel/setup.py install
 ```
-This command will install dependent openvino package if needed and update it for using with CUDA plugin.
+This command will install dependent openvino package if needed and update it for using with NVIDIA GPU plugin.
 
 
 ## Docker support
@@ -151,14 +151,14 @@ su $USER # Relogin for current user
 CUDA_PACKAGES_PATH=<path to CUDA pakcages> ./docker.sh build
 ```
 
-### Build CUDAPlugin in docker container
-In order to build CUDAPlugin in docker, follow the steps:
+### Build openvino_nvidia_gpu_plugin in docker container
+In order to build openvino_nvidia_gpu_plugin in docker, follow the steps:
 
 1. Enter the docker container:
 ```bash
 docker run --gpus all -it openvino/cudaplugin-2022.1 bin/bash
 ```
-2. Build the OpenVINO and CUDAPlugin according the steps described in [## How to build](#how-to-build),
+2. Build the OpenVINO and openvino_nvidia_gpu_plugin according the steps described in [## How to build](#how-to-build),
    except 3), 4), 5) steps (this packages already installed in image)
 3. Commit all your changes in container:
 ```bash
@@ -173,7 +173,7 @@ Parameter name  | Parameter values  | Default  | Description
 `CUDA_THROUGHPUT_STREAMS`   | `CUDA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
 `CUDA_OPERATION_BENCHMARK`   | `CUDA_YES`, `CUDA_NO`  | `CUDA_NO`  | Specifies if operation level benchmark should be run for increasing performance of network
 
-During compilation of the CUDAPlugin, user could specify two options:
+During compilation of the openvino_nvidia_gpu_plugin, user could specify two options:
 1) `-DCUDA_KERNEL_PRINT_LOG=ON` enables print logs from kernels (WARNING, be careful with this options, could print to many logs)
 2) `-DENABLE_CUDNN_BACKEND_API` enables cuDNN backend support that could increase performance of convolutions by 20%
 
@@ -207,7 +207,7 @@ The plugin supports IRv10 and higher. The list of supported layers and its limit
 * NC - Supported
 
 ## License
-OpenVINO™ CUDA plugin is licensed under [Apache License Version 2.0](LICENSE).
+OpenVINO™ NVIDIA GPU plugin is licensed under [Apache License Version 2.0](LICENSE).
 By contributing to the project, you agree to the license and copyright terms therein
 and release your contribution under these terms.
 

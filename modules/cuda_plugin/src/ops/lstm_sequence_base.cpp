@@ -8,7 +8,8 @@
 #include <utility>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LSTMSequenceOpBase::LSTMSequenceOpBase(const CreationContext& context,
                                        const LSTMSequenceParams& params,
@@ -29,7 +30,7 @@ void LSTMSequenceOpBase::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
                                  Outputs outputs,
                                  const Workbuffers& workbuffers) const {
-    using ArgIndices = CUDAPlugin::RNN::Details::LSTMSequenceArgIndices;
+    using ArgIndices = ov::nvidia_gpu::RNN::Details::LSTMSequenceArgIndices;
     Expects(inputs.size() == 7);
     Expects(outputs.size() == 3);
 
@@ -90,4 +91,5 @@ void LSTMSequenceOpBase::calcAdapterWorkbuffers() {
     if (cy_adapter) cy_adapter->requestWorkbuffer(mut_sizes_);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

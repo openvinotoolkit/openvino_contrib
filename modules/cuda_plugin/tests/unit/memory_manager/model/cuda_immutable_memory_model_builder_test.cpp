@@ -11,7 +11,7 @@
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
 TEST(ImmutableMemoryModelBuilder, BuildEmpty) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryModelBuilder builder;
     MemoryModel::Ptr model = builder.build();
@@ -19,7 +19,7 @@ TEST(ImmutableMemoryModelBuilder, BuildEmpty) {
 }
 
 TEST(ImmutableMemoryModelBuilder, Build) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     BufferID id1 = 0;
     size_t size1 = 1;
@@ -57,7 +57,7 @@ TEST(ImmutableMemoryModelBuilder, Build) {
 }
 
 TEST(ImmutableMemoryModelBuilder, HandleDuplicateAllocation) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryModelBuilder builder;
 
@@ -78,7 +78,7 @@ TEST(ImmutableMemoryModelBuilder, HandleDuplicateAllocation) {
 }
 
 TEST(ImmutableMemoryModelBuilder, HandleZeroAllocationSize) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryModelBuilder builder;
 

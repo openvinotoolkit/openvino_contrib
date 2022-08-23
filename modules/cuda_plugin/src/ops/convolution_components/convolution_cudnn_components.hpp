@@ -9,7 +9,7 @@
 #include "convolution_components.hpp"
 #include "cuda/dnn.hpp"
 
-namespace CUDAPlugin::Convolution::Details {
+namespace ov::nvidia_gpu::Convolution::Details {
 
 /**
  * @brief Presents convolution parameters in a form suitable for cuDNN API.
@@ -157,4 +157,4 @@ std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ov::Shap
                                                                   ov::element::Type_t element_type);
 std::shared_ptr<CUDA::DnnActivationDescriptor> MakeFusedActivationDescriptor(nodes::ActivationMode mode);
 
-}  // namespace CUDAPlugin::Convolution::Details
+}  // namespace ov::nvidia_gpu::Convolution::Details

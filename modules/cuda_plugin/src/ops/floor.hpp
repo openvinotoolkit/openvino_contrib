@@ -8,7 +8,8 @@
 
 #include "kernels/floor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class FloorOp : public OperationBase {
 public:
@@ -26,4 +27,5 @@ private:
     std::optional<kernel::Floor> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

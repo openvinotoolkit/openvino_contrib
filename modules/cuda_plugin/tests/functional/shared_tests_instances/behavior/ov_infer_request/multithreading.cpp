@@ -15,7 +15,7 @@ const std::vector<ov::AnyMap> configs = {{}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVInferRequestMultithreadingTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          OVInferRequestMultithreadingTests::getTestCaseName);
 

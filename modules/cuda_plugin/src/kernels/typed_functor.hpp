@@ -9,7 +9,8 @@
 #include "error.hpp"
 #include "fmt/format.h"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace kernel {
 
@@ -38,7 +39,7 @@ enum Dimension : size_t { DIM_1D = 1, DIM_2D, DIM_3D };
 ///    static constexpr TypedFunctor<FunctorImpl, TFuncPtr, DIM_3D> instance{};
 /// And the function pointer can be accessed like the next.
 ///    auto func_ptr = instance[type_1][type_2][type_3];
-/// Where subscription index (type_1, type_2, type_3) is of type CUDAPlugin::kernel::Type_t enum.
+/// Where subscription index (type_1, type_2, type_3) is of type ov::nvidia_gpu::kernel::Type_t enum.
 ///
 /// This template can be used for any dimension number, if the Dimension enumeration extended properly.
 /// For trivial case with one dimension the functor will be like the next.
@@ -52,7 +53,7 @@ enum Dimension : size_t { DIM_1D = 1, DIM_2D, DIM_3D };
 /// The template structure can be instantiated like the next.
 ///    static constexpr TypedFunctor<FunctorImpl, TFuncPtr, DIM_1D> instance{};
 /// And the function pointer can be accessed like the next.
-///    auto func_ptr = instance[CUDAPlugin::kernel::Type_t::f32];
+///    auto func_ptr = instance[ov::nvidia_gpu::kernel::Type_t::f32];
 // clang-format on
 template <template <typename... Types> class TFunctor, typename TFunPtr, Dimension D>
 struct TypedFunctor : private std::array<TypedFunctor<TFunctor, TFunPtr, Dimension(D - 1)>, type_count> {
@@ -107,4 +108,5 @@ private:
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

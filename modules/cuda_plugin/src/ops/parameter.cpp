@@ -10,7 +10,8 @@
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ParameterOp::ParameterOp(const CreationContext& context,
                          const ov::Node& node,
@@ -35,4 +36,5 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
 std::string ParameterOp::GetInputTensorName(const ov::Node& node) { return node.get_friendly_name(); }
 
 OPERATION_REGISTER(ParameterOp, Parameter);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -12,7 +12,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static bool isNCHWConvolutionPadding(const PadOp::NodeOp& node) {
     auto padsBegin = ov::get_constant_from_source(node.input_value(1));
@@ -69,4 +70,5 @@ void PadOp::InitSharedImmutableWorkbuffers(const Buffers& devicePointers) {
 
 OPERATION_REGISTER(PadOp, Pad);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

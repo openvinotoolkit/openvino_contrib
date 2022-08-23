@@ -13,7 +13,8 @@
 #include "cuda_type_traits.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename TDataType>
@@ -130,4 +131,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

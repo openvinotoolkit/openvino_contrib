@@ -24,23 +24,23 @@ using devptr_t = CUDA::DevicePointer<void*>;
 using cdevptr_t = CUDA::DevicePointer<const void*>;
 
 struct LogicalNotBenchmark : testing::Test {
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
     using ElementType = std::uint8_t;
     static constexpr int length = 10 * 1024;
     static constexpr size_t size = length * sizeof(ElementType);
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation in_alloc = threadContext.stream().malloc(size);
     CUDA::Allocation out_alloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{in_alloc};
     std::vector<devptr_t> outputs{out_alloc};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::OperationBase::Ptr operation = [this] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{length});
         auto node = std::make_shared<ov::op::v1::LogicalNot>(param->output(0));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0u}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -50,10 +50,10 @@ struct LogicalNotBenchmark : testing::Test {
 
 TEST_F(LogicalNotBenchmark, DISABLED_benchmark) {
     constexpr int kNumAttempts = 20;
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(length);
@@ -64,7 +64,7 @@ TEST_F(LogicalNotBenchmark, DISABLED_benchmark) {
     auto gen = [&dist, &mersenne_engine]() { return dist(mersenne_engine); };
     std::generate(in.begin(), in.end(), gen);
     stream.upload(in_alloc, in.data(), size);
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
     cudaEvent_t start;
     cudaEvent_t stop;
     cudaEventCreate(&start);

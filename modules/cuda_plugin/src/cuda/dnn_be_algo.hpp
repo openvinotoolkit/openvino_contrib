@@ -69,7 +69,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> performBenchmarks(
         [](const std::vector<size_t>& workspace_sizes) -> std::optional<std::pair<CUDA::DefaultAllocation, size_t>> {
         for (const auto workspace_size : workspace_sizes) {
             try {
-                const auto aligned_workspace_size = CUDAPlugin::applyAllignment(workspace_size);
+                const auto aligned_workspace_size = ov::nvidia_gpu::applyAllignment(workspace_size);
                 CUDA::DefaultAllocation workspace = CUDA::DefaultStream::stream().malloc(aligned_workspace_size);
                 return std::optional<std::pair<CUDA::DefaultAllocation, size_t>>{
                     {std::move(workspace), workspace_size}};

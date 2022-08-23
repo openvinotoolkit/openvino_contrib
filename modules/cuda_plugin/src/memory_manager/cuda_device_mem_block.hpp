@@ -9,7 +9,8 @@
 
 #include "memory_manager/model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Allocates and owns continuous memory blob on CUDA device.
@@ -57,4 +58,5 @@ private:
     CUDA::DefaultAllocation device_mem_ptr_ = CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

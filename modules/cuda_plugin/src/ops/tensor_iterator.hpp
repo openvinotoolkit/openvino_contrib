@@ -12,7 +12,8 @@
 
 #include "subgraph.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class TensorIteratorOp : public SubGraph {
 public:
@@ -70,4 +71,5 @@ private:
     std::unordered_map<uint64_t, uint64_t> results_parameters_map_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

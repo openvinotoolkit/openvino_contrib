@@ -9,7 +9,8 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/interpolate_nearest.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class InterpolateNearestOp : public OperationBase {
 public:
@@ -37,4 +38,5 @@ private:
     std::optional<kernel::InterpolateNearest> interpolate_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

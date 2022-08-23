@@ -9,7 +9,8 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/comparison.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class Comparison : public OperationBase {
 public:
@@ -41,4 +42,5 @@ private:
     std::optional<kernel::Comparison> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

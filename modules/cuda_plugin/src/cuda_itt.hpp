@@ -11,10 +11,12 @@
 
 #include <openvino/itt.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace itt {
 namespace domains {
-OV_ITT_DOMAIN(CUDAPlugin);
+OV_ITT_DOMAIN(nvidia_gpu);
 }
 }  // namespace itt
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

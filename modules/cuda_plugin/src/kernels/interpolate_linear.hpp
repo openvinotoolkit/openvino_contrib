@@ -11,7 +11,8 @@
 #include "interpolate_base.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class InterpolateLinear : public InterpolateBase {
@@ -60,4 +61,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -13,7 +13,8 @@
 #include "clamp_cudnn.hpp"
 #include "clipped_relu_cudnn.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using IndexCollection = OperationBase::IndexCollection;
 
@@ -53,4 +54,5 @@ static OperationBase::Ptr clampFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(clampFactory, Clamp)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

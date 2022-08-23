@@ -6,7 +6,7 @@
 
 #include <cancellation_token.hpp>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class CancellationTokenTest : public testing::Test {
     void SetUp() override {}

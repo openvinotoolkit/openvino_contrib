@@ -11,7 +11,8 @@
 #include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class FusedConvolutionCuDnn : public OperationCuDnn {
 public:
@@ -46,4 +47,5 @@ private:
     std::shared_ptr<CUDA::DnnActivationDescriptor> activation_desc_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

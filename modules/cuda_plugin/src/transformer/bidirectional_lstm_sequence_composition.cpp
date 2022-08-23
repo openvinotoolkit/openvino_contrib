@@ -43,7 +43,7 @@ Node* findConcat(const Output<Node>& node, ov::op::v1::Transpose*& transpose) {
         }
         if (dynamic_cast<ov::op::v0::Concat*>(in.get_node())) {
             return in.get_node();
-        } else if (dynamic_cast<CUDAPlugin::nodes::ConcatOptimized*>(in.get_node())) {
+        } else if (dynamic_cast<ov::nvidia_gpu::nodes::ConcatOptimized*>(in.get_node())) {
             return in.get_node();
         }
         for (const auto& out : in.get_node()->outputs()) {
@@ -81,7 +81,7 @@ auto transposePerm(const Node* tran) {
         auto perm_const = dynamic_cast<ov::op::v0::Constant*>(tran->get_input_source_output(1).get_node());
         const int64_t* ptr = reinterpret_cast<const int64_t*>(perm_const->get_data_ptr());
         auto span = gsl::make_span(
-            ptr, CUDAPlugin::OperationBuffersExtractor::GetTensorByteSize(perm_const->output(0)) / sizeof(int64_t));
+            ptr, ov::nvidia_gpu::OperationBuffersExtractor::GetTensorByteSize(perm_const->output(0)) / sizeof(int64_t));
         return std::vector<int64_t>{span.begin(), span.end()};
     }
     return std::vector<int64_t>{};
@@ -233,7 +233,7 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
         lstmSequenceOutputReplacer(co_replacement, co);
 
         auto& rt_info = lstm_sequence_bidirectional->get_rt_info();
-        rt_info[CUDAPlugin::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
+        rt_info[ov::nvidia_gpu::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
     }
 
     return true;
@@ -258,7 +258,7 @@ bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
     //   cell/hidden in  - [batch_size, num_directions, hidden_size]
     //   cell/hidden out - [num_directions, batch_size, hidden_size]
 
-    using MajorFormat = CUDAPlugin::nodes::LSTMSequenceOptimized::MajorFormat;
+    using MajorFormat = ov::nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat;
 
     auto lstm_sequence_bidirectional = std::dynamic_pointer_cast<ov::op::v5::LSTMSequence>(m.get_match_root());
     if (!lstm_sequence_bidirectional ||
@@ -301,7 +301,7 @@ bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
         return false;
     }
 
-    auto new_lstm_sequence_bidirectional = std::make_shared<CUDAPlugin::nodes::LSTMSequenceOptimized>(
+    auto new_lstm_sequence_bidirectional = std::make_shared<ov::nvidia_gpu::nodes::LSTMSequenceOptimized>(
         x_transpose ? x_transpose : lstm_sequence_bidirectional->get_input_source_output(0),
         lstm_sequence_bidirectional->get_input_source_output(1),
         lstm_sequence_bidirectional->get_input_source_output(2),
@@ -366,7 +366,7 @@ bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
     lstmSequenceOutputReplacer(co_replacement, co);
 
     auto& rt_info = new_lstm_sequence_bidirectional->get_rt_info();
-    rt_info[CUDAPlugin::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
+    rt_info[ov::nvidia_gpu::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
 
     return true;
 }

@@ -10,7 +10,8 @@
 #include <map>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MemorySolver::MemorySolver(const std::vector<Box> &boxes) : _boxes(boxes) {
     int max_ts = 0;
@@ -142,4 +143,5 @@ void MemorySolver::calcDepth() {
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

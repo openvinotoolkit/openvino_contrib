@@ -517,7 +517,7 @@ public:
 
     DnnBEEngine getEngine() const {
         auto engines = getBEDescAttributeValues<CUDNN_ATTR_ENGINECFG_ENGINE, DnnBEEngine>();
-        if (engines.size() != 1) CUDAPlugin::throwIEException("Unexpected number of cuDNN Backend engines");
+        if (engines.size() != 1) ov::nvidia_gpu::throwIEException("Unexpected number of cuDNN Backend engines");
         return std::move(*engines[0]);
     }
 

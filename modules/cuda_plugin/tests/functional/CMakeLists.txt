@@ -16,10 +16,10 @@ addIeTargetTest(
         NAME ${TARGET_NAME}
         ROOT ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-        openvino_cuda_plugin
+        openvino_nvidia_gpu_plugin
         ${OPENVINO_ADDITIONAL_DEPENDENCIES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        openvino_cuda_plugin_obj
+        openvino_nvidia_gpu_plugin_obj
         LINK_LIBRARIES
         IE::funcSharedTests
         gmock

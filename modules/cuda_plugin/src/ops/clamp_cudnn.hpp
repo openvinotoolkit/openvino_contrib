@@ -14,7 +14,8 @@
 #include <cuda_operation_base.hpp>
 #include <openvino/op/clamp.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ClampCuDnnOp : public OperationCuDnn {
 public:
@@ -51,4 +52,5 @@ private:
     const double max_;
     const double min_;
 };
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

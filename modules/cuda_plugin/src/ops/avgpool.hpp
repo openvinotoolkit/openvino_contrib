@@ -8,7 +8,8 @@
 
 #include "pooling_impl.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class AvgPoolOp : public OperationCuDnn {
 public:
@@ -25,4 +26,5 @@ private:
     PoolingImpl impl_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -29,13 +29,13 @@ const std::vector<std::map<std::string, std::string>> inconfigs = {
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          IncorrectConfigTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inconfigs)),
                          IncorrectConfigTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          IncorrectConfigAPITests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inconfigs)),
                          IncorrectConfigAPITests::getTestCaseName);
 }  // namespace

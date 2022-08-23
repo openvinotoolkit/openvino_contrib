@@ -13,7 +13,7 @@
 #include <openvino/op/unsqueeze.hpp>
 #include <typeinfo>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 namespace {
 
@@ -95,4 +95,4 @@ GRUSequenceParams::GRUSequenceParams(const ov::op::v5::GRUSequence& node)
     Expects(b_host_buffers_.size_bytes() == ov::shape_size(b_shape) * element_type_size);
 }
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

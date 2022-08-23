@@ -8,7 +8,8 @@
 
 class ExecNetworkTest;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CudaGraph final : public SubGraph {
 public:
@@ -20,4 +21,5 @@ public:
     void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

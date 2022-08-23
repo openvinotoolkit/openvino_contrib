@@ -8,7 +8,8 @@
 #include "cuda/dnn.hpp"
 #include "cuda/tensor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ThreadContext {
     CUDA::Device device_;
@@ -29,4 +30,5 @@ public:
     const CUDA::CuTensorHandle& cuTensorHandle() const noexcept { return cuTensorHandle_; }
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -8,7 +8,8 @@
 #include "kernels/range.hpp"
 #include "typed_functor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace kernel {
 
@@ -76,4 +77,5 @@ void RangeKernelOp::operator()(
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

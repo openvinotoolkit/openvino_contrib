@@ -9,7 +9,8 @@
 #include "kernels/broadcast.hpp"
 #include "ngraph/op/broadcast.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class BroadcastOp : public OperationBase {
 public:
@@ -33,4 +34,5 @@ private:
     std::optional<kernel::Broadcast> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

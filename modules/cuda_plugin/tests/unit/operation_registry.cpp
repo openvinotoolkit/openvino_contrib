@@ -11,7 +11,7 @@
 #include <typeinfo>
 #include <vector>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class OperationRegistryTest : public testing::Test {
     void SetUp() override {}

@@ -9,7 +9,8 @@
 #include "cuda_type_traits.hpp"
 #include "numpy_broadcast_mapper.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class FakeQuantize {
@@ -53,4 +54,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

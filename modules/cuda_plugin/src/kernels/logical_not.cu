@@ -8,7 +8,8 @@
 
 #include "logical_not.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <int Rank>
@@ -51,4 +52,5 @@ void LogicalNot::operator()(cudaStream_t stream, const bool* src, bool* dst) con
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

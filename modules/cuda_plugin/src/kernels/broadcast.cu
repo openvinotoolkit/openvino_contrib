@@ -7,7 +7,8 @@
 #include "broadcast.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -20,7 +21,7 @@ static __global__ void broadcast(const T* src, NumpyBroadcastMapper src_mapper, 
     dst[dst_idx] = src[src_idx];
 }
 
-Broadcast::Broadcast(CUDAPlugin::kernel::Type_t element_type, size_t dst_num_elements, size_t max_threads_per_block)
+Broadcast::Broadcast(ov::nvidia_gpu::kernel::Type_t element_type, size_t dst_num_elements, size_t max_threads_per_block)
     : element_type_{element_type}, dst_num_elements_{dst_num_elements} {
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(dst_num_elements_, max_threads_per_block);
 }
@@ -47,4 +48,5 @@ void Broadcast::default_(T t, cudaStream_t, const void*, const NumpyBroadcastMap
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

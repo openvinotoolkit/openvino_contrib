@@ -7,7 +7,8 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ParameterOp : public OperationBase {
 public:
@@ -25,4 +26,5 @@ private:
     std::string input_tensor_name_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

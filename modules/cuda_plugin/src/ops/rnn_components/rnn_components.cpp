@@ -9,7 +9,7 @@
 #include <openvino/op/constant.hpp>
 #include <typeinfo>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 namespace {
 
@@ -187,4 +187,4 @@ GRUCellParams::GRUCellParams(const ov::op::v3::GRUCell& cell)
     r_host_buffers_ = {r_data_host, r_size_bytes};
     b_host_buffers_ = {b_data_host, b_size_bytes};
 }
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

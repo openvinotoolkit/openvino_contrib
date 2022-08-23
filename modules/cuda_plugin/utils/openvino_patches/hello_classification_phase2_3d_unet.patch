@@ -12,7 +12,7 @@ index 9b0509bab..89cc77fe2 100644
                DEPENDENCIES ie_samples_utils
                OPENCV_DEPENDENCIES core imgcodecs)
  
-+add_dependencies(hello_classification CUDAPlugin)
++add_dependencies(hello_classification openvino_nvidia_gpu_plugin)
 diff --git a/inference-engine/samples/hello_classification/main.cpp b/inference-engine/samples/hello_classification/main.cpp
 index 858a87ead..5810ca510 100644
 --- a/inference-engine/samples/hello_classification/main.cpp
@@ -106,7 +106,7 @@ index 858a87ead..5810ca510 100644
          // ------------------------------------------
 -        ExecutableNetwork executable_network = ie.LoadNetwork(network, device_name);
 +        ExecutableNetwork executable_network =
-+            device_name == "CUDA" ? ie.LoadNetwork(network, device_name,
++            device_name == "NVIDIA" ? ie.LoadNetwork(network, device_name,
 +                                    {
 +                                        {{"CUDA_THROUGHPUT_STREAMS", "1"}},
 +                                    })

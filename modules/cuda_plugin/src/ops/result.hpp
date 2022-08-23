@@ -8,7 +8,8 @@
 #include <cuda_operation_base.hpp>
 #include <openvino/op/result.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ResultOp : public OperationBase {
 public:
@@ -31,4 +32,5 @@ private:
     std::vector<std::string> output_tensor_names_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

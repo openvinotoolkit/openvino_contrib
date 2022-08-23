@@ -31,7 +31,7 @@ leak:_pywrap_tensorflow_internal.so
 leak:site-packages/google/protobuf
 
 # ====================================================================================
-# THIS SECTION defines all other exceptions including those required by CUDAPlugin.
+# THIS SECTION defines all other exceptions including those required by nvidia_gpu.
 #
 
 # The folowing are reproduced running CudaUnitTests

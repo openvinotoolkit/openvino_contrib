@@ -4,7 +4,7 @@
 
 #pragma once
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 /**
  * @brief Activation modes for fused convolutions.
@@ -13,4 +13,4 @@ namespace CUDAPlugin::nodes {
  */
 enum class ActivationMode { SIGMOID, RELU, TANH, CLIPPED_RELU, ELU, SWISH, NO_ACTIVATION };
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

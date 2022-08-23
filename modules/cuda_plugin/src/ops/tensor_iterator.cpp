@@ -19,7 +19,8 @@
 #include "parameter.hpp"
 #include "result.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
                                    const NodeOp& op,
@@ -111,7 +112,7 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
         const auto inputShape = inputs_info_[inputIdx].shape_;
         const auto inputType = inputs_info_[inputIdx].type_;
 
-        kernel::Type_t element_type = convertDataType<CUDAPlugin::kernel::Type_t>(inputType);
+        kernel::Type_t element_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(inputType);
         kernel::Slice::Props props;
         std::copy(inputShape.begin(), inputShape.end(), props.old_shape);
         std::copy(inputShape.begin(), inputShape.end(), props.new_shape);
@@ -310,4 +311,5 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
 
 OPERATION_REGISTER(TensorIteratorOp, TensorIterator);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

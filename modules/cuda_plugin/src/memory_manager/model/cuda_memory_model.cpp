@@ -6,7 +6,8 @@
 
 #include <gsl/pointers>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MemoryModel::MemoryModel(size_t bsize, const std::unordered_map<BufferID, ptrdiff_t>& offsets)
     : bsize_{bsize}, offsets_{offsets} {
@@ -36,4 +37,5 @@ bool MemoryModel::offsetForBuffer(BufferID id, ptrdiff_t& offset) const {
     return true;
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

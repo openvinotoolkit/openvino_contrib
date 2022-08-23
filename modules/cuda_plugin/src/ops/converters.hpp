@@ -18,7 +18,8 @@
 
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Converts OpenVINO data type to T
@@ -188,7 +189,7 @@ inline constexpr std::string_view toString<cudaDataType_t>(const cudaDataType_t&
             return "CUDA_R_32U";
         default:
             throwIEException(
-                fmt::format("CUDAPlugin::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
+                fmt::format("ov::nvidia_gpu::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
     }
 }
 
@@ -222,7 +223,7 @@ inline constexpr std::string_view toString<cudnnDataType_t>(const cudnnDataType_
             return "CUDNN_DATA_INT64";
         default:
             throwIEException(
-                fmt::format("CUDAPlugin::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
+                fmt::format("ov::nvidia_gpu::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
     }
 }
 
@@ -345,7 +346,7 @@ inline constexpr cudnnDataType_t getCuDnnOpTensorCompType(cudnnDataType_t in0,
                                                           cudnnDataType_t out) {
     auto throwException = [=] {
         throwIEException(
-            fmt::format("CUDAPlugin::getCuDnnOpTensorType(): Unsupported data types: in0 = {}, in1 = {} out = {}",
+            fmt::format("ov::nvidia_gpu::getCuDnnOpTensorType(): Unsupported data types: in0 = {}, in1 = {} out = {}",
                         toString(in0),
                         toString(in1),
                         toString(out)));
@@ -373,4 +374,5 @@ inline constexpr cudnnDataType_t getCuDnnOpTensorCompType(cudnnDataType_t in0,
     return CUDNN_DATA_FLOAT;  // never reached
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

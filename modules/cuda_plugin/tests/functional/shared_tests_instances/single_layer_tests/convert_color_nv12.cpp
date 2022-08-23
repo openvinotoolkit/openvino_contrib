@@ -43,7 +43,7 @@ const auto testCase_values = ::testing::Combine(::testing::ValuesIn(inShapes_nhw
                                                 ::testing::ValuesIn(inTypes),
                                                 ::testing::Bool(),
                                                 ::testing::Bool(),
-                                                ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_TestsConvertColorNV12,
                          ConvertColorNV12CUDALayerTest,
@@ -63,7 +63,7 @@ const auto testCase_accuracy_values = ::testing::Combine(::testing::Values(ov::S
                                                          ::testing::Values(ov::element::u8),
                                                          ::testing::Values(false),
                                                          ::testing::Values(true),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_TestsConvertColorNV12_acc,
                          ConvertColorNV12CUDAAccuracyTest,
@@ -74,7 +74,7 @@ const auto testCase_accuracy_values_nightly = ::testing::Combine(::testing::Valu
                                                                  ::testing::Values(ov::element::u8),
                                                                  ::testing::Values(false),
                                                                  ::testing::Values(true),
-                                                                 ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                                 ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(nightly_TestsConvertColorNV12_acc,
                          ConvertColorNV12CUDAAccuracyTest,

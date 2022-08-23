@@ -27,11 +27,11 @@ platforms = ['linux', 'win32', 'darwin']
 if not any(pl in sys.platform for pl in platforms):
     sys.exit(f'Unsupported platform: {sys.platform}, expected: linux, win32, darwin')
 
-PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-cuda')
+PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-nvidia')
 OPENVINO_REPO_URI = config('OPENVINO_REPO_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino.git')
 WHEEL_VERSION = config('WHEEL_VERSION', '2022.1.0')
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', WHEEL_VERSION)
-CUDA_PLUGIN_CMAKE_TARGET_NAME = 'CUDAPlugin'
+NVIDIA_PLUGIN_CMAKE_TARGET_NAME = 'openvino_nvidia_gpu_plugin'
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
 OPENVINO_INSTALL_BUILD_DEPS_SCRIPT = "install_build_dependencies.sh"
 OPENVINO_SETUP_PY_PATH = "inference-engine/ie_bridges/python/wheel/setup.py"
@@ -193,9 +193,9 @@ class BuildCMakeLib(build_clib):
         self.git_exec = shutil.which("git")
         self.cmake_exec = shutil.which("cmake")
         self.build_configuration_name = 'Debug' if self.debug else 'Release'
-        self.cuda_plugin_src_dir = os.path.abspath(os.path.dirname(__file__))
-        self.build_lib_dir = os.path.join(self.cuda_plugin_src_dir, "build/lib")
-        self.openvino_contrib_src_dir = os.path.normpath(os.path.join(self.cuda_plugin_src_dir, "../../.."))
+        self.nvidia_plugin_src_dir = os.path.abspath(os.path.dirname(__file__))
+        self.build_lib_dir = os.path.join(self.nvidia_plugin_src_dir, "build/lib")
+        self.openvino_contrib_src_dir = os.path.normpath(os.path.join(self.nvidia_plugin_src_dir, "../../.."))
         self.deps_dir = os.path.abspath(os.path.join(self.build_temp, "deps"))
         self.openvino_src_dir = os.path.join(self.deps_dir, "openvino")
         openvino_src_dir = self.openvino_src_dir
@@ -217,7 +217,7 @@ class BuildCMakeLib(build_clib):
         self.configure_openvino_cmake()
         if self.force:
             self.build_openvino()
-        self.build_cuda_plugin()
+        self.build_nvidia_plugin()
         self.locate_built_lib()
 
     def clone_openvino_src(self):
@@ -261,7 +261,7 @@ class BuildCMakeLib(build_clib):
     def get_build_env(self):
         build_env = os.environ.copy()
         build_env['BUILD_TYPE'] = self.build_configuration_name
-        build_env['BUILD_TARGETS'] = CUDA_PLUGIN_CMAKE_TARGET_NAME
+        build_env['BUILD_TARGETS'] = NVIDIA_PLUGIN_CMAKE_TARGET_NAME
         build_env['OPENVINO_HOME'] = self.openvino_src_dir
         build_env['OPENVINO_CONTRIB'] = self.openvino_contrib_src_dir
         build_env['OPENVINO_BUILD_PATH'] = self.openvino_build_dir
@@ -291,24 +291,24 @@ class BuildCMakeLib(build_clib):
 
         return build_env
 
-    def build_cuda_plugin(self):
+    def build_nvidia_plugin(self):
         if not os.path.isdir(self.openvino_build_dir):
             self.mkpath(self.openvino_build_dir)
 
         build_env = self.get_build_env()
 
         self.announce("Building OpenVINO CUDA Plugin Project", level=3)
-        run_command([os.path.join(self.cuda_plugin_src_dir, "../build.sh"), '--build'],
-                    cwd=self.cuda_plugin_src_dir, env=build_env)
+        run_command([os.path.join(self.nvidia_plugin_src_dir, "../build.sh"), '--build'],
+                    cwd=self.nvidia_plugin_src_dir, env=build_env)
 
     def locate_built_lib(self):
         libs = []
         lib_ext = platform_specifics.get_lib_file_extension()
         bin_dir = os.path.join(self.openvino_src_dir, "bin")
-        for name in [CUDA_PLUGIN_CMAKE_TARGET_NAME]:
+        for name in [NVIDIA_PLUGIN_CMAKE_TARGET_NAME]:
             libs.extend(list(glob.iglob(f"{bin_dir}/**/*{name}*{lib_ext}", recursive=True)))
         if not libs:
-            raise Exception("CUDA Plugin library not found. Possibly build was failed or was written to unknown "
+            raise Exception("NVIDIA Plugin library not found. Possibly build was failed or was written to unknown "
                             "directory")
         self.mkpath(self.build_lib_dir)
         for lib in libs:
@@ -332,14 +332,14 @@ class InstallCMakeLib(install_lib):
             self.build()
             self.install()
             self.install_openvino_package_and_other_dependencies()
-            self.register_cuda_plugin()
-            self.test_cuda_plugin()
-            openvino_cuda_library = f'{openvino_src_dir}/bin/intel64/Release/lib/libCUDAPlugin.{platform_specifics.get_lib_file_extension()}'
+            self.register_nvidia_plugin()
+            self.test_nvidia_plugin()
+            openvino_nvidia_gpu_library = f'{openvino_src_dir}/bin/intel64/Release/lib/libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}'
             package_data.update({
-                '': [openvino_cuda_library]
+                '': [openvino_nvidia_gpu_library]
             })
         finally:
-            self.unregister_cuda_plugin()
+            self.unregister_nvidia_plugin()
 
     def install_openvino_package_and_other_dependencies(self):
         if self.force:
@@ -360,32 +360,32 @@ class InstallCMakeLib(install_lib):
         openvino_package_libs_dir = os.path.join(openvino_package_dir, "libs")
         return openvino_package_libs_dir
 
-    def register_cuda_plugin(self):
+    def register_nvidia_plugin(self):
         openvino_package_libs_dir = self.get_openvino_package_dir()
         self.copy_tree(self.build_dir, openvino_package_libs_dir)
-        openvino_cuda_library = os.path.join(openvino_package_libs_dir,
-                                             f"libCUDAPlugin.{platform_specifics.get_lib_file_extension()}")
+        openvino_nvidia_gpu_library = os.path.join(openvino_package_libs_dir,
+                                                   f"libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}")
 
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
         tree = ET.parse(xml_file)
         plugins = tree.find("plugins")
-        if all(plugin.get('name') != 'CUDA' for plugin in plugins.iter('plugin')):
-            plugins.append(ET.Element('plugin', {'name': 'CUDA', 'location': openvino_cuda_library}))
+        if all(plugin.get('name') != 'NVIDIA' for plugin in plugins.iter('plugin')):
+            plugins.append(ET.Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
             tree.write(xml_file)
 
-    def unregister_cuda_plugin(self):
+    def unregister_nvidia_plugin(self):
         openvino_package_libs_dir = self.get_openvino_package_dir()
 
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
         tree = ET.parse(xml_file)
         plugins = tree.find("plugins")
         for plugin in plugins.iter('plugin'):
-            if plugin.get('name') == 'CUDA':
+            if plugin.get('name') == 'NVIDIA':
                 plugins.remove(plugin)
                 tree.write(xml_file)
                 break
 
-    def test_cuda_plugin(self):
+    def test_nvidia_plugin(self):
         from openvino.inference_engine import IECore
         test_model_convert_fp32 = """
             <?xml version="1.0"?>
@@ -421,14 +421,14 @@ class InstallCMakeLib(install_lib):
         ie = IECore()
         net = ie.read_network(model=test_model_convert_fp32, weights=b'', init_from_buffer=True)
         try:
-            ie.load_network(network=net, device_name="CUDA")
+            ie.load_network(network=net, device_name="NVIDIA")
         except RuntimeError as e:
             recommendations_msg = ''
             if not self.force:
                 recommendations_msg = 'Try to uninstall the openvino package and run "setup.py install --force" ' \
                                       'to build OpenVINO libraries also.'
-            raise RuntimeError('The CUDA plugin loading test was failed. '
-                               'The CUDA plugin library is not compatible with OpenVINO libraries. '
+            raise RuntimeError('The NVIDIA GPU plugin loading test was failed. '
+                               'The NVIDIA GPU plugin library is not compatible with OpenVINO libraries. '
                                f'Possible ABI version mismatch. {recommendations_msg}') from e
 
 
@@ -440,16 +440,16 @@ setup(
     name=PACKAGE_NAME,
     license=config('WHEEL_LICENCE_TYPE', 'OSI Approved :: Apache Software License'),
     author=config('WHEEL_AUTHOR', 'Intel Corporation'),
-    description=config('WHEEL_DESC', 'CUDAPlugin for OpenVINO Inference Engine Python* API'),
+    description=config('WHEEL_DESC', 'NVIDIA Plugin for OpenVINO Inference Engine Python* API'),
     long_description=get_description(config('WHEEL_OVERVIEW',
                                             f'{os.path.abspath(os.path.dirname(__file__))}/../README.md')),
     long_description_content_type='text/markdown',
     download_url=config('WHEEL_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino/tags'),
     url=config('WHEEL_URL', 'https://docs.openvinotoolkit.org/latest/index.html'),
     libraries=[(PACKAGE_NAME, {'sources': []})],
-    packages=["openvino_cuda"],
+    packages=["openvino_nvidia"],
     package_dir={
-        "openvino_cuda": f"{os.path.abspath(os.path.dirname(__file__))}/openvino_cuda",
+        "openvino_nvidia": f"{os.path.abspath(os.path.dirname(__file__))}/openvino_nvidia",
     },
     package_data=package_data,
     cmdclass={

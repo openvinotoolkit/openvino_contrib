@@ -33,7 +33,7 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     const CUDA::Device& device,
@@ -55,7 +55,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
     // on CUDA, for them decomposed cuDNN versions are faster.
     // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
-    // for these operations, implementing in-place logic in CUDA plugin for these operations.
+    // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
     passConfig->disable<ngraph::pass::ConvertSubtract>();
     passConfig->disable<ngraph::pass::ConvertDivide>();
     passConfig->disable<ngraph::pass::ConvertMod>();
@@ -67,7 +67,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     manager.register_pass<ngraph::pass::AddPreprocessing>(inputInfoMap);
     manager.register_pass<ngraph::pass::CommonOptimizations>();
     // NOTE: G-API supports only FP32 networks for pre-processing
-    //       CUDAPlugin supports FP16 networks, but this transformation is needed for export
+    //       nvidia_gpu supports FP16 networks, but this transformation is needed for export
     bool needF16toF32 = false;
     for (const auto& param : function->get_parameters()) {
         if (param->get_element_type() == ngraph::element::f16 &&
@@ -109,7 +109,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
     // on CUDA, for them decomposed cuDNN versions are faster.
     // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
-    // for these operations, implementing in-place logic in CUDA plugin for these operations.
+    // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
     passConfig->disable<ngraph::pass::ConvertSubtract>();
     passConfig->disable<ngraph::pass::ConvertDivide>();
     passConfig->disable<ngraph::pass::ConvertMod>();

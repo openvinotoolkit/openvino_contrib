@@ -14,11 +14,11 @@ namespace {
 const std::vector<std::map<std::string, std::string>> configs = {{}};
 
 const std::vector<std::map<std::string, std::string>> Multiconfigs = {
-    {{MULTI_CONFIG_KEY(DEVICE_PRIORITIES), CommonTestUtils::DEVICE_CUDA}}};
+    {{MULTI_CONFIG_KEY(DEVICE_PRIORITIES), CommonTestUtils::DEVICE_NVIDIA}}};
 
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests,
                         InferRequestPerfCountersTest,
-                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                        ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::ValuesIn(configs)),
                         InferRequestPerfCountersTest::getTestCaseName);
 

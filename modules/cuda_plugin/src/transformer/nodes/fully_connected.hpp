@@ -8,7 +8,7 @@
 #include <ngraph/ops.hpp>
 #include <ngraph/type/element_type.hpp>
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 class FullyConnected : public ov::op::Op {
 public:
@@ -35,4 +35,4 @@ private:
     bool m_transpose_b;
 };
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

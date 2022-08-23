@@ -13,14 +13,14 @@
 #include "memory_manager/cuda_device_mem_block.hpp"
 
 TEST(ImmutableMemoryBlockBuilder, BuildEmpty) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryBlockBuilder builder;
     EXPECT_NO_THROW(builder.build());
 }
 
 TEST(ImmutableMemoryBlockBuilder, Build) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     const BufferID t0_id = 1;
     const std::vector<uint8_t> t0_data(16, 0xA5);
@@ -53,7 +53,7 @@ TEST(ImmutableMemoryBlockBuilder, Build) {
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryBlockBuilder builder;
 
@@ -76,7 +76,7 @@ TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryBlockBuilder builder;
 
@@ -94,7 +94,7 @@ TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleNullDataPointer) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     ImmutableMemoryBlockBuilder builder;
 

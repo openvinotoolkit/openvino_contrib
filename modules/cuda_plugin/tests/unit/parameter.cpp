@@ -15,7 +15,7 @@
 #include "nodes/parameter_stub_node.hpp"
 
 using namespace InferenceEngine;
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 using devptr_t = DevicePointer<void*>;
 
 /**
@@ -47,8 +47,8 @@ struct ParameterTest : testing::Test {
         const bool optimizeOption = false;
         auto& registry{OperationRegistry::getInstance()};
         auto node = std::make_shared<ParameterStubNode>();
-        auto inputIDs = std::vector<CUDAPlugin::TensorID>{};
-        auto outputIDs = std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0}};
+        auto inputIDs = std::vector<ov::nvidia_gpu::TensorID>{};
+        auto outputIDs = std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0}};
         node->set_friendly_name(ParameterStubNode::type_info.name);
         ASSERT_TRUE(registry.hasOperation(node));
         operation = registry.createOperation(CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);
@@ -98,8 +98,8 @@ TEST_F(ParameterTest, canExecuteSync) {
 
 TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
     InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});

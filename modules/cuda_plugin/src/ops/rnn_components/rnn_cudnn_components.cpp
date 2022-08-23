@@ -10,12 +10,12 @@
 
 #define CUDNN_VERSION_MIN(major, minor, patch) (CUDNN_VERSION >= ((major)*1000 + (minor)*100 + (patch)))
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 LSTMCellParamsCuDnn::LSTMCellParamsCuDnn(const CreationContext& context, const LSTMCellParams& params)
     : lstm_cell_params_(params),
       data_type_{convertDataType<cudnnDataType_t>(lstm_cell_params_.element_type_)},
-      element_size_{CUDAPlugin::elementSize(data_type_)},
+      element_size_{ov::nvidia_gpu::elementSize(data_type_)},
       is_half_supported_(CUDA::isHalfSupported(context.device())) {
     if (inputSize() == 1 && hiddenSize() == 1) {
         throwIEException(
@@ -363,7 +363,7 @@ void LSTMCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
 GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRUCellParams& params)
     : gru_cell_params_(params),
       data_type_{convertDataType<cudnnDataType_t>(gru_cell_params_.element_type_)},
-      element_size_{CUDAPlugin::elementSize(data_type_)},
+      element_size_{ov::nvidia_gpu::elementSize(data_type_)},
       is_half_supported_(CUDA::isHalfSupported(context.device())) {
     const auto supported_activations = std::vector<std::string>{"sigmoid", "tanh"};
     if (gru_cell_params_.activations_ != supported_activations) {
@@ -704,4 +704,4 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
     Ensures(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
 }
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

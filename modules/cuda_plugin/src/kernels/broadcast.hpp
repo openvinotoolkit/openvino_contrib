@@ -11,12 +11,13 @@
 #include "error.hpp"
 #include "numpy_broadcast_mapper.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class Broadcast {
 public:
-    Broadcast(CUDAPlugin::kernel::Type_t element_type, size_t dst_num_elements, size_t max_threads_per_block);
+    Broadcast(ov::nvidia_gpu::kernel::Type_t element_type, size_t dst_num_elements, size_t max_threads_per_block);
 
     void operator()(const cudaStream_t stream,
                     const void* src,
@@ -40,4 +41,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

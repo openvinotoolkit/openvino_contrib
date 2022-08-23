@@ -7,7 +7,8 @@
 #include "memory_manager/model/cuda_memory_model.hpp"
 #include "memory_manager/model/details/cuda_memory_solver.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Builds MemoryModel for mutable memory blob wich contains input,
@@ -40,4 +41,5 @@ private:
     std::unordered_map<BufferID, ptrdiff_t> offsets_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

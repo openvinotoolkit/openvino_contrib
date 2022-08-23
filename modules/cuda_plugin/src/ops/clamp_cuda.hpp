@@ -9,7 +9,8 @@
 
 #include "kernels/clamp.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ClampCudaOp : public OperationBase {
 public:
@@ -29,4 +30,5 @@ private:
     std::optional<kernel::Clamp> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -9,7 +9,7 @@
 
 #include "gru_sequence_components.hpp"
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 /**
  * @brief Presents GRU Sequence parameters in a form suitable for cuDNN API.
@@ -99,4 +99,4 @@ private:
     DevBuffers b2_dev_buffers_;
 };
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

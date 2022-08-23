@@ -23,7 +23,7 @@ DnnTensorDescriptor makeDnnTensorDescr(const ngraph::element::Type& type, const 
     strides.back() = 1;
     for (int i = dims.size() - 1; i > 0; i--) strides[i - 1] = strides[i] * dims[i];
     return DnnTensorDescriptor{}.set(
-        CUDAPlugin::convertDataType<cudnnDataType_t>(type), dims.size(), dims.data(), strides.data());
+        ov::nvidia_gpu::convertDataType<cudnnDataType_t>(type), dims.size(), dims.data(), strides.data());
 }
 
 CUDA::DnnTensorDescriptor makeInputDnnTensorDescr(const ov::Node& node, int n) {

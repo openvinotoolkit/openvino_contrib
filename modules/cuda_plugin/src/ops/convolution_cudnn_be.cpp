@@ -14,7 +14,8 @@
 #include "cuda/constant_factory.hpp"
 #include "cuda/dnn_be_algo.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
 
@@ -111,7 +112,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
     Expects(engine_config_);
     if (workspace_size_ < 0) {
-        CUDAPlugin::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
+        ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
     const size_t size = std::max(static_cast<int64_t>(0), workspace_size_);
     if (size > 0) {
@@ -163,4 +164,5 @@ std::shared_ptr<CUDA::DnnBETensorDescriptor> ConvolutionCuDnnBE::MakeTensorDescr
         .setIsVirtual(false)
         .build();
 }
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

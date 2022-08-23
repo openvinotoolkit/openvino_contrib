@@ -9,7 +9,7 @@
 #include <ngraph/validation_util.hpp>
 #include <openvino/op/group_conv.hpp>
 
-namespace CUDAPlugin::Convolution::Details {
+namespace ov::nvidia_gpu::Convolution::Details {
 
 constexpr int CONV_1D_DIMS_NUMBER = NON_SPATIAL_DIMS_NUMBER + 1;
 
@@ -186,7 +186,7 @@ template FusedConvolutionParams::FusedConvolutionParams(const nodes::FusedConvol
 template FusedConvolutionParams::FusedConvolutionParams(const nodes::FusedGroupConvolution& node);
 
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
-    const CUDAPlugin::nodes::FusedConvBackpropData& node)
+    const ov::nvidia_gpu::nodes::FusedConvBackpropData& node)
     : conv_{node} {
     Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
     if (node.inputs().size() == 4) {
@@ -198,4 +198,4 @@ FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
     }
 }
 
-}  // namespace CUDAPlugin::Convolution::Details
+}  // namespace ov::nvidia_gpu::Convolution::Details

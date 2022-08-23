@@ -9,7 +9,8 @@
 #include "elementwise_binary.hpp"
 #include "kernels/multiply.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using MultiplyCudaOpBase = ElementwiseBinaryOp<ov::op::v1::Multiply, kernel::Multiply>;
 class MultiplyCudaOp : public MultiplyCudaOpBase {
@@ -21,4 +22,5 @@ public:
                    IndexCollection&& outputIds);
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -9,7 +9,7 @@
 #include <cuda/stl/algorithms/sort.cuh>
 #include <random>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 namespace {
 

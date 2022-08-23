@@ -12,7 +12,8 @@
 
 #include "error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 class StridedSliceKernelOp {
 public:
@@ -66,4 +67,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

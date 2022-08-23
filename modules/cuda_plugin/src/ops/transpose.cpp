@@ -17,7 +17,8 @@
 
 using namespace std::string_literals;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 TransposeOp::TransposeOp(const CreationContext& context,
                          const std::shared_ptr<ov::Node>& node,
@@ -199,4 +200,5 @@ inline std::vector<int> TransposeOp::downloadPermutationVector(const InferenceRe
 
 OPERATION_REGISTER(TransposeOp, Transpose);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

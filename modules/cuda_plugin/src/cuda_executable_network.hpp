@@ -20,7 +20,8 @@
 
 class ExecNetworkTest;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class Plugin;
 
@@ -92,4 +93,5 @@ private:
     std::shared_ptr<MemoryPool> memory_pool_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

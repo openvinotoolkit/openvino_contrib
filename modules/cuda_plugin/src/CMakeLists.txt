@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET_NAME openvino_cuda_plugin)
+set(TARGET_NAME openvino_nvidia_gpu_plugin)
 set(OBJ_NAME ${TARGET_NAME}_obj)
 
 set(SOURCE_MASKS *.cpp *.cu)
@@ -29,7 +29,7 @@ target_compile_definitions(${OBJ_NAME} PRIVATE IMPLEMENT_INFERENCE_ENGINE_PLUGIN
 
 # Adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
-              DEVICE_NAME "CUDA"
+              DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)

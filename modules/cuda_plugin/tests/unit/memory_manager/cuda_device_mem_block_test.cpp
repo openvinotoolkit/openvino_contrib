@@ -9,7 +9,7 @@
 #include "memory_manager/model/cuda_memory_model.hpp"
 
 TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     // "No constant tensors" edge case. MemoryModel is empty and
     // memory block size is zero.
@@ -42,7 +42,7 @@ TEST(DeviceMemBlock, ZeroSizeMemoryBlock) {
 }
 
 TEST(DeviceMemBlock, VerifyDevicePointers) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     const BufferID alloc_count = 5;
     const size_t allocation_size = 0x100;
@@ -69,7 +69,7 @@ TEST(DeviceMemBlock, VerifyDevicePointers) {
 }
 
 TEST(DeviceMemBlock, NullPtrIfTensorNotFound) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     const size_t block_size = 0x700;
     std::unordered_map<BufferID, ptrdiff_t> offsets = {

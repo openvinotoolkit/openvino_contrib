@@ -18,7 +18,7 @@
 namespace {
 
 struct ConvertTest : testing::Test {
-    CUDAPlugin::ThreadContext threadContext{CUDA::Device{}};
+    ov::nvidia_gpu::ThreadContext threadContext{CUDA::Device{}};
     const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
@@ -29,11 +29,11 @@ struct ConvertTest : testing::Test {
         const auto node = std::make_shared<ov::op::v0::Convert>(param->output(0), ov::element::Type(output));
 
         static constexpr bool optimizeOption = false;
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        return registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        return registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                         node,
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}},
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}});
     }
 };
 
@@ -42,10 +42,10 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     constexpr int kNumAttempts = 200;
 
     auto& stream = threadContext.stream();
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
     using Type_t = ov::element::Type_t;
@@ -89,7 +89,7 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
 
             auto start = std::chrono::steady_clock::now();
             for (int i = 0; i < kNumAttempts; i++) {
-                CUDAPlugin::Workbuffers workbuffers{};
+                ov::nvidia_gpu::Workbuffers workbuffers{};
                 op->Execute(context, inputs, outputs, workbuffers);
                 stream.synchronize();
             }

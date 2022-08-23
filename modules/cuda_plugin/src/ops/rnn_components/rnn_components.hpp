@@ -8,7 +8,7 @@
 #include <openvino/op/gru_cell.hpp>
 #include <openvino/op/lstm_cell.hpp>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 /**
  * @brief Defines tensor indices for `ov::op::v4::LSTMCell` node.
@@ -89,4 +89,4 @@ struct GRUCellParams {
     gsl::span<const uint8_t> b_host_buffers_;
 };
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

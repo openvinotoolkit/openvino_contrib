@@ -6,7 +6,7 @@
 
 #include <openvino/op/concat.hpp>
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 class ConcatOptimized : public ov::op::v0::Concat {
 public:
@@ -19,4 +19,4 @@ public:
         return std::make_shared<ConcatOptimized>(new_args, m_axis);
     }
 };
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

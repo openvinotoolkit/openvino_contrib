@@ -9,7 +9,8 @@
 #include "eltwise.cuh"
 #include "error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class LogicalNot {
@@ -28,4 +29,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

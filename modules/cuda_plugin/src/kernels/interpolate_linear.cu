@@ -13,7 +13,8 @@
 #include "interpolate_details.cuh"
 #include "interpolate_linear.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename CT>
@@ -210,4 +211,5 @@ void InterpolateLinear::initImmutableWorkbuffers(const std::vector<void*>& buffe
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

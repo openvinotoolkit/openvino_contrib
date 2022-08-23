@@ -8,7 +8,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
@@ -132,8 +133,8 @@ TopKOp::TopKOp(const CreationContext& context,
 
     const auto& prop = context.device().props();
     const std::size_t max_threads_per_block = prop.maxThreadsPerBlock;
-    kernel_ = kernel::TopK{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
-                           convertDataType<CUDAPlugin::kernel::Type_t>(index_element_type),
+    kernel_ = kernel::TopK{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
+                           convertDataType<ov::nvidia_gpu::kernel::Type_t>(index_element_type),
                            convertComputeType(topKOp.get_mode()),
                            convertSortType(topKOp.get_sort_type()),
                            num_input_element,
@@ -186,4 +187,5 @@ void TopKOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
 WorkbufferRequest TopKOp::GetWorkBufferRequest() const { return {{sizeof(kernel_param_)}, {workspace_size_}}; }
 
 OPERATION_REGISTER(TopKOp, TopK);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -15,7 +15,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
@@ -144,8 +145,8 @@ GatherOp::GatherOp(const CreationContext& context,
     Expects(grid_dim_y <= max_grid_size[1]);
     Expects(blocks_per_grid <= max_grid_size[2]);
 
-    gather_kernel_ = kernel::Gather{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
-                                    convertDataType<CUDAPlugin::kernel::Type_t>(indices_type),
+    gather_kernel_ = kernel::Gather{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
+                                    convertDataType<ov::nvidia_gpu::kernel::Type_t>(indices_type),
                                     num_dicts,
                                     index_range,
                                     data_length,
@@ -177,4 +178,5 @@ void GatherOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(GatherOp, Gather);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

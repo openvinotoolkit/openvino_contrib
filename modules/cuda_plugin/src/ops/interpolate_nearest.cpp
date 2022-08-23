@@ -11,11 +11,12 @@
 #include "ngraph/validation_util.hpp"
 #include "ops/converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
-std::vector<float> getScalesVector(const CUDAPlugin::InterpolateNearestOp::NodeOp& node) {
+std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::NodeOp& node) {
     // for calculation scale for nearest mode see
     // https://docs.openvino.ai/2021.1/openvino_docs_ops_image_Interpolate_4.html
     const auto scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
@@ -119,7 +120,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
     const auto strides = can_use_upscale_optimizing_ ? in_shape_[0] * in_strides_[0] : out_shape_[0] * out_strides_[0];
     const auto blocks_number = 1 + strides / max_threads_per_block;
     const auto threads_per_block = (blocks_number == 1) ? strides : max_threads_per_block;
-    const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
+    const auto element_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(node.get_input_element_type(0));
 
     interpolate_ =
         kernel::InterpolateNearest(blocks_number,
@@ -176,4 +177,5 @@ void InterpolateNearestOp::InitSharedImmutableWorkbuffers(const Buffers& buffers
     uploadDataToWorkbuffer(buffers[4], out_shape_);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

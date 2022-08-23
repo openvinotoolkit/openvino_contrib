@@ -10,7 +10,8 @@
 #include "memory_manager/model/cuda_immutable_memory_model_builder.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class DeviceMemBlock;
 
@@ -56,4 +57,5 @@ private:
     std::vector<AllocRecord> allocations_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

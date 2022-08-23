@@ -7,7 +7,8 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SigmoidOp : public OperationBase {
 public:
@@ -27,4 +28,5 @@ private:
     unsigned threads_per_block_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

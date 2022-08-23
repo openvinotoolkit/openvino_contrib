@@ -6,11 +6,13 @@
 
 #include "memory_manager/model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 size_t applyAllignment(size_t value) {
     constexpr size_t allignment = CUDA::memoryAlignment;
     return (value % allignment) == 0 ? value : value - (value % allignment) + allignment;
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -10,7 +10,8 @@
 #include "error.hpp"
 #include "interpolate_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class InterpolateNearest : public InterpolateBase {
@@ -20,7 +21,7 @@ public:
 
     InterpolateNearest(size_t num_blocks,
                        size_t threads_per_block,
-                       CUDAPlugin::kernel::Type_t element_type,
+                       ov::nvidia_gpu::kernel::Type_t element_type,
                        bool upscale,
                        NearestMode nearest_mode,
                        CoordinateTransformMode transform_mode);
@@ -55,4 +56,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

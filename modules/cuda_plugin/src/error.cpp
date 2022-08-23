@@ -8,7 +8,8 @@
 
 #include <details/ie_exception.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace {
 template <typename T>
 [[gnu::cold, noreturn]] void throwException(const std::string& msg,
@@ -34,4 +35,5 @@ template <typename T>
 [[gnu::cold]] void logError(const std::string& /*msg*/, const std::experimental::source_location& /*location*/) {
 }  // TODO: log somewhere
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

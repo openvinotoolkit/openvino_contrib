@@ -14,7 +14,8 @@
 #include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SplitOp : public OperationBase {
 public:
@@ -40,4 +41,5 @@ private:
     std::optional<kernel::Split> split_kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

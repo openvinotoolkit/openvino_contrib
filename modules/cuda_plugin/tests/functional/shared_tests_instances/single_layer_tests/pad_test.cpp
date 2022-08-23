@@ -51,7 +51,7 @@ const auto pad1DConstparams = testing::Combine(testing::ValuesIn(padsBegin1D),
                                                testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                testing::Values(InferenceEngine::Layout::ANY),
                                                testing::ValuesIn(inputs1d),
-                                               testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                               testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad1DConst, PadLayerTest, pad1DConstparams, PadLayerTest::getTestCaseName);
 
@@ -67,7 +67,7 @@ const auto pad2DConstparams = testing::Combine(testing::ValuesIn(padsBegin2D),
                                                testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                testing::Values(InferenceEngine::Layout::ANY),
                                                testing::Values(std::vector<size_t>{3, 512}),
-                                               testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                               testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad2DConst, PadLayerTest, pad2DConstparams, PadLayerTest::getTestCaseName);
 
@@ -83,7 +83,7 @@ const auto pad3DConstparams = testing::Combine(testing::ValuesIn(padsBegin3D),
                                                testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                testing::Values(InferenceEngine::Layout::ANY),
                                                testing::Values(std::vector<size_t>{3, 5, 11}),
-                                               testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                               testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad3DConst, PadLayerTest, pad3DConstparams, PadLayerTest::getTestCaseName);
 
@@ -99,7 +99,7 @@ const auto pad4DConstparams = testing::Combine(testing::ValuesIn(padsBegin4D),
                                                testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                testing::Values(InferenceEngine::Layout::ANY),
                                                testing::Values(std::vector<size_t>{3, 5, 10, 512}),
-                                               testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                               testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad4DConst, PadLayerTest, pad4DConstparams, PadLayerTest::getTestCaseName);
 
@@ -115,7 +115,7 @@ const auto pad5DConstparams = testing::Combine(testing::ValuesIn(padsBegin5D),
                                                testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                testing::Values(InferenceEngine::Layout::ANY),
                                                testing::Values(std::vector<size_t>{7, 3, 5, 10, 512}),
-                                               testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                               testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad5DConst, PadLayerTest, pad5DConstparams, PadLayerTest::getTestCaseName);
 
@@ -128,7 +128,7 @@ const auto padPrecesionParams = testing::Combine(testing::ValuesIn(padsBegin2D),
                                                  testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                  testing::Values(InferenceEngine::Layout::ANY),
                                                  testing::Values(std::vector<size_t>{3, 128}),
-                                                 testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                 testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_PadPrecesionParams, PadLayerTest, padPrecesionParams, PadLayerTest::getTestCaseName);
 
@@ -151,7 +151,7 @@ const auto pad4DBenchmarkParams =
                      testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                      testing::Values(InferenceEngine::Layout::ANY),
                      testing::ValuesIn(benchmarkShapes),
-                     testing::Values(CommonTestUtils::DEVICE_CUDA));
+                     testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(Benchmark4DPadOperation,
                         NCHWFormatPadBenchmarkTest,

@@ -10,7 +10,8 @@
 
 using namespace std::string_literals;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace eltwise {
 
@@ -50,4 +51,5 @@ KernelExecAttrs::KernelExecAttrs(const ov::Shape& shape, unsigned threadsPerBloc
       elementsPerThread{elementsPerThread} {}
 
 }  // namespace eltwise
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

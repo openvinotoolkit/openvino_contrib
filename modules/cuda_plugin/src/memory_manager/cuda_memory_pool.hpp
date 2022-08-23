@@ -13,7 +13,8 @@
 
 class MemoryPoolTest;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief MemoryPool provides currently available DeviceMemBlock.
@@ -98,4 +99,5 @@ private:
     std::vector<std::unique_ptr<DeviceMemBlock>> memory_blocks_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

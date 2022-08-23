@@ -10,7 +10,8 @@
 #include <details/ie_exception.hpp>
 #include <iostream>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 DeviceMemBlock::DeviceMemBlock(MemoryModel::Ptr model) : model_{move(model)} {}
 
@@ -27,4 +28,5 @@ void* DeviceMemBlock::deviceTensorPtr(const TensorID& id) const {
     return nullptr;
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

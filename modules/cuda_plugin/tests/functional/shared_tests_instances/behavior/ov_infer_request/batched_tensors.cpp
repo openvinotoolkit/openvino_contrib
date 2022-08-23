@@ -81,7 +81,7 @@ using namespace ov;
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVInferRequestBatchedTests,
-                         ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                          OVInferRequestBatchedTests::getTestCaseName);
 
 }  // namespace

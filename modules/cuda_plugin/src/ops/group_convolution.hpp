@@ -11,7 +11,8 @@
 #include "convolution_cudnn.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class GroupConvolutionOp : public OperationCuDnn {
 public:
@@ -31,4 +32,5 @@ private:
     ConvolutionCuDnn convolution_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

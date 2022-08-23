@@ -17,7 +17,8 @@
 #include "nop_op.hpp"
 #include "transformations/utils/utils.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ResultOp::ResultOp(const CreationContext& context,
                    const NodeOp& node,
@@ -112,4 +113,5 @@ std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result&
 }
 
 OPERATION_REGISTER(ResultOp, Result);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

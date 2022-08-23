@@ -12,7 +12,8 @@
 
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 FusedConvolutionCuDnnDecomposed::FusedConvolutionCuDnnDecomposed(
     const CreationContext& context,
@@ -103,9 +104,10 @@ void FusedConvolutionCuDnnDecomposed::ThrowIfShouldNotDecompose() const {
     if (mode != CUDNN_ACTIVATION_IDENTITY ||
         conv_descs_->Algo().algo == CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
         throwIEException(
-            "CUDAPlugin::FusedConvolutionCuDnnDecomposed: FusedConvolutionCuDnnDecomposed should only be used for "
+            "ov::nvidia_gpu::FusedConvolutionCuDnnDecomposed: FusedConvolutionCuDnnDecomposed should only be used for "
             "CUDNN_ACTIVATION_IDENTITY and an algo other than CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

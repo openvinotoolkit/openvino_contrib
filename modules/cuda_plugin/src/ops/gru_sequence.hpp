@@ -13,7 +13,8 @@
 #include "rnn_components/gru_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements `ov::op::v5::GRUSequence` using cuDNN API
@@ -49,4 +50,5 @@ private:
     WorkbufferDesc mb_work_space_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

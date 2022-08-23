@@ -3,7 +3,8 @@
 //
 #include "multiply_cudnn.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MultiplyCuDnnOp::MultiplyCuDnnOp(const CreationContext& context,
                                  const std::shared_ptr<ov::Node>& node,
@@ -11,4 +12,5 @@ MultiplyCuDnnOp::MultiplyCuDnnOp(const CreationContext& context,
                                  IndexCollection&& outputIds)
     : CuDnnTensorOpBase{context, node, move(inputIds), move(outputIds), cudnnOpTensorOp_t::CUDNN_OP_TENSOR_MUL} {}
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

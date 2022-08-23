@@ -18,8 +18,8 @@ using namespace HeteroTests;
 INSTANTIATE_TEST_SUITE_P(
     smoke_manyTargetInputs,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::withMajorNodesFunctions(
                            [] { return ngraph::builder::subgraph::makeConvPool2Relu2(); }, {"Conv_1"}, true))),
     HeteroSyntheticTest::getTestCaseName);
@@ -27,16 +27,16 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     smoke_SingleMajorNode,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::_singleMajorNodeFunctions)),
     HeteroSyntheticTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
     nightly_RandomMajorNodes,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::_randomMajorNodeFunctions)),
     HeteroSyntheticTest::getTestCaseName);
 
@@ -47,8 +47,8 @@ static std::vector<std::function<std::shared_ptr<ngraph::Function>()>> dynamicBu
 INSTANTIATE_TEST_SUITE_P(
     smoke_NonZeroMajorNode_dynamic,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::withMajorNodesFunctions(
                            dynamicBuilders.front(), {"nonZero_1"}))),
     HeteroSyntheticTest::getTestCaseName);
@@ -56,8 +56,8 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     smoke_NonZeroMajorNode_dynamic_batch,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::withMajorNodesFunctions(
                            dynamicBuilders.front(), {"nonZero_1"}, true))),
     HeteroSyntheticTest::getTestCaseName);
@@ -66,8 +66,8 @@ INSTANTIATE_TEST_SUITE_P(
     smoke_SingleMajorNode_dynamic,
     HeteroSyntheticTest,
     ::testing::Combine(
-        ::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                       {"CUDA", "openvino_cuda_plugin"}}),
+        ::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                       {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
         ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::singleMajorNodeFunctions(dynamicBuilders))),
     HeteroSyntheticTest::getTestCaseName);
 
@@ -75,16 +75,16 @@ INSTANTIATE_TEST_SUITE_P(
     nightly_RandomMajorNodes_dynamic,
     HeteroSyntheticTest,
     ::testing::Combine(
-        ::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                       {"CUDA", "openvino_cuda_plugin"}}),
+        ::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                       {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
         ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::randomMajorNodeFunctions(dynamicBuilders))),
     HeteroSyntheticTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(
     smoke_SingleMajorNode_dynamic_batch,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::singleMajorNodeFunctions(dynamicBuilders,
                                                                                                       true))),
     HeteroSyntheticTest::getTestCaseName);
@@ -92,8 +92,8 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     nightly_RandomMajorNodes_dynamic_batch,
     HeteroSyntheticTest,
-    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"CUDA", "openvino_cuda_plugin"},
-                                                                      {"CUDA", "openvino_cuda_plugin"}}),
+    ::testing::Combine(::testing::Values(std::vector<PluginParameter>{{"NVIDIA", "openvino_nvidia_gpu_plugin"},
+                                                                      {"NVIDIA", "openvino_nvidia_gpu_plugin"}}),
                        ::testing::ValuesIn(HeteroTests::HeteroSyntheticTest::randomMajorNodeFunctions(dynamicBuilders,
                                                                                                       true))),
     HeteroSyntheticTest::getTestCaseName);

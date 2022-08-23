@@ -8,7 +8,7 @@
 #include <kernels/slice.hpp>
 #include <kernels/tensor_helpers.hpp>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class SliceKernelTest : public testing::Test {
     void SetUp() override {}

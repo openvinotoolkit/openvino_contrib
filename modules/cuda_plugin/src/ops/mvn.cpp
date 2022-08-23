@@ -12,7 +12,8 @@
 #include "ngraph/op/mvn.hpp"
 #include "ngraph/shape_util.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MvnOp::MvnOp(const CreationContext& context,
              const ov::Node& node,
@@ -26,7 +27,7 @@ MvnOp::MvnOp(const CreationContext& context,
                                             : mvn_op_v6_->get_normalize_variance()},
       epsilon_{version_ == MvnV1 ? mvn_op_v1_->get_eps() : mvn_op_v6_->get_eps()},
       eps_mode_{version_ == MvnV1 ? ov::op::MVNEpsMode::INSIDE_SQRT : mvn_op_v6_->get_eps_mode()},
-      comp_type_{CUDAPlugin::convertDataType<cudnnDataType_t>(node.get_input_element_type(0))},
+      comp_type_{ov::nvidia_gpu::convertDataType<cudnnDataType_t>(node.get_input_element_type(0))},
       op_desc_type_{comp_type_ != CUDNN_DATA_DOUBLE ? CUDNN_DATA_FLOAT : CUDNN_DATA_DOUBLE},
       reduce_mean_desc_{op_desc_type_},
       sub_desc_(CUDA::DnnOpTensorDescriptor{}.set(
@@ -48,7 +49,7 @@ MvnOp::MvnOp(const CreationContext& context,
             threads_per_block,
             epsilon_,
             size,
-            convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0)),
+            convertDataType<ov::nvidia_gpu::kernel::Type_t>(node.get_input_element_type(0)),
             eps_mode_ == ov::op::MVNEpsMode::INSIDE_SQRT);
     }
 }
@@ -145,7 +146,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
                             mvnOp_v6->get_eps()));
         }
         if (ngraph::get_constant_from_source(node.get_input_node_shared_ptr(1)) == nullptr) {
-            throwIEException("The CUDAPlugin MVN-6 operation implemented only for constant axes input.");
+            throwIEException("The nvidia_gpu MVN-6 operation implemented only for constant axes input.");
         }
     }
     if (!node.get_input_partial_shape(0).rank().is_static()) {
@@ -165,7 +166,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
                                       // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor
     if (outputShape.size() > max_shape_size) {
         throwIEException(
-            fmt::format("CUDAPlugin::MvnOp: the tensor shape size ({}) is exceeded maximum supported value of {}.",
+            fmt::format("ov::nvidia_gpu::MvnOp: the tensor shape size ({}) is exceeded maximum supported value of {}.",
                         outputShape.size(),
                         max_shape_size));
     }
@@ -200,7 +201,7 @@ ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
             auto size = static_cast<int64_t>(reducedShape.size());
             if (v >= size || v < -size) {
                 throwIEException(
-                    fmt::format("CUDAPlugin::MVN-6: the axes entry ({}) out of range [{}; {}].", v, -size, size - 1));
+                    fmt::format("ov::nvidia_gpu::MVN-6: the axes entry ({}) out of range [{}; {}].", v, -size, size - 1));
             }
             axes.emplace(static_cast<size_t>((v + size) % size));
         }
@@ -217,4 +218,5 @@ CUDA::DnnTensorDescriptor MvnOp::makeReducedTensorDescriptor(const ov::Node& nod
 }
 
 OPERATION_REGISTER(MvnOp, MVN);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

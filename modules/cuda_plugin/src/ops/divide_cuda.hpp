@@ -9,7 +9,8 @@
 #include "elementwise_binary.hpp"
 #include "kernels/divide.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class DivideOp : public ElementwiseBinaryOp<ov::op::v1::Divide, kernel::Divide> {
 public:
@@ -20,4 +21,5 @@ public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

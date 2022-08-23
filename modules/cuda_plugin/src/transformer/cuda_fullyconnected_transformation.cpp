@@ -42,14 +42,14 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
     auto matrixAShape = matMulNode->get_input_shape(0);
     auto matrixBShape = matMulNode->get_input_shape(1);
     const auto matrixShape = matMulNode->get_output_shape(0);
-    CUDAPlugin::MatMulOp::BroadcastToMatrix(matrixAShape);
-    CUDAPlugin::MatMulOp::BroadcastToMatrix(matrixBShape);
-    const auto matMulBatch = std::max(CUDAPlugin::MatMulOp::GetMatrixNumBatches(matrixAShape),
-                                      CUDAPlugin::MatMulOp::GetMatrixNumBatches(matrixBShape));
+    ov::nvidia_gpu::MatMulOp::BroadcastToMatrix(matrixAShape);
+    ov::nvidia_gpu::MatMulOp::BroadcastToMatrix(matrixBShape);
+    const auto matMulBatch = std::max(ov::nvidia_gpu::MatMulOp::GetMatrixNumBatches(matrixAShape),
+                                      ov::nvidia_gpu::MatMulOp::GetMatrixNumBatches(matrixBShape));
 
     auto constShape = constantNode->get_output_shape(0);
-    CUDAPlugin::MatMulOp::BroadcastToMatrix(constShape);
-    const auto constBatch = CUDAPlugin::MatMulOp::GetMatrixNumBatches(constShape);
+    ov::nvidia_gpu::MatMulOp::BroadcastToMatrix(constShape);
+    const auto constBatch = ov::nvidia_gpu::MatMulOp::GetMatrixNumBatches(constShape);
     const auto constShapeSize = ov::shape_size(constShape);
     const auto matrixShapeSize = ov::shape_size(matrixShape);
     const auto numAutoConstBatch = matrixShapeSize / constShapeSize;
@@ -59,7 +59,7 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
     }
 
     const auto fullyConnectedNode =
-        std::make_shared<CUDAPlugin::nodes::FullyConnected>(matMulNode->get_input_node_shared_ptr(0),
+        std::make_shared<ov::nvidia_gpu::nodes::FullyConnected>(matMulNode->get_input_node_shared_ptr(0),
                                                             matMulNode->get_input_node_shared_ptr(1),
                                                             constantNode,
                                                             matMulNode->get_transpose_a(),

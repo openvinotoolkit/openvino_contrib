@@ -9,7 +9,7 @@
 #include <openvino/op/lstm_sequence.hpp>
 #include <transformer/nodes/lstm_sequence_optimized.hpp>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 /**
  * @brief Defines tensor indices for `ov::op::v5::LSTMSequence` node.
@@ -32,7 +32,7 @@ struct LSTMSequenceArgIndices {
  */
 struct LSTMSequenceParams {
     LSTMSequenceParams(const ov::op::v5::LSTMSequence& node);
-    LSTMSequenceParams(const CUDAPlugin::nodes::LSTMSequenceOptimized& node);
+    LSTMSequenceParams(const ov::nvidia_gpu::nodes::LSTMSequenceOptimized& node);
 
     static constexpr int lin_layer_count = 4;
 
@@ -57,4 +57,4 @@ private:
     void validate(const ov::op::v5::LSTMSequence& node);
 };
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

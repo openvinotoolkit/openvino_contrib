@@ -16,13 +16,13 @@
 inline void throwIfError(
     cudaError_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != cudaSuccess) CUDAPlugin::throwIEException(cudaGetErrorString(err), location);
+    if (err != cudaSuccess) ov::nvidia_gpu::throwIEException(cudaGetErrorString(err), location);
 }
 
 inline void logIfError(
     cudaError_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != cudaSuccess) CUDAPlugin::logError(cudaGetErrorString(err), location);
+    if (err != cudaSuccess) ov::nvidia_gpu::logError(cudaGetErrorString(err), location);
 }
 
 namespace CUDA {

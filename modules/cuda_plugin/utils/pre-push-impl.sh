@@ -9,7 +9,7 @@ EXIT_CODE=0
 
 # if $OPENVINO_BUILD_PATH environment variable not set try to set it to
 # openvino/build assuming openvino directroy is in the same directrory
-# as openvino_cuda_plugin
+# as openvino_nvidia_gpu_plugin
 if [ -z "$OPENVINO_BUILD_PATH" ]; then
 
   export OPENVINO_BUILD_PATH=$(realpath ../../../../openvino/build)

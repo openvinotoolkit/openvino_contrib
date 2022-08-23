@@ -1,6 +1,7 @@
 #include "prelu.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -21,4 +22,5 @@ void PRelu::operator()(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

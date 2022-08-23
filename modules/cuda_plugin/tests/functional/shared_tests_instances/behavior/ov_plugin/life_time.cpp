@@ -12,12 +12,12 @@ namespace {
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVHoldersTest,
-                         ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                          OVHoldersTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVHoldersTestOnImportedNetwork,
-                         ::testing::Values(CommonTestUtils::DEVICE_CUDA, "HETERO:CUDA"),
+                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA, "HETERO:NVIDIA"),
                          OVHoldersTestOnImportedNetwork::getTestCaseName);
 
 }  // namespace

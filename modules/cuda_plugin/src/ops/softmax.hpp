@@ -13,7 +13,8 @@
 #include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SoftmaxOp : public OperationCuDnn {
 public:
@@ -34,4 +35,5 @@ private:
     CUDA::DnnTensorDescriptor tensor_descriptor_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

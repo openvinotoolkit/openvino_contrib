@@ -10,7 +10,8 @@
 #endif
 #include <cuda/float16.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 enum class ColorConversion { RGB, BGR };
@@ -37,4 +38,5 @@ __device__ void yuv_pixel_to_rgb(const float y_val, const float u_val, const flo
 #endif
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

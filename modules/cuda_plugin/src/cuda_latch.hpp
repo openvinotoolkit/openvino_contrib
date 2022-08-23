@@ -7,7 +7,8 @@
 #include <atomic>
 #include <future>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /// Temporary replacement for `std::latch` (until C++20)
 class CudaLatch final {
@@ -25,4 +26,5 @@ private:
     std::promise<void> p_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

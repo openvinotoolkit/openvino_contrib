@@ -35,7 +35,7 @@ typedef std::tuple<dataType,  // start
     CudaRangeParams;
 
 struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>, virtual public ::testing::Test {
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
     CudaRangeParams param = GetParam();
     dataType start = std::get<0>(param);
     dataType stop = std::get<1>(param);
@@ -44,7 +44,7 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
     Type_t step_type = std::get<4>(param);
     Type_t out_type = std::get<5>(param);
     size_t outputSize = computeRangeOutputSize(start, stop, step, start_type, step_type, out_type);
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation startParamAlloc = threadContext.stream().malloc(Type(start_type).size());
     CUDA::Allocation stopParamAlloc = threadContext.stream().malloc(sizeof(dataType));
     CUDA::Allocation stepParamAlloc = threadContext.stream().malloc(Type(step_type).size());
@@ -52,7 +52,7 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
     std::vector<cdevptr_t> inputs = {startParamAlloc, stopParamAlloc, stepParamAlloc};
     std::vector<devptr_t> outputs{outAlloc};
     InferenceEngine::BlobMap empty;
-    CUDAPlugin::OperationBase::Ptr operation = createOperation();
+    ov::nvidia_gpu::OperationBase::Ptr operation = createOperation();
 
     static std::string getTestCaseName(testing::TestParamInfo<CudaRangeParams> obj) {
         dataType start, stop, step;
@@ -113,9 +113,9 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
         return ref;
     }
 
-    template <CUDAPlugin::kernel::Type_t T>
+    template <ov::nvidia_gpu::kernel::Type_t T>
     static void upload(const CUDA::Stream& stream, CUDA::Allocation& dst, const dataType* src, size_t size) {
-        using TOutput = CUDAPlugin::kernel::cuda_type_traits_t<T>;
+        using TOutput = ov::nvidia_gpu::kernel::cuda_type_traits_t<T>;
         std::vector<TOutput> data;
         data.reserve(size);
         for (size_t c = 0; c < size; ++c) {
@@ -126,7 +126,7 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
 
     static void upload(
         const CUDA::Stream& stream, CUDA::Allocation& dst, const dataType* src, Type_t type, size_t size) {
-        using Type_k = CUDAPlugin::kernel::Type_t;
+        using Type_k = ov::nvidia_gpu::kernel::Type_t;
         switch (type) {
 #if defined __CUDACC__
 #ifdef CUDA_HAS_BF16_TYPE
@@ -163,9 +163,9 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
         }
     }
 
-    template <CUDAPlugin::kernel::Type_t T>
+    template <ov::nvidia_gpu::kernel::Type_t T>
     static void download(const CUDA::Stream& stream, dataType* dst, devptr_t src, size_t size) {
-        using TOutput = CUDAPlugin::kernel::cuda_type_traits_t<T>;
+        using TOutput = ov::nvidia_gpu::kernel::cuda_type_traits_t<T>;
         std::vector<TOutput> data;
         data.resize(size);
         stream.download(&data[0], src, size * sizeof(TOutput));
@@ -176,7 +176,7 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
     }
 
     static void download(const CUDA::Stream& stream, dataType* dst, devptr_t src, Type_t type, size_t size) {
-        using Type_k = CUDAPlugin::kernel::Type_t;
+        using Type_k = ov::nvidia_gpu::kernel::Type_t;
         switch (type) {
 #if defined __CUDACC__
 #ifdef CUDA_HAS_BF16_TYPE
@@ -214,7 +214,7 @@ struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>,
     }
 
 protected:
-    CUDAPlugin::OperationBase::Ptr createOperation() {
+    ov::nvidia_gpu::OperationBase::Ptr createOperation() {
         using namespace ngraph;
         CUDA::Device device{};
         const bool optimizeOption = false;
@@ -226,9 +226,9 @@ protected:
         params[1]->set_friendly_name("stop");
         params[2]->set_friendly_name("step");
         auto node = std::make_shared<opset4::Range>(params[0], params[1], params[2], Type(out_type));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         assert(registry.hasOperation(node));
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{device, optimizeOption},
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0}, TensorID{1}, TensorID{2}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -249,12 +249,12 @@ MATCHER_P(FloatNearPointwise, tol, "Out of range") {
 
 TEST_P(CudaRangeLayerTest, CompareWithRefs) {
     ASSERT_TRUE(outputSize > 0);
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     CudaRangeLayerTest::upload(stream, startParamAlloc, &start, start_type, 1);

@@ -13,7 +13,8 @@
 #include "cuda/constant_factory.hpp"
 #include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
                                              const ov::Node& node,
@@ -114,9 +115,10 @@ void FusedConvolutionCuDnn::ThrowIfShouldDecompose() const {
     if (mode == CUDNN_ACTIVATION_IDENTITY &&
         conv_descs_->Algo().algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
         throwIEException(
-            "CUDAPlugin::FusedConvolutionCuDnn: CUDNN_ACTIVATION_IDENTITY can't be used with "
+            "ov::nvidia_gpu::FusedConvolutionCuDnn: CUDNN_ACTIVATION_IDENTITY can't be used with "
             "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

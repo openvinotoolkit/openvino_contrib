@@ -9,7 +9,8 @@
 #include "convolution_components/convolution_components.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename T>
 ConvBackpropDataOp<T>::ConvBackpropDataOp(const CreationContext& context,
@@ -44,4 +45,5 @@ void ConvBackpropDataOp<T>::Execute(const InferenceRequestContext& context,
 OPERATION_REGISTER(ConvolutionBackpropDataOp, ConvolutionBackpropData);
 OPERATION_REGISTER(GroupConvolutionBackpropDataOp, GroupConvolutionBackpropData);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

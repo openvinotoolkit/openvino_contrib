@@ -9,7 +9,8 @@
 
 #include "tensor_types.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief WorkbufferRequest - a POD structure describing operator's memory demands
@@ -52,4 +53,5 @@ struct WorkbufferIds {
     vector_of_ids mutableIds;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

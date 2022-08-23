@@ -7,7 +7,8 @@
 #include "cuda_operation_registry.hpp"
 #include "divide_cuda.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static OperationBase::Ptr divideFactory(const CreationContext& context,
                                         const std::shared_ptr<ov::Node>& in_node,
@@ -29,4 +30,5 @@ static OperationBase::Ptr divideFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(divideFactory, Divide)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -9,7 +9,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 FloorOp::FloorOp(const CreationContext& context,
                  const ov::Node& node,
@@ -27,7 +28,7 @@ FloorOp::FloorOp(const CreationContext& context,
     size_t num_elements = ov::shape_size(input_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_ = kernel::Floor{
-        convertDataType<CUDAPlugin::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements};
+        convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements};
 }
 
 void FloorOp::Execute(const InferenceRequestContext& context,
@@ -43,4 +44,5 @@ void FloorOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(FloorOp, Floor);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

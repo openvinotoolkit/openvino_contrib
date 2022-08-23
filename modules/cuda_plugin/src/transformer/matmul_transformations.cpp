@@ -23,9 +23,9 @@ bool verify_permutation(std::shared_ptr<ov::op::v0::Constant> permConstant) {
     const auto perm3D = std::vector<T>{0, 2, 1};
     const auto perm4D = std::vector<T>{0, 1, 3, 2};
     const auto perm5D = std::vector<T>{0, 1, 2, 4, 3};
-    auto span =
-        gsl::make_span(static_cast<const T *>(permConstant->get_data_ptr()),
-                       CUDAPlugin::OperationBuffersExtractor::GetTensorByteSize(permConstant->output(0)) / sizeof(T));
+    auto span = gsl::make_span(
+        static_cast<const T *>(permConstant->get_data_ptr()),
+        ov::nvidia_gpu::OperationBuffersExtractor::GetTensorByteSize(permConstant->output(0)) / sizeof(T));
     switch (span.size()) {
         case 2:
             return span == gsl::make_span(perm2D);

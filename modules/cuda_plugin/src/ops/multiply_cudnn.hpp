@@ -6,7 +6,8 @@
 
 #include "cudnn_tensor_op_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class MultiplyCuDnnOp : public CuDnnTensorOpBase {
 public:
@@ -16,4 +17,5 @@ public:
                     IndexCollection&& outputIds);
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

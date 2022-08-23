@@ -8,7 +8,8 @@
 
 #include "cuda_type_traits.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 #ifdef CUDA_HAS_BF16_TYPE
@@ -42,4 +43,5 @@ __device__ typename std::enable_if<!(std::is_same<TInput, __half>::value || std:
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

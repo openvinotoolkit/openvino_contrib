@@ -99,43 +99,43 @@ void run_zero_div_test() {
     static constexpr int length = 3;
     static constexpr size_t size_bytes = length * sizeof(T);
 
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation in1_alloc = threadContext.stream().malloc(size_bytes);
     CUDA::Allocation in2_alloc = threadContext.stream().malloc(sizeof(T));
     CUDA::Allocation out_alloc = threadContext.stream().malloc(size_bytes);
     std::vector<cdevptr_t> inputs{in1_alloc, in2_alloc};
     std::vector<devptr_t> outputs{out_alloc};
 
-    CUDAPlugin::OperationBase::Ptr operation = [&] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [&] {
         CUDA::Device device{};
         const bool optimizeOption = false;
         const ngraph::element::Type ng_type = ngraph::element::from<T>();
         auto param1 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{length});
         auto param2 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{1});
         auto node = std::make_shared<ngraph::op::v1::Divide>(param1->output(0), param2->output(0));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{device, optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},
                                            node,
-                                           std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
-                                           std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
+                                           std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}},
+                                           std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}});
         return op;
     }();
     ASSERT_TRUE(operation);
 
     std::vector<CUDA::DefaultAllocation> im_buffers;
 
-    CUDAPlugin::WorkbufferRequest wb_request{operation->GetWorkBufferRequest()};
+    ov::nvidia_gpu::WorkbufferRequest wb_request{operation->GetWorkBufferRequest()};
     for (const auto size : wb_request.immutable_sizes) {
         im_buffers.emplace_back(CUDA::DefaultStream::stream().malloc(size));
     }
 
-    CUDAPlugin::IOperationExec::Buffers init_buffers;
+    ov::nvidia_gpu::IOperationExec::Buffers init_buffers;
     for (const auto& buf : im_buffers) {
         init_buffers.emplace_back(buf);
     }
     operation->InitSharedImmutableWorkbuffers(init_buffers);
 
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
     for (const auto& buf : im_buffers) {
         workbuffers.immutable_buffers.emplace_back(buf);
     }
@@ -149,10 +149,10 @@ void run_zero_div_test() {
 
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);

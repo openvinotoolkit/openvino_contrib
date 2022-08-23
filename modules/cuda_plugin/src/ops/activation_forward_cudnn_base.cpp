@@ -12,7 +12,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA::DnnActivationDescriptor> opDesc,
                                                            const CreationContext& context,
@@ -29,7 +30,7 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
 
     if (std::find(supported_types.begin(), supported_types.end(), data_type_) == supported_types.end()) {
         throwIEException(
-            fmt::format("CUDAPlugin::ActivationForwardCuDnnOpBase: unsupported data type: {}", toString(data_type_)));
+            fmt::format("ov::nvidia_gpu::ActivationForwardCuDnnOpBase: unsupported data type: {}", toString(data_type_)));
     }
 
     const auto& shape = node.get_input_shape(0);
@@ -38,7 +39,7 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
     const auto in_shape_size = node.get_input_shape(0).size();
     if (in_shape_size > max_shape_size) {
         throwIEException(
-            fmt::format("CUDAPlugin::ActivationForwardCuDnnOpBase: in_shape_size > max_shape_size: in_shape_size = {}, "
+            fmt::format("ov::nvidia_gpu::ActivationForwardCuDnnOpBase: in_shape_size > max_shape_size: in_shape_size = {}, "
                         "max_shape_size = {}",
                         in_shape_size,
                         max_shape_size));
@@ -58,4 +59,5 @@ void ActivationForwardCuDnnOpBase::Execute(const InferenceRequestContext& contex
                                                              outputTensors[0].get());
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

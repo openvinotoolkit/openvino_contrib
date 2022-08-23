@@ -12,7 +12,8 @@
 #include "rnn_components/lstm_sequence_cudnn_components.hpp"
 #include "rnn_components/rnn_sequence_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
@@ -59,4 +60,5 @@ protected:
     OutputTensorAdapterPtr cy_adapter;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

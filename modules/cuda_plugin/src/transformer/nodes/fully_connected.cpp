@@ -4,7 +4,7 @@
 
 #include "fully_connected.hpp"
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 namespace matmul {
 
@@ -207,4 +207,4 @@ ov::PartialShape validate_matmul_output_shape(const ov::PartialShape& arg0_shape
 
 }  // namespace matmul
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

@@ -10,7 +10,8 @@
 
 #include "kernels/convert.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ConvertOp : public OperationBase {
 public:
@@ -30,4 +31,5 @@ private:
     std::optional<kernel::Convert> convert_kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -5,6 +5,6 @@
 
 namespace CommonTestUtils {
 
-const char DEVICE_CUDA[] = "CUDA";
+const char DEVICE_NVIDIA[] = "NVIDIA";
 
 }  // namespace CommonTestUtils

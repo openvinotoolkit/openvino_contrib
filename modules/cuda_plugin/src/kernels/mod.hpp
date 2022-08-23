@@ -7,7 +7,8 @@
 #include "cuda_type_traits.hpp"
 #include "elementwise_binary.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -33,4 +34,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

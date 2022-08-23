@@ -13,7 +13,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ConcatOp::ConcatOp(const CreationContext& context,
                    const NodeOp& concatOp,
@@ -55,7 +56,7 @@ ConcatOp::ConcatOp(const CreationContext& context,
     const std::size_t numBlocks = (allChunkSize + maxBlockSize - 1) / maxBlockSize;
     const std::size_t threadsPerBlock = (numBlocks == 1) ? allChunkSize : maxBlockSize;
 
-    concat_kernel_ = kernel::Concat{convertDataType<CUDAPlugin::kernel::Type_t>(element_type),
+    concat_kernel_ = kernel::Concat{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                                     num_inputs_,
                                     std::move(chunks),
                                     chunk_size,
@@ -92,4 +93,5 @@ void ConcatOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(ConcatOp, Concat);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

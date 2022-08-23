@@ -16,7 +16,8 @@
 
 #include "kernels/variadic_split.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class VariadicSplitOp : public OperationBase {
 public:
@@ -51,4 +52,5 @@ private:
     std::optional<kernel::VariadicSplit> variadic_split_kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

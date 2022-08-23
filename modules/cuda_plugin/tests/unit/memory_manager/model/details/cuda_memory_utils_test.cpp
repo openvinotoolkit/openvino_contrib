@@ -9,7 +9,7 @@
 TEST(MemoryUtils, ApplyAllignment) {
     const size_t allignment = 256;
 
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
     ASSERT_EQ(applyAllignment(0), 0);
     ASSERT_EQ(applyAllignment(1), allignment);
 

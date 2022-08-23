@@ -56,7 +56,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(add_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -75,7 +75,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(mul_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -94,7 +94,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(sub_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -113,7 +113,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(div_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -135,7 +135,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(sq_diff_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -154,7 +154,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(floor_mod_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -178,7 +178,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(mod_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -225,7 +225,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::ValuesIn(renset50_vgg16_input_precisions),
                                           ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -256,7 +256,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::ValuesIn(tacotron2_Multiply_input_precisions),
                                           ::testing::Values(ov::test::ElementType::undefined),
                                           ::testing::Values(ov::test::ElementType::undefined),
-                                          ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                           ::testing::Values(additional_config)),
                        ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -299,7 +299,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(bench_add_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -328,7 +328,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(bench_mul_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -357,7 +357,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(bench_sub_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -386,7 +386,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(bench_div_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
@@ -420,7 +420,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(bench_mod_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
-                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);

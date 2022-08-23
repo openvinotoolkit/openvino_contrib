@@ -12,7 +12,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 double beta_from_constant(const ov::Node& swish_node) {
@@ -54,7 +55,7 @@ SwishOp::SwishOp(const CreationContext& context,
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     const double beta = beta_from_constant(node);
     kernel_ = kernel::Swish{
-        convertDataType<CUDAPlugin::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements, beta};
+        convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements, beta};
 }
 
 void SwishOp::Execute(const InferenceRequestContext& context,
@@ -69,4 +70,5 @@ void SwishOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(SwishOp, Swish);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

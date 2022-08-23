@@ -7,7 +7,8 @@
 #include <cuda_operation_base.hpp>
 #include <ngraph/node.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CuDnnTensorOpBase : public OperationCuDnn {
 public:
@@ -49,4 +50,5 @@ private:
     int bias_index_ = 0;
     int dest_index_ = 1;
 };
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

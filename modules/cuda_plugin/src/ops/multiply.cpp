@@ -11,7 +11,8 @@
 #include "multiply_cuda.hpp"
 #include "multiply_cudnn.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static OperationBase::Ptr multiplyFactory(const CreationContext& context,
                                           const std::shared_ptr<ov::Node>& in_node,
@@ -41,4 +42,5 @@ static OperationBase::Ptr multiplyFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(multiplyFactory, Multiply)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

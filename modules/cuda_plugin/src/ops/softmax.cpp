@@ -14,7 +14,8 @@
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static int take(const ov::Shape& shape, size_t i) noexcept { return i < shape.size() ? shape[i] : 1; }
 
@@ -175,4 +176,5 @@ void SoftmaxOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(SoftmaxOp, Softmax);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

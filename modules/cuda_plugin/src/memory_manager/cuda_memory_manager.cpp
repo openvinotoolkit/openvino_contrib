@@ -8,7 +8,8 @@
 
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MemoryManager::MemoryManager(DeviceMemBlock::Ptr immutableTensors,
                              MemoryModel::Ptr mutableMemoryModel,
@@ -59,4 +60,5 @@ Workbuffers MemoryManager::workBuffers(const IOperationExec& operation,
     return result;
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

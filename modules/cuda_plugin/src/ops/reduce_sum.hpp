@@ -6,7 +6,8 @@
 
 #include <cuda_operation_base.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ReduceSumOp : public OperationCuDnn {
 public:
@@ -34,4 +35,5 @@ inline WorkbufferRequest ReduceSumOp::GetWorkBufferRequest() const {
     return {{}, {workspace_size_}};  // TODO: find a way to allocate buffers from constructor
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

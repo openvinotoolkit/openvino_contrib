@@ -73,7 +73,7 @@ struct GatherTestParams {
     InferenceEngine::Precision output_precision_ = InferenceEngine::Precision::UNSPECIFIED;
     InferenceEngine::Layout input_layout_ = InferenceEngine::Layout::ANY;
     InferenceEngine::Layout output_layout_ = InferenceEngine::Layout::ANY;
-    LayerTestsUtils::TargetDevice device_ = CommonTestUtils::DEVICE_CUDA;
+    LayerTestsUtils::TargetDevice device_ = CommonTestUtils::DEVICE_NVIDIA;
 };
 
 template <typename T>
@@ -85,7 +85,7 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
     const auto axis = test_params.axis_;
     const unsigned normalized_axis = axis >= 0 ? axis : axis + params_shape_size;
     if (normalized_axis >= params_shape_size) {
-        CUDAPlugin::throwIEException(
+        ov::nvidia_gpu::throwIEException(
             fmt::format("normalized_axis >= params_shape_size: {} >= {}", normalized_axis, params_shape_size));
     }
     std::uniform_int_distribution<T> distr(0, test_params.params_shape_[normalized_axis] - 1);
@@ -638,9 +638,9 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     constexpr int NUM_ATTEMPTS = 20;
     constexpr milliseconds WARMUP_TIME{2000.0};
 
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     int out_size = 0;
-    CUDAPlugin::OperationBase::Ptr operation = [&] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
         auto dict_param = std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(),
                                                                   ov::PartialShape{params.params_shape_});
@@ -654,11 +654,11 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
                                 dict_param->output(0), indices_param->output(0), axis_constant));
 
         out_size = ov::shape_size(node->get_output_shape(0));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                            node,
-                                           std::array{CUDAPlugin::TensorID{0}},
-                                           std::array{CUDAPlugin::TensorID{0}});
+                                           std::array{ov::nvidia_gpu::TensorID{0}},
+                                           std::array{ov::nvidia_gpu::TensorID{0}});
         return op;
     }();
     const int dict_size = ov::shape_size(params.params_shape_);
@@ -673,12 +673,12 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<cdevptr_t> inputs{dict_alloc, indices_alloc, axis_alloc};
     std::vector<devptr_t> outputs{out_alloc};
 
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
@@ -694,7 +694,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     auto& stream = context.getThreadContext().stream();
     stream.upload(dict_alloc, dict.data(), dict_size_bytes);
     stream.upload(indices_alloc, indices.data(), indices_size_bytes);
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
 
     // Warmup
     auto warm_cur = std::chrono::steady_clock::now();

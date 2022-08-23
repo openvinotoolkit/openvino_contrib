@@ -13,7 +13,8 @@
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class TopKOp : public OperationBase {
 public:
@@ -35,4 +36,5 @@ private:
     std::optional<kernel::TopK> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

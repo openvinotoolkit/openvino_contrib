@@ -11,7 +11,8 @@
 #include "cuda_operation_registry.hpp"
 #include "ngraph/shape.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 ov::Shape shape_from_constant_value(const ov::Node* constant_node) {
@@ -50,7 +51,7 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
     broadcast_params_ = NumpyBroadcastParams::create(in_shape, out_shape);
     broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
 
-    const auto element_type = convertDataType<CUDAPlugin::kernel::Type_t>(node.get_input_element_type(0));
+    const auto element_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(node.get_input_element_type(0));
     const size_t dst_num_elements = ngraph::shape_size(out_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_.emplace(element_type, dst_num_elements, max_threads_per_block);
@@ -72,4 +73,5 @@ void BroadcastOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
 
 OPERATION_REGISTER(BroadcastOp, Broadcast);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

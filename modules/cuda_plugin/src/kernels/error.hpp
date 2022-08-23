@@ -22,7 +22,8 @@ struct source_location {
 #endif
 #include <cuda_runtime.h>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 [[gnu::cold]] void throwIfError(
     cudaError_t err,
@@ -33,4 +34,5 @@ namespace kernel {
     const std::experimental::source_location& location = std::experimental::source_location::current());
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

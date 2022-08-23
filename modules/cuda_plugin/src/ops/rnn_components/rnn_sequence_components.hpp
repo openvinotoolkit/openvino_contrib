@@ -8,7 +8,7 @@
 #include <gsl/span>
 #include <ops/components/workbuffer_desc.hpp>
 
-namespace CUDAPlugin::RNN::Details {
+namespace ov::nvidia_gpu::RNN::Details {
 
 /**
  * Base class for `TransposeInputTensorAdapter` and `TransposeOutputTensorAdapter`
@@ -62,4 +62,4 @@ public:
                  CUDA::DevicePointer<void*> output) const;
 };
 
-}  // namespace CUDAPlugin::RNN::Details
+}  // namespace ov::nvidia_gpu::RNN::Details

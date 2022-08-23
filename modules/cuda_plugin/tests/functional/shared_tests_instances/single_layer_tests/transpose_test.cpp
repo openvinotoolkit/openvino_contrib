@@ -25,7 +25,7 @@ const std::vector<std::vector<size_t>> inputShapes = {
 
 const std::vector<std::vector<size_t>> inputOrder = {
     std::vector<size_t>{0, 3, 2, 1},
-    // Empty inputs are currently unsupported in CUDAPlugin.
+    // Empty inputs are currently unsupported in nvidia_gpu.
     //        std::vector<size_t>{},
 };
 
@@ -36,7 +36,7 @@ const auto params = testing::Combine(testing::ValuesIn(inputOrder),
                                      testing::Values(InferenceEngine::Layout::ANY),
                                      testing::Values(InferenceEngine::Layout::ANY),
                                      testing::ValuesIn(inputShapes),
-                                     testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                     testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Transpose, TransposeLayerTest, params, TransposeLayerTest::getTestCaseName);
 

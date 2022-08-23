@@ -6,10 +6,11 @@
 
 #include "lstm_sequence_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
- * @brief Implements `CUDAPlugin::nodes::LSTMSequenceOptimized` using cuDNN API.
+ * @brief Implements `ov::nvidia_gpu::nodes::LSTMSequenceOptimized` using cuDNN API.
  *
  * OpenVINO and cuDNN are using different layouts for input/output tensor
  * shapes. In general, it takes 5 additional transpose operations to
@@ -30,7 +31,7 @@ namespace CUDAPlugin {
  */
 class LSTMSequenceOptimizedOp : public LSTMSequenceOpBase {
 public:
-    using NodeOp = CUDAPlugin::nodes::LSTMSequenceOptimized;
+    using NodeOp = ov::nvidia_gpu::nodes::LSTMSequenceOptimized;
     LSTMSequenceOptimizedOp(const CreationContext& context,
                             const NodeOp& node,
                             IndexCollection&& inputIds,
@@ -44,4 +45,5 @@ private:
     void setupSequenceMajorLayoutAdapters();
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

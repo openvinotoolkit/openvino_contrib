@@ -7,7 +7,8 @@
 #include <ops/parameter.hpp>
 #include <ops/result.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace {
 
@@ -142,4 +143,5 @@ void Profiler::CollectNodeVisitor(const OperationBase::Ptr& execStep,
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

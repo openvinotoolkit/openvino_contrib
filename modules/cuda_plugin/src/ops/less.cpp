@@ -6,7 +6,8 @@
 
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LessOp::LessOp(const CreationContext& context,
                const ov::Node& node,
@@ -16,4 +17,5 @@ LessOp::LessOp(const CreationContext& context,
 
 OPERATION_REGISTER(LessOp, Less);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

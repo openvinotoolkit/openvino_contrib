@@ -10,7 +10,8 @@
 #include "rnn_components/rnn_components.hpp"
 #include "rnn_components/rnn_cudnn_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements `ov::op::v4::LSTMCell` using cuDNN API
@@ -34,4 +35,5 @@ private:
     RNN::Details::LSTMCellDescriptorsCuDnn descs_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

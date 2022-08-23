@@ -8,7 +8,8 @@
 #include "error.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class Slice {
@@ -49,4 +50,5 @@ inline void Slice::setImmutableWorkbuffer(void* immutableBuffer) {
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

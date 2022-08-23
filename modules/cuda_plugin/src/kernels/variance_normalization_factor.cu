@@ -8,7 +8,8 @@
 #include "kernels/variance_normalization_factor.hpp"
 #include "typed_functor.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace kernel {
 
@@ -58,7 +59,7 @@ VarianceNormalizationFactor::VarianceNormalizationFactor(unsigned blocks_number,
         CASE(f32)
         CASE(f64)
         default:
-            throwIEException(fmt::format("CUDAPlugin::MvnOp: unsupported data type, must be any float point type."));
+            throwIEException(fmt::format("ov::nvidia_gpu::MvnOp: unsupported data type, must be any float point type."));
     }
 #undef CASE
 }
@@ -69,4 +70,5 @@ void VarianceNormalizationFactor::operator()(cudaStream_t stream, void *data) co
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

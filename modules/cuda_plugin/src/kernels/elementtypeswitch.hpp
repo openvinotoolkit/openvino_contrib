@@ -9,7 +9,8 @@
 #include "cuda_type_traits.hpp"
 #include "switch.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <Type_t... Types>
@@ -51,4 +52,5 @@ using AllElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
                                                  Type_t::u64>;
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

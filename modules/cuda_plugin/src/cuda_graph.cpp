@@ -4,7 +4,8 @@
 
 #include "cuda_graph.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 CudaGraph::CudaGraph(const CreationContext& context, const std::shared_ptr<const ngraph::Function>& function)
     : SubGraph(context, function) {}
@@ -15,4 +16,5 @@ void CudaGraph::Run(const InferenceRequestContext& context, const DeviceMemBlock
     SubGraph::Execute(context, {}, {}, workbuffers);
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

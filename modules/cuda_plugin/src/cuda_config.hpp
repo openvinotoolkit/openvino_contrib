@@ -12,7 +12,8 @@
 #include <string>
 #include <threading/ie_istreams_executor.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using ConfigMap = std::map<std::string, std::string>;
 
@@ -43,4 +44,5 @@ struct Configuration {
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::UNDEFINED;
 };
 
-}  //  namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

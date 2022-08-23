@@ -14,7 +14,8 @@
 #include <ngraph/type/element_type.hpp>
 #include <openvino/op/concat.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ConcatOp : public OperationBase {
 public:
@@ -38,4 +39,5 @@ private:
     std::optional<kernel::Concat> concat_kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

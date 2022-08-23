@@ -8,7 +8,7 @@
 #include <cuda/stl/atomic.cuh>
 #include <cuda/stl/span.cuh>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class SpanTest : public testing::Test {
     void SetUp() override {}

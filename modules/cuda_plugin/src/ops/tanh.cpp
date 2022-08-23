@@ -9,7 +9,8 @@
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 TanhOp::TanhOp(const CreationContext& context,
                const std::shared_ptr<ov::Node>& node,
@@ -19,4 +20,5 @@ TanhOp::TanhOp(const CreationContext& context,
           std::make_unique<CUDA::TanhDescriptor>(), context, *node, move(inputIds), move(outputIds)} {}
 
 OPERATION_REGISTER(TanhOp, Tanh);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

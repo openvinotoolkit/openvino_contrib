@@ -18,15 +18,15 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::
 const std::vector<std::map<std::string, std::string>> configs = {{}};
 
 const std::vector<std::map<std::string, std::string>> multiConfigs = {
-    {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES, CommonTestUtils::DEVICE_CUDA}}};
+    {{InferenceEngine::MultiDeviceConfigParams::KEY_MULTI_DEVICE_PRIORITIES, CommonTestUtils::DEVICE_NVIDIA}}};
 
 const std::vector<std::map<std::string, std::string>> heteroConfigs = {
-    {{"TARGET_FALLBACK", CommonTestUtils::DEVICE_CUDA}}};
+    {{"TARGET_FALLBACK", CommonTestUtils::DEVICE_NVIDIA}}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          InferRequestPreprocessTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          InferRequestPreprocessTest::getTestCaseName);
 
@@ -60,7 +60,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                                             ::testing::ValuesIn(ioLayouts),
                                             ::testing::Bool(),
                                             ::testing::Bool(),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          InferRequestPreprocessConversionTest::getTestCaseName);
 
@@ -74,7 +74,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                                             ::testing::Bool(),
                                             ::testing::Values(true),  // only SetBlob
                                             ::testing::Values(true),  // only SetBlob
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          InferRequestPreprocessDynamicallyInSetBlobTest::getTestCaseName);
 

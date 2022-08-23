@@ -8,7 +8,8 @@
 
 #include "model/cuda_memory_model.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MemoryPool::MemoryPool(const size_t num, std::shared_ptr<MemoryModel> memoryModel) {
     memory_blocks_.reserve(num);
@@ -60,4 +61,5 @@ void MemoryPool::PushBack(std::unique_ptr<DeviceMemBlock> memManager) {
     cond_var_.notify_one();
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

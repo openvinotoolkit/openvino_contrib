@@ -7,7 +7,8 @@
 #include <ngraph/node.hpp>
 #include <utility>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OperationBase::OperationBase(const CreationContext& /*context*/,
                              const ov::Node& node,
@@ -18,4 +19,5 @@ OperationBase::OperationBase(const CreationContext& /*context*/,
       input_ids_{move(inputIds)},
       output_ids_{move(outputIds)} {}
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

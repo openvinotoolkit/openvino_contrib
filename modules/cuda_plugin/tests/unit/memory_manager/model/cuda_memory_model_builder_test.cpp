@@ -60,7 +60,7 @@
   MemorySolver correctly.
  */
 TEST(MemoryModelBuilder, Build) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     MemoryModelBuilder builder;
     const size_t size = 1;
@@ -92,7 +92,7 @@ TEST(MemoryModelBuilder, Build) {
 }
 
 TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     MemoryModelBuilder builder;
 
@@ -118,7 +118,7 @@ TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
 }
 
 TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     MemoryModelBuilder builder;
 
@@ -138,7 +138,7 @@ TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
  * Just to clarify class behaviour.
  */
 TEST(MemoryModelBuilder, NoAllocations) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     MemoryModelBuilder builder;
     MemoryModel::Ptr model = builder.build();

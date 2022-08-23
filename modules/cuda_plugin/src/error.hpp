@@ -7,7 +7,8 @@
 
 #include "kernels/error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 [[gnu::cold, noreturn]] void throwIEException(
     const std::string& msg,
     const std::experimental::source_location& location = std::experimental::source_location::current());
@@ -20,4 +21,5 @@ namespace CUDAPlugin {
 [[gnu::cold]] void logError(
     const std::string& msg,
     const std::experimental::source_location& location = std::experimental::source_location::current());
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

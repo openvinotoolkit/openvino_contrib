@@ -24,9 +24,9 @@
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
 #include "openvino/runtime/properties.hpp"
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
-Plugin::Plugin() { _pluginName = "CUDA"; }
+Plugin::Plugin() { _pluginName = "NVIDIA"; }
 
 Plugin::~Plugin() {
     // Plugin should remove executors from executor cache to avoid threads number growth in the whole application
@@ -37,7 +37,7 @@ Plugin::~Plugin() {
 
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
                                                                             const ConfigMap& config) {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "Plugin::LoadExeNetworkImpl");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::LoadExeNetworkImpl");
 
     auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
@@ -96,7 +96,7 @@ InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(const Configuratio
 
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::ImportNetwork(
     std::istream& model, const std::map<std::string, std::string>& config) {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CUDAPlugin::ImportNetworkImpl");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::ImportNetworkImpl");
 
     Configuration cfg{config, _cfg};
     auto waitExecutor = GetStreamExecutor(cfg);
@@ -108,7 +108,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::ImportNetwork(
 
 InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::CNNNetwork& network,
                                                          const ConfigMap& config) const {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, "CUDAPlugin::QueryNetwork");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::QueryNetwork");
 
     InferenceEngine::QueryNetworkResult res;
     Configuration cfg{config, _cfg, false};

@@ -8,7 +8,8 @@
 #include <gsl/gsl_assert>
 #include <openvino/op/max_pool.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 MaxPoolOp::MaxPoolOp(const CreationContext& context,
                      const std::shared_ptr<ov::Node>& node,
@@ -31,4 +32,5 @@ void MaxPoolOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(MaxPoolOp, MaxPool);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

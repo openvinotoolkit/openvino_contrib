@@ -14,7 +14,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <typeinfo>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class MemoryPoolTest : public testing::Test {
     void SetUp() override {}

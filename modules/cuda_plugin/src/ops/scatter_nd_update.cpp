@@ -12,7 +12,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
                                      const ov::Node& node,
@@ -69,8 +70,8 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
 
     const size_t num_of_threads{num_of_blocks == 1 ? num_of_items : max_block_size};
 
-    kernel_ = kernel::ScatterNDUpdate{convertDataType<CUDAPlugin::kernel::Type_t>(input_type),
-                                      convertDataType<CUDAPlugin::kernel::Type_t>(indices_type),
+    kernel_ = kernel::ScatterNDUpdate{convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_type),
+                                      convertDataType<ov::nvidia_gpu::kernel::Type_t>(indices_type),
                                       indices_last_dim,
                                       num_of_update_elements,
                                       num_of_input_elements,
@@ -117,4 +118,5 @@ void ScatterNDUpdateOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
 
 OPERATION_REGISTER(ScatterNDUpdateOp, ScatterNDUpdate);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

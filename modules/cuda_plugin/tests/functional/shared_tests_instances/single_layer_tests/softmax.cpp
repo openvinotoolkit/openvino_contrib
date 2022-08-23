@@ -36,7 +36,7 @@ const auto params2D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(ov::element::undefined),
                                        testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes2D)),
                                        testing::ValuesIn(axis2D),
-                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                        testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax2D, SoftMaxLayerTest, params2D, SoftMaxLayerTest::getTestCaseName);
@@ -55,7 +55,7 @@ const auto params3D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(ov::element::undefined),
                                        testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes3D)),
                                        testing::ValuesIn(axis3D),
-                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                        testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax3D, SoftMaxLayerTest, params3D, SoftMaxLayerTest::getTestCaseName);
@@ -77,7 +77,7 @@ const auto params4D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(ov::element::undefined),
                                        testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes4D)),
                                        testing::ValuesIn(axis4D),
-                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                        testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax4D, SoftMaxLayerTest, params4D, SoftMaxLayerTest::getTestCaseName);
@@ -96,7 +96,7 @@ const auto params5D = testing::Combine(testing::ValuesIn(netPrecisions),
                                        testing::Values(ov::element::undefined),
                                        testing::ValuesIn(ov::test::static_shapes_to_test_representation(inputShapes5D)),
                                        testing::ValuesIn(axis5D),
-                                       testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                       testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                        testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax5D, SoftMaxLayerTest, params5D, SoftMaxLayerTest::getTestCaseName);
@@ -115,7 +115,7 @@ const auto resnet5Params =
                      testing::Values(ov::element::undefined),
                      testing::ValuesIn(ov::test::static_shapes_to_test_representation(resnet5Shapes)),
                      testing::ValuesIn(axis2D),
-                     testing::Values(CommonTestUtils::DEVICE_CUDA),
+                     testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                      testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax2Dresnet5, SoftMaxLayerTest, resnet5Params, SoftMaxLayerTest::getTestCaseName);
@@ -129,7 +129,7 @@ const auto vggParams = testing::Combine(testing::ValuesIn(netPrecisions),
                                         testing::Values(ov::element::undefined),
                                         testing::ValuesIn(ov::test::static_shapes_to_test_representation(vggShapes)),
                                         testing::ValuesIn(axis2D),
-                                        testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                        testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                         testing::Values(ov::AnyMap()));
 
 INSTANTIATE_TEST_CASE_P(SoftMax2Dvgg, SoftMaxLayerTest, vggParams, SoftMaxLayerTest::getTestCaseName);

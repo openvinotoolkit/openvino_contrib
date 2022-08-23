@@ -7,7 +7,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-using namespace CUDAPlugin::kernel;
+using namespace ov::nvidia_gpu::kernel;
 
 using TFuncPtr = void (*)();
 

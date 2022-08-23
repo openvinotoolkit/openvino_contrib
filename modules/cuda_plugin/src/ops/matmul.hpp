@@ -11,7 +11,8 @@
 
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class MatMulOp : public OperationCuBlas {
 public:
@@ -81,4 +82,5 @@ private:
     cublasOperation_t cublas_transpose_b_ = CUBLAS_OP_N;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

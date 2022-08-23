@@ -9,7 +9,8 @@
 #include <utility>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 GRUSequenceOp::GRUSequenceOp(const CreationContext& context,
                              const NodeOp& node,
@@ -34,7 +35,7 @@ void GRUSequenceOp::Execute(const InferenceRequestContext& context,
                             Inputs inputs,
                             Outputs outputs,
                             const Workbuffers& workbuffers) const {
-    using ArgIndices = CUDAPlugin::RNN::Details::GRUSequenceArgIndices;
+    using ArgIndices = ov::nvidia_gpu::RNN::Details::GRUSequenceArgIndices;
     Expects(inputs.size() == 6);
     Expects(outputs.size() == 2);
 
@@ -78,4 +79,5 @@ WorkbufferRequest GRUSequenceOp::GetWorkBufferRequest() const { return {immut_si
 
 OPERATION_REGISTER(GRUSequenceOp, GRUSequence);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -17,7 +17,7 @@ namespace ngraph::pass {
 NGRAPH_RTTI_DEFINITION(ngraph::pass::ConcatTransformation, "ConcatTransformation", 0);
 
 bool change_concat_to_concat_optimized(pattern::Matcher& m) {
-    using CUDAPlugin::nodes::ConcatOptimized;
+    using ov::nvidia_gpu::nodes::ConcatOptimized;
 
     auto concat = std::dynamic_pointer_cast<ov::op::v0::Concat>(m.get_match_root());
     for (auto& in : concat->inputs()) {

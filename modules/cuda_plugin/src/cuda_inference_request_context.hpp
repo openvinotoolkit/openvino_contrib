@@ -11,7 +11,8 @@
 #include "cancellation_token.hpp"
 #include "cuda_thread_context.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 using Blob = InferenceEngine::Blob;
 
@@ -81,7 +82,7 @@ public:
         return outputs_mapping.find(output_name) != outputs_mapping.end();
     }
     const ThreadContext& getThreadContext() const noexcept { return threadContext; }
-    [[nodiscard]] CUDAPlugin::CancellationToken& getCancellationToken() const noexcept { return token; }
+    [[nodiscard]] ov::nvidia_gpu::CancellationToken& getCancellationToken() const noexcept { return token; }
     [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
     [[nodiscard]] bool isBenchmarkMode() const noexcept { return is_benchmark_mode_; }
 
@@ -96,4 +97,5 @@ private:
     bool is_benchmark_mode_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

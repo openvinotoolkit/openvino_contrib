@@ -10,7 +10,8 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/detection_output.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class DetectionOutputOp : public OperationBase {
 public:
@@ -32,4 +33,5 @@ private:
     std::optional<kernel::DetectionOutput> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

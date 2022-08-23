@@ -9,7 +9,8 @@
 #include "cuda_type_traits.hpp"
 #include "error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class ScatterNDUpdate {
@@ -60,4 +61,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

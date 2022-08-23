@@ -13,7 +13,8 @@
 #include "converters.hpp"
 #include "error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 ClampCudaOp::ClampCudaOp(const CreationContext& context,
                          const NodeOp& node,
@@ -38,7 +39,7 @@ ClampCudaOp::ClampCudaOp(const CreationContext& context,
     const double min = node.get_min();
     const double max = node.get_max();
     kernel_ = kernel::Clamp{
-        convertDataType<CUDAPlugin::kernel::Type_t>(element_type), max_threads_per_block, num_elements, min, max};
+        convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), max_threads_per_block, num_elements, min, max};
 }
 
 void ClampCudaOp::Execute(const InferenceRequestContext& context,
@@ -52,4 +53,5 @@ void ClampCudaOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(context.getThreadContext().stream().get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

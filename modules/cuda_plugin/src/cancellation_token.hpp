@@ -11,7 +11,8 @@
 #include <functional>
 #include <utility>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CancellationToken {
 public:
@@ -45,4 +46,5 @@ private:
     std::function<void()> cancel_callback_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

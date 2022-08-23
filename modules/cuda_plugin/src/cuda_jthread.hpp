@@ -6,7 +6,8 @@
 
 #include <thread>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CudaJThread final {
 public:
@@ -29,4 +30,5 @@ private:
     std::thread thread_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

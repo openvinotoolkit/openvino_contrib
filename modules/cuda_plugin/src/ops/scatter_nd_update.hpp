@@ -7,7 +7,8 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/scatter_nd_update.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ScatterNDUpdateOp : public OperationBase {
 public:
@@ -28,4 +29,5 @@ private:
     std::vector<size_t> input_data_dim_pading_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

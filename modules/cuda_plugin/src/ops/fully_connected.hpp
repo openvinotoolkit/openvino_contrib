@@ -11,7 +11,8 @@
 #include "cuda/constant_factory.hpp"
 #include "matmul.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class FullyConnectedOp : public OperationCuBlas {
 public:
@@ -31,4 +32,5 @@ private:
     size_t batch_bias_count_ = 0;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

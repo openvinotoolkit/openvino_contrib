@@ -58,7 +58,7 @@ const auto smokeComparisonTestParams =
                        ::testing::ValuesIn(secondInputTypes),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(shapes)),
@@ -67,7 +67,7 @@ const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(CommonT
                                                      ::testing::ValuesIn(secondInputTypes),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                                     ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                                     ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                                      ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_ComparisonCompareWithRefs,

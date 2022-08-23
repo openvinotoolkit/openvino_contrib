@@ -9,7 +9,8 @@
 #include <utility>
 #include <vector>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
                                                  const NodeOp& node,
@@ -40,7 +41,7 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
             validateSequenceMajorArgShapes(node);
             setupSequenceMajorLayoutAdapters();
             throwIEException(
-                "'CUDAPlugin::nodes::LSTMSequenceOptimized::SequenceMajor': This mode has never been used with real "
+                "'ov::nvidia_gpu::nodes::LSTMSequenceOptimized::SequenceMajor': This mode has never been used with real "
                 "model.");
             break;
         default:
@@ -66,7 +67,7 @@ LSTMSequenceOpBase::Config LSTMSequenceOptimizedOp::config(const NodeOp& node) {
 }
 
 void LSTMSequenceOptimizedOp::validateBatchMajorArgShapes(const NodeOp& node) {
-    using LSTMSequenceArgIndices = CUDAPlugin::RNN::Details::LSTMSequenceArgIndices;
+    using LSTMSequenceArgIndices = ov::nvidia_gpu::RNN::Details::LSTMSequenceArgIndices;
     const int64_t batch_size = params_.batch_size_;
     const int64_t num_directions = params_.numDirections();
     const int64_t hidden_size = params_.hidden_size_;
@@ -137,7 +138,7 @@ void LSTMSequenceOptimizedOp::setupBatchMajorLayoutAdapters() {
 }
 
 void LSTMSequenceOptimizedOp::validateSequenceMajorArgShapes(const NodeOp& node) {
-    using LSTMSequenceArgIndices = CUDAPlugin::RNN::Details::LSTMSequenceArgIndices;
+    using LSTMSequenceArgIndices = ov::nvidia_gpu::RNN::Details::LSTMSequenceArgIndices;
     const int64_t batch_size = params_.batch_size_;
     const int64_t num_directions = params_.numDirections();
     const int64_t hidden_size = params_.hidden_size_;
@@ -209,4 +210,5 @@ void LSTMSequenceOptimizedOp::setupSequenceMajorLayoutAdapters() {
 
 OPERATION_REGISTER(LSTMSequenceOptimizedOp, LSTMSequenceOptimized);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

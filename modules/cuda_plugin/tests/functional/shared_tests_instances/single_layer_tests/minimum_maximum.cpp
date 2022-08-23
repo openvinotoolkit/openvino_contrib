@@ -46,7 +46,7 @@ INSTANTIATE_TEST_CASE_P(smoke_MaxMin,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputType),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         MaxMinLayerTest::getTestCaseName);
 
 }  // namespace

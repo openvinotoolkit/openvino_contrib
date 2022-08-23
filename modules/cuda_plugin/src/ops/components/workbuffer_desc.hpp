@@ -8,7 +8,8 @@
 
 #include "memory_manager/cuda_workbuffers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Helps operation to handle multiple workbuffers. Allows to easily skip
@@ -44,4 +45,5 @@ private:
     int index_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

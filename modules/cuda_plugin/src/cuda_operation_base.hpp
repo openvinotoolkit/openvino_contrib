@@ -24,7 +24,8 @@ class Node;
 
 }
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename T>
 using DevicePointer = CUDA::DevicePointer<T>;
@@ -128,4 +129,5 @@ template <class ConcreteOperator>
 ConcreteOperator& downcast(const std::shared_ptr<ov::Node>& node) {
     return dynamic_cast<ConcreteOperator&>(*node.get());
 }
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

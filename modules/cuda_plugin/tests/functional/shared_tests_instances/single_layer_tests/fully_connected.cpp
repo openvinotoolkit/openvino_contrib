@@ -295,7 +295,7 @@ INSTANTIATE_TEST_CASE_P(smoke_MatMulFP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -307,7 +307,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -319,7 +319,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -331,7 +331,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_Tacatron2,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayer2MatMulTest::getTestCaseName);
 

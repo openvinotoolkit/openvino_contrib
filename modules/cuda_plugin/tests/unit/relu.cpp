@@ -23,7 +23,7 @@ auto assertToThrow(F&& f,
                    const std::experimental::source_location& loc = std::experimental::source_location::current()) {
     bool success = false;
     std::forward<F>(f)(success);
-    if (!success) CUDAPlugin::throwIEException("pathetic google test failed in non-void function", loc);
+    if (!success) ov::nvidia_gpu::throwIEException("pathetic google test failed in non-void function", loc);
 }
 
 #define TASSERT_TRUE(condition)                \
@@ -33,25 +33,25 @@ auto assertToThrow(F&& f,
     })
 
 struct ReluTest : testing::Test {
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
     using ElementType = float;
     static constexpr int length = 5;
     static constexpr size_t size = length * sizeof(ElementType);
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::OperationBase::Ptr operation = [this] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         CUDA::Device device{};
         const bool optimizeOption = false;
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{length});
         auto node = std::make_shared<ov::op::v0::Relu>(param->output(0));
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         TASSERT_TRUE(registry.hasOperation(node));
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{device, optimizeOption},
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},
                                            node,
                                            std::vector<TensorID>{TensorID{0u}},
                                            std::vector<TensorID>{TensorID{0u}});
@@ -61,10 +61,10 @@ struct ReluTest : testing::Test {
 };
 
 TEST_F(ReluTest, canExecuteSync) {
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};

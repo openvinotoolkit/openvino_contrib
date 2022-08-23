@@ -9,7 +9,8 @@
 
 #include "kernels/select.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class SelectOp : public OperationBase {
     enum InputIdx { CONDITION, THEN, ELSE, SIZES };
@@ -50,4 +51,5 @@ private:
     std::optional<kernel::SelectKernelOp> kernel_op_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

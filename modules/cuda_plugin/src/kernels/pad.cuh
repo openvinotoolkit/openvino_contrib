@@ -8,7 +8,8 @@
 #include "eltwise.cuh"
 #include "ngraph/type/element_type.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 class ConstModePad {
@@ -70,4 +71,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

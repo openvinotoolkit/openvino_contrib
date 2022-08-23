@@ -76,7 +76,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_01,
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_02,
@@ -90,7 +90,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_02,
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
 
 // ------------- Tacotron2 Tests -------------
@@ -106,7 +106,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_01,
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_02,
@@ -120,7 +120,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_02,
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_encoder_01,
@@ -134,7 +134,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_encoder_01,
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::BIDIRECTIONAL),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
 
 }  // namespace

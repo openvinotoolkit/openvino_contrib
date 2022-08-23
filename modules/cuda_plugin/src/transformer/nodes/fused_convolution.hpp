@@ -14,7 +14,7 @@
 
 #include "cuda_plugin_custom_node_types.hpp"
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 namespace {
 
@@ -147,4 +147,4 @@ public:
     using BasicFusedConvolution::BasicFusedConvolution;
 };
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

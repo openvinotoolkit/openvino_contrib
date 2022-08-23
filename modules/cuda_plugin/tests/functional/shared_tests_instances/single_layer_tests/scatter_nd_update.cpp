@@ -143,7 +143,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(CudaScatterNDUpdateLayerTest::combineShapes(smoke_shapes)),
                        ::testing::ValuesIn(inputPrecisions),
                        ::testing::ValuesIn(idxPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     CudaScatterNDUpdateLayerTest::getTestCaseName);
 
 // map<inputShape map<indicesShape, emptyIndicesValue>>
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(CudaScatterNDUpdateLayerTest::combineShapes(smoke_shapes_index_generation)),
                        ::testing::ValuesIn(inputPrecisions),
                        ::testing::ValuesIn(idxPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     CudaScatterNDUpdateLayerTest::getTestCaseName);
 
 // yolov5b6 shapes
@@ -182,7 +182,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(CudaScatterNDUpdateLayerTest::combineShapes(yolov5b6_shapes)),
                        ::testing::ValuesIn(inputPrecisions),
                        ::testing::ValuesIn(idxPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     CudaScatterNDUpdateLayerTest::getTestCaseName);
 
 namespace benchmark {
@@ -206,7 +206,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Combine(::testing::ValuesIn(CudaScatterNDUpdateLayerTest::combineShapes(benchmark_shapes)),
                        ::testing::Values(InferenceEngine::Precision::FP32),
                        ::testing::Values(InferenceEngine::Precision::I64),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     CudaScatterNDUpdateLayerTest::getTestCaseName);
 }  // namespace benchmark
 }  // namespace

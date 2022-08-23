@@ -7,7 +7,8 @@
 #include <cstdint>
 #include <cuda/float16.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 enum class Type_t : int {
@@ -127,4 +128,5 @@ struct cuda_type_traits<Type_t::u64> {
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

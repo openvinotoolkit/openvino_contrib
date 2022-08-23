@@ -15,7 +15,7 @@
 * From the Memory Manager point of view
     - a mutable workbuffer is an input/output tensor with its time box starting on T and lasting till T (1 slot in total)
     - an immutable workbuffer is an input/output tensor a  time box spanning through the nework scope
-    - It's a special case which should work (but not tested in CUDAPlugin::MemorySolver) when producerIndex is equal to lastConsumerIndex. 
+    - It's a special case which should work (but not tested in ov::nvidia_gpu::MemorySolver) when producerIndex is equal to lastConsumerIndex. 
       Trying to use other values will keep buffer alive wirthout a reason.
 * Use several workbufers (i.e. a vector) the same way as for inputs and outputs could be as well beneficial for the following reasons:
     - The smaller workbuffer is, the easier to allocate it in a gaps between other memory segments, 

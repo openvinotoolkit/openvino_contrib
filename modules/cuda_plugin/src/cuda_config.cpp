@@ -9,7 +9,7 @@
 #include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 #include <error.hpp>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 Configuration::Configuration() {}
 

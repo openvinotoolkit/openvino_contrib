@@ -6,7 +6,8 @@
 #include <cuda_operation_registry.hpp>
 #include <ngraph/node.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 LogicalNotOp::LogicalNotOp(const CreationContext& context,
                            const std::shared_ptr<ov::Node>& node,
@@ -31,4 +32,5 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
 
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

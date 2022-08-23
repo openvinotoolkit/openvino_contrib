@@ -10,7 +10,8 @@
 #include "cuda_operation_base.hpp"
 #include "kernels/fake_quantize.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class FakeQuantizeOp : public OperationBase {
 public:
@@ -39,4 +40,5 @@ private:
     std::optional<kernel::FakeQuantize> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

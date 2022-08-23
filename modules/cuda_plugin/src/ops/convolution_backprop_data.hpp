@@ -9,7 +9,8 @@
 #include "convolution_components/convolution_components.hpp"
 #include "convolution_components/convolution_cudnn_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Implements both `ov::op::v1::ConvolutionBackpropData`
@@ -61,4 +62,5 @@ public:
     using ConvBackpropDataOp::ConvBackpropDataOp;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

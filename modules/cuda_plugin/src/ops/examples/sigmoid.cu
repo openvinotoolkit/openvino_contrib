@@ -9,7 +9,8 @@
 
 #include "sigmoid.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static __global__ void sigmoid(const size_t inputSize, const float* x, float* y) {
     const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -51,4 +52,5 @@ void SigmoidOp::Execute(const InferenceRequestContext& context,
 }
 
 OPERATION_REGISTER(SigmoidOp, Sigmoid);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

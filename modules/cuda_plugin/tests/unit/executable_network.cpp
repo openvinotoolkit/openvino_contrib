@@ -17,7 +17,7 @@
 
 #include "test_networks.hpp"
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class ExecNetworkTest : public testing::Test {
     void SetUp() override {

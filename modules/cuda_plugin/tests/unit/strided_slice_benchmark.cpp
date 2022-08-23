@@ -35,7 +35,7 @@ struct StridedSliceTest : testing::Test {
     const ov::Shape constTensorShape{3};
     const size_t constantTensorSize = ov::shape_size(constTensorShape) * sizeof(AuxilaryElementType);
 
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(inputBufferSize);
     CUDA::Allocation inBeginAlloc = threadContext.stream().malloc(constantTensorSize);
     CUDA::Allocation inEndAlloc = threadContext.stream().malloc(constantTensorSize);
@@ -64,23 +64,23 @@ struct StridedSliceTest : testing::Test {
         return node;
     };
 
-    CUDAPlugin::OperationBase::Ptr operation = [this] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        return registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        return registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                         create_node(),
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}},
-                                        std::vector<CUDAPlugin::TensorID>{CUDAPlugin::TensorID{0u}});
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}},
+                                        std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0u}});
     }();
 };
 
 TEST_F(StridedSliceTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
@@ -92,7 +92,7 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     stream.upload(inAlloc, in.data(), inputBufferSize);
     auto wb_request = operation->GetWorkBufferRequest();
     ASSERT_EQ(wb_request.immutable_sizes.size(), 5);
-    CUDAPlugin::Workbuffers workbuffers;
+    ov::nvidia_gpu::Workbuffers workbuffers;
     workbuffers.immutable_buffers = {srcShapeSizesAlloc, dstShapeSizesAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc};
     operation->InitSharedImmutableWorkbuffers(
         {srcShapeSizesAlloc, dstShapeSizesAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc});

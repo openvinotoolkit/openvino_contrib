@@ -16,7 +16,8 @@
 #include "numpy_broadcast_mapper.cuh"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 #ifdef __CUDACC__
@@ -140,4 +141,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

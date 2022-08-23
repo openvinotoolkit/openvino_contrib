@@ -8,7 +8,8 @@
 
 #include "divide.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 namespace {
@@ -87,4 +88,5 @@ void PythonDivide::operator()(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

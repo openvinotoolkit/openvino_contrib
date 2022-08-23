@@ -39,13 +39,13 @@ inline std::string cudnnGetErrorString(cudnnConvolutionFwdAlgo_t algo) {
 inline void throwIfError(
     cudnnStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUDNN_STATUS_SUCCESS) CUDAPlugin::throwIEException(cudnnGetErrorString(err), location);
+    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cudnnGetErrorString(err), location);
 }
 
 inline void logIfError(
     cudnnStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUDNN_STATUS_SUCCESS) CUDAPlugin::logError(cudnnGetErrorString(err), location);
+    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::logError(cudnnGetErrorString(err), location);
 }
 
 namespace CUDA {

@@ -6,7 +6,7 @@ index 9b0509bab..40b298319 100644
                DEPENDENCIES ie_samples_utils
                OPENCV_DEPENDENCIES core imgcodecs)
  
-+add_dependencies(hello_classification CUDAPlugin)
++add_dependencies(hello_classification openvino_nvidia_gpu_plugin)
 diff --git a/inference-engine/samples/hello_classification/main.cpp b/inference-engine/samples/hello_classification/main.cpp
 index 858a87ead..25509e21d 100644
 --- a/inference-engine/samples/hello_classification/main.cpp

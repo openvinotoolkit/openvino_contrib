@@ -20,7 +20,7 @@ const std::vector<std::map<std::string, std::string>> configs = {};
 INSTANTIATE_TEST_CASE_P(smoke_BehaviorTests_IncorrectConfig,
                         InferRequestConfigTest,
                         ::testing::Combine(::testing::Values(0ul),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                            ::testing::ValuesIn(configs)),
                         InferRequestConfigTest::getTestCaseName);
 

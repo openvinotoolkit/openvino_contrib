@@ -7,7 +7,7 @@
 #include <gsl/gsl_assert>
 #include <ngraph/op/util/recurrent_sequence.hpp>
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 LSTMSequenceOptimized::LSTMSequenceOptimized(const ov::Output<Node>& X,
                                              const ov::Output<Node>& initial_hidden_state,
@@ -186,4 +186,4 @@ void LSTMSequenceOptimized::validate_and_infer_types() {
     set_output_type(2, result_et, {merged_num_directions, merged_batch_size, merged_hidden_size});
 }
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

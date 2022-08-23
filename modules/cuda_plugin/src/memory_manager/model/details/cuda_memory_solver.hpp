@@ -15,7 +15,8 @@
 
 #include "ie_api.h"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief Helps to solve issue of optimal memory allocation only for particular
@@ -91,4 +92,5 @@ private:
     void calcDepth();
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

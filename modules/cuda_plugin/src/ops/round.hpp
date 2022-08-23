@@ -8,7 +8,8 @@
 
 #include "openvino/op/round.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class RoundOp : public OperationBase {
 public:
@@ -28,4 +29,5 @@ private:
     std::optional<kernel::Round> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

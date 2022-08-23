@@ -7,7 +7,7 @@
 #include <cuda/runtime.hpp>
 #include <cuda/stl/mdspan.cuh>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class MDSpanTest : public testing::Test {
     void SetUp() override {}

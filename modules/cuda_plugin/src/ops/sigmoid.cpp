@@ -6,7 +6,8 @@
 
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 SigmoidOp::SigmoidOp(const CreationContext& context,
                      const std::shared_ptr<ov::Node>& node,
@@ -16,4 +17,5 @@ SigmoidOp::SigmoidOp(const CreationContext& context,
           std::make_unique<CUDA::SigmoidDescriptor>(), context, *node, move(inputIds), move(outputIds)} {}
 
 OPERATION_REGISTER(SigmoidOp, Sigmoid);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -8,7 +8,8 @@
 
 #include "cuda_infer_request.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CudaAsyncInferRequest : public InferenceEngine::AsyncInferRequestThreadSafeDefault {
 public:
@@ -30,4 +31,5 @@ private:
     CudaInferRequest::Ptr _inferRequest;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

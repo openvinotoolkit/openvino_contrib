@@ -6,7 +6,8 @@
 
 #include "strided_slice.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 #ifdef CUDA_KERNEL_PRINT_LOG
@@ -221,4 +222,5 @@ void StridedSliceKernelOp::callReverseAxesKernel(const cudaStream_t stream, void
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -9,7 +9,8 @@
 
 #include "kernels/range.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class RangeOp : public OperationBase {
     enum InputIdx { START_INDX, STOP_INDX, STEP_INDX };
@@ -30,4 +31,5 @@ private:
     std::optional<kernel::RangeKernelOp> kernel_op_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

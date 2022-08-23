@@ -10,11 +10,13 @@
 #include "elementwise_binary.hpp"
 #include "kernels/prelu.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class PReluOp : public ElementwiseBinaryOp<ov::op::v0::PRelu, kernel::PRelu> {
 public:
     using ElementwiseBinaryOp::ElementwiseBinaryOp;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

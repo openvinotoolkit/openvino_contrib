@@ -28,7 +28,8 @@
 
 using namespace InferenceEngine;
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 using namespace utils;
 
 using Time = std::chrono::steady_clock;
@@ -163,7 +164,7 @@ void CudaInferRequest::createInferRequest() {
 }
 
 void CudaInferRequest::inferPreprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::Preprocess]);
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::Preprocess]);
     cancellation_token_.Check();
     profiler_.StartStage();
     IInferRequestInternal::convertBatchedInputBlobs();
@@ -196,7 +197,7 @@ void CudaInferRequest::inferPreprocess() {
             for (size_t i = 0; i < blockDims.size(); i++) {
                 const size_t rev_idx = blockDims.size() - i - 1;
                 OPENVINO_ASSERT(order.at(rev_idx) == rev_idx,
-                                "CUDAPlugin: unsupported tensors with mixed axes order: ",
+                                "ov::nvidia_gpu: unsupported tensors with mixed axes order: ",
                                 ngraph::vector_to_string(order));
                 if (strides.at(rev_idx) != exp_stride || offsetPaddingToData.at(rev_idx) != 0) {
                     return false;
@@ -212,7 +213,7 @@ void CudaInferRequest::inferPreprocess() {
                 std::make_shared<ngraph::HostTensor>(parameterType, parameterShape, mem_blob->rmap().as<void*>());
         } else {
             OPENVINO_ASSERT(parameterType.bitwidth() % 8 == 0,
-                            "CUDAPlugin: Unsupported ROI tensor with element type having ",
+                            "ov::nvidia_gpu: Unsupported ROI tensor with element type having ",
                             std::to_string(parameterType.bitwidth()),
                             " bits size");
             // Perform manual extraction of ROI tensor
@@ -222,7 +223,7 @@ void CudaInferRequest::inferPreprocess() {
             auto desc = mem_blob->getTensorDesc();
             auto* src_data = mem_blob->rmap().as<uint8_t*>();
             auto dst_tensor = std::dynamic_pointer_cast<ngraph::runtime::HostTensor>(input_tensors_.at(index));
-            OPENVINO_ASSERT(dst_tensor, "CUDAPlugin error: Can't cast created tensor to HostTensor");
+            OPENVINO_ASSERT(dst_tensor, "nvidia_gpu error: Can't cast created tensor to HostTensor");
             auto* dst_data = dst_tensor->get_data_ptr<uint8_t>();
             std::vector<size_t> indexes(parameterShape.size());
             for (size_t dst_idx = 0; dst_idx < ov::shape_size(parameterShape); dst_idx++) {
@@ -266,7 +267,7 @@ void CudaInferRequest::inferPreprocess() {
 
 void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
     try {
-        OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::StartPipeline])
+        OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::StartPipeline])
         profiler_.StartStage();
         memory_proxy_ = _executableNetwork->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
@@ -290,7 +291,7 @@ void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
 }
 
 void CudaInferRequest::waitPipeline(const ThreadContext& threadContext) {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::WaitPipeline])
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::WaitPipeline])
     cancellation_token_.Check();
     profiler_.StartStage();
     // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
@@ -300,7 +301,7 @@ void CudaInferRequest::waitPipeline(const ThreadContext& threadContext) {
 }
 
 void CudaInferRequest::inferPostprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::CUDAPlugin, _profilingTask[Profiler::Postprocess]);
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::Postprocess]);
     cancellation_token_.Check();
     profiler_.StartStage();
     for (auto&& output : _outputs) {
@@ -731,4 +732,5 @@ void CudaInferRequest::convertPrecision(const Blob::Ptr& src, const Blob::Ptr& d
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

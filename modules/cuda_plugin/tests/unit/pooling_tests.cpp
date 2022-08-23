@@ -20,7 +20,7 @@
 #include <type_traits>
 
 using namespace InferenceEngine;
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 static const ov::Shape min_supported_pooling_shape{1, 1, 4, 4};
 static const ov::Shape dummy_kernel{2, 2};

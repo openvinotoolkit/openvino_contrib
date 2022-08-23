@@ -10,7 +10,8 @@
 #include "interpolate_details.cuh"
 #include "interpolate_nearest.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 static inline __device__ float calc_output_index(const InterpolateNearest::CoordinateTransformMode mode,
@@ -184,7 +185,7 @@ static __global__ void upscale_interpolate(const InterpolateNearest::NearestMode
 
 InterpolateNearest::InterpolateNearest(size_t num_blocks,
                                        size_t threads_per_block,
-                                       CUDAPlugin::kernel::Type_t element_type,
+                                       ov::nvidia_gpu::kernel::Type_t element_type,
                                        bool use_optimized_kernel,
                                        NearestMode nearest_mode,
                                        CoordinateTransformMode transform_mode)
@@ -260,4 +261,5 @@ void InterpolateNearest::callKernel(const cudaStream_t stream,
 
 }  // namespace kernel
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

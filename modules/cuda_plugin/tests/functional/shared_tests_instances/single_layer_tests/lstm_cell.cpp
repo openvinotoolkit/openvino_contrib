@@ -70,7 +70,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_01,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(smoke_clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 const std::vector<size_t> smoke_input_sizes_02{2, 3, 30};
@@ -85,7 +85,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_02,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(smoke_clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Other shapes -------------
@@ -108,7 +108,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_dec_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_dec_02{1, 1536, 1024, 0.0f};
@@ -122,7 +122,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_dec_02.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_enc_01{1, 512, 256, 0.0f};
@@ -136,7 +136,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_enc_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_enc_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Big shapes -------------
@@ -151,7 +151,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_OV_Doc_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(ov_doc_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_01{10, 2048, 2048, 0.0f};
@@ -165,7 +165,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(big_01.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_02{1, 8192, 4096, 0.0f};
@@ -179,7 +179,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(big_02.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_03{3, 1781, 5003, 0.0f};
@@ -193,7 +193,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_03,
                                            ::testing::Values(activations),
                                            ::testing::Values(big_03.clip),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Benchmark -------------
@@ -220,7 +220,7 @@ void testOneShape(const LSTMCellTestParams& params) {
     const auto ho_size = params.batch * params.hidden_size;
     const auto co_size = params.batch * params.hidden_size;
 
-    CUDAPlugin::ThreadContext threadContext{{}};
+    ov::nvidia_gpu::ThreadContext threadContext{{}};
 
     CUDA::Allocation x_alloc{threadContext.stream().malloc(x_size * sizeof(ElementType))};
     CUDA::Allocation hi_alloc{threadContext.stream().malloc(hi_size * sizeof(ElementType))};
@@ -235,10 +235,10 @@ void testOneShape(const LSTMCellTestParams& params) {
 
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
-    CUDAPlugin::CancellationToken token{};
-    CUDAPlugin::Profiler profiler{false, graph};
-    CUDAPlugin::InferenceRequestContext context{
+    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::CancellationToken token{};
+    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     std::vector<ElementType> x_host(x_size);
     std::vector<ElementType> hi_host(hi_size);
@@ -280,7 +280,7 @@ void testOneShape(const LSTMCellTestParams& params) {
         std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size, params.hidden_size}), r_host);
     auto b_constant = std::make_shared<ov::op::v0::Constant>(type, ov::Shape({4 * params.hidden_size}), b_host);
 
-    CUDAPlugin::OperationBase::Ptr operation = [&] {
+    ov::nvidia_gpu::OperationBase::Ptr operation = [&] {
         const bool optimizeOption = false;
 
         auto x_param = std::make_shared<ov::op::v0::Parameter>(type, ov::Shape{params.batch, params.input_size});
@@ -297,15 +297,15 @@ void testOneShape(const LSTMCellTestParams& params) {
         Ensures(ho_size == ov::shape_size(node->get_output_shape(0)));
         Ensures(co_size == ov::shape_size(node->get_output_shape(1)));
 
-        auto& registry = CUDAPlugin::OperationRegistry::getInstance();
-        auto op = registry.createOperation(CUDAPlugin::CreationContext{threadContext.device(), optimizeOption},
+        auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
+        auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
                                            node,
-                                           std::array{CUDAPlugin::TensorID{0}},
-                                           std::array{CUDAPlugin::TensorID{0}});
+                                           std::array{ov::nvidia_gpu::TensorID{0}},
+                                           std::array{ov::nvidia_gpu::TensorID{0}});
         return op;
     }();
 
-    CUDAPlugin::WorkbufferRequest wb_request{operation->GetWorkBufferRequest()};
+    ov::nvidia_gpu::WorkbufferRequest wb_request{operation->GetWorkBufferRequest()};
     Ensures(wb_request.immutable_sizes.size() != 0);
     Ensures(wb_request.mutable_sizes.size() != 0);
 
@@ -319,14 +319,14 @@ void testOneShape(const LSTMCellTestParams& params) {
     auto y_alloc = CUDA::DefaultStream::stream().malloc(y_size_bytes);
     auto work_space_alloc = CUDA::DefaultStream::stream().malloc(work_space_size);
 
-    CUDAPlugin::IOperationExec::Buffers init_buffers;
+    ov::nvidia_gpu::IOperationExec::Buffers init_buffers;
     init_buffers.emplace_back(DevPtr{sla_alloc.get()});
     if (weight_space_size != 0) {
         init_buffers.emplace_back(DevPtr{weight_space_alloc.get()});
     }
     operation->InitSharedImmutableWorkbuffers(init_buffers);
 
-    CUDAPlugin::Workbuffers workbuffers{};
+    ov::nvidia_gpu::Workbuffers workbuffers{};
     workbuffers.immutable_buffers.emplace_back(CDevPtr{sla_alloc.get()});
     if (weight_space_size != 0) {
         workbuffers.immutable_buffers.emplace_back(CDevPtr{weight_space_alloc.get()});

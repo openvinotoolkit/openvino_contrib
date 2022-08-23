@@ -11,7 +11,8 @@
 
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 enum InputIdx { ARG, INPUT_LOW, INPUT_HIGH, OUTPUT_LOW, OUTPUT_HIGH };
 
@@ -42,7 +43,7 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
     const auto max_threads_per_block = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
 
     kernel_ = kernel::FakeQuantize{
-        convertDataType<CUDAPlugin::kernel::Type_t>(element_type), output_size, max_threads_per_block, levels};
+        convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), output_size, max_threads_per_block, levels};
 }
 
 void FakeQuantizeOp::Execute(const InferenceRequestContext &context,
@@ -75,4 +76,5 @@ void FakeQuantizeOp::InitSharedImmutableWorkbuffers(const Buffers &buffers) {
 WorkbufferRequest FakeQuantizeOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
 
 OPERATION_REGISTER(FakeQuantizeOp, FakeQuantize);
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

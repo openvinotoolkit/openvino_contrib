@@ -18,7 +18,8 @@
 #include "cuda/math.cuh"
 #endif  // __CUDACC__
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 #ifdef __CUDACC__
@@ -75,4 +76,5 @@ private:
 };
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

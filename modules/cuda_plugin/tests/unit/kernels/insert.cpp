@@ -7,7 +7,7 @@
 #include <cuda/runtime.hpp>
 #include <kernels/insert.hpp>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class InsertKernelTest : public testing::Test {
     void SetUp() override {}

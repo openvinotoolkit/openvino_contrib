@@ -13,7 +13,8 @@
 #include "cuda_graph.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * Creates profiler sequence and stores profiler results.
@@ -205,4 +206,5 @@ private:
     const size_t index_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

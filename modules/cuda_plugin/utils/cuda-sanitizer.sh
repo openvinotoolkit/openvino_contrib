@@ -6,7 +6,7 @@ TESTED_TOOL_CMD_LINE=$@
 
 # =======================================================================================
 # common
-CUDASAN_KERNEL_FILTER="--filter kernel_substring=CUDAPlugin"
+CUDASAN_KERNEL_FILTER="--filter kernel_substring=nvidia_gpu"
 CUDASAN_COMMON_ARGS="--print-level=warn --print-limit=100 --error-exitcode=1"
 
 # =======================================================================================

@@ -9,7 +9,8 @@
 #include <ngraph/shape.hpp>
 #endif
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace eltwise {
 
@@ -129,4 +130,5 @@ __device__ int index_in_dim<5>(int dim, const std::size_t shape[5], unsigned ele
 #endif
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

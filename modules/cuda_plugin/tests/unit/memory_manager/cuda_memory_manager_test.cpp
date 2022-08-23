@@ -14,15 +14,15 @@
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 
-class MemoryManagerTest : public testing::Test, public CUDAPlugin::IOperationMeta {
+class MemoryManagerTest : public testing::Test, public ov::nvidia_gpu::IOperationMeta {
 public:
-    using TensorID = CUDAPlugin::TensorID;
+    using TensorID = ov::nvidia_gpu::TensorID;
 
     void SetUp() override {
         // Allocate shared memory block for constant tensors
         {
             const std::vector<uint8_t> data(256, 0xA5);
-            CUDAPlugin::ImmutableMemoryBlockBuilder builder;
+            ov::nvidia_gpu::ImmutableMemoryBlockBuilder builder;
             for (auto id : sharedConstantIds_) {
                 builder.addAllocation(id.GetId(), &data[0], data.size());
             }
@@ -31,7 +31,7 @@ public:
 
         // Create MemoryModel for mutable tensors
         {
-            CUDAPlugin::MemoryModelBuilder builder;
+            ov::nvidia_gpu::MemoryModelBuilder builder;
             const size_t size = 1;
             for (int i = 0; i < mutableTensorIDs_.size(); ++i) {
                 builder.addAllocation(mutableTensorIDs_[i].GetId(), i, i + 2, size);
@@ -45,13 +45,13 @@ public:
     const std::vector<TensorID> mutableTensorIDs_ = {
         TensorID{101}, TensorID{104}, TensorID{103}, TensorID{105}, TensorID{120}, TensorID{121}};
 
-    std::shared_ptr<CUDAPlugin::DeviceMemBlock> immutableTensors_;
-    CUDAPlugin::MemoryModel::Ptr immutableMemoryModel_;
-    CUDAPlugin::MemoryModel::Ptr mutableMemoryModel_;
+    std::shared_ptr<ov::nvidia_gpu::DeviceMemBlock> immutableTensors_;
+    ov::nvidia_gpu::MemoryModel::Ptr immutableMemoryModel_;
+    ov::nvidia_gpu::MemoryModel::Ptr mutableMemoryModel_;
 
-public:  // CUDAPlugin::IOperationMeta
-    std::vector<CUDAPlugin::TensorID> inputIds_;
-    std::vector<CUDAPlugin::TensorID> outputIds_;
+public:  // ov::nvidia_gpu::IOperationMeta
+    std::vector<ov::nvidia_gpu::TensorID> inputIds_;
+    std::vector<ov::nvidia_gpu::TensorID> outputIds_;
     const std::string& GetName() const override {
         static std::string empty;
         return empty;
@@ -62,12 +62,12 @@ public:  // CUDAPlugin::IOperationMeta
         return empty;
     }
 
-    gsl::span<const CUDAPlugin::TensorID> GetInputIds() const override { return inputIds_; }
-    gsl::span<const CUDAPlugin::TensorID> GetOutputIds() const override { return outputIds_; }
+    gsl::span<const ov::nvidia_gpu::TensorID> GetInputIds() const override { return inputIds_; }
+    gsl::span<const ov::nvidia_gpu::TensorID> GetOutputIds() const override { return outputIds_; }
 };
 
 TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
 
@@ -107,7 +107,7 @@ TEST_F(MemoryManagerTest, InputTensorPointersAndTheirOrder) {
 }
 
 TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
 
@@ -137,7 +137,7 @@ TEST_F(MemoryManagerTest, OutputTensorPointersAndTheirOrder) {
 }
 
 TEST_F(MemoryManagerTest, OperationHasNoInputs) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
     auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
     inputIds_ = {};
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
@@ -148,7 +148,7 @@ TEST_F(MemoryManagerTest, OperationHasNoInputs) {
 }
 
 TEST_F(MemoryManagerTest, OperationHasNoOutputs) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
     auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
     outputIds_ = {};
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
@@ -159,7 +159,7 @@ TEST_F(MemoryManagerTest, OperationHasNoOutputs) {
 }
 
 TEST_F(MemoryManagerTest, InvalidInputTensorID) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     const TensorID invalid_buffer_id{9999};
     ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
@@ -181,7 +181,7 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
 }
 
 TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     const TensorID invalid_buffer_id{9999};
     ASSERT_EQ(0, std::count(sharedConstantIds_.begin(), sharedConstantIds_.end(), invalid_buffer_id));
@@ -203,7 +203,7 @@ TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
 }
 
 TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
-    using namespace CUDAPlugin;
+    using namespace ov::nvidia_gpu;
 
     auto memory_manager = std::make_unique<MemoryManager>(immutableTensors_, mutableMemoryModel_);
     outputIds_ = mutableTensorIDs_;

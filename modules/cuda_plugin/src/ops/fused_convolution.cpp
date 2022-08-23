@@ -18,7 +18,8 @@
 #include "fused_convolution_cudnn_be.hpp"
 #endif  // ENABLE_CUDNN_BACKEND_API
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
                                            const std::shared_ptr<ov::Node>& node,
@@ -70,7 +71,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
     // separate cuDNN functions.
     // For more information see:
     // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionBiasActivationForward
-    const bool should_decompose = params.activation_ == CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION &&
+    const bool should_decompose = params.activation_ == ov::nvidia_gpu::nodes::ActivationMode::NO_ACTIVATION &&
                                   conv_descs->Algo().algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
 
     if (should_decompose) {
@@ -115,4 +116,5 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
 OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedConvolution);
 OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedGroupConvolution);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

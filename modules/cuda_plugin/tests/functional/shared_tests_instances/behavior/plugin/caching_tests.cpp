@@ -20,6 +20,6 @@ INSTANTIATE_TEST_SUITE_P(smoke_Behavior_CachingSupportCase_Template,
                          ::testing::Combine(::testing::ValuesIn(LoadNetworkCacheTestBase::getStandardFunctions()),
                                             ::testing::ValuesIn(precisionsTemplate),
                                             ::testing::ValuesIn(batchSizesTemplate),
-                                            ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                          LoadNetworkCacheTestBase::getTestCaseName);
 }  // namespace

@@ -12,7 +12,8 @@
 #include "interpolate_cubic.hpp"
 #include "interpolate_details.cuh"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename CT>
@@ -170,4 +171,5 @@ void InterpolateCubic::initImmutableWorkbuffers(const std::vector<void*>& buffer
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

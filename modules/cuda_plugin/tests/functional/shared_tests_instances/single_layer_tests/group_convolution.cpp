@@ -46,7 +46,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionCUDA2D_Run,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(inputShapes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GroupConvolutionCUDALayerTest::getTestCaseName);
 }  // namespace
 }  // namespace CUDALayerTestsDefinitions

@@ -22,7 +22,7 @@
 #include "test_networks.hpp"
 
 using namespace InferenceEngine;
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 using devptr_t = DevicePointer<void*>;
 using cdevptr_t = DevicePointer<const void*>;

@@ -11,7 +11,8 @@
 #include "add_cudnn.hpp"
 #include "cuda_operation_registry.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static OperationBase::Ptr addFactory(const CreationContext& context,
                                      const std::shared_ptr<ov::Node>& in_node,
@@ -41,4 +42,5 @@ static OperationBase::Ptr addFactory(const CreationContext& context,
 
 OPERATION_REGISTER_FACTORY(addFactory, Add)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

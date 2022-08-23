@@ -9,7 +9,8 @@
 
 #include "convolution_components/convolution_components.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 GroupConvolutionOp::GroupConvolutionOp(const CreationContext &context,
                                        const NodeOp &node,
@@ -29,4 +30,5 @@ WorkbufferRequest GroupConvolutionOp::GetWorkBufferRequest() const { return conv
 
 OPERATION_REGISTER(GroupConvolutionOp, GroupConvolution);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

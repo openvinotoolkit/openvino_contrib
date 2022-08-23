@@ -6,7 +6,8 @@
 
 #include <ngraph/node.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OperationRegistry& OperationRegistry::getInstance() {
     static OperationRegistry registry;
@@ -49,4 +50,5 @@ OperationBase::Ptr OperationRegistry::createOperation(const CreationContext& con
     return createOperation(context, node, toVector(inIds), toVector(outIds));
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

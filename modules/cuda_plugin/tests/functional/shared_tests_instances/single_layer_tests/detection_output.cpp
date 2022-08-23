@@ -14,7 +14,7 @@ namespace {
 
 template <typename TDataType>
 struct TestDetectionOutputResult {
-    CUDAPlugin::kernel::DetectionOutputResult<TDataType> data;
+    ov::nvidia_gpu::kernel::DetectionOutputResult<TDataType> data;
 
     static float threshold;
 
@@ -203,7 +203,7 @@ const auto params3Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams3In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(0.0f),
-                                              ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput3In,
                         CudaDetectionOutputLayerTest,
@@ -227,7 +227,7 @@ const auto params5Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams5In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(objectnessScore),
-                                              ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput5In,
                         CudaDetectionOutputLayerTest,
@@ -267,7 +267,7 @@ const auto paramsSSDMobileNetInputs = ::testing::Combine(commonAttributesSSDMobi
                                                          ::testing::ValuesIn(specificParamsSSDMobileNetIn),
                                                          ::testing::ValuesIn(numberBatchSSDMobileNet),
                                                          ::testing::Values(objectnessScoreSSDMobileNet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputSSDMobileNetIn,
                         CudaDetectionOutputLayerTest,
@@ -307,7 +307,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 // NOTE: Too many elements with similar confidence that leads test to fail
 INSTANTIATE_TEST_CASE_P(DISABLED_DetectionOutputEfficientDetIn,
@@ -332,7 +332,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_CUDA));
+                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputEfficientDetIn,
                         CudaDetectionOutputLayerBenchmarkTest,

@@ -18,7 +18,8 @@
 #include "parameter.hpp"
 #include "result.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 SubGraph::SubGraph(const CreationContext& context,
                    const SubGraphOp& op,
@@ -144,4 +145,5 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     }
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

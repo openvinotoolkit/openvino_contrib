@@ -16,7 +16,8 @@
 #include "cuda/event.hpp"
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 constexpr int NON_SPATIAL_DIMS_NUMBER = 2;
 
@@ -144,7 +145,7 @@ FusedConvolutionCuDnnBE::FusedConvolutionCuDnnBE(const CreationContext& context,
                             .build();
 
         std::shared_ptr<CUDA::DnnBEPointwiseDescriptor> activation_desc;
-        if (params.activation_ != CUDAPlugin::nodes::ActivationMode::NO_ACTIVATION) {
+        if (params.activation_ != ov::nvidia_gpu::nodes::ActivationMode::NO_ACTIVATION) {
             auto activation_desc_builder =
                 CUDA::DnnBEPointwiseDescriptorBuilder()
                     .setMode(convertActivationModeToBE(params.activation_))
@@ -273,7 +274,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> FusedConvolutionCuDnnBE::performBenchm
 WorkbufferRequest FusedConvolutionCuDnnBE::GetWorkBufferRequest() const {
     Expects(engine_config_);
     if (workspace_size_ < 0) {
-        CUDAPlugin::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
+        ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
     const size_t size = std::max(static_cast<int64_t>(0), workspace_size_);
     if (size > 0) {
@@ -334,7 +335,7 @@ std::shared_ptr<CUDA::DnnBETensorDescriptor> FusedConvolutionCuDnnBE::MakeTensor
     bool isVirtual) {
     const int nbDims = shape.size();
     if (nbDims < 4 || nbDims > 5) {
-        CUDAPlugin::throwIEException(
+        ov::nvidia_gpu::throwIEException(
             fmt::format("Unexpected number of dimensions for Convolution input/output: {}", nbDims));
     }
 
@@ -347,4 +348,5 @@ std::shared_ptr<CUDA::DnnBETensorDescriptor> FusedConvolutionCuDnnBE::MakeTensor
     return desc_builder.setIsVirtual(isVirtual).setUniqueId(id).setAlignment(16).build();
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

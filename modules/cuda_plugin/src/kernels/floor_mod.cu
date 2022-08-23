@@ -8,7 +8,8 @@
 
 #include "floor_mod.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 namespace {
@@ -59,4 +60,5 @@ void FloorMod::operator()(cudaStream_t stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

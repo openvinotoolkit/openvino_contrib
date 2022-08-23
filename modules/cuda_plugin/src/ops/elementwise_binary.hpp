@@ -9,7 +9,8 @@
 #include "components/numpy_broadcast_params.h"
 #include "converters.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename nGraphNode, typename Kernel>
 class ElementwiseBinaryOp : public OperationBase {
@@ -38,7 +39,7 @@ public:
         const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
         const size_t out_num_elements = ngraph::shape_size(node.get_output_shape(0));
         kernel_ =
-            Kernel{convertDataType<CUDAPlugin::kernel::Type_t>(element_type), out_num_elements, max_threads_per_block};
+            Kernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), out_num_elements, max_threads_per_block};
     }
 
     void Execute(const InferenceRequestContext& context,
@@ -73,4 +74,5 @@ private:
     std::optional<Kernel> kernel_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -11,7 +11,8 @@
 
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 namespace details {
 
@@ -114,7 +115,8 @@ public:
     }
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov
 
 /**
  * @macro OPERATION_REGISTER
@@ -129,11 +131,11 @@ public:
  */
 #define OPERATION_REGISTER(type, name)                                                                              \
     extern "C" {                                                                                                    \
-    [[maybe_unused]] const ::CUDAPlugin::OperationRegistry::Register<type> openvino_cuda_op_register_##name{#name}; \
+    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<type> openvino_cuda_op_register_##name{#name}; \
     }
 
 #define OPERATION_REGISTER_FACTORY(factory, name)                                                                     \
     extern "C" {                                                                                                      \
-    [[maybe_unused]] const ::CUDAPlugin::OperationRegistry::Register<OperationBase> openvino_cuda_op_register_##name{ \
+    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<OperationBase> openvino_cuda_op_register_##name{ \
         #name, factory};                                                                                              \
     }

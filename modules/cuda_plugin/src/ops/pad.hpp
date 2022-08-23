@@ -7,7 +7,8 @@
 #include <kernels/pad.cuh>
 #include <openvino/op/pad.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class PadOp : public OperationBase {
 public:
@@ -45,4 +46,5 @@ private:
     ov::Shape dst_shape_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

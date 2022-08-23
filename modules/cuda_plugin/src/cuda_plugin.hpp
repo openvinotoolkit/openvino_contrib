@@ -11,7 +11,8 @@
 #include "cuda_thread_pool.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class Plugin : public InferenceEngine::IInferencePlugin {
 public:
@@ -63,4 +64,5 @@ private:
 template <>
 std::string Plugin::getCudaAttribute<Plugin::cuda_attribute::name, std::string>() const;
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

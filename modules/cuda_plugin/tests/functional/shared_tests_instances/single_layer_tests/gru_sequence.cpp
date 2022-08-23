@@ -169,7 +169,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(linear_before_reset),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     GRUSequenceTest::getTestCaseName);
 
 // ------------- Smoke test -------------
@@ -189,7 +189,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(linear_before_reset),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     GRUSequenceTest::getTestCaseName);
 
 // -------------  LPCNet shapes  -------------
@@ -208,7 +208,7 @@ INSTANTIATE_TEST_CASE_P(LPCNetCUDNNGRUSequenceShapeTest,
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::ValuesIn(direction),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUSequenceTest::getTestCaseName);
 
 }  // namespace

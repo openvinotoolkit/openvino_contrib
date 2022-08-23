@@ -26,7 +26,7 @@ addIeTargetTest(
 		OBJECT_FILES
 		${CUDA_SOURCES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        openvino_cuda_plugin_obj
+        openvino_nvidia_gpu_plugin_obj
         ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
         IE::funcSharedTests

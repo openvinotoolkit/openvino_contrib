@@ -7,7 +7,7 @@
 #include <cuda/runtime.hpp>
 #include <cuda/stl/atomic.cuh>
 
-using namespace CUDAPlugin;
+using namespace ov::nvidia_gpu;
 
 class AtomicTest : public testing::Test {
     void SetUp() override {}

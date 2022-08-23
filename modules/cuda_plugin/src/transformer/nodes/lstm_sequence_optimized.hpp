@@ -6,7 +6,7 @@
 
 #include <openvino/op/lstm_sequence.hpp>
 
-namespace CUDAPlugin::nodes {
+namespace ov::nvidia_gpu::nodes {
 
 class LSTMSequenceOptimized : public ov::op::v5::LSTMSequence {
 public:
@@ -40,4 +40,4 @@ private:
     MajorFormat m_major_format;
 };
 
-}  // namespace CUDAPlugin::nodes
+}  // namespace ov::nvidia_gpu::nodes

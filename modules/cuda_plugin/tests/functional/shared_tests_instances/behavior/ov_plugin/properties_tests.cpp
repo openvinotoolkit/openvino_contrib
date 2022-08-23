@@ -34,7 +34,7 @@ const std::vector<ov::AnyMap> auto_batch_inproperties = {
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
@@ -69,7 +69,7 @@ const std::vector<ov::AnyMap> default_properties = {
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVPropertiesDefaultTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(default_properties)),
                          OVPropertiesDefaultTests::getTestCaseName);
 
@@ -79,23 +79,23 @@ const std::vector<ov::AnyMap> properties = {
 };
 
 const std::vector<ov::AnyMap> hetero_properties = {
-    {ov::device::priorities(CommonTestUtils::DEVICE_CUDA), ov::enable_profiling(true)},
-    {ov::device::priorities(CommonTestUtils::DEVICE_CUDA), ov::device::id(0)},
+    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::enable_profiling(true)},
+    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::device::id(0)},
 };
 
 const std::vector<ov::AnyMap> multi_properties = {
-    {ov::device::priorities(CommonTestUtils::DEVICE_CUDA), ov::enable_profiling(true)},
-    {ov::device::priorities(CommonTestUtils::DEVICE_CUDA), ov::device::id(0)},
+    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::enable_profiling(true)},
+    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::device::id(0)},
 };
 
 const std::vector<ov::AnyMap> auto_batch_properties = {
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_CUDA}},
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_CUDA}, {CONFIG_KEY(AUTO_BATCH_TIMEOUT), "1"}},
+    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_NVIDIA}},
+    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_NVIDIA}, {CONFIG_KEY(AUTO_BATCH_TIMEOUT), "1"}},
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVPropertiesTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_CUDA),
+                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(properties)),
                          OVPropertiesTests::getTestCaseName);
 

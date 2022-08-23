@@ -215,7 +215,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_0),
                                            ::testing::Values(output2D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -247,7 +247,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_1),
                                            ::testing::Values(output2D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // =============================================================================
@@ -278,7 +278,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 16, 16}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {32, 32}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -306,7 +306,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 8, 8}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {16, 16}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -334,7 +334,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 64, 64}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {128, 128}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -362,7 +362,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 32, 32}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {64, 64}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -390,7 +390,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 18, 18, 18}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {36, 36, 36}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -418,7 +418,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 9, 9, 9}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {18, 18, 18}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -446,7 +446,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 72, 72, 72}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {144, 144, 144}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -474,7 +474,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 36, 36, 36}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {72, 72, 72}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_CUDA)),
+        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}

@@ -7,7 +7,8 @@
 #include "swish.hpp"
 #include "tensor_helpers.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 template <typename T>
@@ -55,4 +56,5 @@ Swish::Swish(Type_t element_type, size_t max_threads_per_block, size_t num_eleme
 void Swish::operator()(cudaStream_t stream, const void* in, void* out) const { ewu_(stream, in, out, beta_); }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

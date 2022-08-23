@@ -11,7 +11,8 @@
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace {
 
 bool argTypesSupported(cudnnDataType_t in0, cudnnDataType_t in1, cudnnDataType_t out) {
@@ -172,4 +173,5 @@ CuDnnTensorOpBase::IoParams::IoParams(const ov::Node& node, const Type& io_type,
       array_(toArray<int, max_supported_shape_size>(shape_)),
       desc_(desc(type_, array_)) {}
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

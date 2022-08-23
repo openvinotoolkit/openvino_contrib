@@ -11,7 +11,8 @@
 #include <initializer_list>
 #include <ngraph/node.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ActivationForwardCuDnnOpBase : public OperationCuDnn {
 public:
@@ -37,4 +38,5 @@ protected:
     cudnnDataType_t data_type_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

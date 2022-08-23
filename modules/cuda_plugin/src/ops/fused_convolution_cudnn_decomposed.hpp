@@ -11,7 +11,8 @@
 #include "cuda/dnn.hpp"
 #include "cuda_operation_base.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 /**
  * @brief This class was created as a workaround for the following cuDNN behavior:
@@ -49,4 +50,5 @@ private:
     std::shared_ptr<CUDA::DnnActivationDescriptor> activation_desc_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

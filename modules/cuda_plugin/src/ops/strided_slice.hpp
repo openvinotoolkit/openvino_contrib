@@ -10,7 +10,8 @@
 #include "kernels/strided_slice.hpp"
 #include "ngraph/slice_plan.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class StridedSliceOp : public OperationBase {
 public:
@@ -63,4 +64,5 @@ private:
     std::optional<kernel::StridedSliceKernelOp> kernel_op_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

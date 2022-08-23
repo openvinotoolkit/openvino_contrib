@@ -15,7 +15,8 @@
 
 #include "cuda_jthread.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class CudaThreadPool : public InferenceEngine::ITaskExecutor {
 public:
@@ -36,4 +37,5 @@ private:
     std::vector<CudaJThread> threads_;
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

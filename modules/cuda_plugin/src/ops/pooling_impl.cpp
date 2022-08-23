@@ -13,7 +13,8 @@
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 static constexpr size_t non_spatial_dims_{2};
 static constexpr size_t min_spatial_dims_{2};
@@ -153,4 +154,5 @@ std::vector<int> PoolingImpl::paddings_from_ngraph(const ov::Shape& pads_begin,
 
 int PoolingImpl::spatial_dims() const { return dims_ - non_spatial_dims_; }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

@@ -17,7 +17,8 @@
 #include "detection_output.hpp"
 #include "error.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 namespace kernel {
 
 namespace cumath = CUDA::math;
@@ -1222,4 +1223,5 @@ void DetectionOutput::call(const CUDA::Stream& stream,
 }
 
 }  // namespace kernel
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

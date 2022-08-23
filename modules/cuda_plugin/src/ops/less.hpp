@@ -6,7 +6,8 @@
 
 #include "comparison.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class LessOp : public Comparison {
 public:
@@ -16,4 +17,5 @@ public:
            IndexCollection&& outputIds);
 };
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

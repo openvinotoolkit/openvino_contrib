@@ -6,7 +6,8 @@
 
 #include <cuda_operation_registry.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 GreaterOp::GreaterOp(const CreationContext& context,
                      const ov::Node& node,
@@ -16,4 +17,5 @@ GreaterOp::GreaterOp(const CreationContext& context,
 
 OPERATION_REGISTER(GreaterOp, Greater);
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

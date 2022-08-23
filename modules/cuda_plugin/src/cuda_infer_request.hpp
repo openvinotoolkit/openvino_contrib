@@ -25,7 +25,8 @@
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "utils/perf_timing.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 class ExecutableNetwork;
 
@@ -107,4 +108,5 @@ private:
 };
 // ! [infer_request:header]
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

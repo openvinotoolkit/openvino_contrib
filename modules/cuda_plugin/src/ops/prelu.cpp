@@ -10,8 +10,10 @@
 
 #include "cuda_operation_registry.hpp"
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 OPERATION_REGISTER(PReluOp, PRelu)
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov

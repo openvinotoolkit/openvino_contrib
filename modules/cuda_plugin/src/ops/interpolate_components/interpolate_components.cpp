@@ -10,7 +10,7 @@
 #include "error.hpp"
 #include "ngraph/validation_util.hpp"
 
-namespace CUDAPlugin::Interpolate::Details {
+namespace ov::nvidia_gpu::Interpolate::Details {
 
 void getAxesAndScales(const ov::op::v4::Interpolate& node, std::vector<size_t>& axes, std::vector<float>& scales) {
     axes = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<size_t>();
@@ -34,4 +34,4 @@ void getAxesAndScales(const ov::op::v4::Interpolate& node, std::vector<size_t>& 
     }
 }
 
-}  // namespace CUDAPlugin::Interpolate::Details
+}  // namespace ov::nvidia_gpu::Interpolate::Details

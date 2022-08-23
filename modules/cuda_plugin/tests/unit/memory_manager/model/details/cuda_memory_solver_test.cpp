@@ -10,32 +10,32 @@
 
 #include "details/ie_exception.hpp"
 
-using Box = CUDAPlugin::MemorySolver::Box;
+using Box = ov::nvidia_gpu::MemorySolver::Box;
 
 TEST(MemSolverTest, CanConstruct) {
     {  // Empty vector<Box>
-        CUDAPlugin::MemorySolver ms(std::vector<Box>{});
+        ov::nvidia_gpu::MemorySolver ms(std::vector<Box>{});
     }
 
     {  // vector with default Box
-        CUDAPlugin::MemorySolver ms(std::vector<Box>{{}});
+        ov::nvidia_gpu::MemorySolver ms(std::vector<Box>{{}});
     }
 
     {  // vector with Box with non-default Box
-        CUDAPlugin::MemorySolver ms(std::vector<Box>{{1, 3, 3}});
+        ov::nvidia_gpu::MemorySolver ms(std::vector<Box>{{1, 3, 3}});
     }
 
     {  // vector with Box with size == 0
-        CUDAPlugin::MemorySolver ms(std::vector<Box>{{0, 0, 0}});
+        ov::nvidia_gpu::MemorySolver ms(std::vector<Box>{{0, 0, 0}});
     }
 
     {  // vector with Box with finish == -1
-        CUDAPlugin::MemorySolver ms(std::vector<Box>{{3, -1, 6}});
+        ov::nvidia_gpu::MemorySolver ms(std::vector<Box>{{3, -1, 6}});
     }
 
     // TODO: enable after implement TODO from src/mkldnn_plugin/mkldnn_memory_solver.cpp#L17
     //  {   // vector with Box with negative values
-    //      CUDAPlugin::MemorySolver ms(std::vector<Box> {{-5, -5, -5, -5}});
+    //      ov::nvidia_gpu::MemorySolver ms(std::vector<Box> {{-5, -5, -5, -5}});
     //  }
 }
 
@@ -49,7 +49,7 @@ TEST(MemSolverTest, GetOffset) {
         {n, ++n, 2, 3},  //      0  1  2  3  4
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     ms.solve();
 
     //  The correct answer is [0, 2, 0, 2] or [2, 0, 2, 0].
@@ -68,7 +68,7 @@ TEST(MemSolverTest, GetOffsetThrowException) {
         {n, ++n, 2, id++},  //      0  1  2  3  4
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     ms.solve();
 
     EXPECT_THROW(ms.getOffset(100), InferenceEngine::details::InferenceEngineException);
@@ -83,7 +83,7 @@ TEST(MemSolverTest, LinearAndEven) {
         {n, ++n, 2},  //  |__|____||____|__
     };                //      0  1  2  3
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 4);
     EXPECT_EQ(ms.maxDepth(), 4);
     EXPECT_EQ(ms.maxTopDepth(), 2);
@@ -98,7 +98,7 @@ TEST(MemSolverTest, LinearAndNotEven) {
         {n, ++n, 3},  //  |__|____||____|__
     };                //      0  1  2  3
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 5);
     EXPECT_EQ(ms.maxDepth(), 5);
     EXPECT_EQ(ms.maxTopDepth(), 2);
@@ -113,7 +113,7 @@ TEST(MemSolverTest, LinearWithEmptyExecIndexes) {
         {n, n += 2, 3},  //  |__|_______|___|_______|__
     };                   //      2  3  4  5  6  7  8
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 5);
     EXPECT_EQ(ms.maxDepth(), 5);
     EXPECT_EQ(ms.maxTopDepth(), 2);
@@ -128,7 +128,7 @@ TEST(MemSolverTest, DISABLED_Unefficiency) {
         {2, 3, 2},  //      2  3  4  5  6  7  8
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 5);  // currently we have answer 6
     EXPECT_EQ(ms.maxDepth(), 5);
     EXPECT_EQ(ms.maxTopDepth(), 2);
@@ -143,7 +143,7 @@ TEST(MemSolverTest, OverlappingBoxes) {
         {2, 3, 2},  //      2  3  4  5  6  7  8
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 6);
     EXPECT_EQ(ms.maxDepth(), 6);
     EXPECT_EQ(ms.maxTopDepth(), 2);
@@ -159,7 +159,7 @@ TEST(MemSolverTest, EndOnSeveralBegins) {
         {3, 4, 2},  //      0  1  2  3  4  5  6
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 6);
     EXPECT_EQ(ms.maxDepth(), 6);
     EXPECT_EQ(ms.maxTopDepth(), 3);
@@ -175,7 +175,7 @@ TEST(MemSolverTest, ToEndBoxes) {
         {3, 4, 2},   //      0  1  2  3  4  5  6
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 8);
     EXPECT_EQ(ms.maxDepth(), 8);
     EXPECT_EQ(ms.maxTopDepth(), 4);
@@ -191,7 +191,7 @@ TEST(MemSolverTest, LastAndToEndBox) {
         {3, 4, 2},   //      0  1  2  3  4  5  6
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 6);
     EXPECT_EQ(ms.maxDepth(), 6);
     EXPECT_EQ(ms.maxTopDepth(), 3);
@@ -228,7 +228,7 @@ TEST(MemSolverTest, OptimalAlexnet) {
     for (const auto &sh : shapes) boxes.push_back({n, ++n, sh[0] * sh[1] * sh[2]});
 
     // For linear topology bottom score is reachable minRequired == maxDepth
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), ms.maxDepth());
     EXPECT_EQ(ms.maxTopDepth(), 2);
 }
@@ -243,7 +243,7 @@ TEST(MemSolverTest, NoOverlapping) {
         {2, 4, 2, n++},  //      2  3  4  5  6  7  8
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     ms.solve();
     // TODO: Current algorithm doesn't solve that case. Uncomment check to see inefficiency
     // EXPECT_EQ(ms.solve(), 5);
@@ -269,7 +269,7 @@ TEST(MemSolverTest, BestSolution1) {
         {6, 7, 3, n++},  //      2  3  4  5  6  7  8
     };
 
-    CUDAPlugin::MemorySolver ms(boxes);
+    ov::nvidia_gpu::MemorySolver ms(boxes);
     EXPECT_EQ(ms.solve(), 5);
 
     auto no_overlap = [&](Box box1, Box box2) -> bool {

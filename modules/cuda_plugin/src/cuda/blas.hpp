@@ -39,13 +39,13 @@ inline std::string cublasGetErrorString(cublasStatus_t status) {
 inline void throwIfError(
     cublasStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUBLAS_STATUS_SUCCESS) CUDAPlugin::throwIEException(cublasGetErrorString(err), location);
+    if (err != CUBLAS_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cublasGetErrorString(err), location);
 }
 
 inline void logIfError(
     cublasStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUBLAS_STATUS_SUCCESS) CUDAPlugin::logError(cublasGetErrorString(err), location);
+    if (err != CUBLAS_STATUS_SUCCESS) ov::nvidia_gpu::logError(cublasGetErrorString(err), location);
 }
 
 namespace CUDA {

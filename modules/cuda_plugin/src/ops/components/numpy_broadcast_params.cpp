@@ -6,7 +6,8 @@
 
 #include <cuda/runtime.hpp>
 
-namespace CUDAPlugin {
+namespace ov {
+namespace nvidia_gpu {
 
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {
@@ -68,4 +69,5 @@ kernel::NumpyBroadcastMapper NumpyBroadcastParamsImpl::mapper(
                                         shape_rank_};
 }
 
-}  // namespace CUDAPlugin
+}  // namespace nvidia_gpu
+}  // namespace ov
