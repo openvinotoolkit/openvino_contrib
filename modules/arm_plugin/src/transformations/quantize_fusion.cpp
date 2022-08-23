@@ -156,9 +156,13 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
         opset::Sigmoid, opset::Tanh, opset::Relu, opset::Abs,
         opset::Elu, opset::Sqrt, opset::SoftPlus, opset::HSwish,
         opset::PRelu, opset::Clamp>({node_pattern});
-    auto node_output = std::make_shared<ngraph::pattern::op::Or>(ngraph::OutputVector{node_pattern, activation_pattern});
+    auto q_scale = ngraph::pattern::wrap_type<opset::Constant>();
+    auto q_mul = ngraph::pattern::wrap_type<opset::Multiply>({
+        std::make_shared<ngraph::pattern::op::Or>(ngraph::OutputVector{node_pattern, activation_pattern}),
+        q_scale},
+        ngraph::pattern::consumers_count(1));
     auto fq_pattern = ngraph::pattern::wrap_type<opset::FakeQuantize>({
-        node_output,
+        std::make_shared<ngraph::pattern::op::Or>(ngraph::OutputVector{node_pattern, activation_pattern, q_mul}),
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -169,6 +173,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
             auto pattern_map = m.get_pattern_value_map();
             auto node = pattern_map[node_pattern].get_node_shared_ptr();
             auto fakeQuantize = safe_cast<opset::FakeQuantize>(pattern_map[fq_pattern].get_node_shared_ptr());
+            auto itMul = pattern_map.find(q_mul);
             auto itActivation = pattern_map.find(activation_pattern);
             auto realType = node->get_output_element_type(0);
             auto quantizedType = fakeQuantize->get_output_element_type(0);
@@ -179,6 +184,25 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                                                          getFloatVector(fakeQuantize->input_value(2).get_node()),
                                                          getFloatVector(fakeQuantize->input_value(3).get_node()),
                                                          getFloatVector(fakeQuantize->input_value(4).get_node()));
+            if (itMul != pattern_map.end()) {
+                std::vector<float> scales = getFloatVector(pattern_map[q_scale].get_node());
+                if (allEqualToFirst(scales)) {
+                    if (scales[0] == 0.) return false; // Scale multiplier shouldn't be zero
+                    for (auto&& v : quantizationInfo.first) v *= scales[0];
+                } else if (quantizationInfo.first.size() > 1) {
+                    if (scales.size() != quantizationInfo.first.size()) return false;
+                    std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), scales.begin(),
+                                   quantizationInfo.first.begin(), [](float f, float sc) -> float { return f * sc; });
+                } else {
+                    std::vector<float> qiScales, qiOffsets;
+                    for (auto&& sc : scales) {
+                        qiScales.emplace_back(quantizationInfo.first[0] * sc);
+                        qiOffsets.emplace_back(quantizationInfo.second[0]);
+                    }
+                    quantizationInfo.first.swap(qiScales);
+                    quantizationInfo.second.swap(qiOffsets);
+                }
+            }
 
             std::vector<ngraph::Output<ngraph::Node>> newInputs;
             Types inputTypes;
@@ -187,27 +211,75 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                 newInputs.emplace_back(
                     ngraph::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
             }
+
+            std::shared_ptr<ngraph::Node> bias;
+            if (node->inputs().size() > 2) {
+                bias = node->input_value(2).get_node_shared_ptr();
+            }
+
+            bool negativeScales = std::any_of(std::begin(quantizationInfo.first), std::end(quantizationInfo.first), [] (auto& value) {return value < 0;});
+            if (negativeScales) {
+                if (node->get_input_element_type(1) != ngraph::element::i8)
+                    return false;
+                std::vector<std::int8_t> negate;
+                std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), std::back_inserter(negate),
+                                                                                             [](float f) -> std::int8_t { return f < 0 ? -1 : 1; } );
+                std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), quantizationInfo.first.begin(),
+                                                                                             [](float f) -> float { return f < 0 ? -f : f; } );
+                std::shared_ptr<ngraph::Node> weightMultiply;
+                if (ngraph::is_type<opset::Constant>(node->input_value(1).get_node())) {
+                    std::vector<std::int8_t> weights = safe_cast<const opset::Constant>(node->input_value(1).get_node())->cast_vector<std::int8_t>();
+                    size_t step = weights.size() / negate.size();
+                    auto weightsIt = weights.begin();
+                    for (auto&& sign : negate) {
+                        std::transform(weightsIt, weightsIt + step, weightsIt, [&sign](std::int8_t w) -> std::int8_t { return w * sign; } );
+                        weightsIt += step;
+                    }
+                    weightMultiply = std::make_shared<opset::Constant>(node->get_input_element_type(1), node->get_input_shape(1), weights);
+                } else {
+                    weightMultiply = std::make_shared<opset::Multiply>(node->input_value(1),
+                                                                       std::make_shared<opset::Constant>(node->get_input_element_type(1),
+                                                                                                         ngraph::Shape{negate.size(), 1, 1, 1}, negate));
+                }
+                weightMultiply->set_friendly_name(node->input_value(1).get_node_shared_ptr()->get_friendly_name() + "_weights_negate");
+                ngraph::copy_runtime_info(node->input_value(1).get_node_shared_ptr(), weightMultiply);
+                newInputs[1] = ngraph::op::TemporaryReplaceOutputType{weightMultiply->output(0), ngraph::element::i8}.get();
+
+                if (bias) {
+                    bias = std::make_shared<opset::Multiply>(bias,
+                                                             std::make_shared<opset::Constant>(ngraph::element::f32,
+                                                                                               ngraph::Shape{negate.size()}, negate));
+                    bias->set_friendly_name(node->input_value(2).get_node_shared_ptr()->get_friendly_name() + "_bias_negate");
+                    ngraph::copy_runtime_info(node->input_value(2).get_node_shared_ptr(), bias);
+                    newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
+                }
+            }
+
             std::int32_t qiOffset = 0;
             if (!allEqualToFirst(quantizationInfo.second)) {
-                auto shape = ngraph::Shape{quantizationInfo.second.size()};
-                std::vector<float> invScale;
-                std::transform(quantizationInfo.first.begin(), quantizationInfo.first.end(), std::back_inserter(invScale),
-                                                                                             [](float f) -> float { return 1./f; } );
-                std::shared_ptr<ngraph::Node> bias = std::make_shared<opset::Multiply>(
-                                                         std::make_shared<opset::Constant>(ngraph::element::f32, shape, quantizationInfo.second),
-                                                         std::make_shared<opset::Constant>(ngraph::element::f32, shape, invScale));
-                OPENVINO_ASSERT(bias, "Failed to create bias node for fused convolution");
-                if (node->inputs().size() > 2) {
-                    bias = std::make_shared<opset::Add>(node->input_value(2), bias);
+                std::transform(quantizationInfo.second.begin(), quantizationInfo.second.end(), quantizationInfo.first.begin(),
+                               quantizationInfo.second.begin(), [](float sh, float sc) -> float { return sh / sc; } );
+                std::shared_ptr<ngraph::Node> zpbias = std::make_shared<opset::Constant>(ngraph::element::f32,
+                                                                                         ngraph::Shape{quantizationInfo.second.size()},
+                                                                                         quantizationInfo.second);
+                OPENVINO_ASSERT(zpbias, "Failed to convert zero point to bias node for fused convolution");
+                if (bias) {
+                    bias = std::make_shared<opset::Add>(bias, zpbias);
+                    bias->set_friendly_name(node->input_value(2).get_node_shared_ptr()->get_friendly_name() + "_bias_fusedzp");
+                    ngraph::copy_runtime_info(node->input_value(2).get_node_shared_ptr(), bias);
                     newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
                 } else {
                     inputTypes.emplace_back(realType);
-                    newInputs.emplace_back(ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get());
+                    newInputs.emplace_back(ngraph::op::TemporaryReplaceOutputType{zpbias->output(0), realType}.get());
                 }
             } else {
                 qiOffset = static_cast<std::int32_t>(std::round(quantizationInfo.second[0]));
             }
             auto newNode = makeTypeRelaxed(node.get(), newInputs, inputTypes, Types{quantizedType});
+            if (!bias && newInputs.size() == 3 && newNode->inputs().size() != 3) {
+                //TypeRelaxed operations unable to extend amount of inputs on copy
+                newNode->set_argument(2, newInputs.at(2));
+            }
 
             if (itActivation != pattern_map.end()) {
                 auto activation = itActivation->second.get_node_shared_ptr();
@@ -228,6 +300,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
             if (!allEqualToFirst(quantizationInfo.first)) {
                 if (node->get_input_element_type(1) != ngraph::element::i8)
                     return false;
+                //Is it correct if fused activation exists?
                 newNode->get_rt_info()["WeightsPrescaleInfo"] =
                     arm_compute::QuantizationInfo{quantizationInfo.first, std::vector<std::int32_t>(quantizationInfo.first.size(), 0)};
             } else {

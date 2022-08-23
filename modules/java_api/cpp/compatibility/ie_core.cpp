@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <jni.h>   // JNI header provided by JDK
 #include <inference_engine.hpp>
 
@@ -149,7 +152,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_compatibility_IECore_LoadNetwork
     return 0;
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlugin(JNIEnv *env, jobject obj, jlong addr, jstring pluginName, jstring deviceName) 
+JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlugin(JNIEnv *env, jobject obj, jlong addr, jstring pluginName, jstring deviceName)
 {
     static const char method_name[] = "RegisterPlugin";
     try
@@ -170,7 +173,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlug
     }
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_UnregisterPlugin(JNIEnv *env, jobject obj, jlong addr, jstring deviceName) 
+JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_UnregisterPlugin(JNIEnv *env, jobject obj, jlong addr, jstring deviceName)
 {
     static const char method_name[] = "UnregisterPlugin";
     try
@@ -190,7 +193,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_UnregisterPl
     }
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlugins(JNIEnv *env, jobject obj, jlong addr, jstring xmlConfigFile) 
+JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlugins(JNIEnv *env, jobject obj, jlong addr, jstring xmlConfigFile)
 {
     static const char method_name[] = "RegisterPlugins";
     try
@@ -210,7 +213,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_RegisterPlug
     }
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_AddExtension(JNIEnv *env, jobject obj, jlong addr, jstring extension) 
+JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_AddExtension(JNIEnv *env, jobject obj, jlong addr, jstring extension)
 {
     static const char method_name[] = "AddExtension";
     try
@@ -233,7 +236,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_AddExtension
     }
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_AddExtension1(JNIEnv *env, jobject obj, jlong addr, jstring extension, jstring deviceName) 
+JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_AddExtension1(JNIEnv *env, jobject obj, jlong addr, jstring extension, jstring deviceName)
 {
     static const char method_name[] = "AddExtension";
     try
@@ -261,7 +264,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_SetConfig(JN
 {
     static const char method_name[] = "SetConfig";
     try
-    {   
+    {
         Core *core = (Core *) addr;
         core->SetConfig(javaMapToMap(env, config), jstringToString(env, deviceName));
     }
@@ -279,7 +282,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_compatibility_IECore_SetConfig1(J
 {
     static const char method_name[] = "SetConfig";
     try
-    {   
+    {
         Core *core = (Core *) addr;
         core->SetConfig(javaMapToMap(env, config));
     }
@@ -296,11 +299,11 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_compatibility_IECore_GetConfig(J
 {
     static const char method_name[] = "GetConfig";
     try
-    {   
+    {
         Core *core = (Core *) addr;
         Parameter *parameter = new Parameter();
         *parameter = core->GetConfig(jstringToString(env, deviceName), jstringToString(env, name));
-        
+
         return (jlong) parameter;
     }
     catch (const std::exception &e)

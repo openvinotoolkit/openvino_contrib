@@ -1,0 +1,67 @@
+// Copyright (C) 2021 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#include "range.hpp"
+
+#include <fmt/format.h>
+
+#include <cuda_operation_registry.hpp>
+#include <ngraph/validation_util.hpp>
+#include <openvino/op/range.hpp>
+
+#include "converters.hpp"
+#include "kernels/cuda_type_traits.hpp"
+#include "kernels/range.hpp"
+
+namespace CUDAPlugin {
+
+static constexpr auto OUTPUT_INDX = 0u;
+
+RangeOp::RangeOp(const CreationContext& context,
+                 const ov::Node& node,
+                 IndexCollection&& inputIds,
+                 IndexCollection&& outputIds)
+    : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
+      output_size_(shape_size(node.get_output_shape(OUTPUT_INDX))) {
+    using namespace ngraph;
+    if (get_constant_from_source(node.get_input_node_shared_ptr(START_INDX)) == nullptr ||
+        get_constant_from_source(node.get_input_node_shared_ptr(STOP_INDX)) == nullptr ||
+        get_constant_from_source(node.get_input_node_shared_ptr(STEP_INDX)) == nullptr) {
+        // TODO: Implement the dynamic shapes support for the Range operation
+        throwIEException("The dynamic shape is not supported for Range operation. All Range inputs must be constants.");
+    }
+    auto inputStart_type = node.get_input_element_type(START_INDX);
+    auto inputStop_type = node.get_input_element_type(STOP_INDX);
+    auto inputStep_type = node.get_input_element_type(STEP_INDX);
+    auto output_type = node.get_output_element_type(OUTPUT_INDX);
+    size_t max_size = shape_size(node.get_output_shape(OUTPUT_INDX));
+    const auto& prop = context.device().props();
+    unsigned max_threads_per_block = prop.maxThreadsPerBlock;
+    unsigned blocks_number = 1 + max_size / max_threads_per_block;
+    unsigned threads_per_block = (blocks_number == 1) ? max_size : max_threads_per_block;
+    kernel_op_ = kernel::RangeKernelOp(max_size,
+                                       blocks_number,
+                                       threads_per_block,
+                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStart_type),
+                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStop_type),
+                                       convertDataType<CUDAPlugin::kernel::Type_t>(inputStep_type),
+                                       convertDataType<CUDAPlugin::kernel::Type_t>(output_type));
+}
+
+void RangeOp::Execute(const InferenceRequestContext& context,
+                      Inputs inputs,
+                      Outputs outputs,
+                      const Workbuffers& workbuffers) const {
+    Expects(inputs.size() == 3);
+    Expects(outputs.size() == 1);
+    Expects(kernel_op_);
+    (*kernel_op_)(context.getThreadContext().stream().get(),
+                  inputs[START_INDX].get(),
+                  inputs[STEP_INDX].get(),
+                  output_size_,
+                  outputs[OUTPUT_INDX].get());
+}
+
+OPERATION_REGISTER(RangeOp, Range);
+}  // namespace CUDAPlugin

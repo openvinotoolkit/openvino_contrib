@@ -1,3 +1,23 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/cuda_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/cuda_plugin
+
 resources:
   repositories:
   - repository: openvino
@@ -83,7 +103,7 @@ jobs:
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DIE_EXTRA_MODULES=$(REPO_DIR)/modules -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" $(OPENVINO_REPO_DIR)
+      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_cuda_plugin=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake'
 

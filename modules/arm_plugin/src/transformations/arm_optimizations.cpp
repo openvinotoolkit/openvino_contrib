@@ -15,6 +15,7 @@
 #include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/convert_gather_downgrade.hpp"
+#include "transformations/op_conversions/convert_softmax_downgrade.hpp"
 #include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
@@ -31,6 +32,7 @@
 #include "transformations/common_optimizations/weights_dequantize_to_fake_quantize.hpp"
 #include "transformations/common_optimizations/convert_quantize_dequantize.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
+#include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -66,6 +68,7 @@
 #include "convert_normalizel2_arm.hpp"
 #include "convert_fft_arm.hpp"
 #include "convert_pool1d_to_pool2d.hpp"
+#include "convert_maxpool_v8.hpp"
 #include "convert_inputs_precision.hpp"
 #include "finalize_trailing_nodes.hpp"
 #include "transformations/convert_reorg.hpp"
@@ -77,8 +80,8 @@
 #include <ngraph/pass/constant_folding.hpp>
 
 #include <transformations/low_precision/disable_convert_constant_folding_on_const_path.hpp>
-#include <low_precision/common/operation_per_tensor_quantization_restriction.hpp>
-#include <low_precision/common/operation_precision_restriction.hpp>
+#include <low_precision/common/quantization_granularity_restriction.hpp>
+#include <low_precision/common/precisions_restriction.hpp>
 #include <low_precision/convolution.hpp>
 #include <low_precision/fake_quantize.hpp>
 #include <low_precision/fold_convert.hpp>
@@ -208,25 +211,25 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
     using namespace ngraph::pass::low_precision;
     if (quantized) {
         Dump(m, "before_common");
-        auto supportedPrecisions = std::vector<OperationPrecisionRestriction>({
-            OperationPrecisionRestriction::create<ngraph::opset1::Convolution>({
+        auto supportedPrecisions = std::vector<PrecisionsRestriction>({
+            PrecisionsRestriction::create<ngraph::opset1::Convolution>({
                 {0, {ngraph::element::u8, ngraph::element::i8}},
                 {1, {ngraph::element::u8, ngraph::element::i8}},
             }),
-            OperationPrecisionRestriction::create<ngraph::opset1::ConvolutionBackpropData>({
+            PrecisionsRestriction::create<ngraph::opset1::ConvolutionBackpropData>({
                 {0, {ngraph::element::u8, ngraph::element::i8}},
                 {1, {ngraph::element::u8, ngraph::element::i8}}
             }),
-            OperationPrecisionRestriction::create<ngraph::opset1::GroupConvolution>({
+            PrecisionsRestriction::create<ngraph::opset1::GroupConvolution>({
                 {0, {ngraph::element::u8, ngraph::element::i8}},
                 {1, {ngraph::element::u8, ngraph::element::i8}}
             })
         });
 
-        auto perTensorQuantization = std::vector<OperationPerTensorQuantizationRestriction>({
-            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::Convolution>({0}),
-            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::ConvolutionBackpropData>({0}),
-            OperationPerTensorQuantizationRestriction::create<ngraph::opset1::GroupConvolution>({0})
+        auto perTensorQuantization = std::vector<QuantizationGranularityRestriction>({
+            QuantizationGranularityRestriction::create<ngraph::opset1::Convolution>({0}),
+            QuantizationGranularityRestriction::create<ngraph::opset1::ConvolutionBackpropData>({0}),
+            QuantizationGranularityRestriction::create<ngraph::opset1::GroupConvolution>({0})
         });
 
         ov::pass::Manager lptManager;
@@ -275,11 +278,14 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertInterpolate>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMVN>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReorgYolo>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMaxPool8ToMaxPool1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPool1D>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertAvgPool1D>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPoolV8>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastSelect>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGather>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertGather8ToGather7>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertSoftMax8ToSoftMax1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertDFT>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertIDFT>();
         manager.register_pass<ngraph::pass::ConstantFolding>();

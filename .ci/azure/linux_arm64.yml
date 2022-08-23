@@ -1,3 +1,23 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/cuda_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/cuda_plugin
+
 resources:
   repositories:
   - repository: openvino
@@ -142,6 +162,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
+        -DBUILD_cuda_plugin=OFF
         -DENABLE_INTEL_MYRIAD=OFF
         -DTHREADING=TBB
         -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB

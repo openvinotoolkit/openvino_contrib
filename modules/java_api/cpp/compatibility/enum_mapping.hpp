@@ -1,3 +1,6 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+
 #include <map>
 #include "inference_engine.hpp"
 
@@ -58,21 +61,21 @@ static const std::map<int, InferenceEngine::InferRequest::WaitMode> wait_mode_ma
 
 //
 // status_code
-//    
+//
 static const std::map<InferenceEngine::StatusCode, int> status_code_map = {
     {InferenceEngine::StatusCode::OK, 0},
     {InferenceEngine::StatusCode::GENERAL_ERROR, -1},
     {InferenceEngine::StatusCode::NOT_IMPLEMENTED, -2},
     {InferenceEngine::StatusCode::NETWORK_NOT_LOADED, -3},
-    {InferenceEngine::StatusCode::PARAMETER_MISMATCH, -4}, 
-    {InferenceEngine::StatusCode::NOT_FOUND, -5}, 
-    {InferenceEngine::StatusCode::OUT_OF_BOUNDS, -6}, 
-    {InferenceEngine::StatusCode::UNEXPECTED, -7}, 
-    {InferenceEngine::StatusCode::REQUEST_BUSY, -8}, 
-    {InferenceEngine::StatusCode::RESULT_NOT_READY, -9}, 
-    {InferenceEngine::StatusCode::NOT_ALLOCATED, -10}, 
-    {InferenceEngine::StatusCode::INFER_NOT_STARTED, -11}, 
-    {InferenceEngine::StatusCode::NETWORK_NOT_READ, -12}, 
+    {InferenceEngine::StatusCode::PARAMETER_MISMATCH, -4},
+    {InferenceEngine::StatusCode::NOT_FOUND, -5},
+    {InferenceEngine::StatusCode::OUT_OF_BOUNDS, -6},
+    {InferenceEngine::StatusCode::UNEXPECTED, -7},
+    {InferenceEngine::StatusCode::REQUEST_BUSY, -8},
+    {InferenceEngine::StatusCode::RESULT_NOT_READY, -9},
+    {InferenceEngine::StatusCode::NOT_ALLOCATED, -10},
+    {InferenceEngine::StatusCode::INFER_NOT_STARTED, -11},
+    {InferenceEngine::StatusCode::NETWORK_NOT_READ, -12},
 };
 
 //
