@@ -142,7 +142,7 @@ jobs:
   
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: $(Build.ArtifactStagingDirectory)
+      pathToPublish: $(WORK_DIR)
       artifactName: 'openvino_aarch64_linux_temp'
     displayName: 'Publish OpenVINO AArch64 linux package'
 
