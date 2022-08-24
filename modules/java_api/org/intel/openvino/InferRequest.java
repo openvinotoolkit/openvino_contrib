@@ -20,12 +20,18 @@ public class InferRequest extends Wrapper {
         return new Tensor(GetOutputTensor(nativeObj));
     }
 
+    public Tensor get_tensor(String tensorName) {
+        return new Tensor(GetTensor(nativeObj, tensorName));
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native void Infer(long addr);
 
     private static native void SetInputTensor(long addr, long tensorAddr);
 
     private static native long GetOutputTensor(long addr);
+
+    private static native long GetTensor(long addr, String tensorName);
 
     @Override
     protected native void delete(long nativeObj);
