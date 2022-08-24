@@ -139,6 +139,12 @@ jobs:
       $(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin/scripts/install_build_dependencies.sh
     workingDirectory: $(BUILD_OPENVINO)
     displayName: 'Install dependencies'
+  
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: $(Build.ArtifactStagingDirectory)
+      artifactName: 'openvino_aarch64_linux_temp'
+    displayName: 'Publish OpenVINO AArch64 linux package'
 
   - task: CMake@1
     inputs:
