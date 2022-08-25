@@ -21,6 +21,8 @@ jobs:
       run: git -C ~/runner/openvino submodule update --init --recursive
     - name: checkout openvino_contrib master branch
       run: git -C ~/runner/openvino_contrib checkout master
+    - name: fetch openvino_contrib master branch
+      run: git -C ~/runner/openvino_contrib pull origin master
     - name: delete openvino_contrib temporary branch
       run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
     - name: fetch openvino_contrib
