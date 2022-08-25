@@ -1,5 +1,11 @@
 name: Test CUDA
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - 'modules/cuda_plugin/**.*'
+  pull_request:
+    paths:
+      - 'modules/cuda_plugin/**.*'
 jobs:
   build:
     runs-on: lohika-ci
