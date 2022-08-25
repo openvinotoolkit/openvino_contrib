@@ -170,7 +170,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBiasAddAdd_smoke_2D_ExplicitPaddin
                         GroupConvolutionBiasAddAddActivationLayerTest::getTestCaseName);
 
 // WARNING: Currently the fusing of 3D Convolution is disabled in
-// openvino_nvidia_gpu_plugin/modules/cuda_plugin/src/transformer/fuse_conv_biasadd_activation.cpp
+// openvino_nvidia_gpu_plugin/modules/nvidia_plugin/src/transformer/fuse_conv_biasadd_activation.cpp
 // so the the following smoke tests on graphs without FusedConvolution nodes
 //
 /* ============= 3D Convolution ============= */

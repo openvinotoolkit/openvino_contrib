@@ -1012,7 +1012,7 @@ INSTANTIATE_TEST_CASE_P(
 // These tests cover only 2d_unet and 3d_unet
 //
 // WARNING: Currently the fusing of 3D Convolution is disabled in
-// openvino_nvidia_gpu_plugin/modules/cuda_plugin/src/transformer/fuse_conv_biasadd_activation.cpp
+// openvino_nvidia_gpu_plugin/modules/nvidia_plugin/src/transformer/fuse_conv_biasadd_activation.cpp
 // so the the following tests for 3d_unet run on graphs without FusedConvolution nodes
 //
 // =============================================================================

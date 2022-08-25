@@ -6,7 +6,7 @@ trigger:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
+    - modules/nvidia_plugin
 
 pr:
   branches:
@@ -16,7 +16,7 @@ pr:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
+    - modules/nvidia_plugin
 
 resources:
   repositories:
@@ -122,7 +122,7 @@ jobs:
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
-        -DBUILD_cuda_plugin=OFF
+        -DBUILD_nvidia_plugin=OFF
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         -DENABLE_PYTHON=ON
         -DPYTHON_EXECUTABLE=/usr/bin/python3.8

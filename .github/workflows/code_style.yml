@@ -3,11 +3,11 @@ on:
   push:
     paths:
       - '**'
-      - '!modules/cuda_plugin/**'
+      - '!modules/nvidia_plugin/**'
   pull_request:
     paths:
       - '**'
-      - '!modules/cuda_plugin/**'
+      - '!modules/nvidia_plugin/**'
 
 jobs:
   Java:

@@ -6,7 +6,7 @@ trigger:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
+    - modules/nvidia_plugin
 
 pr:
   branches:
@@ -16,7 +16,7 @@ pr:
   paths:
     exclude:
     - modules/optimum
-    - modules/cuda_plugin
+    - modules/nvidia_plugin
 
 resources:
   repositories:
@@ -153,7 +153,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DENABLE_SAMPLES=ON
         -DBUILD_java_api=OFF
-        -DBUILD_cuda_plugin=OFF
+        -DBUILD_nvidia_plugin=OFF
         -DENABLE_INTEL_MYRIAD=OFF
         -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules

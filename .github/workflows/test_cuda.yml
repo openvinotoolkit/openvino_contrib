@@ -2,10 +2,10 @@ name: Test CUDA
 on:
   push:
     paths:
-      - 'modules/cuda_plugin/**.*'
+      - 'modules/nvidia_plugin/**.*'
   pull_request:
     paths:
-      - 'modules/cuda_plugin/**.*'
+      - 'modules/nvidia_plugin/**.*'
 jobs:
   build:
     runs-on: lohika-ci
@@ -23,7 +23,7 @@ jobs:
     - name: checkout openvino_contrib
       run: git -C ~/runner/openvino_contrib checkout temporary-ci-branch
     - name: format openvino_contrib
-      run: cd ~/runner/openvino_contrib && ./modules/cuda_plugin/utils/check.sh
+      run: cd ~/runner/openvino_contrib && ./modules/nvidia_plugin/utils/check.sh
     - name: cmake
       run: env -C ~/runner ./configrelease.sh
     - name: ninja

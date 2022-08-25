@@ -6,7 +6,7 @@ if [ -z "$ROOT_DIR" ]; then
     cd ../..
     ROOT_DIR=$(eval $GET_ROOT_DIR)
 fi
-PRE_PUSH_IMPL_DIR=$ROOT_DIR/modules/cuda_plugin/utils
+PRE_PUSH_IMPL_DIR=$ROOT_DIR/modules/nvidia_plugin/utils
 cd $PRE_PUSH_IMPL_DIR
 ./pre-push-impl.sh
 exit $?

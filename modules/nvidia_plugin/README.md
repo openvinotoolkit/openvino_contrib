@@ -52,7 +52,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 2. Go to plugin directory:
 ```bash
-cd openvino_contrib/modules/cuda_plugin
+cd openvino_contrib/modules/nvidia_plugin
 git checkout develop
 ```
 3. Prepare a build folder:
@@ -102,7 +102,7 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 ```
 2. Go to plugin directory:
 ```bash
-cd openvino_contrib/modules/cuda_plugin
+cd openvino_contrib/modules/nvidia_plugin
 git checkout develop
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
@@ -117,7 +117,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/bin/nvcc
 
 5. Run setup.py build command as follows.
 ```bash
-export CUDA_PLUGIN_SRC_ROOT_DIR=</path/to/openvino_contrib>/modules/cuda_plugin
+export CUDA_PLUGIN_SRC_ROOT_DIR=</path/to/openvino_contrib>/modules/nvidia_plugin
 python3 ${CUDA_PLUGIN_SRC_ROOT_DIR}/wheel/setup.py build
 ```
 This will automatically download, build OpenVINO and build CUDA Plugin finally. The location of the resulting library file will be like the next.
@@ -131,7 +131,7 @@ To install CUDA Plugin as python package do all steps except last one from the `
 After that installation could be done by running setup.py install command as follows.
 ```bash
 export OPENVINO_CONTRIB=</path/to/openvino_contrib>
-python3 ${OPENVINO_CONTRIB}/modules/cuda_plugin/wheel/setup.py install
+python3 ${OPENVINO_CONTRIB}/modules/nvidia_plugin/wheel/setup.py install
 ```
 This command will install dependent openvino package if needed and update it for using with NVIDIA GPU plugin.
 
