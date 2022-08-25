@@ -12,7 +12,7 @@ jobs:
   check_code_style:
     name: "Codestyle"
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
 
@@ -36,7 +36,7 @@ jobs:
   test_runtime:
     name: "Runtime"
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         transformers-version: [
@@ -76,7 +76,7 @@ jobs:
   test_examples:
     name: "Examples"
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
 
@@ -99,7 +99,7 @@ jobs:
   test_nncf:
     name: "NNCF"
 
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         transformers-version: [
