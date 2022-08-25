@@ -1,5 +1,13 @@
 name: Code Style
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - '**'
+      - '!modules/cuda_plugin/**'
+  pull_request:
+    paths:
+      - '**'
+      - '!modules/cuda_plugin/**'
 
 jobs:
   Java:

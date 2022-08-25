@@ -6,6 +6,7 @@ trigger:
   paths:
     exclude:
     - modules/optimum
+    - modules/cuda_plugin
 
 pr:
   branches:
@@ -15,6 +16,7 @@ pr:
   paths:
     exclude:
     - modules/optimum
+    - modules/cuda_plugin
 
 resources:
   repositories:
@@ -118,6 +120,7 @@ jobs:
         -DENABLE_SAMPLES=ON
         -DENABLE_INTEL_MYRIAD=OFF
         -DBUILD_java_api=ON
+        -DBUILD_cuda_plugin=OFF
         -DTHREADING=SEQ
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)
