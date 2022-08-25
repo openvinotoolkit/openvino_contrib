@@ -5,6 +5,9 @@ on:
       - master
     paths:
       - 'modules/nvidia_plugin/**.*'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**.*'
   workflow_dispatch:
 
 jobs:
