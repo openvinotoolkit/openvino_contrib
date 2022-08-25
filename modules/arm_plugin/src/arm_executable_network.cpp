@@ -38,12 +38,12 @@ ArmPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ov::
 
 void ArmPlugin::ExecutableNetwork::InitExecutor() {
     if (_cfg._exclusiveAsyncRequests) {
-        _taskExecutor = ExecutorManager::getInstance()->getExecutor("CPU");
+        _taskExecutor = InferenceEngine::executorManager()->getExecutor("CPU");
     } else {
         auto streamsExecutorConfig = InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(_cfg._streamsExecutorConfig);
         streamsExecutorConfig._name = "CPUStreamsExecutor";
         streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
-        _taskExecutor = ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
+        _taskExecutor = InferenceEngine::executorManager()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
     }
     _executor = _taskExecutor.get();
 }
