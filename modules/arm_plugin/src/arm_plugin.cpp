@@ -55,7 +55,7 @@ Plugin::~Plugin() {
         std::lock_guard<std::mutex> lock{armSchedulerMutex};
         arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
     }
-    ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
+    InferenceEngine::executorManager()->clear("CPUStreamsExecutor");
 }
 
 std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Model>& model,
