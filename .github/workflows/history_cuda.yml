@@ -1,5 +1,11 @@
 name: History CUDA
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - 'modules/cuda_plugin/**.*'
+  pull_request:
+    paths:
+      - 'modules/cuda_plugin/**.*'
 jobs:
   history:
     runs-on: lohika-ci

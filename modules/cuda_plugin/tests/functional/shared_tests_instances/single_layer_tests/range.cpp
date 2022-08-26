@@ -34,7 +34,7 @@ typedef std::tuple<dataType,  // start
                    >
     CudaRangeParams;
 
-struct CudaRangeTest : public testing::WithParamInterface<CudaRangeParams>, virtual public ::testing::Test {
+struct CudaRangeLayerTest : public testing::WithParamInterface<CudaRangeParams>, virtual public ::testing::Test {
     using TensorID = CUDAPlugin::TensorID;
     CudaRangeParams param = GetParam();
     dataType start = std::get<0>(param);
@@ -247,7 +247,7 @@ MATCHER_P(FloatNearPointwise, tol, "Out of range") {
 #pragma GCC diagnostic pop
 #endif
 
-TEST_P(CudaRangeTest, CompareWithRefs) {
+TEST_P(CudaRangeLayerTest, CompareWithRefs) {
     ASSERT_TRUE(outputSize > 0);
     CUDAPlugin::CancellationToken token{};
     CUDAPlugin::CudaGraph graph{CUDAPlugin::CreationContext{CUDA::Device{}, false}, {}};
@@ -257,14 +257,14 @@ TEST_P(CudaRangeTest, CompareWithRefs) {
     CUDAPlugin::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
-    CudaRangeTest::upload(stream, startParamAlloc, &start, start_type, 1);
-    CudaRangeTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);
-    CudaRangeTest::upload(stream, stepParamAlloc, &step, step_type, 1);
+    CudaRangeLayerTest::upload(stream, startParamAlloc, &start, start_type, 1);
+    CudaRangeLayerTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);
+    CudaRangeLayerTest::upload(stream, stepParamAlloc, &step, step_type, 1);
     std::vector<dataType> out(outputSize, -1);
-    CudaRangeTest::upload(stream, outAlloc, out.data(), out_type, outputSize);
+    CudaRangeLayerTest::upload(stream, outAlloc, out.data(), out_type, outputSize);
     ASSERT_TRUE(operation);
     operation->Execute(context, inputs, outputs, {});
-    CudaRangeTest::download(stream, out.data(), outputs[0], out_type, outputSize);
+    CudaRangeLayerTest::download(stream, out.data(), outputs[0], out_type, outputSize);
     std::tie(start, stop, step) = truncateInput(start, stop, step, start_type, step_type, out_type);
     auto ref = getRefOutput();
     EXPECT_THAT(out, ::testing::Pointwise(FloatNearPointwise(1e-5), ref));
@@ -315,32 +315,32 @@ const std::vector<Type_t> float_types = {
 };
 
 INSTANTIATE_TEST_CASE_P(smoke_Basic,
-                        CudaRangeTest,
+                        CudaRangeLayerTest,
                         ::testing::Combine(::testing::ValuesIn(start),
                                            ::testing::ValuesIn(stop),
                                            ::testing::ValuesIn(step),
                                            ::testing::Values(Type_t::f32),
                                            ::testing::Values(Type_t::f32),
                                            ::testing::Values(Type_t::f32)),
-                        CudaRangeTest::getTestCaseName);
+                        CudaRangeLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_float_input,
-                        CudaRangeTest,
+                        CudaRangeLayerTest,
                         ::testing::Combine(::testing::Values(1.2f),
                                            ::testing::Values(5.6f),
                                            ::testing::Values(1.1f),
                                            ::testing::ValuesIn(float_types),
                                            ::testing::ValuesIn(float_types),
                                            ::testing::ValuesIn(types)),
-                        CudaRangeTest::getTestCaseName);
+                        CudaRangeLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_int_input,
-                        CudaRangeTest,
+                        CudaRangeLayerTest,
                         ::testing::Combine(::testing::Values(1),
                                            ::testing::Values(5),
                                            ::testing::Values(1),
                                            ::testing::ValuesIn(int_types),
                                            ::testing::ValuesIn(int_types),
                                            ::testing::ValuesIn(types)),
-                        CudaRangeTest::getTestCaseName);
+                        CudaRangeLayerTest::getTestCaseName);
 }  // namespace
