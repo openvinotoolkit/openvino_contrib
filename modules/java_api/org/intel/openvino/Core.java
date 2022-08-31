@@ -49,7 +49,8 @@ public class Core extends Wrapper {
 
     /**
      * Use this method to initialize native libraries. Other files like plugins.xml and *.mvcmd will
-     * be also copied to temporal location which makes them visible in runtime.
+     * be also copied to temporal location which makes them visible in runtime. To Do: fix for
+     * Android!
      */
     public static void loadNativeLibs() {
         // A set of required libraries which are listed in dependency order.

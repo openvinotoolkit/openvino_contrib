@@ -13,6 +13,19 @@ To install OpenJDK:
 sudo apt-get install -y default-jdk
 ```
 
+### Build
+
+Set environment OpenVINO variables:
+```bash
+source <openvino_install>/setupvars.sh
+```
+
+Use Gradle to build `openvino-x-x-x.jar` file with OpenVINO Java bindings:
+```bash
+cd openvino_contrib/modules/java_api
+gradle build
+```
+
 ### Import
 
 Use `import org.intel.openvino.*;` for OpenVINO Java API 2.0 or `import org.intel.openvino.compatibility.*;` for deprecated API.
