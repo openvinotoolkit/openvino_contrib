@@ -3,7 +3,7 @@
 set -e
 
 if [ -f .env ]; then
-    # Load Variables from .env if present
+    # load Variables from .env if present
     source .env
 fi
 
