@@ -45,8 +45,8 @@ cmake "${OPENVINO_HOME}" \
       -DIE_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
       -DWHEEL_VERSION="${WHEEL_VERSION}" \
       -DVERBOSE_BUILD=ON \
-      -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
-      -DBUILD_cuda_plugin=OFF
+      -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" 
+
 
 if [[ "$1" != "--setup" ]]; then
   cmake --build "${OPENVINO_BUILD_PATH}" --target ${BUILD_TARGETS} -j "${BUILD_JOBS}"
