@@ -29,7 +29,7 @@ resources:
     name: openvinotoolkit/testdata
 
 jobs:
-- job: CUDAPlugin_Lin
+- job: NVIDIAPlugin_Lin
   timeoutInMinutes: 60
 
   pool:
@@ -108,7 +108,6 @@ jobs:
       bash -c "
       /root/repos/openvino/install_build_dependencies.sh &&
       python3 -m pip install -r /root/repos/openvino/src/bindings/python/requirements.txt &&
-      python3 -m pip install -r /root/repos/openvino/src/core/tests/requirements_test_onnx.txt &&
       cd /root/w/build &&
       cmake -GNinja
       -DVERBOSE_BUILD=ON
