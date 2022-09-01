@@ -4,7 +4,7 @@ on:
     branches:
       - master
     paths:
-      - 'modules/nvidia_plugin/**.*'
+      - 'modules/nvidia_plugin/**'
   workflow_dispatch:
 
 jobs:

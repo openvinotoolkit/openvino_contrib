@@ -2,10 +2,10 @@ name: History CUDA
 on:
   push:
     paths:
-      - 'modules/nvidia_plugin/**.*'
+      - 'modules/nvidia_plugin/**'
   pull_request:
     paths:
-      - 'modules/nvidia_plugin/**.*'
+      - 'modules/nvidia_plugin/**'
 jobs:
   history:
     runs-on: lohika-ci
