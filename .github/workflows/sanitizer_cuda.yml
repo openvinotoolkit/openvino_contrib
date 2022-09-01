@@ -4,7 +4,10 @@ on:
     branches:
       - master
     paths:
-      - 'modules/cuda_plugin/**.*'
+      - 'modules/nvidia_plugin/**.*'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**.*'
   workflow_dispatch:
 
 jobs:
@@ -18,6 +21,8 @@ jobs:
       run: git -C ~/runner/openvino submodule update --init --recursive
     - name: checkout openvino_contrib master branch
       run: git -C ~/runner/openvino_contrib checkout master
+    - name: fetch openvino_contrib master branch
+      run: git -C ~/runner/openvino_contrib pull origin master
     - name: delete openvino_contrib temporary branch
       run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
     - name: fetch openvino_contrib
@@ -29,4 +34,4 @@ jobs:
     - name: ninja
       run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/build_cuda_sanitizer -v CudaFuncTests CudaUnitTests' | make -j`nproc` -f-
     - name: functional tests
-      run: env -C ~/runner PATH=/usr/local/cuda-11.2/bin:/usr/local/cuda-11.4/bin:/usr/local/cuda-11.7/bin:$PATH ./openvino_contrib/modules/cuda_plugin/utils/cuda-sanitizer.sh ./build_cuda_sanitizer/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*:*smoke*OVExecGraphImportExportTest.importExportedIENetwork*:*smoke*OVClassBasicTestP.registerNewPluginNoThrows*:*smoke*OVHoldersTest.Orders*:*smoke*IEClassBasicTestP.registerNewPluginNoThrows*:*smoke*IEClassBasicTestP.smoke_registerPluginsXMLUnicodePath*
+      run: env -C ~/runner PATH=/usr/local/cuda-11.2/bin:/usr/local/cuda-11.4/bin:/usr/local/cuda-11.7/bin:$PATH ./openvino_contrib/modules/nvidia_plugin/utils/cuda-sanitizer.sh ./build_cuda_sanitizer/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*:*smoke*OVExecGraphImportExportTest.importExportedIENetwork*:*smoke*OVClassBasicTestP.registerNewPluginNoThrows*:*smoke*OVHoldersTest.Orders*:*smoke*IEClassBasicTestP.registerNewPluginNoThrows*:*smoke*IEClassBasicTestP.smoke_registerPluginsXMLUnicodePath*
