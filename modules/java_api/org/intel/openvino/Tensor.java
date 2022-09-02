@@ -13,7 +13,7 @@ public class Tensor extends Wrapper {
     }
 
     public Tensor(int[] dims, float[] data) {
-        super(TensorFloat(dims, data, data.length));
+        super(TensorFloat(dims, data));
     }
 
     public int get_size() {
@@ -31,7 +31,7 @@ public class Tensor extends Wrapper {
     /*----------------------------------- native methods -----------------------------------*/
     private static native long TensorCArray(int type, int[] shape, long cArray);
 
-    private static native long TensorFloat(int[] shape, float[] data, int size);
+    private static native long TensorFloat(int[] shape, float[] data);
 
     private static native int[] GetShape(long addr);
 
