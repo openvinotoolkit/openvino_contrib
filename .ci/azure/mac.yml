@@ -100,6 +100,7 @@ jobs:
       # Speed up build
       brew install ninja
       brew install ccache
+      brew install scons
 
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
