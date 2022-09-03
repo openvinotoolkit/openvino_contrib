@@ -5,6 +5,8 @@ import static org.junit.Assert.*;
 import org.intel.openvino.*;
 import org.junit.Test;
 
+import java.util.Map;
+
 public class CoreTests extends OVTest {
     Core core = new Core();
 
@@ -40,5 +42,19 @@ public class CoreTests extends OVTest {
         CompiledModel compiledModel = core.compile_model(net, device);
 
         assertTrue(compiledModel instanceof CompiledModel);
+    }
+
+    @Test
+    public void testProperty() {
+        int nireq1 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
+        assertEquals("Initial number of requests", 1, nireq1);
+
+        Map<String, String> config = Map.of("CPU_THROUGHPUT_STREAMS", "4");
+        core.set_property("CPU", config);
+        int nireq2 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
+
+        assertEquals("Final number of requests", 4, nireq2);
+
+        core.set_property("CPU", Map.of("CPU_THROUGHPUT_STREAMS", "1")); // Restore
     }
 }
