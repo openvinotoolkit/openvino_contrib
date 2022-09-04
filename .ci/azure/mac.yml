@@ -107,12 +107,11 @@ jobs:
 
   - script: |
       export PATH="/usr/local/opt/cython/bin:$PATH"
-      export CC=gcc
-      export CXX=g++
       cmake -GNinja -DVERBOSE_BUILD=ON \
             -DENABLE_REQUIREMENTS_INSTALL=OFF \
             -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
             -DENABLE_TESTS=OFF \
             -DENABLE_STRICT_DEPENDENCIES=OFF \
             -DIE_EXTRA_MODULES=$(REPO_DIR)/modules \
