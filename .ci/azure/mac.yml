@@ -112,6 +112,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
             -DCMAKE_SYSTEM_NAME=Darwin \
             -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DENABLE_TESTS=OFF \
             -DENABLE_STRICT_DEPENDENCIES=OFF \
             -DIE_EXTRA_MODULES=$(REPO_DIR)/modules \
