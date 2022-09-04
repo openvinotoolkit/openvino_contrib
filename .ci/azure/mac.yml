@@ -117,6 +117,7 @@ jobs:
             -DENABLE_STRICT_DEPENDENCIES=OFF \
             -DIE_EXTRA_MODULES=$(REPO_DIR)/modules \
             -DBUILD_nvidia_plugin=OFF \
+            -DENABLE_INTEL_MYRIAD=OFF \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_LINKER_LAUNCHER=ccache \
