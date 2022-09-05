@@ -129,6 +129,7 @@ extern "C"
 
     // ov::Core
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *, jobject);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore1(JNIEnv *, jobject, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel1(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *, jobject, jlong, jlong, jstring);

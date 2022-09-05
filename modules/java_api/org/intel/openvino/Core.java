@@ -20,6 +20,10 @@ public class Core extends Wrapper {
         super(GetCore());
     }
 
+    public Core(String xmlConfigFile) {
+        super(GetCore1(xmlConfigFile));
+    }
+
     private static String getLibraryName(String name, String linux_ver) {
         String osName = System.getProperty("os.name").toLowerCase();
         if (osName.contains("win")) {
@@ -114,14 +118,17 @@ public class Core extends Wrapper {
     }
 
     /*----------------------------------- native methods -----------------------------------*/
+
+    private static native long GetCore();
+
+    private static native long GetCore1(String xmlConfigFile);
+
     private static native long ReadModel(long core, final String modelPath);
 
     private static native long ReadModel1(
             long core, final String modelPath, final String weightPath);
 
     private static native long CompileModel(long core, long net, final String device);
-
-    private static native long GetCore();
 
     @Override
     protected native void delete(long nativeObj);
