@@ -32,6 +32,10 @@ ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
+              DEFAULT_CONFIG 
+                  ALIAS:GPU
+                  DEVICE_PRIORITY:1
+                  FALLBACK:Intel_GPU
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
@@ -74,10 +78,8 @@ set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEAS
 
 
 # ATTENTION: uncomment to register a plugin in the plugins.xml file
-if(ENABLE_CUDA)
     ie_register_plugins(MAIN_TARGET ${TARGET_NAME}
                         POSSIBLE_PLUGINS ${TARGET_NAME})
-endif()
 
 # ATTENTION: uncomment to install component
 # install
