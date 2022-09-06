@@ -57,7 +57,7 @@ sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
 # hwloc install
 wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P $HWLOC_DIR
-tar -xzf $WORK_DIR/hwloc-2.5.0.tar.gz -C $HWLOC_DIR
+tar -xzf $HWLOC_DIR/hwloc-2.5.0.tar.gz -C $HWLOC_DIR
 mkdir -p $HWLOC_INSTALL
 cd $HWLOC_DIR/hwloc-2.5.0
 CC=aarch64-linux-gnu-gcc \
