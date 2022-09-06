@@ -1,6 +1,6 @@
 # Coco Detection Android Demo
 
-![Running result](https://user-images.githubusercontent.com/47499836/179177513-7623b7eb-4229-4f44-b5cc-b937e93905b2.gif)
+![Running result](https://user-images.githubusercontent.com/47499836/188678748-a63f6010-d165-4372-927f-106b4a4e7c06.png)
 
 This is a demo for ARM processors Android devices. Using object detection model to reach the coco datasets' infomation. We use pre-trained models from [Open Model Zoo](https://github.com/openvinotoolkit/open_model_zoo): [ssdlite_mobilenet_v2](https://github.com/openvinotoolkit/open_model_zoo/tree/master/models/public/ssdlite_mobilenet_v2) for object detection in coco dataset, [efficientdet-d0-tf](https://github.com/openvinotoolkit/open_model_zoo/tree/master/models/public/efficientdet-d0-tf), [pelee-coco](https://github.com/openvinotoolkit/open_model_zoo/tree/master/models/public/pelee-coco).
 
