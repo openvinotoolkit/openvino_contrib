@@ -55,7 +55,7 @@ jobs:
     BUILD_OPEN_MODEL_ZOO: $(WORK_DIR)/BUILD_OPEN_MODEL_ZOO
     INSTALL_OPENVINO: $(WORK_DIR)/install_openvino
     INSTALL_PYTHON: $(INSTALL_OPENVINO)/extras/python 
-    INSTALL_ONETBB: $(INSTALL_OPENVINO)/extras/oneTBB
+    INSTALL_ONETBB: $(WORK_DIR)/build/extras/oneTBB
     INSTALL_OPENCV: $(INSTALL_OPENVINO)/extras/opencv
     INSTALL_OPEN_MODEL_ZOO: $(INSTALL_OPENVINO)/extras/open_model_zoo
     WORK_DIR: $(Pipeline.Workspace)/_w
