@@ -1,11 +1,19 @@
 name: History CUDA
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - 'modules/nvidia_plugin/**'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**'
 jobs:
   history:
     runs-on: lohika-ci
     steps:
     - name: checkout master branch
       run: git -C ~/runner/openvino_contrib checkout master
+    - name: fetch master branch
+      run: git -C ~/runner/openvino_contrib pull origin master
     - name: delete temporary branch
       run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
     - name: fetch

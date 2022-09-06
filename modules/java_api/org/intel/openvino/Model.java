@@ -3,6 +3,8 @@
 
 package org.intel.openvino;
 
+import java.util.ArrayList;
+
 public class Model extends Wrapper {
 
     protected Model(long addr) {
@@ -17,10 +19,16 @@ public class Model extends Wrapper {
         return new Dimension(getBatch(nativeObj));
     }
 
+    public ArrayList<Output> outputs() {
+        return getOutputs(nativeObj);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native String getName(long addr);
 
     private static native long getBatch(long addr);
+
+    private static native ArrayList<Output> getOutputs(long addr);
 
     @Override
     protected native void delete(long nativeObj);

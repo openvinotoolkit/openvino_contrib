@@ -3,15 +3,15 @@ on:
   push:
     paths:
       - '**'
-      - '!modules/cuda_plugin/**'
+      - '!modules/nvidia_plugin/**'
   pull_request:
     paths:
       - '**'
-      - '!modules/cuda_plugin/**'
+      - '!modules/nvidia_plugin/**'
 
 jobs:
   Java:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-java@v1

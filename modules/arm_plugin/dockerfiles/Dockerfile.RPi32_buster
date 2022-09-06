@@ -46,15 +46,17 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN dpkg --add-architecture armhf && \
+    dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends -f -o Dpkg::Options::="--force-confnew" \
         build-essential \
         libusb-1.0-0-dev:armhf \
         software-properties-common \
         crossbuild-essential-armhf \
-        zlib1g-dev \
-        libffi-dev \
-        libssl-dev \
+        crossbuild-essential-i386 \
+        zlib1g-dev:i386 \
+        libffi-dev:i386 \
+        libssl-dev:i386 \
         chrpath \
         libssl-dev \
         libprotobuf-dev \
@@ -75,8 +77,15 @@ RUN dpkg --add-architecture armhf && \
 # To cross-compile Python3.7 we need to first compile it for the host
 RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
     tar -xf Python-3.7.9.tar.xz && \
-    cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
-    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython
+    cd Python-3.7.9 && \
+    ./configure \
+        --build=x86_64-linux-gnu \
+        --host=i686-linux-gnu \
+        --disable-ipv6 \
+        ac_cv_file__dev_ptmx=no \
+        ac_cv_file__dev_ptc=no && \
+    make -j4 && make altinstall && \
+    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip numpy==1.19.5 cython setuptools
 
 # Cross-compile Python3.7 for ARM
 RUN cd Python-3.7.9 && make distclean && \
