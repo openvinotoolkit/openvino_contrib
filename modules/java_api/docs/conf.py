@@ -17,9 +17,8 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'Devtools-practice'
-copyright = '2021, UNN-ITMM-Software'
-author = 'UNN-ITMM-Software'
+project = 'OpenVINO Java'
+copyright = '2020-2022, Intel Corporation'
 
 
 # -- General configuration ---------------------------------------------------
