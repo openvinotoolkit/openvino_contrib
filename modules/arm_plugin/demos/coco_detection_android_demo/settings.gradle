@@ -6,7 +6,7 @@ dependencyResolutionManagement {
         jcenter() // Warning: this repository is going to shut down soon
     }
 }
-rootProject.name = "Vehicle Detection And Recognition"
+rootProject.name = "Coco Detection Android Demo"
 include ':app'
 include ':ocv'
 include ':ocv'
