@@ -3,9 +3,7 @@
 
 package org.intel.openvino;
 
-/**
- * This is a class of infer request that can be run in asynchronous or synchronous manners.
- */
+/** This is a class of infer request that can be run in asynchronous or synchronous manners. */
 public class InferRequest extends Wrapper {
     protected InferRequest(long addr) {
         super(addr);
@@ -13,9 +11,9 @@ public class InferRequest extends Wrapper {
 
     /**
      * Infers specified input(s) in synchronous mode.
-     * <p>
-     * It blocks all methods of {@link InferRequest} while request is ongoing (running or waiting in a queue).
-     * Calling any method leads to throwning the ov::Busy exception.
+     *
+     * <p>It blocks all methods of {@link InferRequest} while request is ongoing (running or waiting
+     * in a queue). Calling any method leads to throwning the ov::Busy exception.
      */
     public void infer() {
         Infer(nativeObj);
@@ -23,12 +21,13 @@ public class InferRequest extends Wrapper {
 
     /**
      * Sets an input tensor to infer models with single input.
-     * <p>
-     * If model has several inputs, an exception is thrown.
+     *
+     * <p>If model has several inputs, an exception is thrown.
+     *
      * @param tensor Reference to the input tensor.
      */
     public void set_input_tensor(Tensor tensor) {
-        SetInputTensor(nativeObj, input.nativeObj);
+        SetInputTensor(nativeObj, tensor.nativeObj);
     }
 
     /**
@@ -42,8 +41,10 @@ public class InferRequest extends Wrapper {
 
     /**
      * Gets an input/output tensor for inference by tensor name.
+     *
      * @param tensorName Name of a tensor to get.
-     * @return The tensor with name "tensorName". If the tensor is not found, an exception is thrown.
+     * @return The tensor with name "tensorName". If the tensor is not found, an exception is
+     *     thrown.
      */
     public Tensor get_tensor(String tensorName) {
         return new Tensor(GetTensor(nativeObj, tensorName));

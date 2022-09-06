@@ -3,25 +3,33 @@
 
 package org.intel.openvino;
 
-/** Layout represents the text information of tensor's dimensions/axes. E.g. layout `NCHW` means that 4D
- * tensor `{-1, 3, 480, 640}` will have:
+/**
+ * Layout represents the text information of tensor's dimensions/axes. E.g. layout `NCHW` means that
+ * 4D tensor `{-1, 3, 480, 640}` will have:
+ *
  * <ul>
- * <li> 0: `N = -1`: batch dimension is dynamic </li>
- * <li> 1: `C = 3`: number of channels is '3' </li>
- * <li> 2: `H = 480`: image height is 480 </li>
- * <li> 3: `W = 640`: image width is 640 </li>
+ *   <li>0: `N = -1`: batch dimension is dynamic
+ *   <li>1: `C = 3`: number of channels is '3'
+ *   <li>2: `H = 480`: image height is 480
+ *   <li>3: `W = 640`: image width is 640
  * </ul>
  *
  * Examples: `Layout` can be specified for:
+ *
  * <ul>
- * <li> Preprocessing purposes. E.g. </li>
- * <ul>
- *    <li> To apply normalization (means/scales) it is usually required to set 'C' dimension in a layout.  </li>
- *    <li> To resize the image to specified width/height it is needed to set 'H' and 'W' dimensions in a layout  </li>
- *    <li> To transpose image - source and target layout can be set (see `ov::preprocess::PreProcessSteps::convert_layout`) </li>
+ *   <li>Preprocessing purposes. E.g.
+ *       <ul>
+ *         <li>To apply normalization (means/scales) it is usually required to set 'C' dimension in
+ *             a layout.
+ *         <li>To resize the image to specified width/height it is needed to set 'H' and 'W'
+ *             dimensions in a layout
+ *         <li>To transpose image - source and target layout can be set (see
+ *             `ov::preprocess::PreProcessSteps::convert_layout`)
+ *       </ul>
+ *   <li>To set/get model's batch (see {@link Model#get_batch}/'set_batch') it is required in
+ *       general to specify 'N' dimension
  * </ul>
- * <li> To set/get model's batch (see {@link Model#get_batch}/'set_batch') it is required in general to specify 'N' dimension </li>
- * </ul>
+ *
  * in layout for appropriate inputs
  */
 public class Layout extends Wrapper {
@@ -30,16 +38,12 @@ public class Layout extends Wrapper {
         super(GetLayout(str));
     }
 
-    /**
-     * Returns 'height' dimension index.
-     */
+    /** Returns 'height' dimension index. */
     public static int height_idx(Layout layout) {
         return HeightIdx(layout.nativeObj);
     }
 
-    /**
-     * Returns 'width' dimension index.
-     */
+    /** Returns 'width' dimension index. */
     public static int width_idx(Layout layout) {
         return WidthIdx(layout.nativeObj);
     }

@@ -5,8 +5,8 @@ package org.intel.openvino;
 
 /**
  * Tensor API holding host memory
- * <p>
- * It can throw exceptions safely for the application, where it is properly handled.
+ *
+ * <p>It can throw exceptions safely for the application, where it is properly handled.
  */
 public class Tensor extends Wrapper {
     public Tensor(long addr) {
@@ -23,22 +23,19 @@ public class Tensor extends Wrapper {
 
     /**
      * Returns the total number of elements (a product of all the dims or 1 for scalar)
+     *
      * @return The total number of elements
      */
     public int get_size() {
         return GetSize(nativeObj);
     }
 
-    /**
-     * Returns a tensor shape
-     */
+    /** Returns a tensor shape */
     public int[] get_shape() {
         return GetShape(nativeObj);
     }
 
-    /**
-     * Returns a tensor data as floating point array.
-     */
+    /** Returns a tensor data as floating point array. */
     public float[] data() {
         return asFloat(nativeObj);
     }

@@ -50,6 +50,8 @@ html_theme = 'alabaster'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+html_title = 'OpenVINO for Java'
+
 import subprocess
 subprocess.call('javadoc ../org/intel/openvino/*.java', shell=True)
 

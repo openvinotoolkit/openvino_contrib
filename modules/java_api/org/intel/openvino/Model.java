@@ -5,28 +5,29 @@ package org.intel.openvino;
 
 import java.util.ArrayList;
 
-/**
- * A user-defined model
- */
+/** A user-defined model */
 public class Model extends Wrapper {
 
     protected Model(long addr) {
         super(addr);
     }
 
-    /** Get the unique name of the model.
+    /**
+     * Get the unique name of the model.
+     *
      * @return A const reference to the model's unique name.
      */
     public String get_name() {
         return getName(nativeObj);
     }
 
-    /** Helper method to get associated batch size for a Model
-    * <p>
-     * Checks layout of each parameter in a Model and extracts value for N (B) dimension. All values are then
-     * merged and returned
+    /**
+     * Helper method to get associated batch size for a Model
      *
-     * Throws ::ov::AssertFailure with details in case of error.
+     * <p>Checks layout of each parameter in a Model and extracts value for N (B) dimension. All
+     * values are then merged and returned
+     *
+     * <p>Throws ::ov::AssertFailure with details in case of error.
      *
      * @return Dimension representing current batch size. Can represent a number or be a dynamic
      */
@@ -34,7 +35,9 @@ public class Model extends Wrapper {
         return new Dimension(getBatch(nativeObj));
     }
 
-    /** Get model outputs.
+    /**
+     * Get model outputs.
+     *
      * @return A list of model outputs.
      */
     public ArrayList<Output> outputs() {

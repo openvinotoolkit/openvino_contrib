@@ -3,8 +3,9 @@
 
 package org.intel.openvino;
 
-/** Preprocessing steps. Each step typically intends adding of some operation to input parameter
- * User application can specify sequence of preprocessing steps in a builder-like manner.
+/**
+ * Preprocessing steps. Each step typically intends adding of some operation to input parameter User
+ * application can specify sequence of preprocessing steps in a builder-like manner.
  */
 public class PreProcessSteps extends Wrapper {
 
@@ -12,10 +13,10 @@ public class PreProcessSteps extends Wrapper {
         super(addr);
     }
 
-    /** Add resize operation to model's dimensions.
+    /**
+     * Add resize operation to model's dimensions.
      *
      * @param alg Resize algorithm.
-     *
      * @return Reference to 'this' to allow chaining with other calls in a builder-like manner.
      */
     public PreProcessSteps resize(ResizeAlgorithm alg) {

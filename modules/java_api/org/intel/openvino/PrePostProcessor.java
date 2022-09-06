@@ -3,13 +3,14 @@
 
 package org.intel.openvino;
 
-/** Main class for adding pre- and post- processing steps to existing {@link Model}
- * <p>
- * This is a helper class for writing easy pre- and post- processing operations on {@link Model} object assuming that
- * any preprocess operation takes one input and produces one output.
- * <p>
- * For advanced preprocessing scenarios, like combining several functions with multiple inputs/outputs into one,
- * client's code can use transformation passes over {@link Model}
+/**
+ * Main class for adding pre- and post- processing steps to existing {@link Model}
+ *
+ * <p>This is a helper class for writing easy pre- and post- processing operations on {@link Model}
+ * object assuming that any preprocess operation takes one input and produces one output.
+ *
+ * <p>For advanced preprocessing scenarios, like combining several functions with multiple
+ * inputs/outputs into one, client's code can use transformation passes over {@link Model}
  */
 public class PrePostProcessor extends Wrapper {
 
@@ -21,9 +22,10 @@ public class PrePostProcessor extends Wrapper {
         super(GetPrePostProcessor(model.nativeObj));
     }
 
-    /** Gets input pre-processing data structure. Should be used only if model/function has only one input
-     *  Using returned structure application's code is able to set user's tensor data (e.g layout), preprocess steps,
-     *  target model's data
+    /**
+     * Gets input pre-processing data structure. Should be used only if model/function has only one
+     * input Using returned structure application's code is able to set user's tensor data (e.g
+     * layout), preprocess steps, target model's data
      *
      * @return Reference to model's input information structure
      */
@@ -31,9 +33,10 @@ public class PrePostProcessor extends Wrapper {
         return new InputInfo(Input(nativeObj));
     }
 
-    /** Gets output post-processing data structure. Should be used only if model/function has only one output
-     *  Using returned structure application's code is able to set model's output data, post-process steps, user's
-     *  tensor data (e.g layout)
+    /**
+     * Gets output post-processing data structure. Should be used only if model/function has only
+     * one output Using returned structure application's code is able to set model's output data,
+     * post-process steps, user's tensor data (e.g layout)
      *
      * @return Reference to model's output information structure
      */
@@ -41,7 +44,8 @@ public class PrePostProcessor extends Wrapper {
         return new OutputInfo(Output(nativeObj));
     }
 
-    /** Adds pre/post-processing operations to function passed in constructor
+    /**
+     * Adds pre/post-processing operations to function passed in constructor
      *
      * @return Function with added pre/post-processing operations
      */
@@ -57,7 +61,7 @@ public class PrePostProcessor extends Wrapper {
 
     private static native long Output(long preprocess);
 
-    private static native void Build(long preprocess);
+    private static native long Build(long preprocess);
 
     @Override
     protected native void delete(long nativeObj);
