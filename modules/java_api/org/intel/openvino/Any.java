@@ -3,6 +3,7 @@
 
 package org.intel.openvino;
 
+/** This class represents an object to work with different types. */
 public class Any extends Wrapper {
 
     public Any(long addr) {

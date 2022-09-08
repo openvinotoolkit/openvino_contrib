@@ -39,14 +39,28 @@ public class InferRequest extends Wrapper {
         return new Tensor(GetOutputTensor(nativeObj));
     }
 
+    /**
+     * Starts inference of specified input(s) in asynchronous mode.
+     *
+     * <p>It returns immediately. Inference starts also immediately. Calling any method while the
+     * request in a running state leads to throwning the ov::Busy exception.
+     */
     public void start_async() {
         StartAsync(nativeObj);
     }
 
+    /** Waits for the result to become available. Blocks until the result becomes available. */
     public void wait_async() {
         Wait(nativeObj);
     }
 
+    /**
+     * Sets an output tensor to infer models with single output.
+     *
+     * <p>If model has several outputs, an exception is thrown.
+     *
+     * @param tensor Reference to the output tensor.
+     */
     public void set_output_tensor(Tensor tensor) {
         SetOutputTensor(nativeObj, tensor.nativeObj);
     }

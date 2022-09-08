@@ -159,10 +159,26 @@ public class Core extends Wrapper {
         return new CompiledModel(CompileModel(nativeObj, model.getNativeObjAddr(), device));
     }
 
+    /**
+     * Gets properties related to device behaviour.
+     *
+     * <p>The method extracts information that can be set via the set_property method.
+     *
+     * @param device Name of a device to get a property value.
+     * @param name {@link Property} name.
+     * @return Value of a property corresponding to the property name.
+     */
     public Any get_property(final String device, final String name) {
         return new Any(GetProperty(nativeObj, device, name));
     }
 
+    /**
+     * Sets properties for a device, acceptable keys can be found in
+     * openvino/runtime/properties.hpp.
+     *
+     * @param device Name of a device to get a property value.
+     * @param prop Map of pairs: (property name, property value).
+     */
     public void set_property(final String device, final Map<String, String> prop) {
         SetProperty(nativeObj, device, prop);
     }

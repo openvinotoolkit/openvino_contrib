@@ -50,9 +50,12 @@ public class CoreTests extends OVTest {
         int nireq1 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
         assertEquals("Initial number of requests", 1, nireq1);
 
-        Map<String, String> config = new HashMap<String, String>() {{
-            put("CPU_THROUGHPUT_STREAMS", "4");
-        }};
+        Map<String, String> config =
+                new HashMap<String, String>() {
+                    {
+                        put("CPU_THROUGHPUT_STREAMS", "4");
+                    }
+                };
         core.set_property("CPU", config);
         int nireq2 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
 
