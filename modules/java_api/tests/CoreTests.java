@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import org.intel.openvino.*;
 import org.junit.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class CoreTests extends OVTest {
@@ -49,12 +50,15 @@ public class CoreTests extends OVTest {
         int nireq1 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
         assertEquals("Initial number of requests", 1, nireq1);
 
-        Map<String, String> config = Map.of("CPU_THROUGHPUT_STREAMS", "4");
+        Map<String, String> config = new HashMap<String, String>() {{
+            put("CPU_THROUGHPUT_STREAMS", "4");
+        }};
         core.set_property("CPU", config);
         int nireq2 = core.get_property("CPU", "OPTIMAL_NUMBER_OF_INFER_REQUESTS").asInt();
 
         assertEquals("Final number of requests", 4, nireq2);
 
-        core.set_property("CPU", Map.of("CPU_THROUGHPUT_STREAMS", "1")); // Restore
+        config.put("CPU_THROUGHPUT_STREAMS", "1");
+        core.set_property("CPU", config); // Restore
     }
 }
