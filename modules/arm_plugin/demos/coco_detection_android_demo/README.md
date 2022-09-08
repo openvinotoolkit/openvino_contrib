@@ -76,6 +76,14 @@ The built results are in `$WORK_DIR/openvino_install/runtime/lib/aarch64`. We wi
 
 > Please confirm that your `plugins.xml` in `$WORK_DIR/openvino_install/runtime/lib/aarch64` contains plugin name `"CPU"`.
 
+- Build Java API 2.0 for Android
+
+```bash
+source $WORK_DIR/openvino_install/setupvars.sh
+cd $WORK_DIR/openvino_contrib/modules/java_api
+gradle build
+```
+
 - Download and convert model "ssdlite_mobilenet_v2" [or pelee-coco, efficientdet-d0-tf] with Open Model Zoo
 
 ```bash
