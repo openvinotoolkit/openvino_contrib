@@ -38,8 +38,12 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _ref = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE) == key) {
             _lpt = (CONFIG_VALUE(YES) == value);
+        } else if (CONFIG_KEY(ENFORCE_BF16) == key) {
+            _enforceBF16 = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(DUMP_GRAPH) == key) {
             _dump = (CONFIG_VALUE(YES) == value);
+        } else if (CONFIG_KEY(PERFORMANCE_HINT) == key) {
+            _perfHint = ov::hint::PerformanceMode::LATENCY;
         }  else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
         }
@@ -61,8 +65,12 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_ref};
     } else if (name == CONFIG_KEY_INTERNAL(LP_TRANSFORMS_MODE)) {
         return {_lpt};
+    } else if (name == CONFIG_KEY(ENFORCE_BF16)) {
+        return {_enforceBF16};
     } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
         return {_dump};
+    } else if (name == CONFIG_KEY(PERFORMANCE_HINT)) {
+        return {_perfHint};
     }  else {
         IE_THROW(NotFound) << ": " << name;
     }

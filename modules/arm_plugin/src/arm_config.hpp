@@ -37,9 +37,11 @@ struct Configuration {
 
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
+    bool _enforceBF16            = false;
     bool _ref                    = true;
     bool _lpt                    = true;
     bool _dump                   = false;
+    ov::hint::PerformanceMode _perfHint = ov::hint::PerformanceMode::UNDEFINED;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin
