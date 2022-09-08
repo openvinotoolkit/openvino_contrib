@@ -29,56 +29,27 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Vector;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * This is the object detection demo for ARM CPUs Android (for OpenVINO Java API 2.0).
+ *
+ * The demo loads a network (including SSD, Pelee, EfficientDet) and read image from camera
+ * to Inference Engine device. The screen will show the inference result and speed in frame.
+ */
 public class MainActivity extends CameraActivity implements CvCameraViewListener2 {
     private CameraBridgeViewBase mOpenCvCameraView;
-    private String inputName;
-    private String outputName;
+    private InferRequest inferRequest;
     private String modelDir;
-    private Mat currentFrame;
+    public TickMeter tm;
 
+    public static final float CONFIDENCE_THRESHOLD = 0.6F;
+    public static final float NMS_THRESHOLD = 0.6F;
     public static final String OPENCV_LIBRARY_NAME = "opencv_java4";
     public static final String PLUGINS_XML = "plugins.xml";
     public static final String MODEL_XML = "ssdlite_mobilenet_v2.xml";
     public static final String MODEL_BIN = "ssdlite_mobilenet_v2.bin";
     public static final String DEVICE_NAME = "CPU";
-    public static int waitingTime = 1; // Waiting for 1 second
-    public static int inferRequestsSize = 4;
-    public static int warmupNum = inferRequestsSize * 2;
-    public TickMeter tm = null;
-
-    public static BlockingQueue<Mat> processedFramesQueue = new LinkedBlockingQueue<Mat>();
-    public static BlockingQueue<float[]> detectionOutput = new LinkedBlockingQueue<float[]>(); // Can't add null object
-    public static BlockingQueue<Mat> framesQueue = new LinkedBlockingQueue<Mat>();
-
-    public static Queue<Integer> startedRequestsIds = new LinkedList<Integer>();
-    public static Vector<InferRequest> inferRequests = new Vector<InferRequest>();
-    public static Vector<Boolean> asyncInferIsFree;
-
-    public static int framesCounter = 0;
-    public static int resultCounter = 0;
-
-    public static final String[] COCO_CLASSES_80 = {
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
-            "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
-            "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
-            "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
-            "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
-            "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-            "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote",
-            "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book",
-            "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
-    };
     public static final String[] COCO_CLASSES_91 = {
             "background", "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
             "truck", "boat", "traffic light", "fire hydrant", "street sign", "stop sign",
@@ -93,39 +64,6 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             "toaster", "sink", "refrigerator", "blender", "book", "clock", "vase", "scissors",
             "teddy bear", "hair drier", "toothbrush", "hair brush"
     };
-
-    private Blob imageToBlob(Mat image) {
-        int[] dimsArr = {1, image.channels(), image.height(), image.width()};
-        TensorDesc tDesc = new TensorDesc(Precision.U8, dimsArr, Layout.NHWC);
-
-        return new Blob(tDesc, image.dataAddr());
-    }
-
-    private void processInferRequets(WaitMode wait) {
-        int size = 0;
-        float[] res = null;
-
-        while (!startedRequestsIds.isEmpty()) {
-            int requestId = startedRequestsIds.peek();
-            InferRequest inferRequest = inferRequests.get(requestId);
-
-            if (inferRequest.Wait(wait) != StatusCode.OK)
-                return; // STATUS_ONLY => StatusCode OK
-
-            if (size == 0 && res == null) {
-                size = inferRequest.GetBlob(outputName).size();
-                res = new float[size];
-            }
-
-            inferRequest.GetBlob(outputName).rmap().get(res);
-            detectionOutput.add(res);
-
-            resultCounter++;
-
-            asyncInferIsFree.setElementAt(true, requestId);
-            startedRequestsIds.remove();
-        }
-    }
 
     private void copyFiles() {
         String[] fileNames = {MODEL_BIN, MODEL_XML, PLUGINS_XML};
@@ -153,53 +91,51 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         }
     }
     private void processNetwork() {
-        // Set up camera listener.
+        // Set up camera listener
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.CameraView);
         mOpenCvCameraView.setVisibility(CameraBridgeViewBase.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
         mOpenCvCameraView.setCameraPermissionGranted();
         mOpenCvCameraView.enableFpsMeter();
-        mOpenCvCameraView.setMaxFrameSize(640, 480);
-        copyFiles();
+        mOpenCvCameraView.setMaxFrameSize(320, 240);
 
-        IECore core = new IECore(modelDir + "/" + PLUGINS_XML);
-        CNNNetwork net = core.ReadNetwork(modelDir + "/" + MODEL_XML);
+        // Initialize model
+        copyFiles();
+        Core core = new Core(modelDir + "/" + PLUGINS_XML);
+        Model net = core.read_model(modelDir + "/" + MODEL_XML);
         System.out.println("load ok...");
 
-        Map<String, InputInfo> inputsInfo = net.getInputsInfo();
-        inputName = new ArrayList<String>(inputsInfo.keySet()).get(0);
-        InputInfo inputInfo = inputsInfo.get(inputName);
+        // Set config of the network
+        PrePostProcessor p = new PrePostProcessor(net);
+        p.input()
+                .tensor()
+                .set_element_type(ElementType.u8)
+                .set_layout(new Layout("NHWC"));
 
-        inputInfo.getPreProcess().setResizeAlgorithm(ResizeAlgorithm.RESIZE_BILINEAR);
-        inputInfo.setPrecision(Precision.U8);
+        p.input().preprocess().resize(ResizeAlgorithm.RESIZE_LINEAR);
+        p.input().model().set_layout(new Layout("NCHW"));
+        p.build();
 
-        outputName = new ArrayList<String>(net.getOutputsInfo().keySet()).get(0);
-
-        ExecutableNetwork executableNetwork = core.LoadNetwork(net, DEVICE_NAME);
-
-        asyncInferIsFree = new Vector<Boolean>(inferRequestsSize); // Add flags for the infer process
-
-        // Init multi requests
-        for (int i = 0; i < inferRequestsSize; i++) {
-            inferRequests.add(executableNetwork.CreateInferRequest());
-            asyncInferIsFree.add(true);
-        }
+        CompiledModel compiledModel = core.compile_model(net, DEVICE_NAME);
+        inferRequest = compiledModel.create_infer_request();
 
         // System info
         String tag = "APPActivity";
         ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
         activityManager.getMemoryInfo(info);
-
         Log.i(tag, "residue memory : " + (info.availMem >> 20) + "M");
+
+        tm = new TickMeter();
     }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         try{
             System.loadLibrary(OPENCV_LIBRARY_NAME);
-            System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
+            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
             Log.e("UnsatisfiedLinkError",
                     "Failed to load native OpenVINO libraries\n" + e.toString());
@@ -211,51 +147,6 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         } else {
             processNetwork();
         }
-
-        tm = new TickMeter();
-
-        // Infer Thread
-        Runnable infer = () -> {
-            try {
-                // Wait for several seconds
-                // Thread.sleep(5000);
-                while (true) { // !framesQueue.isEmpty()!framesQueue.isEmpty()
-                    if (Thread.interrupted()) break;
-
-                    processInferRequets(WaitMode.STATUS_ONLY);
-                    for (int i = 0; i < inferRequestsSize; i++) {
-                        if (!asyncInferIsFree.get(i)) continue; // Skip for the result
-
-                        if (framesQueue.size() != 0) {
-                            System.out.println("INFER REQUEST :" + framesQueue.size());
-                        }
-
-                        Mat frame = framesQueue.poll(0, TimeUnit.SECONDS);
-
-                        if (frame == null) break;
-
-                        InferRequest request = inferRequests.get(i);
-
-                        asyncInferIsFree.setElementAt(false, i); // Get Infer lock
-
-                        Imgproc.resize(frame, frame, new Size(300, 300));
-                        processedFramesQueue.add(frame);
-
-                        Blob imgBlob = imageToBlob(frame);
-                        request.SetBlob(inputName, imgBlob);
-
-                        startedRequestsIds.add(i);
-                        request.StartAsync();
-                    }
-                }
-                processInferRequets(WaitMode.RESULT_READY); // No Use
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        };
-
-        Thread inferThread = new Thread(infer, "Infer Thread");
-        inferThread.start();
     }
 
     @Override
@@ -267,95 +158,103 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         }
         processNetwork();
     }
+
     @Override
     public void onResume() {
         super.onResume();
         mOpenCvCameraView.enableView();
     }
+
     @Override
     public void onCameraViewStarted(int width, int height) {}
+
     @Override
     public void onCameraViewStopped() {}
+
     @Override
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
-        // Check resources
+        // Use TickMeter to calculate fps
+        tm.start();
         Mat frame = inputFrame.rgba();
-        // Memory leak
         Imgproc.cvtColor(frame, frame, Imgproc.COLOR_RGBA2RGB);
-        currentFrame = frame.clone();
+        Mat currentFrame = frame.clone();
         frame.release();
 
-        framesCounter++;
-        framesQueue.add(currentFrame);
+        // Preprocess the frame
+        Imgproc.resize(currentFrame, currentFrame, new Size(300, 300));
+        int[] dimsArr = {1, currentFrame.rows(), currentFrame.cols(), 3};
+        Tensor input_tensor = new Tensor(ElementType.u8, dimsArr, currentFrame.dataAddr());
 
-        try {
-            currentFrame = processedFramesQueue.poll(waitingTime * 10L, TimeUnit.SECONDS);
-            Imgproc.resize(currentFrame, currentFrame, new Size(640, 480));
+        // Set input data
+        inferRequest.set_input_tensor(input_tensor);
+        inferRequest.infer();
 
-            float[] detection = detectionOutput.poll(waitingTime, TimeUnit.SECONDS);
-            if (detection == null) return currentFrame;
-            int maxProposalCount = detection.length / 7;
+        // Get output data from model
+        Tensor output_tensor = inferRequest.get_output_tensor();
+        Imgproc.resize(currentFrame, currentFrame, new Size(320, 240));
 
-            // Details for NMS
-            List<Rect2d> rect2dList = new ArrayList<>();
-            List<Float> confList = new ArrayList<>();
-            List<Integer> objIndexList = new ArrayList<>();
+        float[] detection = output_tensor.data();
+        int maxProposalCount = detection.length / 7;
 
-            for (int i = 0; i < maxProposalCount; i ++) {
-                float label = detection[i * 7 + 1];
-                float conf = detection[i * 7 + 2];
-                float xMin = detection[i * 7 + 3] * currentFrame.cols();
-                float yMin = detection[i * 7 + 4] * currentFrame.rows();
-                float xMax = detection[i * 7 + 5] * currentFrame.cols();
-                float yMax = detection[i * 7 + 6] * currentFrame.rows();
+        // Construct the input to the NMS algorithm
+        List<Rect2d> rect2dList = new ArrayList<>();
+        List<Float> confList = new ArrayList<>();
+        List<Integer> objIndexList = new ArrayList<>();
 
-                confList.add(conf);
-                objIndexList.add((int) label);
-                rect2dList.add(new Rect2d(xMin, yMin, (xMax - xMin), (yMax - yMin)));
-            }
+        for (int i = 0; i < maxProposalCount; i ++) {
+            float label = detection[i * 7 + 1];
+            float conf = detection[i * 7 + 2];
+            float xMin = detection[i * 7 + 3] * currentFrame.cols();
+            float yMin = detection[i * 7 + 4] * currentFrame.rows();
+            float xMax = detection[i * 7 + 5] * currentFrame.cols();
+            float yMax = detection[i * 7 + 6] * currentFrame.rows();
 
-            MatOfInt indices = new MatOfInt();
-            MatOfRect2d boxes = new MatOfRect2d(rect2dList.toArray(new Rect2d[0]));
-            float[] confArr = new float[confList.size()];
-            for (int i = 0; i < confList.size(); i++) {
-                confArr[i] = confList.get(i);
-            }
-            MatOfFloat confs = new MatOfFloat(confArr);
-            Dnn.NMSBoxes(boxes, confs, 0.6F, 0.6F, indices);
-
-            if (indices.empty()) {
-                System.out.println("No boxes here");
-                return currentFrame;
-            }
-
-            int[] idxes = indices.toArray();
-            for (int idx : idxes) {
-                Rect2d rect2d = rect2dList.get(idx);
-                Integer obj = objIndexList.get(idx);
-                Float conf = confList.get(idx);
-                Imgproc.rectangle(currentFrame, new Point(rect2d.x, rect2d.y),
-                        new Point((rect2d.x + rect2d.width), (rect2d.y + rect2d.height)),
-                        new Scalar(0, 255, 0), 1);
-                Imgproc.putText(currentFrame, COCO_CLASSES_91[obj] + " " + conf, new Point(rect2d.x, rect2d.y - 10),
-                        Imgproc.FONT_HERSHEY_COMPLEX, 0.5, new Scalar(0, 255, 0), 1);
-            }
-
-            // Using TickMeter to calculate fps
-            if (resultCounter == warmupNum) {
-                tm.start();
-            } else if (resultCounter > warmupNum) {
-                tm.stop();
-                // Fps for inference
-                double worksFps = ((double) (resultCounter - warmupNum)) / tm.getTimeSec();
-                tm.start();
-
-                String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
-
-                Imgproc.putText(currentFrame, inferFps, new Point(10, 15), 0, 0.5, new Scalar(0, 255, 0), 1);
-            }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            confList.add(conf);
+            objIndexList.add((int) label);
+            rect2dList.add(new Rect2d(xMin, yMin, (xMax - xMin), (yMax - yMin)));
         }
+
+        MatOfInt indices = new MatOfInt();
+        MatOfRect2d boxes = new MatOfRect2d(rect2dList.toArray(new Rect2d[0]));
+        float[] confArr = new float[confList.size()];
+        for (int i = 0; i < confList.size(); i++) {
+            confArr[i] = confList.get(i);
+        }
+        MatOfFloat confs = new MatOfFloat(confArr);
+        Dnn.NMSBoxes(boxes, confs, CONFIDENCE_THRESHOLD, NMS_THRESHOLD, indices);
+
+
+        if (indices.empty()) {
+            tm.stop();
+            // Fps for inference
+            double worksFps = tm.getAvgTimeSec();
+            String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
+            Imgproc.putText(currentFrame, inferFps, new Point(10, 15), 0, 0.5, new Scalar(0, 255, 0), 1);
+
+            System.out.println("No boxes here");
+            return currentFrame;
+        }
+
+        int[] idxes = indices.toArray();
+        for (int idx : idxes) {
+            Rect2d rect2d = rect2dList.get(idx);
+            Integer obj = objIndexList.get(idx);
+            Float conf = confList.get(idx);
+            Imgproc.rectangle(currentFrame, new Point(rect2d.x, rect2d.y),
+                    new Point((rect2d.x + rect2d.width), (rect2d.y + rect2d.height)),
+                    new Scalar(0, 255, 0), 1);
+            Imgproc.putText(currentFrame, COCO_CLASSES_91[obj] + " " + conf, new Point(rect2d.x, rect2d.y - 10),
+                    Imgproc.FONT_HERSHEY_COMPLEX, 0.5, new Scalar(0, 255, 0), 1);
+        }
+
+        tm.stop();
+        // Fps for inference
+        double avgTime = tm.getAvgTimeSec() * 1000;
+        double worksFps = tm.getFPS();
+        String inferAvgTime = "Inference average time: " + String.format("%.3f", avgTime);
+        String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
+        Imgproc.putText(currentFrame, inferAvgTime, new Point(10, 15), 0, 0.3, new Scalar(0, 255, 0), 1);
+        Imgproc.putText(currentFrame, inferFps, new Point(10, 25), 0, 0.3, new Scalar(0, 255, 0), 1);
 
         return currentFrame;
     }

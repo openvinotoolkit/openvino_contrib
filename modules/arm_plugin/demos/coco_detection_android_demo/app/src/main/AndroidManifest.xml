@@ -2,12 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.intel.openvino">
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Grant the permission to external libraries -->
     <application
         android:allowBackup="true"
         android:icon="@drawable/openvino_icon"
         android:label="@string/app_name"
         android:roundIcon="@drawable/openvino_icon"
         android:supportsRtl="true"
+        android:extractNativeLibs="true"
         android:theme="@style/Theme.CocoDetectionAndroidDemo">
         <activity
             android:name=".MainActivity"
