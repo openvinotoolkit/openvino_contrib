@@ -19,6 +19,17 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *env, jobjec
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore1(JNIEnv *env, jobject obj, jstring xmlConfigFile)
+{
+
+    JNI_METHOD("GetCore1",
+        std::string n_xml = jstringToString(env, xmlConfigFile);
+        Core *core = new Core(n_xml);
+        return (jlong)core;
+    )
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel(JNIEnv *env, jobject obj, jlong coreAddr, jstring xml)
 {
     JNI_METHOD("ReadModel",

@@ -1,0 +1,24 @@
+name: History CUDA
+on:
+  push:
+    paths:
+      - 'modules/nvidia_plugin/**'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**'
+jobs:
+  history:
+    runs-on: lohika-ci
+    steps:
+    - name: checkout master branch
+      run: git -C ~/runner/openvino_contrib checkout master
+    - name: fetch master branch
+      run: git -C ~/runner/openvino_contrib pull origin master
+    - name: delete temporary branch
+      run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
+    - name: fetch
+      run: git -C ~/runner/openvino_contrib fetch origin $GITHUB_REF:temporary-ci-branch
+    - name: rebased
+      run: git -C ~/runner/openvino_contrib merge-base --is-ancestor origin/master temporary-ci-branch
+    - name: autosquashed
+      run: "! git -C ~/runner/openvino_contrib rev-list --pretty=oneline  -E --grep '^(fixup|squash|amend)!' origin/master..temporary-ci-branch | fgrep !"

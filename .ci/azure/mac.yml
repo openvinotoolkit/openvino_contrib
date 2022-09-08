@@ -1,3 +1,23 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
 resources:
   repositories:
   - repository: openvino
@@ -84,7 +104,7 @@ jobs:
       # Disable errors with Ninja
       export CXXFLAGS="-Wno-error=unused-command-line-argument"
       export CFLAGS="-Wno-error=unused-command-line-argument"
-      cmake -GNinja -DVERBOSE_BUILD=ON -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
+      cmake -GNinja -DVERBOSE_BUILD=ON -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_nvidia_plugin=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake'
 

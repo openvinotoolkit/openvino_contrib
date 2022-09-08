@@ -63,7 +63,6 @@ else()
         cppthreads=1
         embed_kernels=0
         examples=0
-        internal_only=0
         Werror=0
         data_layout_support=nchw
         build_dir=${CMAKE_CURRENT_BINARY_DIR}

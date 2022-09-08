@@ -207,7 +207,7 @@ index 070f200..fe35a08 100644
 +        input_names = self.tokenizer.model_input_names
 +        if input_names[0] == "input_ids":
 +            input_names = ["input_ids", "attention_mask", "token_type_ids"]
-+        self.compression_ctrl.export_model(path_to_onnx, input_names=input_names)
++        self.compression_ctrl.export_model(path_to_onnx, input_names=input_names, save_format="onnx_12")
 +
 +        import subprocess
 +
