@@ -13,7 +13,6 @@
 #include <ops/concat.hpp>
 #include <typeinfo>
 
-using namespace InferenceEngine::gpu;
 using namespace InferenceEngine;
 using namespace ov::nvidia_gpu;
 using devptr_t = DevicePointer<void*>;
