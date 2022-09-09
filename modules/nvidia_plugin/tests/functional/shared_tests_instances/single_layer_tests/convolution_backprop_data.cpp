@@ -439,6 +439,50 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_4,
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
+// Attributes: {'auto_pad': 'explicit', 'dilations': '1,1', 'strides': '2,2'}
+// Inputs: {1, 128, 16, 16}, {128, 64, 2, 2}
+// Outputs: {1, 64, 32, 32}
+const InferenceEngine::SizeVector input2D_group_5 = {1, 128, 16, 16};
+const size_t numOutChannels_group_5 = 64;
+const InferenceEngine::SizeVector kernels2D_group_5 = {2, 2};
+const InferenceEngine::SizeVector strides2D_group_5 = {2, 2};
+const std::vector<ptrdiff_t> padBegins2D_group_5 = {1, 1};
+const std::vector<ptrdiff_t> padEnds2D_group_5 = {0, 0};
+const InferenceEngine::SizeVector dilations2D_group_5 = {1, 1};
+const auto conv2DParams_AsymPad_group_5 = ::testing::Combine(::testing::Values(kernels2D_group_5),
+                                                             ::testing::Values(strides2D_group_5),
+                                                             ::testing::Values(padBegins2D_group_5),
+                                                             ::testing::Values(padEnds2D_group_5),
+                                                             ::testing::Values(dilations2D_group_5),
+                                                             ::testing::Values(numOutChannels_group_5),
+                                                             ::testing::Values(ov::op::PadType::EXPLICIT),
+                                                             ::testing::Values(std::vector<ptrdiff_t>{}));
+const InferenceEngine::SizeVector output2D_group_5 = {32, 32};
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_5,
+                        ConvolutionBackpropDataLayerTest,
+                        ::testing::Combine(conv2DParams_AsymPad_group_5,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(input2D_group_5),
+                                           ::testing::Values(output2D_group_5),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_5,
+                        ConvolutionBackpropDataExtendedLayerTest,
+                        ::testing::Combine(conv2DParams_AsymPad_group_5,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(input2D_group_5),
+                                           ::testing::Values(output2D_group_5),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
+
 /* ============= ConvolutionBackpropData params (3D) ============= */
 // Attributes: {'dilations': '1,1,1', 'strides': '2,2,2'}
 // Inputs: {1, 256, 9, 9, 9}, {256, 128, 2, 2, 2}
@@ -773,6 +817,50 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_group_6,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_6),
                                            ::testing::Values(output3D_group_6),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
+
+// Attributes: {'auto_pad': 'explicit', 'dilations': '1,1,1', 'strides': '2,2,2'}
+// Inputs: {1, 16, 9, 9, 9}, {16, 32, 2, 2, 2}
+// Outputs: {1, 32, 18, 18, 18}
+const InferenceEngine::SizeVector input3D_group_7 = {1, 16, 9, 9, 9};
+const size_t numOutChannels3D_group_7 = 32;
+const InferenceEngine::SizeVector kernels3D_group_7 = {2, 2, 2};
+const InferenceEngine::SizeVector strides3D_group_7 = {2, 2, 2};
+const std::vector<ptrdiff_t> padBegins3D_group_7 = {1, 1, 1};
+const std::vector<ptrdiff_t> padEnds3D_group_7 = {0, 0, 0};
+const InferenceEngine::SizeVector dilations3D_group_7 = {1, 1, 1};
+const auto conv3DParams_AsymPad_group_7 = ::testing::Combine(::testing::Values(kernels3D_group_7),
+                                                             ::testing::Values(strides3D_group_7),
+                                                             ::testing::Values(padBegins3D_group_7),
+                                                             ::testing::Values(padEnds3D_group_7),
+                                                             ::testing::Values(dilations3D_group_7),
+                                                             ::testing::Values(numOutChannels3D_group_7),
+                                                             ::testing::Values(ov::op::PadType::EXPLICIT),
+                                                             ::testing::Values(std::vector<ptrdiff_t>{}));
+const InferenceEngine::SizeVector output3D_group_7 = {18, 18, 18};
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AsymPad_group_7,
+                        ConvolutionBackpropDataLayerTest,
+                        ::testing::Combine(conv3DParams_AsymPad_group_7,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(input3D_group_7),
+                                           ::testing::Values(output3D_group_7),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        ConvolutionBackpropDataLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AsymPad_group_7,
+                        ConvolutionBackpropDataExtendedLayerTest,
+                        ::testing::Combine(conv3DParams_AsymPad_group_7,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(input3D_group_7),
+                                           ::testing::Values(output3D_group_7),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
