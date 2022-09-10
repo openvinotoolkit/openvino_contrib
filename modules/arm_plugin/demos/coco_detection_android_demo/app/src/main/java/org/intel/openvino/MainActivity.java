@@ -42,6 +42,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     private InferRequest inferRequest;
     private String modelDir;
     public TickMeter tm;
+    public Scalar[] randomColor;
 
     public static final float CONFIDENCE_THRESHOLD = 0.6F;
     public static final float NMS_THRESHOLD = 0.6F;
@@ -90,6 +91,16 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             }
         }
     }
+
+    private void createRandomColor(int length) {
+        Random r = new Random(999);
+        randomColor = new Scalar[length];
+
+        for (int i = 0; i < length; i++) {
+            randomColor[i] = new Scalar(r.nextDouble() * 255, r.nextDouble() * 255, r.nextDouble() * 255);
+        }
+    }
+
     private void processNetwork() {
         // Set up camera listener
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.CameraView);
@@ -127,6 +138,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         Log.i(tag, "residue memory : " + (info.availMem >> 20) + "M");
 
         tm = new TickMeter();
+        createRandomColor(COCO_CLASSES_91.length);
     }
 
     @Override
@@ -242,9 +254,9 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             Float conf = confList.get(idx);
             Imgproc.rectangle(currentFrame, new Point(rect2d.x, rect2d.y),
                     new Point((rect2d.x + rect2d.width), (rect2d.y + rect2d.height)),
-                    new Scalar(0, 255, 0), 1);
+                    randomColor[obj], 1);
             Imgproc.putText(currentFrame, COCO_CLASSES_91[obj] + " " + conf, new Point(rect2d.x, rect2d.y - 10),
-                    Imgproc.FONT_HERSHEY_COMPLEX, 0.5, new Scalar(0, 255, 0), 1);
+                    Imgproc.FONT_HERSHEY_COMPLEX, 0.5, randomColor[obj], 1);
         }
 
         tm.stop();
