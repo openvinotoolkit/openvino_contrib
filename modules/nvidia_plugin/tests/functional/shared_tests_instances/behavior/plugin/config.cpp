@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda/cuda_config.hpp>
+#include <nvidia/cuda_config.hpp>
 #include <cuda_test_constants.hpp>
 
 #include "behavior/plugin/configuration_tests.hpp"

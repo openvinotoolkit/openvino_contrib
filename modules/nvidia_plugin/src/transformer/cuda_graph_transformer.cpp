@@ -21,7 +21,7 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
-#include "cuda/cuda_config.hpp"
+#include "nvidia/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"

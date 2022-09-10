@@ -17,7 +17,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 
-#include "cuda/cuda_config.hpp"
+#include "nvidia/cuda_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"

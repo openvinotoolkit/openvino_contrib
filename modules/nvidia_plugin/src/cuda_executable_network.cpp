@@ -16,7 +16,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
 
-#include "cuda/cuda_config.hpp"
+#include "nvidia/cuda_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"

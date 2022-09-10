@@ -4,7 +4,7 @@
 
 #include "behavior/infer_request/config.hpp"
 
-#include <cuda/cuda_config.hpp>
+#include <nvidia/cuda_config.hpp>
 #include <cuda_test_constants.hpp>
 #include <vector>
 

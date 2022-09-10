@@ -7,7 +7,7 @@
 #include <cudnn.h>
 #include <fmt/ostream.h>
 
-#include <cuda/cuda_config.hpp>
+#include <nvidia/cuda_config.hpp>
 #include <cuda_config.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/util.hpp>

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <cuda/cuda_config.hpp>
+#include <nvidia/cuda_config.hpp>
 #include <ie_parameter.hpp>
 #include <map>
 #include <memory>

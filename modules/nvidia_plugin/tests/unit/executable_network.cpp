@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cuda/cuda_config.hpp>
+#include <nvidia/cuda_config.hpp>
 #include <cuda_executable_network.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_plugin.hpp>
