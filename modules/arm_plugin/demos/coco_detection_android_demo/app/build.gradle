@@ -18,7 +18,6 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
@@ -39,6 +38,5 @@ dependencies {
     implementation "androidx.camera:camera-camera2:1.0.0"
     implementation "androidx.camera:camera-lifecycle:1.0.0"
     implementation "androidx.camera:camera-view:1.0.0-alpha25"
-    implementation files('libs/inference_engine_java_api.jar')
-    implementation project(path: ':ocv')
+    implementation files('libs/java_api.jar')
 }
