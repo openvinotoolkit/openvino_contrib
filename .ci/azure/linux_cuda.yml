@@ -121,7 +121,7 @@ jobs:
       -DBUILD_arm_plugin=OFF
       -DBUILD_java_api=OFF
       -DENABLE_PYTHON=OFF
-      -DENABLE_CUDA=ON
+      -DENABLE_NVIDIA=ON
       -DENABLE_TESTS=ON
       /root/repos/openvino &&
       /root/w/ninja -v CudaFuncTests CudaUnitTests"
