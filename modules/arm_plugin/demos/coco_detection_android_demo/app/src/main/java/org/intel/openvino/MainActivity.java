@@ -115,7 +115,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         copyFiles();
         Core core = new Core(modelDir + "/" + PLUGINS_XML);
         Model net = core.read_model(modelDir + "/" + MODEL_XML);
-        Log.i(APPTAG, "load ok...")
+        Log.i(APPTAG, "load ok...");
 
         // Set config of the network
         PrePostProcessor p = new PrePostProcessor(net);
