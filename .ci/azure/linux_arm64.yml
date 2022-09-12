@@ -199,7 +199,6 @@ jobs:
         -DInferenceEngineDeveloperPackage_DIR=$(BUILD_OPENVINO)
         -DENABLE_PYTHON=ON 
         -DTHREADING=TBB
-        -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
         -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.8 
         -DPYTHON_INCLUDE_DIRS=$(INSTALL_PYTHON)/include/python3.8 
         -DPYTHON_LIBRARIES=$(INSTALL_PYTHON)/lib
