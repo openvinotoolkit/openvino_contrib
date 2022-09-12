@@ -117,12 +117,12 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/bin/nvcc
 
 5. Run setup.py build command as follows.
 ```bash
-export CUDA_PLUGIN_SRC_ROOT_DIR=</path/to/openvino_contrib>/modules/nvidia_plugin
-python3 ${CUDA_PLUGIN_SRC_ROOT_DIR}/wheel/setup.py build
+export NVIDIA_PLUGIN_SRC_ROOT_DIR=</path/to/openvino_contrib>/modules/nvidia_plugin
+python3 ${NVIDIA_PLUGIN_SRC_ROOT_DIR}/wheel/setup.py build
 ```
 This will automatically download, build OpenVINO and build CUDA Plugin finally. The location of the resulting library file will be like the next.
 ```
-${CUDA_PLUGIN_SRC_ROOT_DIR}/build/temp.linux-x86_64-3.6/deps/openvino/bin/intel64/Debug/lib/libopenvino_nvidia_gpu_plugin.so
+${NVIDIA_PLUGIN_SRC_ROOT_DIR}/build/temp.linux-x86_64-3.6/deps/openvino/bin/intel64/Debug/lib/libopenvino_nvidia_gpu_plugin.so
 ```
 
 ## Install as python package with `setup.py`
