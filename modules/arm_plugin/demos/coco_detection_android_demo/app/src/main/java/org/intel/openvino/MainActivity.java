@@ -44,6 +44,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     public TickMeter tm;
     public Scalar[] randomColor;
 
+    private static final String APPTAG = MainActivity.class.getName();
     public static final float CONFIDENCE_THRESHOLD = 0.6F;
     public static final float NMS_THRESHOLD = 0.6F;
     public static final String OPENCV_LIBRARY_NAME = "opencv_java4";
@@ -114,7 +115,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         copyFiles();
         Core core = new Core(modelDir + "/" + PLUGINS_XML);
         Model net = core.read_model(modelDir + "/" + MODEL_XML);
-        System.out.println("load ok...");
+        Log.i(APPTAG, "load ok...")
 
         // Set config of the network
         PrePostProcessor p = new PrePostProcessor(net);
@@ -131,11 +132,10 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         inferRequest = compiledModel.create_infer_request();
 
         // System info
-        String tag = "APPActivity";
         ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
         activityManager.getMemoryInfo(info);
-        Log.i(tag, "residue memory : " + (info.availMem >> 20) + "M");
+        Log.i(APPTAG, "residue memory : " + (info.availMem >> 20) + "M");
 
         tm = new TickMeter();
         createRandomColor(COCO_CLASSES_91.length);
@@ -147,7 +147,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         setContentView(R.layout.activity_main);
         try{
             System.loadLibrary(OPENCV_LIBRARY_NAME);
-            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+            Core.loadNativeLibs();
         } catch (UnsatisfiedLinkError e) {
             Log.e("UnsatisfiedLinkError",
                     "Failed to load native OpenVINO libraries\n" + e.toString());
@@ -243,7 +243,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
             Imgproc.putText(currentFrame, inferFps, new Point(10, 15), 0, 0.5, new Scalar(0, 255, 0), 1);
 
-            System.out.println("No boxes here");
+            Log.i(APPTAG, "No boxes here!");
             return currentFrame;
         }
 
