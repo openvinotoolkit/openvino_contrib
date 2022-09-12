@@ -17,12 +17,12 @@
 #include <threading/ie_executor_manager.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 
-#include "cuda/cuda_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
+#include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
 using namespace ov::nvidia_gpu;
 
@@ -232,7 +232,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS, supportedMetrics);
     } else if (METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
         std::vector<std::string> configKeys = {
-            CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT), CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
+            CONFIG_KEY(DEVICE_ID), CONFIG_KEY(PERF_COUNT), NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
@@ -257,7 +257,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         //        properties_type configKeys = {
         //            CONFIG_KEY(DEVICE_ID),
         //            CONFIG_KEY(PERF_COUNT),
-        //            CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)
+        //            NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)
         //        };
         //        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         //        for (auto&& configKey : streamExecutorConfigKeys) {

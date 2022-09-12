@@ -74,7 +74,7 @@ set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEAS
 
 
 # ATTENTION: uncomment to register a plugin in the plugins.xml file
-if(ENABLE_CUDA)
+if(ENABLE_NVIDIA)
     ie_register_plugins(MAIN_TARGET ${TARGET_NAME}
                         POSSIBLE_PLUGINS ${TARGET_NAME})
 endif()

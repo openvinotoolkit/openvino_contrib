@@ -21,10 +21,10 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
-#include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
+#include "nvidia/nvidia_config.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"

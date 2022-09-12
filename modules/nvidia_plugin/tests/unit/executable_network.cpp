@@ -4,7 +4,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cuda/cuda_config.hpp>
 #include <cuda_executable_network.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_plugin.hpp>
@@ -12,6 +11,7 @@
 #include <memory>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>
+#include <nvidia/nvidia_config.hpp>
 #include <ops/matmul.hpp>
 #include <typeinfo>
 
@@ -72,7 +72,7 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_1_Success) {
         plugin->LoadExeNetworkImpl(dummyCNNNetwork,
                                    {
                                        {CONFIG_KEY(DEVICE_ID), "0"},
-                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
+                                       {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
                                    });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
@@ -90,7 +90,7 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_Success) {
         plugin->LoadExeNetworkImpl(dummyCNNNetwork,
                                    {
                                        {CONFIG_KEY(DEVICE_ID), "0"},
-                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
+                                       {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), std::to_string(total_streams)},
                                    });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
@@ -107,7 +107,7 @@ TEST_F(ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_Auto_Success)
         plugin->LoadExeNetworkImpl(dummyCNNNetwork,
                                    {
                                        {CONFIG_KEY(DEVICE_ID), "0"},
-                                       {CUDA_CONFIG_KEY(THROUGHPUT_STREAMS), CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)},
+                                       {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)},
                                    });
     auto cudaExecNetwork = std::dynamic_pointer_cast<ExecutableNetwork>(execNetwork);
     auto& memoryManagerPool = GetMemoryManagerPool(cudaExecNetwork);
