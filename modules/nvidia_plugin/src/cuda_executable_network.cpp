@@ -16,7 +16,7 @@
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
 
-#include "nvidia/cuda_config.hpp"
+#include "nvidia/nvidia_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
@@ -131,8 +131,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     }
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
-    const std::string opBenchOptionString = cfg_.Get(CUDA_CONFIG_KEY(OPERATION_BENCHMARK));
-    const bool opBenchOption = opBenchOptionString == CUDA_CONFIG_VALUE(YES);
+    const std::string opBenchOptionString = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK));
+    const bool opBenchOption = opBenchOptionString == NVIDIA_CONFIG_VALUE(YES);
     const auto creationContext = CreationContext{device, opBenchOption};
 
     graph_ = std::make_unique<CudaGraph>(creationContext, function_);
@@ -141,8 +141,8 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
 }
 
 void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
-    const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
-    if (throughputStreams != CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+    const std::string throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    if (throughputStreams != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
         return;
     }
 
@@ -265,8 +265,8 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
         throwIEException("Not enough memory even for single InferRequest !!");
     }
 
-    const std::string throughputStreams = cfg_.Get(CUDA_CONFIG_KEY(THROUGHPUT_STREAMS));
-    if (throughputStreams == CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+    const std::string throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    if (throughputStreams == NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
         return std::min({maxStreamsSupported, availableInferRequests, reasonable_limit_of_streams});
     } else {
         const std::size_t numStreams = std::stoi(throughputStreams);
@@ -347,7 +347,7 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         std::vector<std::string> configKeys = {CONFIG_KEY(DEVICE_ID),
                                                CONFIG_KEY(PERF_COUNT),
                                                CONFIG_KEY(CPU_THROUGHPUT_STREAMS),
-                                               CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)};
+                                               NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)};
         auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
         for (auto&& configKey : streamExecutorConfigKeys) {
             configKeys.emplace_back(configKey);

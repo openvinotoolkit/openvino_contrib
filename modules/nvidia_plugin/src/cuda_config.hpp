@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include <nvidia/cuda_config.hpp>
 #include <ie_parameter.hpp>
 #include <map>
 #include <memory>
+#include <nvidia/nvidia_config.hpp>
 #include <openvino/runtime/properties.hpp>
 #include <string>
 #include <threading/ie_istreams_executor.hpp>
@@ -40,7 +40,7 @@ struct Configuration {
     bool disabled_tensoriterator_transform = false;
     std::string cuda_throughput_streams_ = std::to_string(1);
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
-    // TODO: Should be added usage of this property (What to do with CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) ?)
+    // TODO: Should be added usage of this property (What to do with NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) ?)
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::UNDEFINED;
 };
 

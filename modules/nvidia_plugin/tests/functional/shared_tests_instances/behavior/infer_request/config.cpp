@@ -4,8 +4,8 @@
 
 #include "behavior/infer_request/config.hpp"
 
-#include <nvidia/cuda_config.hpp>
 #include <cuda_test_constants.hpp>
+#include <nvidia/nvidia_config.hpp>
 #include <vector>
 
 using namespace BehaviorTestsDefinitions;
