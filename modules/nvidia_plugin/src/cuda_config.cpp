@@ -21,13 +21,13 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         const auto& key = c.first;
         const auto& value = c.second;
 
-        if (CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) == key) {
-            if (value != CUDA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+        if (NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) == key) {
+            if (value != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
                 try {
                     std::stoi(value);
                 } catch (...) {
                     throwIEException(
-                        fmt::format("CUDA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
+                        fmt::format("NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
                                     "is not a number !!",
                                     value));
                 }
@@ -43,18 +43,18 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             if (deviceId > 0) {
                 throwIEException(fmt::format("Device ID {} is not supported", deviceId));
             }
-        } else if (CUDA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
-            if (value == CUDA_CONFIG_VALUE(YES)) {
+        } else if (NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
+            if (value == NVIDIA_CONFIG_VALUE(YES)) {
                 operation_benchmark = true;
-            } else if (value == CUDA_CONFIG_VALUE(NO)) {
+            } else if (value == NVIDIA_CONFIG_VALUE(NO)) {
                 operation_benchmark = false;
             } else {
                 throwIEException(fmt::format("operation benchmark option value {} is not supported", value));
             }
-        } else if (CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM) == key) {
-            if (value == CUDA_CONFIG_VALUE(YES)) {
+        } else if (NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM) == key) {
+            if (value == NVIDIA_CONFIG_VALUE(YES)) {
                 disabled_tensoriterator_transform = true;
-            } else if (value == CUDA_CONFIG_VALUE(NO)) {
+            } else if (value == NVIDIA_CONFIG_VALUE(NO)) {
                 disabled_tensoriterator_transform = false;
             } else {
                 throwIEException(fmt::format("disabled_transformations option value {} is not supported", value));
@@ -79,11 +79,11 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {std::to_string(deviceId)};
     } else if (name == CONFIG_KEY(PERF_COUNT)) {
         return {perfCount};
-    } else if (name == CUDA_CONFIG_KEY(OPERATION_BENCHMARK)) {
-        return {std::string(operation_benchmark ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
-    } else if (name == CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
-        return {std::string(disabled_tensoriterator_transform ? CUDA_CONFIG_VALUE(YES) : CUDA_CONFIG_VALUE(NO))};
-    } else if (name == CUDA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
+    } else if (name == NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)) {
+        return {std::string(operation_benchmark ? NVIDIA_CONFIG_VALUE(YES) : NVIDIA_CONFIG_VALUE(NO))};
+    } else if (name == NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
+        return {std::string(disabled_tensoriterator_transform ? NVIDIA_CONFIG_VALUE(YES) : NVIDIA_CONFIG_VALUE(NO))};
+    } else if (name == NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
         return {cuda_throughput_streams_};
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {
         return {std::to_string(streams_executor_config_._streams)};

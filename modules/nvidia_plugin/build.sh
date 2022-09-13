@@ -38,7 +38,7 @@ if [[ "$1" == "--rebuild" ]]; then
 fi
 cd "${OPENVINO_BUILD_PATH}"
 cmake "${OPENVINO_HOME}" \
-      -DENABLE_CUDA=ON \
+      -DENABLE_NVIDIA=ON \
       -DENABLE_TESTS="${ENABLE_TESTS}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \

@@ -23,7 +23,7 @@ protected:
     void SetUp() override {
         TensorIteratorTest::SetUp();
 
-        configuration[CUDA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)] = CUDA_CONFIG_VALUE(YES);
+        configuration[NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)] = NVIDIA_CONFIG_VALUE(YES);
     }
 };
 
