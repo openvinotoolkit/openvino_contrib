@@ -45,4 +45,4 @@ const auto nmsParams = ::testing::Combine(::testing::ValuesIn(inShapeParams),
                                           ::testing::Values(CommonTestUtils::DEVICE_CPU)
 );
 
-INSTANTIATE_TEST_CASE_P(smoke_NMS5, NmsLayerTest, nmsParams, NmsLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_NMS9, Nms9LayerTest, nmsParams, Nms9LayerTest::getTestCaseName);

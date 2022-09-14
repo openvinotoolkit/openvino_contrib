@@ -52,10 +52,10 @@ static void normalize_center(float* boxes, size_t size) {
 
 static std::vector<float> prepare_boxes_data(const float* boxes,
                                              const ngraph::Shape& boxes_shape,
-                                             const opset::NonMaxSuppression::BoxEncodingType box_encoding) {
+                                             const ngraph::op::v9::NonMaxSuppression::BoxEncodingType box_encoding) {
     auto size = ngraph::shape_size(boxes_shape);
     std::vector<float> normalized_boxes(boxes, boxes + size);
-    if (box_encoding == opset::NonMaxSuppression::BoxEncodingType::CORNER) {
+    if (box_encoding == ngraph::op::v9::NonMaxSuppression::BoxEncodingType::CORNER) {
         normalize_corner(normalized_boxes.data(), size);
     } else {
         normalize_center(normalized_boxes.data(), size);
@@ -63,7 +63,7 @@ static std::vector<float> prepare_boxes_data(const float* boxes,
     return normalized_boxes;
 }
 
-static void nms5(const float* boxes_data,
+static void nms9(const float* boxes_data,
           const ngraph::Shape& boxes_data_shape,
           const float* scores_data,
           const ngraph::Shape& scores_data_shape,
@@ -76,7 +76,7 @@ static void nms5(const float* boxes_data,
           const ngraph::element::Type out_type,
           const ngraph::HostTensorVector& outputs,
           const ngraph::element::Type selected_scores_type,
-          const opset::NonMaxSuppression::BoxEncodingType box_encoding) {
+          const ngraph::op::v9::NonMaxSuppression::BoxEncodingType box_encoding) {
     std::vector<int64_t> selected_indices(ngraph::shape_size(out_shape));
     std::vector<float>   selected_scores(ngraph::shape_size(out_shape));
     int64_t valid_outputs = 0;
@@ -98,7 +98,7 @@ static void nms5(const float* boxes_data,
                                                     sort_result_descending);
 
     auto max_valid_outputs = out_shape[0];
-    ngraph::runtime::reference::nms5_postprocessing(outputs,
+    ngraph::runtime::reference::nms_postprocessing(outputs,
                                                     out_type,
                                                     selected_indices,
                                                     selected_scores,
@@ -134,7 +134,7 @@ static void nms5(const float* boxes_data,
     }
 }
 
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSuppression& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v9::NonMaxSuppression& node) {
     auto make = [&] (auto refFunction) {
         ngraph::HostTensorVector hosts;
         for (auto output : node.outputs()) {
@@ -161,7 +161,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::NonMaxSupp
                                     selected_scores_type,
                                     node.get_box_encoding());
     };
-    return make(nms5);
+    return make(nms9);
 }
 }  //  namespace ArmPlugin
 
