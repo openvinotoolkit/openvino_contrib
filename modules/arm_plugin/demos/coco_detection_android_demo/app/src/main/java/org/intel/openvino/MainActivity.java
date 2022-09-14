@@ -29,6 +29,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 /**
  * This is the object detection demo for ARM CPUs Android (for OpenVINO Java API 2.0).
