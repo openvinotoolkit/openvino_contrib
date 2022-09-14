@@ -12,7 +12,6 @@
 #include "cuda/device_pointers.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_thread_context.hpp"
-#include "gpu/gpu_context_api_cuda.hpp"
 
 namespace LayerTestsDefinitions {
 
