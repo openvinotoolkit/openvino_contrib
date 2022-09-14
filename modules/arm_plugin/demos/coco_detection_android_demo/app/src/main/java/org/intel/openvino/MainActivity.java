@@ -315,7 +315,6 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         MatOfFloat confs = new MatOfFloat(confArr);
         Dnn.NMSBoxes(boxes, confs, CONFIDENCE_THRESHOLD, NMS_THRESHOLD, indices);
 
-
         if (indices.empty()) {
             tm.stop();
             // Fps for inference
@@ -337,7 +336,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
                     currentFrame,
                     new Point(rect2d.x, rect2d.y),
                     new Point((rect2d.x + rect2d.width), (rect2d.y + rect2d.height)),
-                    randomColor[obj], 
+                    randomColor[obj],
                     1);
             Imgproc.putText(
                     currentFrame,
@@ -362,4 +361,5 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         return currentFrame;
     }
+
 }
