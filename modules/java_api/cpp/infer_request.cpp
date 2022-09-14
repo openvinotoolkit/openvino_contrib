@@ -51,8 +51,13 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *e
     return 0;
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *, jobject, jlong addr)
+JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *env, jobject obj, jlong addr)
 {
-    InferRequest *req = (InferRequest *)addr;
-    delete req;
+    jclass cls = env->GetObjectClass(obj);
+    jfieldID field = env->GetFieldID(cls, "isReleased", "Z");
+    jboolean isReleased = env->GetBooleanField(obj, field);
+    if (!isReleased) {
+      InferRequest *req = (InferRequest *)addr;
+      delete req;
+    }
 }
