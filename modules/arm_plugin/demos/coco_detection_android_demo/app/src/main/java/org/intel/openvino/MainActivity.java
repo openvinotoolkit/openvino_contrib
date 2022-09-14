@@ -22,7 +22,6 @@ import org.opencv.core.Size;
 import org.opencv.core.TickMeter;
 import org.opencv.dnn.Dnn;
 import org.opencv.imgproc.Imgproc;
-import org.intel.openvino.*;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -34,8 +33,8 @@ import java.util.List;
 /**
  * This is the object detection demo for ARM CPUs Android (for OpenVINO Java API 2.0).
  *
- * The demo loads a network (including SSD, Pelee, EfficientDet) and read image from camera
- * to Inference Engine device. The screen will show the inference result and speed in frame.
+ * <p>The demo loads a network (including SSD, Pelee, EfficientDet) and read image from camera to
+ * Inference Engine device. The screen will show the inference result and speed in frame.
  */
 public class MainActivity extends CameraActivity implements CvCameraViewListener2 {
     private CameraBridgeViewBase mOpenCvCameraView;
@@ -53,23 +52,103 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     public static final String MODEL_BIN = "ssdlite_mobilenet_v2.bin";
     public static final String DEVICE_NAME = "CPU";
     public static final String[] COCO_CLASSES_91 = {
-            "background", "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-            "truck", "boat", "traffic light", "fire hydrant", "street sign", "stop sign",
-            "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant",
-            "bear", "zebra", "giraffe", "hat", "backpack", "umbrella", "shoe", "eye glasses",
-            "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite",
-            "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle",
-            "plate", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-            "couch", "potted plant", "bed", "mirror", "dining table", "window", "desk", "toilet",
-            "door", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven",
-            "toaster", "sink", "refrigerator", "blender", "book", "clock", "vase", "scissors",
-            "teddy bear", "hair drier", "toothbrush", "hair brush"
+        "background",
+        "person",
+        "bicycle",
+        "car",
+        "motorcycle",
+        "airplane",
+        "bus",
+        "train",
+        "truck",
+        "boat",
+        "traffic light",
+        "fire hydrant",
+        "street sign",
+        "stop sign",
+        "parking meter",
+        "bench",
+        "bird",
+        "cat",
+        "dog",
+        "horse",
+        "sheep",
+        "cow",
+        "elephant",
+        "bear",
+        "zebra",
+        "giraffe",
+        "hat",
+        "backpack",
+        "umbrella",
+        "shoe",
+        "eye glasses",
+        "handbag",
+        "tie",
+        "suitcase",
+        "frisbee",
+        "skis",
+        "snowboard",
+        "sports ball",
+        "kite",
+        "baseball bat",
+        "baseball glove",
+        "skateboard",
+        "surfboard",
+        "tennis racket",
+        "bottle",
+        "plate",
+        "wine glass",
+        "cup",
+        "fork",
+        "knife",
+        "spoon",
+        "bowl",
+        "banana",
+        "apple",
+        "sandwich",
+        "orange",
+        "broccoli",
+        "carrot",
+        "hot dog",
+        "pizza",
+        "donut",
+        "cake",
+        "chair",
+        "couch",
+        "potted plant",
+        "bed",
+        "mirror",
+        "dining table",
+        "window",
+        "desk",
+        "toilet",
+        "door",
+        "tv",
+        "laptop",
+        "mouse",
+        "remote",
+        "keyboard",
+        "cell phone",
+        "microwave",
+        "oven",
+        "toaster",
+        "sink",
+        "refrigerator",
+        "blender",
+        "book",
+        "clock",
+        "vase",
+        "scissors",
+        "teddy bear",
+        "hair drier",
+        "toothbrush",
+        "hair brush"
     };
 
     private void copyFiles() {
         String[] fileNames = {MODEL_BIN, MODEL_XML, PLUGINS_XML};
-        for (String fileName: fileNames) {
+        for (String fileName : fileNames) {
             String outputFilePath = modelDir + "/" + fileName;
             File outputFile = new File(outputFilePath);
             if (!outputFile.exists()) {
@@ -98,7 +177,8 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         randomColor = new Scalar[length];
 
         for (int i = 0; i < length; i++) {
-            randomColor[i] = new Scalar(r.nextDouble() * 255, r.nextDouble() * 255, r.nextDouble() * 255);
+            randomColor[i] =
+                    new Scalar(r.nextDouble() * 255, r.nextDouble() * 255, r.nextDouble() * 255);
         }
     }
 
@@ -119,10 +199,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         // Set config of the network
         PrePostProcessor p = new PrePostProcessor(net);
-        p.input()
-                .tensor()
-                .set_element_type(ElementType.u8)
-                .set_layout(new Layout("NHWC"));
+        p.input().tensor().set_element_type(ElementType.u8).set_layout(new Layout("NHWC"));
 
         p.input().preprocess().resize(ResizeAlgorithm.RESIZE_LINEAR);
         p.input().model().set_layout(new Layout("NCHW"));
@@ -145,24 +222,26 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        try{
+        try {
             System.loadLibrary(OPENCV_LIBRARY_NAME);
             Core.loadNativeLibs();
         } catch (UnsatisfiedLinkError e) {
-            Log.e("UnsatisfiedLinkError",
+            Log.e(
+                    "UnsatisfiedLinkError",
                     "Failed to load native OpenVINO libraries\n" + e.toString());
             System.exit(1);
         }
         modelDir = this.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS).getAbsolutePath();
-        if(checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, 0);
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.CAMERA}, 0);
         } else {
             processNetwork();
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(
+            int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
             Log.e("PermissionError", "The application can't work without camera permissions");
@@ -213,7 +292,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         List<Float> confList = new ArrayList<>();
         List<Integer> objIndexList = new ArrayList<>();
 
-        for (int i = 0; i < maxProposalCount; i ++) {
+        for (int i = 0; i < maxProposalCount; i++) {
             float label = detection[i * 7 + 1];
             float conf = detection[i * 7 + 2];
             float xMin = detection[i * 7 + 3] * currentFrame.cols();
@@ -241,7 +320,8 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             // Fps for inference
             double worksFps = tm.getAvgTimeSec();
             String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
-            Imgproc.putText(currentFrame, inferFps, new Point(10, 15), 0, 0.5, new Scalar(0, 255, 0), 1);
+            Imgproc.putText(
+                    currentFrame, inferFps, new Point(10, 15), 0, 0.5, new Scalar(0, 255, 0), 1);
 
             Log.i(APPTAG, "No boxes here!");
             return currentFrame;
@@ -252,11 +332,20 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
             Rect2d rect2d = rect2dList.get(idx);
             Integer obj = objIndexList.get(idx);
             Float conf = confList.get(idx);
-            Imgproc.rectangle(currentFrame, new Point(rect2d.x, rect2d.y),
+            Imgproc.rectangle(
+                    currentFrame,
+                    new Point(rect2d.x, rect2d.y),
                     new Point((rect2d.x + rect2d.width), (rect2d.y + rect2d.height)),
-                    randomColor[obj], 1);
-            Imgproc.putText(currentFrame, COCO_CLASSES_91[obj] + " " + conf, new Point(rect2d.x, rect2d.y - 10),
-                    Imgproc.FONT_HERSHEY_COMPLEX, 0.5, randomColor[obj], 1);
+                    randomColor[obj], 
+                    1);
+            Imgproc.putText(
+                    currentFrame,
+                    COCO_CLASSES_91[obj] + " " + conf,
+                    new Point(rect2d.x, rect2d.y - 10),
+                    Imgproc.FONT_HERSHEY_COMPLEX,
+                    0.5,
+                    randomColor[obj],
+                    1);
         }
 
         tm.stop();
@@ -265,8 +354,10 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         double worksFps = tm.getFPS();
         String inferAvgTime = "Inference average time: " + String.format("%.3f", avgTime);
         String inferFps = "Inference fps: " + String.format("%.3f", worksFps);
-        Imgproc.putText(currentFrame, inferAvgTime, new Point(10, 15), 0, 0.3, new Scalar(0, 255, 0), 1);
-        Imgproc.putText(currentFrame, inferFps, new Point(10, 25), 0, 0.3, new Scalar(0, 255, 0), 1);
+        Imgproc.putText(
+                currentFrame, inferAvgTime, new Point(10, 15), 0, 0.3, new Scalar(0, 255, 0), 1);
+        Imgproc.putText(
+                currentFrame, inferFps, new Point(10, 25), 0, 0.3, new Scalar(0, 255, 0), 1);
 
         return currentFrame;
     }
