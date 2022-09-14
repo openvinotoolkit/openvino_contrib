@@ -361,5 +361,4 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
 
         return currentFrame;
     }
-
 }
