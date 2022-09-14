@@ -225,7 +225,7 @@ public class MainActivity extends CameraActivity implements CvCameraViewListener
         setContentView(R.layout.activity_main);
         try {
             System.loadLibrary(OPENCV_LIBRARY_NAME);
-            Core.loadNativeLibs();
+            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
             Log.e(
                     "UnsatisfiedLinkError",
