@@ -21,10 +21,10 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
-#include "cuda/cuda_config.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
+#include "nvidia/nvidia_config.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
@@ -138,6 +138,9 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     manager.register_pass<ngraph::pass::CudaFuseConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseGroupConvBiasAddActivation>();
     manager.register_pass<ngraph::pass::CudaFuseConvBackpropDataAdd>();
+    manager.register_pass<ngraph::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
+    manager.register_pass<ngraph::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
+    manager.register_pass<ngraph::pass::FusedConvBackpropDataAsymPaddingTransformation>();
     manager.register_pass<ngraph::pass::TransposeMatMulTransformation>();
     manager.register_pass<ngraph::pass::FullyConnectedTransformation>();
     manager.register_pass<ngraph::pass::ConcatTransformation>();
