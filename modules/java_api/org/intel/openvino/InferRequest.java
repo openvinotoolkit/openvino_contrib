@@ -4,6 +4,8 @@
 package org.intel.openvino;
 
 public class InferRequest extends Wrapper {
+    private boolean isReleased = false;
+
     protected InferRequest(long addr) {
         super(addr);
     }
@@ -22,6 +24,11 @@ public class InferRequest extends Wrapper {
 
     public Tensor get_tensor(String tensorName) {
         return new Tensor(GetTensor(nativeObj, tensorName));
+    }
+
+    public void release() {
+        delete(nativeObj);
+        isReleased = true;
     }
 
     /*----------------------------------- native methods -----------------------------------*/
