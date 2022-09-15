@@ -8,7 +8,6 @@
 
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
-#include <gpu/gpu_context_api_cuda.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
