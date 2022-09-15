@@ -43,7 +43,11 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         } else if (CONFIG_KEY_INTERNAL(DUMP_GRAPH) == key) {
             _dump = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY(PERFORMANCE_HINT) == key) {
-            _perfHint = ov::hint::PerformanceMode::LATENCY;
+                if (value == "THROUGHPUT") {
+                    _perfHint = ov::hint::PerformanceMode::THROUGHPUT;
+                } else if (value == "LATENCY") {
+                    _perfHint = ov::hint::PerformanceMode::LATENCY;
+                }
         }  else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
         }
