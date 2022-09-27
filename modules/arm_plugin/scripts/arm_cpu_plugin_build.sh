@@ -128,13 +128,9 @@ cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
 mkdir -p $OPENVINO_HOME/build && \
 cd $OPENVINO_HOME/build && \
 cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
-      -DPYTHON_INCLUDE_DIRS="/opt/python3.7_arm/include/python3.7m" \
       -DPYTHON_LIBRARY="/opt/python3.7_arm/lib/libpython3.7m.so" \
-      -DENABLE_PYTHON=ON \
       -DENABLE_WHEEL=OFF \
-      -DNGRAPH_PYTHON_BUILD_ENABLE=ON \
       -DNGRAPH_ONNX_IMPORT_ENABLE=ON \
-      -DPYTHON_MODULE_EXTENSION=".so" \
       -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_GAPI_TESTS=OFF \
       -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
@@ -156,14 +152,10 @@ cd $DEV_HOME || fail 12 "OpenVINO build failed. Stopping"
 cross-python -m pip install wheel && \
 cross-python -m pip install numpy==1.20.0
 
-# copy licencing directory
-cp -rf $OPENVINO_HOME/licensing $OPENVINO_HOME/src/bindings/python/
-
 [ "$UPDATE_SOURCES" = "clean" -a -e $OPENVINO_HOME/pbuild ] && rm -rf $OPENVINO_HOME/pbuild
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
 cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
-      -DOV_CPACK_RUNTIMEDIR="/arm_cpu_plugin/armcpu_package/runtime/lib/aarch64" \
       -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=`which cross-python` \
       -DENABLE_WHEEL=ON \
       -DPYTHON_INCLUDE_DIRS=/opt/python3.7_arm/include/python3.7m \
@@ -176,8 +168,6 @@ cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
       -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
-      -DCMAKE_INSTALL_PREFIX=$STAGING_DIR \
-      -DCMAKE_INSTALL_LIBDIR="/arm_cpu_plugin/armcpu_package/runtime/lib/aarch64" \
       $OPENVINO_HOME/src/bindings/python && \
 cmake --build $OPENVINO_HOME/pbuild -j $BUILD_JOBS && \
 cmake -DCMAKE_INSTALL_PREFIX=$STAGING_DIR -P cmake_install.cmake && \
