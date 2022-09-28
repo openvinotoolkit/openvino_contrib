@@ -40,6 +40,7 @@ struct Configuration {
     bool _ref                    = true;
     bool _lpt                    = true;
     bool _dump                   = false;
+    ov::hint::PerformanceMode _perfHint = ov::hint::PerformanceMode::UNDEFINED;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin

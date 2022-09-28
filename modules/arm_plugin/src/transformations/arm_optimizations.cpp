@@ -33,6 +33,7 @@
 #include "transformations/common_optimizations/convert_quantize_dequantize.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
+#include "transformations/op_conversions/convert_previous_nms_to_nms_9.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -277,6 +278,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertShuffleChannels>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertInterpolate>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMVN>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertNMS5ToNMS9>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReorgYolo>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMaxPool8ToMaxPool1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMaxPool1D>();
