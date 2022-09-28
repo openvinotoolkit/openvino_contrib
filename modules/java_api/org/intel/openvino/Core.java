@@ -12,6 +12,13 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.util.logging.Logger;
 
+/**
+ * This class represents an OpenVINO runtime Core entity.
+ *
+ * <p>User applications can create several Core class instances, but in this case the underlying
+ * plugins are created multiple times and not shared between several Core instances. The recommended
+ * way is to have a single Core instance per application.
+ */
 public class Core extends Wrapper {
     public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
     private static final Logger logger = Logger.getLogger(Core.class.getName());
@@ -39,8 +46,10 @@ public class Core extends Wrapper {
         return name;
     }
 
-    // Use this method to initialize native libraries and other files like
-    // plugins.xml and *.mvcmd in case of the JAR package os OpenVINO.
+    /**
+     * Use this method to initialize native libraries. Other files like plugins.xml and *.mvcmd will
+     * be also copied to temporal location which makes them visible in runtime.
+     */
     public static void loadNativeLibs() {
         // A set of required libraries which are listed in dependency order.
         final String[] nativeLibs = {"tbb", "tbbmalloc", "openvino", "inference_engine_java_api"};
@@ -105,16 +114,48 @@ public class Core extends Wrapper {
         }
     }
 
+    /** Same as {@link Core#read_model(String, String)} but with empty weights path */
     public Model read_model(final String modelPath) {
         return new Model(ReadModel(nativeObj, modelPath));
     }
 
+    /**
+     * Reads models from IR/ONNX/PDPD formats.
+     *
+     * @param modelPath Path to a model.
+     * @param weightPath Path to a data file.
+     *     <p>For IR format (*.bin):
+     *     <ul>
+     *       <li>if path is empty, will try to read a bin file with the same name as xml and
+     *       <li>if the bin file with the same name is not found, will load IR without weights.
+     *     </ul>
+     *     For ONNX format (*.onnx):
+     *     <ul>
+     *       <li>the bin_path parameter is not used.
+     *     </ul>
+     *     For PDPD format (*.pdmodel)
+     *     <ul>
+     *       <li>the bin_path parameter is not used.
+     *     </ul>
+     *
+     * @return A model.
+     */
     public Model read_model(final String modelPath, final String weightPath) {
         return new Model(ReadModel1(nativeObj, modelPath, weightPath));
     }
 
-    public CompiledModel compile_model(Model net, final String device) {
-        return new CompiledModel(CompileModel(nativeObj, net.getNativeObjAddr(), device));
+    /**
+     * Creates a compiled model from a source model object.
+     *
+     * <p>Users can create as many compiled models as they need and use them simultaneously (up to
+     * the limitation of the hardware resources).
+     *
+     * @param model Model object acquired from {@link Core#read_model}.
+     * @param device Name of a device to load a model to.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(Model model, final String device) {
+        return new CompiledModel(CompileModel(nativeObj, model.getNativeObjAddr(), device));
     }
 
     /*----------------------------------- native methods -----------------------------------*/

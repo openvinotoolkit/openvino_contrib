@@ -164,7 +164,7 @@ extern "C"
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_GetPrePostProcessor(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Input(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Output(JNIEnv *, jobject, jlong);
-    JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_delete(JNIEnv *, jobject, jlong);
 
     // ov::preprocess::InputInfo
