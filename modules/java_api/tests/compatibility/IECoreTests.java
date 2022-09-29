@@ -73,12 +73,12 @@ public class IECoreTests extends IETest {
         String exceptionMessage = "";
         CNNNetwork net = core.ReadNetwork(modelXml, modelBin);
         try {
-            core.LoadNetwork(net, "DEVISE");
+            core.LoadNetwork(net, "DEVICE");
         } catch (Exception e) {
             exceptionMessage = e.getMessage();
         }
         assertTrue(
                 exceptionMessage.contains(
-                        "Device with \"DEVISE\" name is not registered in the InferenceEngine"));
+                        "Device with \"DEVICE\" name is not registered in the OpenVINO Runtime"));
     }
 }

@@ -33,6 +33,8 @@ index d6e0d51..0ede165 100644
              args = TrainingArguments(output_dir=output_dir)
          self.args = args
 +
++        self.compression_ctrl = None
++
 +        if nncf_config is not None:
 +            nncf_config.auto_register_extra_structs(args, train_dataset, data_collator)
 +            # TODO: restore compression state
@@ -204,7 +206,7 @@ index d6e0d51..0ede165 100644
 +        input_names = self.tokenizer.model_input_names
 +        if input_names[0] == "input_ids":
 +            input_names = ["input_ids", "attention_mask", "token_type_ids"]
-+        self.compression_ctrl.export_model(path_to_onnx, input_names=input_names)
++        self.compression_ctrl.export_model(path_to_onnx, input_names=input_names, save_format="onnx_12")
 +
 +        import subprocess
 +

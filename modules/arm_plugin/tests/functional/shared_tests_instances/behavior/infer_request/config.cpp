@@ -5,6 +5,7 @@
 #include "multi-device/multi_device_config.hpp"
 
 #include "behavior/infer_request/config.hpp"
+#include "ie_plugin_config.hpp"
 
 #include <thread>
 
