@@ -12,7 +12,7 @@ if(ARM)
 elseif(AARCH64)
     if(APPLE)
         # Apple M1 is assumed
-        set(ARM_COMPUTE_TARGET_ARCH_DEFAULT armv8.6-a)
+        set(ARM_COMPUTE_TARGET_ARCH_DEFAULT armv8.2-a)
     else()
         set(ARM_COMPUTE_TARGET_ARCH_DEFAULT arm64-v8a)
     endif()

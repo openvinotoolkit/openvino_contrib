@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import errno
 import logging
+import shutil
+import time
 
 import numpy as np
 
@@ -17,10 +20,7 @@ except ImportError:
 
 from transformers.file_utils import cached_path, hf_bucket_url
 from transformers.file_utils import is_torch_available
-from transformers import (
-    TF2_WEIGHTS_NAME,
-    AutoConfig,
-)
+from transformers import TF2_WEIGHTS_NAME, AutoConfig, AutoTokenizer
 
 
 if is_torch_available():
@@ -48,22 +48,46 @@ def load_ov_model_from_pytorch(model, inputs=None):
     import io
 
     buf = io.BytesIO()
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model.name_or_path)
+        input_names = tokenizer.model_input_names
+    except OSError:
+        input_names = [model.main_input_name, "attention_mask"]
+
+    if "token_type_ids" in input_names:
+        # token_type_ids should be last input
+        input_names = [model.main_input_name, "attention_mask", "token_type_ids"]
+
     if inputs is None:
-        dummy_input_ids = torch.zeros((1, 18), dtype=torch.int32)
-        dummy_mask = torch.zeros((1, 18), dtype=torch.int32)
+        dummy_inputs = torch.zeros((1, 18), dtype=torch.int64)
+
         if model.config.model_type == "gpt2":
             if model.config.use_cache:
                 raise NotImplementedError("GPT2 model with use_cache=True is not implemented for OpenVINO backend")
 
-            inputs = (dummy_input_ids, None, dummy_mask)
-        elif model.config.model_type == "wav2vec2":
+            inputs = (dummy_inputs, None, dummy_inputs)
+        elif model.main_input_name == "input_values":
             inputs = torch.zeros((1, 16000), dtype=torch.float32)
         else:
-            inputs = (dummy_input_ids, dummy_mask)
-
-        input_names = [model.main_input_name, "attention_mask"]
+            inputs = tuple(
+                [
+                    dummy_inputs,
+                ]
+                * len(input_names)
+            )
     else:
-        input_names = [name for name, tensor in inputs.items() if tensor is not None]
+        input_names = []
+        for name, tensor in inputs.items():
+            if tensor is None:
+                continue
+            if name == "past_key_values":
+                for i in range(len(tensor)):
+                    for j in range(len(tensor[i])):
+                        input_names.append(f"past_key_values.{i}.{j}")
+            else:
+                input_names.append(name)
+
         inputs = tuple(inputs.values())
 
     if model.__class__.__name__.endswith("ForQuestionAnswering"):
@@ -79,8 +103,8 @@ def load_ov_model_from_pytorch(model, inputs=None):
 
         # TODO: create "model" folder in cache
         if use_external_data_format:
-            model_cache_dir = "model"
-            os.makedirs(model_cache_dir, exist_ok=True)
+            model_cache_dir = f"openvino_model_cache_{time.time()}"
+            os.makedirs(model_cache_dir)
 
         torch.onnx.export(
             model,
@@ -88,7 +112,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
             buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
             input_names=input_names,
             output_names=outputs,
-            opset_version=11,
+            opset_version=12,
             use_external_data_format=use_external_data_format,
         )
 
@@ -99,19 +123,20 @@ def load_ov_model_from_pytorch(model, inputs=None):
             net = ie.read_network(os.path.join(model_cache_dir, "model.onnx"))
 
         try:
-            os.rmdir(model_cache_dir)
-        except Exception:
-            pass
+            shutil.rmtree(model_cache_dir)
+        except OSError as e:
+            if e.errno != errno.ENOENT:
+                raise
     else:
         if is_openvino_api_2:
             net = ie.read_model(buf.getvalue(), b"")
         else:
             net = ie.read_network(buf.getvalue(), b"", init_from_buffer=True)
-    return net
+    return OVPreTrainedModel(net, model.config)
 
 
 def load_ov_model_from_tf(model, tf_weights_path):
-    import subprocess
+    import subprocess  # nosec
 
     import tensorflow as tf
     from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
@@ -134,7 +159,8 @@ def load_ov_model_from_tf(model, tf_weights_path):
     with tf.io.gfile.GFile(pb_model_path, "wb") as f:
         f.write(graph_def.SerializeToString())
 
-    subprocess.run(
+    # TODO: fix for models with different input names
+    subprocess.run(  # nosec
         [
             "mo",
             "--output_dir",
@@ -156,8 +182,9 @@ def load_ov_model_from_tf(model, tf_weights_path):
 
     try:
         os.remove(pb_model_path)
-    except Exception:
-        pass
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            raise
 
     if is_openvino_api_2:
         net = ie.read_model(tf_weights_path + ".xml")
@@ -213,7 +240,7 @@ class OVPreTrainedModel(GenerationMixin):
         self.exec_net = None
         self.config = config
         self.max_length = 0
-        self.ov_config = {}
+        self.ov_config = {"PERFORMANCE_HINT": "LATENCY"} if is_openvino_api_2 else {}
         self.ov_device = "CPU"
         self.use_dynamic_shapes = is_openvino_api_2
 
@@ -246,8 +273,7 @@ class OVPreTrainedModel(GenerationMixin):
 
         if from_pt:
             model = cls._pt_auto_model.from_pretrained(model_name_or_path, *model_args, **kwargs)
-            net = load_ov_model_from_pytorch(model)
-            return OVPreTrainedModel(net, model.config)
+            return load_ov_model_from_pytorch(model)
         elif from_tf:
             model, cache_path = load_model_from_cache(
                 model_name_or_path, cls.__name__, cache_dir, TF2_WEIGHTS_NAME, config
@@ -359,7 +385,11 @@ class OVPreTrainedModel(GenerationMixin):
                 for inp in self.net.inputs:
                     shapes[inp] = inp.get_partial_shape()
                     shapes[inp][0] = -1
-                    shapes[inp][1] = -1
+                    if inp.get_any_name().startswith("past_key_values"):
+                        shapes[inp][2] = -1
+                    else:
+                        shapes[inp][1] = -1
+
                 self.net.reshape(shapes)
             compiled_model = ie.compile_model(self.net, self.ov_device, self.ov_config)
             self.exec_net = compiled_model.create_infer_request()
@@ -457,6 +487,18 @@ class OVPreTrainedModel(GenerationMixin):
 
         logits = outs["output"] if "output" in outs else next(iter(outs.values()))
 
+        past_key_values = None
+        if self.config.architectures[0].endswith("ForConditionalGeneration") and self.config.use_cache:
+            past_key_values = [[]]
+            for name in outs:
+                if name == "output":
+                    continue
+                if len(past_key_values[-1]) == 4:
+                    past_key_values.append([])
+                past_key_values[-1].append(torch.tensor(outs[name]))
+
+            past_key_values = tuple([tuple(val) for val in past_key_values])
+
         # Trunc padded values
         if inp_length != logits.shape[1]:
             logits = logits[:, :inp_length]
@@ -468,11 +510,19 @@ class OVPreTrainedModel(GenerationMixin):
         if arch.endswith("ForSequenceClassification"):
             return SequenceClassifierOutput(logits=logits)
         elif arch.endswith("ForQuestionAnswering"):
-            return QuestionAnsweringModelOutput(start_logits=outs["output_s"], end_logits=outs["output_e"])
-        else:
-            return ModelOutput(logits=torch.tensor(logits))
+            # For OpenVINO API 1.0, output names are not necessarily in correct order
+            if "output_s" in outs.keys() and "output_e" in outs.keys():
+                output_s, output_e = "output_s", "output_e"
+            else:
+                # Get output names from model.
+                # For quantized models, output names are not necessarily "output_s" and "output_e"
+                output_s, output_e = list(outs.keys())
 
-    def __call__(self, *args, **kwargs):
+            return QuestionAnsweringModelOutput(start_logits=outs[output_s], end_logits=outs[output_e])
+        else:
+            return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
+
+    def forward(self, *args, **kwargs):
         if self.main_input_name in ["input_ids", "decoder_input_ids"]:
             inputs = self._prepare_nlp_inputs(*args, **kwargs)
         elif self.main_input_name == "input_values":
@@ -502,5 +552,5 @@ class OVPreTrainedModel(GenerationMixin):
 
         return super().generate(input_ids, *args, **kwargs)
 
-    def forward(self, *args, **kwargs):
-        return self.__call__(*args, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)

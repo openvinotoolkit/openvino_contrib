@@ -17,15 +17,13 @@ public class PrePostProcessorTests extends OVTest {
     public void setUp() {
         core = new Core();
         net = core.read_model(modelXml);
-        float[] data = {
-            0.0f, 1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 1.1f, 2.2f, 3.3f
-        };
+        float[] data = {0.0f, 1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f, 1.1f, 2.2f};
         input = new Tensor(dimsArr, data);
     }
 
-    @Ignore
+    @Ignore // unstable test
     @Test
-    public void testWrongLayout() { // Unstable test
+    public void testWrongLayout() {
         String exceptionMessage = "";
         Layout tensor_layout = new Layout("NCHW");
         PrePostProcessor p = new PrePostProcessor(net);
@@ -51,13 +49,13 @@ public class PrePostProcessorTests extends OVTest {
         }
         assertTrue(
                 exceptionMessage.contains(
-                        "SetInputTensor: Can't SetBlob with name: data, because model input"));
+                        "SetInputTensor: Can't set input blob with name: data, because model"
+                                + " input"));
     }
 
     @Test
     public void testWrongElementType() {
         String exceptionMessage = "";
-
         Layout tensor_layout = new Layout("NCHW");
         PrePostProcessor p = new PrePostProcessor(net);
 

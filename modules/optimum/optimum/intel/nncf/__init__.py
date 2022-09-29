@@ -24,7 +24,7 @@ def replace_code_of_module(module, new_source):
     import ast
 
     code = compile(ast.parse(new_source), "<string>", "exec")
-    exec(code, module.__dict__)
+    exec(code, module.__dict__)  # nosec
 
 
 """

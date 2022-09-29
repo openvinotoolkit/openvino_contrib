@@ -11,7 +11,7 @@ try:
     with open(filepath) as version_file:
         (__version__,) = re.findall('__version__ = "(.*)"', version_file.read())
 except Exception as error:
-    assert False, "Error: Could not open '%s' due %s\n" % (filepath, error)
+    raise Exception(f"Error: Could not open '{filepath}' due {error}\n")
 
 
 install_requires = [
@@ -23,6 +23,7 @@ nncf_deps = [
     "openvino-dev[onnx]",
     "nncf",
     "transformers<4.16.0",
+    "datasets",
 ]
 
 # Add patches as data

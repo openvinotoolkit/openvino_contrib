@@ -31,7 +31,7 @@ public class CoreTests extends OVTest {
         } catch (Exception e) {
             exceptionMessage = e.getMessage();
         }
-        assertTrue(exceptionMessage.contains("Weights file model.bin cannot be opened!"));
+        assertFalse(exceptionMessage.isEmpty());
     }
 
     @Test
