@@ -1,21 +1,24 @@
-buildscript {
-    repositories {
-        jcenter()
-    }
-    dependencies {
-        //Check for the latest version here: http://plugins.gradle.org/plugin/com.jfrog.artifactory
-        classpath "org.jfrog.buildinfo:build-info-extractor-gradle:4+"
-    }
-}
-
 plugins {
     id 'java-library'
-    id 'maven-publish'
 }
 
-allprojects {
-    apply plugin: "com.jfrog.artifactory"
+import org.gradle.internal.os.OperatingSystem
+println 'Operating system: ' + OperatingSystem.current()
+
+def nativesCPP;
+def openvinoVersion = "2022.1"
+
+if (OperatingSystem.current().isMacOsX()) {
+    nativesCPP = 'macosx-x86_64'
+} else if (OperatingSystem.current().isLinux()) {
+    nativesCPP = 'linux-x86_64'
+} else if (OperatingSystem.current().isWindows()) {
+    nativesCPP = 'windows-x86_64'
+} else {
+    logger.warn('Unknown operating system!')
 }
+
+project.version = "${openvinoVersion}-${nativesCPP}"
 
 def native_resources = [
     System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64",  // UNIX
@@ -70,78 +73,3 @@ test {
     systemProperty 'device', System.getProperty('device')
 }
 test.onlyIf { project.hasProperty('run_tests') }
-
-//
-// Bintray publication:
-// $ export ARTIFACTORY_USER=<USERNAME>
-// $ export ARTIFACTORY_PASS=<TOKEN>
-// $ export VERSION=<VERSION>
-// $ gradle artifactoryPublish
-//
-
-version = System.getenv('VERSION')
-
-artifactory {
-    contextUrl = "https://openvino.jfrog.io/artifactory"
-    publish {
-        repository {
-            repoKey = 'openvino-gradle-dev-local'
-            username = System.getenv('ARTIFACTORY_USER')
-            password = System.getenv('ARTIFACTORY_PASS')
-            maven = true
-        }
-        defaults {
-            publications('OpenVINOPublication')
-        }
-        publishBuildInfo = true
-        publishArtifacts = true
-        publishPom = true
-    }
-    resolve {
-        repository {
-            repoKey = 'openvino-gradle-dev'
-            username = System.getenv('ARTIFACTORY_USER')
-            password = System.getenv('ARTIFACTORY_PASS')
-            maven = true
-        }
-    }
-}
-
-def pomConfig = {
-    licenses {
-        license {
-            name "The Apache Software License, Version 2.0"
-            url "http://www.apache.org/licenses/LICENSE-2.0.txt"
-            distribution "repo"
-        }
-    }
-    developers {
-        developer {
-            id "developer-id"
-            name "developer-name"
-            email "dev@d.com"
-        }
-    }
-
-    scm {
-       url "https://github.com/openvinotoolkit/openvino_contrib"
-    }
-}
-
-publishing {
-    publications {
-        OpenVINOPublication(MavenPublication) {
-            from(components.java)
-            groupId 'org.intel'
-            artifactId 'openvino'
-            version project.version
-            pom.withXml {
-                def root = asNode()
-                root.appendNode('description', 'Java bindings for Intel OpenVINO')
-                root.appendNode('name', 'Intel OpenVINO')
-                root.appendNode('url', 'https://github.com/openvinotoolkit/openvino_contrib')
-                root.children().last() + pomConfig
-            }
-        }
-    }
-}
