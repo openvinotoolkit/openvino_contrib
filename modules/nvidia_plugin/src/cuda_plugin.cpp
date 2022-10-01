@@ -269,10 +269,12 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         //        all_properties.insert(all_properties.end(), supportedMetrics.begin(), supportedMetrics.end());
         //        all_properties.insert(all_properties.end(), configKeys.begin(), configKeys.end());
         //        return all_properties;
-    } else if (METRIC_KEY(AVAILABLE_DEVICES) == name) {
-        // TODO: fill list of available devices
-        std::vector<std::string> availableDevices = {""};
-        IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
+    } else if (ov::available_devices == name) {
+        std::vector<std::string> availableDevices = {};
+        for (size_t i = 0; i < CUDA::Device::count(); ++i) {
+            availableDevices.push_back(fmt::format("{}.{}", _pluginName, i));
+        }
+        return decltype(ov::available_devices)::value_type{availableDevices};
     } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
         std::string name = getCudaAttribute<Plugin::cuda_attribute::name, std::string>();
         IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
