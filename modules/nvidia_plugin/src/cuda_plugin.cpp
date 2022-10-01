@@ -224,6 +224,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         std::vector<std::string> supportedMetrics = {METRIC_KEY(AVAILABLE_DEVICES),
                                                      METRIC_KEY(SUPPORTED_METRICS),
                                                      METRIC_KEY(SUPPORTED_CONFIG_KEYS),
+                                                     ov::device::uuid.name(),
                                                      METRIC_KEY(FULL_DEVICE_NAME),
                                                      METRIC_KEY(IMPORT_EXPORT_SUPPORT),
                                                      METRIC_KEY(DEVICE_ARCHITECTURE),
@@ -275,6 +276,13 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
             availableDevices.push_back(fmt::format("{}.{}", _pluginName, i));
         }
         return decltype(ov::available_devices)::value_type{availableDevices};
+    } else if (ov::device::uuid == name) {
+        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        CUDA::Device device{std::stoi(deviceId)};
+        const auto& props = device.props();
+        ov::device::UUID uuid = {};
+        std::copy(std::begin(props.uuid.bytes), std::end(props.uuid.bytes), std::begin(uuid.uuid));
+        return decltype(ov::device::uuid)::value_type {uuid};
     } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
         std::string name = getCudaAttribute<Plugin::cuda_attribute::name, std::string>();
         IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
