@@ -282,9 +282,12 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         const auto& props = device.props();
         ov::device::UUID uuid = {};
         std::copy(std::begin(props.uuid.bytes), std::end(props.uuid.bytes), std::begin(uuid.uuid));
-        return decltype(ov::device::uuid)::value_type {uuid};
+        return decltype(ov::device::uuid)::value_type{uuid};
     } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
-        std::string name = getCudaAttribute<Plugin::cuda_attribute::name, std::string>();
+        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        CUDA::Device device{std::stoi(deviceId)};
+        const auto& props = device.props();
+        const std::string name = props.name;
         IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
     } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
         IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
