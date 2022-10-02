@@ -36,7 +36,7 @@ jobs:
   timeoutInMinutes: 180
 
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
 
   variables:
     system.debug: true
@@ -91,6 +91,8 @@ jobs:
   - script: |
       brew install cython
       brew install automake
+      # for ARM compute
+      brew install scons
       # Speed up build
       brew install ninja
 
@@ -99,13 +101,15 @@ jobs:
 
   - script: |
       export PATH="/usr/local/opt/cython/bin:$PATH"
-      export CC=gcc
-      export CXX=g++
-      # Disable errors with Ninja
-      export CXXFLAGS="-Wno-error=unused-command-line-argument"
-      export CFLAGS="-Wno-error=unused-command-line-argument"
-      cmake -GNinja -DVERBOSE_BUILD=ON -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_nvidia_plugin=OFF -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
-    workingDirectory: $(BUILD_DIR)
+      cmake -GNinja \
+        -DVERBOSE_BUILD=ON \
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+        -DBUILD_nvidia_plugin=OFF \
+        -DENABLE_INTEL_MYRIAD=OFF \
+        -DIE_EXTRA_MODULES=$(REPO_DIR)/modules \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -S $(OPENVINO_REPO_DIR) \
+        -B $(BUILD_DIR)
     displayName: 'CMake'
 
   - script: ninja

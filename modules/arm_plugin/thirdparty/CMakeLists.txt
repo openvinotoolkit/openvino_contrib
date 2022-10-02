@@ -40,11 +40,9 @@ if(ARM_COMPUTE_INCLUDE_DIR OR ARM_COMPUTE_LIB_DIR)
 else()
     message(STATUS "Configure to build ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary")
 
-    find_host_program(SCONS
-        scons
-    )
+    find_host_program(SCONS scons)
 
-    if (NOT SCONS)
+    if(NOT SCONS)
         message(FATAL_ERROR "Scons tool is not found!")
     endif()
 
@@ -60,30 +58,40 @@ else()
     set(ARM_COMPUTE_OPTIONS
         neon=1
         opencl=0
+        openmp=0
         cppthreads=1
-        embed_kernels=0
         examples=0
         Werror=0
+        gemm_tuner=0
+        # TODO: check this for Apple Silicon
+        # multi_isa=1
+        # TODO: use CC for ARM compute library to minimize binary size
+        # build_config=<file>
         data_layout_support=nchw
         build_dir=${CMAKE_CURRENT_BINARY_DIR}
+        install_dir=${CMAKE_CURRENT_BINARY_DIR}/install
         arch=${ARM_COMPUTE_TARGET_ARCH}
     )
 
-    if (ARM_COMPUTE_SCONS_JOBS)
+    if(ARM_COMPUTE_SCONS_JOBS)
         list(APPEND ARM_COMPUTE_OPTIONS -j${ARM_COMPUTE_SCONS_JOBS})
     endif()
     
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND ARM_COMPUTE_OPTIONS debug=1)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        list(APPEND ARM_COMPUTE_OPTIONS debug=1 logging=1)
     endif()
 
-    if(ANDROID)
+    if(EMSCRIPTEN)
+        list(APPEND ARM_COMPUTE_OPTIONS os=linux)
+    elseif(ANDROID)
         list(APPEND ARM_COMPUTE_OPTIONS os=android)
     elseif(APPLE)
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
-    if(NOT CMAKE_CROSSCOMPILING)
+    if(CMAKE_CROSSCOMPILING)
+        list(APPEND ARM_COMPUTE_OPTIONS build=cross_compile)
+    else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
     endif()
 
@@ -92,7 +100,7 @@ else()
     endif()
 
     # used to build for yocto
-    if (ARM_COMPUTE_TOOLCHAIN_PREFIX)
+    if(ARM_COMPUTE_TOOLCHAIN_PREFIX)
         list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix=${ARM_COMPUTE_TOOLCHAIN_PREFIX})
     endif()
 
@@ -112,8 +120,35 @@ else()
 
         set(extra_link_flags "${extra_link_flags} ${extra_flags}")
         set(extra_cxx_flags "${extra_cxx_flags} ${extra_flags}")
+    elseif(EMSCRIPTEN)
+        set(cmake_build_env
+            CC=emcc
+            CXX=em++
+            RANLIB=emranlib
+            AR=emar)
+        # EMSDK: Passing any of -msse, -msse2, -msse3, -mssse3, -msse4.1, -msse4.2,
+        # -msse4, -mavx, -mfpu=neon flags also requires passing -msimd128 (or -mrelaxed-simd)!
+        set(extra_cxx_flags "${extra_cxx_flags} -msimd128")
+        # clang-16: error: argument unused during compilation: '-mthumb' [-Werror,-Wunused-command-line-argument]
+        # clang-16: error: argument unused during compilation: '-mfloat-abi=hard' [-Werror,-Wunused-command-line-argument]
+        set(extra_cxx_flags "${extra_cxx_flags} \
+            -Wno-unused-command-line-argument \
+            -Wno-unknown-warning-option \
+            -Wno-unused-function \
+            -Wno-unused-but-set-variable")
+
+        get_filename_component(toolchain_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix="${toolchain_prefix}/")
     elseif(APPLE)
         set(extra_cxx_flags "${extra_cxx_flags} -Wno-error=return-stack-address")
+
+        if(CMAKE_OSX_ARCHITECTURES)
+            get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
+            foreach(arch IN LISTS CMAKE_OSX_ARCHITECTURES)
+                set(extra_cxx_flags "${extra_cxx_flags} -arch ${arch}")
+            endforeach()
+        endif()
     endif()
 
     if(ENABLE_LTO)
@@ -128,14 +163,15 @@ else()
     if(extra_link_flags)
         list(APPEND ARM_COMPUTE_OPTIONS extra_link_flags=${extra_link_flags})
     endif()
-
-    list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
+    if(extra_cxx_flags)
+        list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
+    endif()
 
     add_custom_command(
         OUTPUT
             ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
             ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
-        COMMAND ${CMAKE_COMMAND} -E env ${SCONS} ${ARM_COMPUTE_OPTIONS}
+        COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env} ${SCONS} ${ARM_COMPUTE_OPTIONS}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary
         COMMENT "Build Arm Compute Library"
         DEPENDS ${SOURCES}
@@ -148,23 +184,23 @@ else()
 
     add_custom_target(arm_compute_static_libs
         DEPENDS
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
+            ${CMAKE_CURRENT_BINARY_DIR}/install/lib/libarm_compute-static.a
+            ${CMAKE_CURRENT_BINARY_DIR}/install/lib/libarm_compute_core-static.a
     )
 
     add_library(arm_compute::arm_compute STATIC IMPORTED GLOBAL)
     set_target_properties(arm_compute::arm_compute PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
+        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/install/lib/libarm_compute-static.a
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     add_dependencies(arm_compute::arm_compute arm_compute_static_libs)
 
     add_library(arm_compute::arm_compute_core STATIC IMPORTED GLOBAL)
     set_target_properties(arm_compute::arm_compute_core PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
+        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/install/lib/libarm_compute_core-static.a
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     add_dependencies(arm_compute::arm_compute_core arm_compute_static_libs)
 
     add_library(arm_compute::half INTERFACE IMPORTED GLOBAL)
     set_target_properties(arm_compute::half PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary/include)
+        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/install/include)
 endif()
