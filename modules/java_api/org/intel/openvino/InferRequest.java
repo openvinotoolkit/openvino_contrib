@@ -78,6 +78,11 @@ public class InferRequest extends Wrapper {
         return new Tensor(GetTensor(nativeObj, tensorName));
     }
 
+    /**
+     * Detele the native object to release resources.
+     *
+     * <p>This mehtod is protected from double deallocation
+     */
     public void release() {
         delete(nativeObj);
         isReleased = true;
