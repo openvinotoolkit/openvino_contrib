@@ -59,15 +59,20 @@ else()
         neon=1
         opencl=0
         openmp=0
-        standalone=1
+        # standalone=1
         cppthreads=1
         examples=0
         Werror=0
         gemm_tuner=0
+        reference_openmp=0
+        validation_tests=0
+        benchmark_tests=0
         # TODO: check this for Apple Silicon
         # multi_isa=1
         # TODO: use CC for ARM compute library to minimize binary size
         # build_config=<file>
+        # TODO: use data_type_support to disable useless kernels
+        # TODO: switch to NHWC layout later
         data_layout_support=nchw
         build_dir=${CMAKE_CURRENT_BINARY_DIR}
         install_dir=${CMAKE_CURRENT_BINARY_DIR}/install
@@ -75,11 +80,14 @@ else()
     )
 
     if(ARM_COMPUTE_SCONS_JOBS)
-        list(APPEND ARM_COMPUTE_OPTIONS -j${ARM_COMPUTE_SCONS_JOBS})
+        list(APPEND ARM_COMPUTE_OPTIONS --jobs=${ARM_COMPUTE_SCONS_JOBS})
     endif()
     
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND ARM_COMPUTE_OPTIONS debug=1 logging=1)
+        list(APPEND ARM_COMPUTE_OPTIONS
+             debug=1
+             asserts=1
+             logging=1)
     endif()
 
     if(EMSCRIPTEN)
@@ -90,7 +98,7 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
-    if(CMAKE_CROSSCOMPILING OR (APPLE AND HOST_X86_64 AND AARCH64))
+    if(CMAKE_CROSSCOMPILING)
         list(APPEND ARM_COMPUTE_OPTIONS build=cross_compile)
     else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
@@ -144,13 +152,8 @@ else()
         set(extra_cxx_flags "${extra_cxx_flags} -stdlib=libc++ -Wno-error=return-stack-address")
         set(extra_cxx_flags "${extra_cxx_flags} --sysroot ${CMAKE_OSX_SYSROOT}")
 
-        if(CMAKE_OSX_ARCHITECTURES)
-            get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
-            list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
-            foreach(arch IN LISTS CMAKE_OSX_ARCHITECTURES)
-                set(extra_cxx_flags "${extra_cxx_flags} -arch ${arch}")
-            endforeach()
-        endif()
+        get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
     endif()
 
     if(ENABLE_LTO)
@@ -173,7 +176,7 @@ else()
         OUTPUT
             ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
             ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
-        COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env} ${SCONS} ${ARM_COMPUTE_OPTIONS}
+        COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env} ${SCONS} ${ARM_COMPUTE_OPTIONS} arm_compute
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary
         COMMENT "Build Arm Compute Library"
         DEPENDS ${SOURCES}
