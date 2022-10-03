@@ -59,7 +59,6 @@ else()
         neon=1
         opencl=0
         openmp=0
-        # standalone=1
         cppthreads=1
         examples=0
         Werror=0
@@ -98,7 +97,7 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
-    if(CMAKE_CROSSCOMPILING)
+    if(CMAKE_CROSSCOMPILING OR APPLE)
         list(APPEND ARM_COMPUTE_OPTIONS build=cross_compile)
     else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
@@ -172,11 +171,17 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
     endif()
 
+    set(arm_compute ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a)
+    set(arm_compute_core ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a)
+
     add_custom_command(
         OUTPUT
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
-        COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env} ${SCONS} ${ARM_COMPUTE_OPTIONS} arm_compute
+            ${arm_compute}
+            ${arm_compute_core}
+        COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env}
+            ${SCONS} ${ARM_COMPUTE_OPTIONS}
+                ${arm_compute}
+                ${arm_compute_core}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary
         COMMENT "Build Arm Compute Library"
         DEPENDS ${SOURCES}
@@ -189,19 +194,19 @@ else()
 
     add_custom_target(arm_compute_static_libs
         DEPENDS
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
-            ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
+            ${arm_compute}
+            ${arm_compute_core}
     )
 
     add_library(arm_compute::arm_compute STATIC IMPORTED GLOBAL)
     set_target_properties(arm_compute::arm_compute PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a
+        IMPORTED_LOCATION ${arm_compute}
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     add_dependencies(arm_compute::arm_compute arm_compute_static_libs)
 
     add_library(arm_compute::arm_compute_core STATIC IMPORTED GLOBAL)
     set_target_properties(arm_compute::arm_compute_core PROPERTIES
-        IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a
+        IMPORTED_LOCATION ${arm_compute_core}
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     add_dependencies(arm_compute::arm_compute_core arm_compute_static_libs)
 
