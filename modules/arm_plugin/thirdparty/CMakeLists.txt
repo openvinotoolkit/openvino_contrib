@@ -59,6 +59,7 @@ else()
         neon=1
         opencl=0
         openmp=0
+        standalone=1
         cppthreads=1
         examples=0
         Werror=0
