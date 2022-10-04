@@ -153,6 +153,12 @@ else()
 
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
         list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
+       
+        if(CMAKE_OSX_ARCHITECTURES)
+            foreach(arch IN LISTS CMAKE_OSX_ARCHITECTURES)
+                set(extra_cxx_flags "${extra_cxx_flags} -arch ${arch}")
+            endforeach()
+        endif()
     endif()
 
     if(ENABLE_LTO)
