@@ -149,7 +149,7 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix="${toolchain_prefix}/")
     elseif(APPLE)
         set(extra_cxx_flags "${extra_cxx_flags} -stdlib=libc++ -Wno-error=return-stack-address")
-        set(extra_cxx_flags "${extra_cxx_flags} --sysroot ${CMAKE_OSX_SYSROOT}")
+        set(extra_cxx_flags "${extra_cxx_flags} --sysroot ${CMAKE_OSX_SYSROOT} -mmacosx-version-min=11.0")
 
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
         list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
