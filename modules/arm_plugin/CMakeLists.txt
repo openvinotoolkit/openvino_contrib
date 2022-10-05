@@ -10,7 +10,7 @@ set(IE_MAIN_ARM_PLUGIN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(InferenceEngineDeveloperPackage REQUIRED)
 
-if(NOT ARM AND NOT AARCH64)
+if(NOT (ARM OR AARCH64 OR EMSCRIPTEN))
     message(WARNING "ARM CPU plugin can be built only for ARM or ARM64 target. Exiting..")
     return()
 endif()
