@@ -32,6 +32,12 @@ resources:
 
 jobs:
 - job: Mac
+  strategy:
+    matrix:
+      # x86_64:
+      #   CMAKE_OSX_ARCHITECTURES: x86_64
+      arm64:
+        CMAKE_OSX_ARCHITECTURES: arm64
   # About 200% of total time (perfomace of Mac hosts is unstable)
   timeoutInMinutes: 180
 
@@ -107,7 +113,7 @@ jobs:
         -DBUILD_nvidia_plugin=OFF \
         -DENABLE_INTEL_MYRIAD=OFF \
         -DIE_EXTRA_MODULES=$(REPO_DIR)/modules \
-        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -DCMAKE_OSX_ARCHITECTURES=$(CMAKE_OSX_ARCHITECTURES) \
         -DENABLE_CPPLINT=OFF \
         -S $(OPENVINO_REPO_DIR) \
         -B $(BUILD_DIR)
@@ -134,3 +140,4 @@ jobs:
       done
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
+    condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')
