@@ -30,6 +30,8 @@ const std::vector<std::vector<size_t>> kernels2D = {{1, 1}, {3, 3}};
 const std::vector<std::vector<size_t>> strides2D = {{1, 1}};
 const std::vector<std::vector<ptrdiff_t>> padBegins2D = {{0, 0}};
 const std::vector<std::vector<ptrdiff_t>> padEnds2D = {{0, 0}};
+const std::vector<std::vector<ptrdiff_t>> padBeginsAsym2D = {{0, 0}};
+const std::vector<std::vector<ptrdiff_t>> padEndsAsym2D = {{1, 1}};
 const std::vector<std::vector<size_t>> dilations2D = {{1, 1}};
 
 const auto groupConvBackpropData2DParams_ExplicitPadding =
@@ -50,6 +52,14 @@ const auto groupConvBackpropData2DParams_AutoPadValid =
                        ::testing::ValuesIn(numOutChannels),
                        ::testing::ValuesIn(numGroups),
                        ::testing::Values(ngraph::op::PadType::VALID));
+const auto groupConvBackpropData2DParams_AsymPad = ::testing::Combine(::testing::ValuesIn(kernels2D),
+                                                                      ::testing::ValuesIn(strides2D),
+                                                                      ::testing::ValuesIn(padBeginsAsym2D),
+                                                                      ::testing::ValuesIn(padEndsAsym2D),
+                                                                      ::testing::ValuesIn(dilations2D),
+                                                                      ::testing::ValuesIn(numOutChannels),
+                                                                      ::testing::ValuesIn(numGroups),
+                                                                      ::testing::Values(ngraph::op::PadType::EXPLICIT));
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_ExplicitPadding,
                         GroupConvBackpropDataLayerTest,
@@ -75,12 +85,26 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AutoPadding,
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AsymPadding,
+                        GroupConvBackpropDataLayerTest,
+                        ::testing::Combine(groupConvBackpropData2DParams_AsymPad,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(inputShapes2D),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        GroupConvBackpropDataLayerTest::getTestCaseName);
+
 /* ============= 3D GroupConvolution ============= */
 const std::vector<std::vector<size_t>> inputShapes3D = {{1, 16, 5, 5, 5}, {1, 32, 5, 5, 5}};
 const std::vector<std::vector<size_t>> kernels3D = {{1, 1, 1}, {3, 3, 3}};
 const std::vector<std::vector<size_t>> strides3D = {{1, 1, 1}};
 const std::vector<std::vector<ptrdiff_t>> padBegins3D = {{0, 0, 0}};
 const std::vector<std::vector<ptrdiff_t>> padEnds3D = {{0, 0, 0}};
+const std::vector<std::vector<ptrdiff_t>> padBeginsAsym3D = {{1, 1, 1}};
+const std::vector<std::vector<ptrdiff_t>> padEndsAsym3D = {{0, 0, 0}};
 const std::vector<std::vector<size_t>> dilations3D = {{1, 1, 1}};
 
 const auto groupConvBackpropData3DParams_ExplicitPadding =
@@ -101,6 +125,14 @@ const auto groupConvBackpropData3DParams_AutoPadValid =
                        ::testing::ValuesIn(numOutChannels),
                        ::testing::ValuesIn(numGroups),
                        ::testing::Values(ngraph::op::PadType::VALID));
+const auto groupConvBackpropData3DParams_AsymPad = ::testing::Combine(::testing::ValuesIn(kernels3D),
+                                                                      ::testing::ValuesIn(strides3D),
+                                                                      ::testing::ValuesIn(padBeginsAsym3D),
+                                                                      ::testing::ValuesIn(padEndsAsym3D),
+                                                                      ::testing::ValuesIn(dilations3D),
+                                                                      ::testing::ValuesIn(numOutChannels),
+                                                                      ::testing::ValuesIn(numGroups),
+                                                                      ::testing::Values(ngraph::op::PadType::EXPLICIT));
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_ExpicitPadding,
                         GroupConvBackpropDataLayerTest,
@@ -117,6 +149,18 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_ExpicitPadding,
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AutoPadding,
                         GroupConvBackpropDataLayerTest,
                         ::testing::Combine(groupConvBackpropData3DParams_AutoPadValid,
+                                           ::testing::ValuesIn(netPrecisions),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::ValuesIn(inputShapes3D),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        GroupConvBackpropDataLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AsymPadding,
+                        GroupConvBackpropDataLayerTest,
+                        ::testing::Combine(groupConvBackpropData3DParams_AsymPad,
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),

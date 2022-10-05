@@ -1,4 +1,8 @@
-## Software Requirements 
+# Java bindings for OpenVINO
+
+[![Documentation Status](https://readthedocs.org/projects/openvino-java/badge/?version=latest)](https://openvino-java.readthedocs.io/en/latest/?badge=latest)
+
+## Software Requirements
 - OpenJDK (version depends on target OS)
 
 ### Linux

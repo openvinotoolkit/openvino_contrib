@@ -19,6 +19,17 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *env, jobjec
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore1(JNIEnv *env, jobject obj, jstring xmlConfigFile)
+{
+
+    JNI_METHOD("GetCore1",
+        std::string n_xml = jstringToString(env, xmlConfigFile);
+        Core *core = new Core(n_xml);
+        return (jlong)core;
+    )
+    return 0;
+}
+
 JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel(JNIEnv *env, jobject obj, jlong coreAddr, jstring xml)
 {
     JNI_METHOD("ReadModel",
@@ -63,6 +74,34 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *env, j
         return (jlong)compiled_model;
     )
     return 0;
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *env, jobject obj, jlong coreAddr, jstring device, jstring name)
+{
+    JNI_METHOD("GetProperty",
+        std::string n_device = jstringToString(env, device);
+        std::string n_name = jstringToString(env, name);
+
+        Core *core = (Core *)coreAddr;
+
+        Any *property = new Any();
+        *property = core->get_property(n_device, n_name);
+
+        return (jlong)property;
+    )
+    return 0;
+}
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *env, jobject obj, jlong coreAddr, jstring device, jobject prop) {
+    JNI_METHOD("SetProperty",
+        std::string n_device = jstringToString(env, device);
+        Core *core = (Core *)coreAddr;
+        AnyMap map;
+        for (const auto& it : javaMapToMap(env, prop)) {
+            map[it.first] = it.second;
+        }
+        core->set_property(n_device, map);
+    )
 }
 
 JNIEXPORT void JNICALL Java_org_intel_openvino_Core_delete(JNIEnv *, jobject, jlong addr)

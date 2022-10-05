@@ -7,10 +7,10 @@
 #include <cudnn.h>
 #include <fmt/ostream.h>
 
-#include <cuda/cuda_config.hpp>
 #include <cuda_config.hpp>
 #include <gsl/gsl_assert>
 #include <ngraph/util.hpp>
+#include <nvidia/nvidia_config.hpp>
 #include <ops/converters.hpp>
 
 namespace ov::nvidia_gpu::Convolution::Details {

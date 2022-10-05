@@ -211,6 +211,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
             {ov::device::full_name.name(), ov::PropertyMutability::RO},
             {ov::device::capabilities.name(), ov::PropertyMutability::RO},
             {ov::range_for_async_infer_requests.name(), ov::PropertyMutability::RO},
+            {ov::hint::performance_mode.name(), ov::PropertyMutability::RW},
             {ov::range_for_streams.name(), ov::PropertyMutability::RO}};
         for (auto&& configKey : IStreamsExecutor::Config{}.SupportedKeys()) {
             supported_properties.emplace_back(configKey, ov::PropertyMutability::RW);

@@ -159,7 +159,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::EmbeddingSegmentsSum>();
         Register<opset::EmbeddingBagPackedSum>();
         Register<opset::EmbeddingBagOffsetsSum>();
-        Register<opset::NonMaxSuppression>();
+        Register<ngraph::op::v9::NonMaxSuppression>();
         Register<opset::ROIAlign>();
         Register<ngraph::op::v0::Proposal>();
         Register<opset::Proposal>();
