@@ -105,7 +105,6 @@ cd $DEV_HOME || fail 11 "oneTBB build failed. Stopping"
 $OPENVINO_HOME/install_build_dependencies.sh
 $OPENVINO_CONTRIB/modules/arm_plugin/scripts/install_build_dependencies.sh
 
-
 #Build OpenCV
 mkdir -p $OPENCV_HOME/build && \
 cd $OPENCV_HOME/build && \
