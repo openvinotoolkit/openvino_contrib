@@ -91,7 +91,7 @@ mkdir -p $STAGING_DIR
 #Build oneTBB
 mkdir -p $ONETBB_HOME/build && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-    -DCMAKE_TOOLCHAIN_FILE=="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
+    -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
     # -DCMAKE_HWLOC_2_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/libhwloc.so \
     # -DCMAKE_HWLOC_2_INCLUDE_PATH=/usr/include/aarch64-linux-gnu/hwloc \
     -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/extras/oneTBB && \
