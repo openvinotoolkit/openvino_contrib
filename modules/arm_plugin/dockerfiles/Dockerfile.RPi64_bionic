@@ -53,6 +53,7 @@ RUN apt-get update && \
         libavcodec-dev:arm64 \
         libavformat-dev:arm64 \
         libswscale-dev:arm64 \
+        hwloc:arm64 \
         patchelf \
     && \
     locale-gen en_US.UTF-8 && \

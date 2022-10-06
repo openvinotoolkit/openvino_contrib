@@ -15,7 +15,7 @@
 
 #include "arm_executable_network.hpp"
 #include "arm_config.hpp"
-
+#include "arm_compute/runtime/IScheduler.h"
 namespace ArmPlugin {
 struct Plugin : public InferenceEngine::IInferencePlugin {
     using Ptr = std::shared_ptr<Plugin>;
@@ -36,6 +36,16 @@ struct Plugin : public InferenceEngine::IInferencePlugin {
                                          const std::map<std::string, InferenceEngine::Parameter> & options) const override;
     std::shared_ptr<ov::Model> Transform(const std::shared_ptr<const ov::Model>& model,
                                          const Configuration& config) const;
+
+    struct SchedulerGuard {
+        SchedulerGuard();
+        ~SchedulerGuard();
+        static std::shared_ptr<SchedulerGuard> instance();
+        static std::mutex mutex;
+        static std::weak_ptr<SchedulerGuard> ptr;
+    };
+
+    std::shared_ptr<SchedulerGuard> scheduler_guard;
 
     Configuration _cfg;
 };
