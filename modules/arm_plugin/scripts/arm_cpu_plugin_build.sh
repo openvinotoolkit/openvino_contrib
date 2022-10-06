@@ -8,6 +8,7 @@ UPDATE_SOURCES=${UPDATE_SOURCES:-clean}
 WITH_OMZ_DEMO=${WITH_OMZ_DEMO:-ON}
 
 DEV_HOME=`pwd`
+ONETBB_HOME=$DEV_HOME/oneTBB
 OPENCV_HOME=$DEV_HOME/opencv
 OPENVINO_HOME=$DEV_HOME/openvino
 OPENVINO_CONTRIB=$DEV_HOME/openvino_contrib
@@ -74,6 +75,7 @@ checkSrcTree()
 
 
 #Prepare sources
+checkSrcTree $ONETBB_HOME https://github.com/oneapi-src/oneTBB.git master
 checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.x
 checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git master
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git master
@@ -85,6 +87,20 @@ fi
 [ -e $STAGING_DIR ] && rm -rf $STAGING_DIR
 mkdir -p $STAGING_DIR
 
+
+#Build oneTBB
+mkdir -p $ONETBB_HOME/build && \
+cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+    -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
+    # -DCMAKE_HWLOC_2_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/libhwloc.so \
+    # -DCMAKE_HWLOC_2_INCLUDE_PATH=/usr/include/aarch64-linux-gnu/hwloc \
+    -DCMAKE_INSTALL_PREFIX=$STAGING_DIR/extras/oneTBB && \
+cmake --build . && \
+cmake --install . && \
+echo export TBB_DIR=\$INSTALLDIR/extras/oneTBB/cmake/TBB > $STAGING_DIR/extras/oneTBB/setupvars.sh && \
+echo export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH >> $STAGING_DIR/extras/oneTBB/setupvars.sh && \
+cd $DEV_HOME || fail 11 "oneTBB build failed. Stopping"
+
 # Install and build dependencies
 $OPENVINO_HOME/install_build_dependencies.sh
 $OPENVINO_CONTRIB/modules/arm_plugin/scripts/install_build_dependencies.sh
@@ -94,6 +110,7 @@ mkdir -p $OPENCV_HOME/build && \
 cd $OPENCV_HOME/build && \
 PYTHONVER=`ls /usr/include | grep "python3[^m]*$"` && \
 cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_LIST=imgcodecs,videoio,highgui,gapi,python3 \
+      -DTBB_DIR="$STAGING_DIR/extras/oneTBB/lib/cmake/TBB" \
       -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=ON -DOPENCV_SKIP_PYTHON_LOADER=OFF \
       -DPYTHON3_LIMITED_API=ON \
       -DPYTHON3_INCLUDE_PATH=/opt/python3.7_arm/include/python3.7m \
@@ -128,6 +145,9 @@ cd $DEV_HOME || fail 11 "OpenCV build failed. Stopping"
 mkdir -p $OPENVINO_HOME/build && \
 cd $OPENVINO_HOME/build && \
 cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
+
+      -DTBB_DIR="$STAGING_DIR/extras/oneTBB/lib/cmake/TBB" \
+      -DPYTHON_INCLUDE_DIRS="/opt/python3.7_arm/include/python3.7m" \
       -DPYTHON_LIBRARY="/opt/python3.7_arm/lib/libpython3.7m.so" \
       -DENABLE_WHEEL=OFF \
       -DNGRAPH_ONNX_IMPORT_ENABLE=ON \
@@ -135,7 +155,7 @@ cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
       -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
       -DENABLE_MYRIAD=ON -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-      -DTHREADING=SEQ -DENABLE_LTO=ON \
+      -DTHREADING=TBB -DENABLE_LTO=ON \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DARM_COMPUTE_SCONS_JOBS=$BUILD_JOBS \
       -DIE_EXTRA_MODULES=$ARM_PLUGIN_HOME \

@@ -37,25 +37,38 @@ using namespace InferenceEngine::details;
 using namespace InferenceEngine::PluginConfigParams;
 using namespace ArmPlugin;
 
-static std::mutex armSchedulerMutex;
+std::mutex Plugin::SchedulerGuard::mutex;
+std::weak_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::ptr;
 
-Plugin::Plugin() {
-    _pluginName = "CPU";
-    std::lock_guard<std::mutex> lock{armSchedulerMutex};
+Plugin::SchedulerGuard::SchedulerGuard() {
 #if IE_THREAD == IE_THREAD_SEQ
-    arm_compute::Scheduler::get();  // Init default AC scheduler list
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::CPP);
 #else
     arm_compute::Scheduler::set(std::make_shared<IEScheduler>());
 #endif
 }
 
-Plugin::~Plugin() {
-    {
-        std::lock_guard<std::mutex> lock{armSchedulerMutex};
-        arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+std::shared_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::instance() {
+    std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
+    auto scheduler_guard_ptr = SchedulerGuard::ptr.lock();
+    if (scheduler_guard_ptr == nullptr) {
+        SchedulerGuard::ptr = scheduler_guard_ptr = std::make_shared<SchedulerGuard>();
     }
-    InferenceEngine::executorManager()->clear("CPUStreamsExecutor");
+    return scheduler_guard_ptr;
+}
+
+Plugin::SchedulerGuard::~SchedulerGuard() {
+    std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
+    arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+}
+
+Plugin::Plugin() {
+    _pluginName = "CPU";
+    scheduler_guard = SchedulerGuard::instance();
+}
+
+Plugin::~Plugin() {
+    ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
 }
 
 std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Model>& model,
