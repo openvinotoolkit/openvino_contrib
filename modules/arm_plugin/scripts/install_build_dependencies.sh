@@ -4,9 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
+
+export WORK_DIR=$(pwd)
+
+export HWLOC_DIR=$WORK_DIR/hwloc
+export HWLOC_INSTALL=$HWLOC_DIR/install
+
 # Move into contrib install_build_dependencies.sh
 sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev libhiredis-dev
-sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev
+sudo apt --assume-yes install protobuf-compiler default-jdk libssl-dev zip libzstd-dev python-dev autoconf libtool
 # Speed up build
 wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
 unzip ninja-linux.zip
@@ -49,10 +55,49 @@ cd "$WORK_DIR" || exit
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
 sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
 
+# hwloc install
+wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P $HWLOC_DIR
+tar -xzf $HWLOC_DIR/hwloc-2.5.0.tar.gz -C $HWLOC_DIR
+mkdir -p $HWLOC_INSTALL
+cd $HWLOC_DIR/hwloc-2.5.0
+CC=aarch64-linux-gnu-gcc \
+CXX=aarch64-linux-gnu-g++ \
+./configure \
+     --host=aarch64-linux-gnu \
+     --prefix=$HWLOC_INSTALL \
+     --with-pic=yes
+make -j $(nproc --all)
+make install
+
+# oneTBB install
+git clone --recursive https://github.com/oneapi-src/oneTBB.git $ONETBB_REPO_DIR
+cmake -GNinja \
+      -DCMAKE_HWLOC_2_5_LIBRARY_PATH=$HWLOC_INSTALL/lib/libhwloc.so \
+      -DCMAKE_HWLOC_2_5_INCLUDE_PATH=$HWLOC_INSTALL/include \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
+      -DCMAKE_INSTALL_PREFIX="$INSTALL_ONETBB" \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+      -DTBB_INSTALL_VARS=ON \
+      -DTBB_TEST=False \
+      -S$ONETBB_REPO_DIR \
+      -B$BUILD_ONETBB
+export CCACHE_DIR=$ONETBB_CCACHE_DIR
+ninja -C $BUILD_ONETBB
+ninja -C $BUILD_ONETBB install
+
+touch "$INSTALL_ONETBB"/setupvars.sh
+printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/lib/cmake/TBB;" >> "$INSTALL_ONETBB"/setupvars.sh
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_ONETBB"/setupvars.sh
+cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
+
 # OpenCV install
 git clone https://github.com/opencv/opencv.git --depth 1 "$OPENCV_REPO_DIR"
 cmake -G Ninja \
       -D CMAKE_BUILD_TYPE="$BUILD_TYPE" \
+      -D WITH_TBB=ON \
+      -D TBB_DIR="$INSTALL_ONETBB/lib/cmake/TBB" \
       -D BUILD_opencv_python2=OFF \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
@@ -83,6 +128,7 @@ cmake -G Ninja \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" \
       -S "$OPENCV_REPO_DIR" \
       -B "$BUILD_OPENCV"
+export CCACHE_DIR=$OPENCV_CCACHE_DIR
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
 touch "$INSTALL_OPENCV"/setupvars.sh

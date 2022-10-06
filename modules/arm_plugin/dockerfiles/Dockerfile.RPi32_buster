@@ -69,6 +69,7 @@ RUN dpkg --add-architecture armhf && \
         libavcodec-dev:armhf \
         libavformat-dev:armhf \
         libswscale-dev:armhf \
+        hwloc:armhf \
         # For ARM CPU plugin
         scons \
     && \

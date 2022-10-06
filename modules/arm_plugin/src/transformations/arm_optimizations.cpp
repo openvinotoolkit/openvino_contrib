@@ -188,9 +188,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Mode
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertMVN1ToMVN6>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertQuantizeDequantize>();
-        #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
+        // #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
             manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-        #endif
+        // #endif
 
         auto pass_config = manager.get_pass_config();
 
