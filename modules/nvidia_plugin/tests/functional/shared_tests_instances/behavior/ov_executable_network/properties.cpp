@@ -78,6 +78,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
 const std::vector<ov::AnyMap> properties = {
     {ov::enable_profiling(true)},
     {ov::device::id("0")},
+    {ov::device::id("NVIDIA.0")},
 };
 
 const std::vector<ov::AnyMap> hetero_properties = {
