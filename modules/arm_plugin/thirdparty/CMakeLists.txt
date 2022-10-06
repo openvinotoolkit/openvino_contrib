@@ -97,7 +97,7 @@ else()
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
-    if(CMAKE_CROSSCOMPILING OR APPLE)
+    if(CMAKE_CROSSCOMPILING)
         list(APPEND ARM_COMPUTE_OPTIONS build=cross_compile)
     else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
