@@ -6,40 +6,32 @@ This guide describes how to run the benchmark applications.
 
 Upon start-up, the application reads command-line parameters and loads a network to the Inference Engine plugin, which is chosen depending on a specified device. The number of infer requests and execution approach depend on the mode defined with the `-api` command-line parameter.
 
-## Build OpenVINO Java bindings
+## Build Benchmark Application
 Set environment OpenVINO variables:
 ```bash
 source <openvino_install>/setupvars.sh
-```
+``` 
 
-Use Gradle to build `java_api.jar` file with OpenVINO Java bindings:
+Use Gradle to build `openvino-x-x-x.jar` with OpenVINO Java bindings and `benchmark_app.jar` file with Benchmark Application:
 ```bash
 cd openvino_contrib/modules/java_api
-gradle build
+gradle build -Pbuild_benchmark_app=true
 ```
 
-## Build Java samples
-Create an environment variable with path to directory with the `java_api.jar` file:
+## Running
+Create an environment variable with path to directory with the `openvino-x-x-x.jar` file:
 ```bash
 export OV_JAVA_DIR=/path/to/openvino_contrib/modules/java_api/build/libs
 ```
 
-Build samples:
-```bash
-cd /modules/java_api/samples
-mkdir build && cd build
-cmake .. && make
-```
-
-## Running
 To get `benchmark_app` help use:
 ```bash
-java -cp ".:${OV_JAVA_DIR}/java_api.jar:jars/benchmark_app.jar" Main --help
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:samples/benchmark_app/build/libs/benchmark_app.jar" Main --help
 ```
 
 To run `benchmark_app` use:
 ```bash
-java -cp ".:${OV_JAVA_DIR}/java_api.jar:jars/benchmark_app.jar" Main -m /path/to/model
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:samples/benchmark_app/build/libs/benchmark_app.jar" Main -m /path/to/model
 ```
 
 ## Application Output
@@ -69,14 +61,19 @@ Download model from [Open Model Zoo](https://github.com/openvinotoolkit/open_mod
 python downloader.py --name face-detection-adas-0001 --output_dir .
 ```
 
-## Build and run
-
+## Build
 Build and run steps are similar to `benchmark_app`, but you need to add an environment variable with OpenCV installation or build path before building:
 ```bash
 export OpenCV_DIR=/path/to/opencv/
 ```
 
-### Running
+Use Gradle to build `openvino-x-x-x.jar` with OpenVINO Java bindings and `sample_name.jar` files with samples:
+```bash
+cd openvino_contrib/modules/java_api
+gradle build -Pbuild_java_samples=true
+```
+
+## Running
 Add library path for opencv library and for openvino java library before running:
 
 * For OpenCV installation path
@@ -85,7 +82,7 @@ export LD_LIBRARY_PATH=${OpenCV_DIR}/share/java/opencv4/:$LD_LIBRARY_PATH
 ```
 To run sample use:
 ```bash
-java -cp ".:${OpenCV_DIR}/share/java/opencv4/*:${OV_JAVA_DIR}/java_api.jar:jars/sample_name.jar" Main -m /path/to/model -i /path/to/image
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:${OpenCV_DIR}/share/java/opencv4/*:samples/sample_name/build/libs/sample_name.jar" Main -m /path/to/model -i /path/to/image
 ```
 
 * For OpenCV build path
@@ -94,12 +91,10 @@ export LD_LIBRARY_PATH=${OpenCV_DIR}/lib:$LD_LIBRARY_PATH
 ```
 To run sample use:
 ```bash
-java -cp ".:${OpenCV_DIR}/bin/*:${OV_JAVA_DIR}/java_api.jar:jars/sample_name.jar" Main -m /path/to/model -i /path/to/image
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:${OpenCV_DIR}/bin/*:${OV_JAVA_DIR}/java_api.jar:samples/sample_name/build/libs/sample_name.jar" Main -m /path/to/model -i /path/to/image
 ```
 
 ## Sample Output
-### For ```face_detection_api_2.0_sample```
-The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
 
 ### For ```face_detection_java_sample```
 The application will show the image with detected objects enclosed in rectangles in new window. It outputs the confidence value and the coordinates of the rectangle to the standard output stream.
