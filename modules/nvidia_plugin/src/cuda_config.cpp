@@ -8,6 +8,7 @@
 
 #include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 #include <error.hpp>
+#include <regex>
 
 using namespace ov::nvidia_gpu;
 
@@ -39,9 +40,27 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
                    std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key)) {
             streams_executor_config_.SetConfig(key, value);
         } else if (CONFIG_KEY(DEVICE_ID) == key) {
-            deviceId = std::stoi(value);
-            if (deviceId > 0) {
-                throwIEException(fmt::format("Device ID {} is not supported", deviceId));
+            std::smatch match;
+            std::regex re_device_id(R"((NVIDIA\.)?(\d+))");
+            if (std::regex_match(value, match, re_device_id)) {
+                const std::string device_id_prefix = match[1].str();
+                const std::string device_id_value = match[2].str();
+                if (!device_id_prefix.empty() && "NVIDIA." != device_id_prefix) {
+                    throwIEException(
+                        fmt::format("Prefix for deviceId should be 'NVIDIA.' (user deviceId = {}). "
+                                    "For example: NVIDIA.0, NVIDIA.1 and etc.",
+                                    value));
+                }
+                deviceId = std::stoi(device_id_value);
+                if (deviceId < 0) {
+                    throwIEException(fmt::format(
+                        "Device ID {} is not supported. Index should be >= 0 (user index = {})", value, deviceId));
+                }
+            } else {
+                throwIEException(
+                    fmt::format("Device ID {} is not supported. Supported deviceIds: 0, 1, 2, NVIDIA.0, NVIDIA.1, "
+                                "NVIDIA.2 and etc.",
+                                value));
             }
         } else if (NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
             if (value == NVIDIA_CONFIG_VALUE(YES)) {
