@@ -1,6 +1,7 @@
 // Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+
 #include <string>
 #include <stdexcept>
 
@@ -13,5 +14,5 @@ void set_device_suffix(const std::string& suffix) {
         throw std::runtime_error("The suffix can't be used for NVIDIA GPU device!");
     }
 }
-} // namespace test
-} // namespace ov
+}  // namespace test
+}  // namespace ov
