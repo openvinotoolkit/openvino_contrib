@@ -3,7 +3,6 @@
 //
 
 #include "set_device_name.hpp"
-
 #include <string>
 #include <stdexcept>
 
