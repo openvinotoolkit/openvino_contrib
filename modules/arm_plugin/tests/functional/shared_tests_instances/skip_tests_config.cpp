@@ -46,6 +46,8 @@ std::vector<std::string> disabledTestPatterns() {
 #ifdef __arm__
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
         ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
+#endif
+#ifdef __aarch64__
         // Bus error on aarch64, 94254
         ".*THROUGHPUT.*",
 #endif
