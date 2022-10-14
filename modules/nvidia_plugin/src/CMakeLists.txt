@@ -50,23 +50,20 @@ target_include_directories(${OBJ_NAME}
                            "${CUTENSOR_INCLUDE_DIR}"
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
-                           "${InferenceEngine_C_API_SOURCE_DIR}/include"
-                           $<TARGET_PROPERTY:IE::inference_engine_transformations,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 target_link_libraries(${OBJ_NAME}
                       PUBLIC
                       GSL
                       fmt-header-only
-                      IE::inference_engine
-                      IE::inference_engine_plugin_api
+                      openvino::runtime
+                      openvino::runtime::dev
                       ov_core_dev
                       PRIVATE
                       CUDA::cudart
                       CUDA::cublas
                       CUDA::cudnn
                       CUDA::cutensor
-                      IE::inference_engine_transformations
                       ${NGRAPH_LIBRARIES}
 )
 

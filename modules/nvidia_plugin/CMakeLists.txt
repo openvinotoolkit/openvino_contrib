@@ -22,7 +22,8 @@ endif()
 
 set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineNVIDIAGpuPlugin_SOURCE_DIR})
 
-find_package(InferenceEngineDeveloperPackage REQUIRED)
+find_package(OpenVINODeveloperPackage REQUIRED
+             PATHS "${InferenceEngineDeveloperPackage_DIR}")
 
 include(cmake/features.cmake)
 

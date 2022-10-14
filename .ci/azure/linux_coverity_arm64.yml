@@ -154,7 +154,7 @@ jobs:
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
-        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
+        -DOpenVINODeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
         $(REPO_DIR)/modules/arm_plugin
       workingDirectory: $(BUILD_DIR_ARM_PLUGIN)
 

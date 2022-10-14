@@ -13,19 +13,21 @@ else(ENABLE_INTEL_CPU)
 endif (ENABLE_INTEL_CPU)
 
 addIeTargetTest(
-        NAME ${TARGET_NAME}
-        ROOT ${CMAKE_CURRENT_SOURCE_DIR}
+        NAME
+            ${TARGET_NAME}
+        ROOT
+            ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDENCIES
-        openvino_nvidia_gpu_plugin
-        ${OPENVINO_ADDITIONAL_DEPENDENCIES}
+            openvino_nvidia_gpu_plugin
+            ${OPENVINO_ADDITIONAL_DEPENDENCIES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        openvino_nvidia_gpu_plugin_obj
+            openvino_nvidia_gpu_plugin_obj
         LINK_LIBRARIES
-        IE::funcSharedTests
-        gmock
+            openvino::funcSharedTests
+            gmock
         INCLUDES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
         LABELS
-        CUDA
+           CUDA
 )
 # [cmake:functional_tests]

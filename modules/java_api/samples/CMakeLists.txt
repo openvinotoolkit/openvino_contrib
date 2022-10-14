@@ -30,7 +30,7 @@ macro(ie_add_java_sample)
     file(GLOB_RECURSE SAMPLE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.java)
     list(APPEND SAMPLE_SOURCES ${PROJECT_SOURCE_DIR}/ArgumentParser.java)
 
-    # Set InferenceEngine component
+    # Set OpenVINO component
 
     set(OV_JAVA_SRC $ENV{OV_JAVA_DIR}/java_api.jar)
 
