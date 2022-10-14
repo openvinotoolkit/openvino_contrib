@@ -28,9 +28,8 @@ target_link_libraries(${TARGET_NAME} PRIVATE
     arm_compute::arm_compute
     arm_compute::arm_compute_core
     arm_compute::half
-    # TODO: replace with openvino::util and openvino::core::refernece
-    IE::ngraph_reference
-    IE::util
+    openvino::ngraph_reference
+    openvino::util
 )
 
 set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})

@@ -29,7 +29,7 @@ addIeTargetTest(
         openvino_nvidia_gpu_plugin_obj
         ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
-        IE::funcSharedTests
+        openvino::funcSharedTests
         gmock
         ngraphFunctions
         ADD_CPPLINT

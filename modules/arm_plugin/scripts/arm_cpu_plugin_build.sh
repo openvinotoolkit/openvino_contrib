@@ -175,7 +175,7 @@ cross-python -m pip install numpy==1.20.0
 [ "$UPDATE_SOURCES" = "clean" -a -e $OPENVINO_HOME/pbuild ] && rm -rf $OPENVINO_HOME/pbuild
 mkdir -p $OPENVINO_HOME/pbuild && \
 cd $OPENVINO_HOME/pbuild && \
-cmake -DInferenceEngineDeveloperPackage_DIR=$OPENVINO_HOME/build \
+cmake -DOpenVINODeveloperPackage_DIR=$OPENVINO_HOME/build \
       -DENABLE_PYTHON=ON -DPYTHON_EXECUTABLE=`which cross-python` \
       -DENABLE_WHEEL=ON \
       -DPYTHON_INCLUDE_DIRS=/opt/python3.7_arm/include/python3.7m \
