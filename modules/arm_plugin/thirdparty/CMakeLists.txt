@@ -81,7 +81,7 @@ else()
     if(ARM_COMPUTE_SCONS_JOBS)
         list(APPEND ARM_COMPUTE_OPTIONS --jobs=${ARM_COMPUTE_SCONS_JOBS})
     endif()
-    
+
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND ARM_COMPUTE_OPTIONS
              debug=1
@@ -156,7 +156,7 @@ else()
 
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
         list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
-       
+
         if(CMAKE_OSX_ARCHITECTURES)
             foreach(arch IN LISTS CMAKE_OSX_ARCHITECTURES)
                 set(extra_cxx_flags "${extra_cxx_flags} -arch ${arch}")
@@ -178,6 +178,10 @@ else()
     endif()
     if(extra_cxx_flags)
         list(APPEND ARM_COMPUTE_OPTIONS extra_cxx_flags=${extra_cxx_flags})
+    endif()
+
+    if(NOT CMAKE_VERBOSE_MAKEFILE)
+        list(APPEND ARM_COMPUTE_OPTIONS --silent)
     endif()
 
     set(arm_compute ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a)
