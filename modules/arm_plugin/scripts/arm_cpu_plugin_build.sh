@@ -82,7 +82,7 @@ checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
 if [ "WITH_OPENCV" = "ON" ]; then
     checkSrcTree "$OPENCV_HOME" https://github.com/opencv/opencv.git 4.x
 fi
-checkSrcTree "$OPENVINO_HOME" https://github.com/ilya-lavrenov/openvino.git arm-cross-build
+checkSrcTree "$OPENVINO_HOME" https://github.com/openvinotoolkit/openvino.git master
 checkSrcTree "$OPENVINO_CONTRIB" https://github.com/openvinotoolkit/openvino_contrib.git master
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
     checkSrcTree "$OMZ_HOME" https://github.com/openvinotoolkit/open_model_zoo.git master
