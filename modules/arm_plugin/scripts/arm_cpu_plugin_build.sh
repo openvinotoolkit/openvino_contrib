@@ -79,7 +79,7 @@ checkSrcTree()
 
 # Prepare sources
 checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
-if [ "WITH_OPENCV" = "ON" ]; then
+if [ "$WITH_OPENCV" = "ON" ]; then
     checkSrcTree "$OPENCV_HOME" https://github.com/opencv/opencv.git 4.x
 fi
 checkSrcTree "$OPENVINO_HOME" https://github.com/openvinotoolkit/openvino.git master
