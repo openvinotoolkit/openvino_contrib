@@ -195,7 +195,7 @@ jobs:
     inputs:
       cmakeArgs: >
         -GNinja
-        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_OPENVINO)
+        -DOpenVINODeveloperPackage_DIR=$(BUILD_OPENVINO)
         -DENABLE_PYTHON=ON 
         -DTHREADING=TBB
         -DPYTHON_EXECUTABLE=$(INSTALL_PYTHON)/bin/python3.8 
@@ -242,9 +242,7 @@ jobs:
         -DPYTHON_LIBRARY=$(INSTALL_PYTHON)/lib
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
         -DOpenVINO_DIR=$(BUILD_OPENVINO)
-        -DInferenceEngine_DIR=$(BUILD_OPENVINO)
         -DOpenCV_DIR=$(INSTALL_OPENCV)/cmake 
-        -Dngraph_DIR=$(BUILD_OPENVINO)
         -DIE_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPEN_MODEL_ZOO)
         $(OPENVINO_REPO_DIR)/thirdparty/open_model_zoo/demos
