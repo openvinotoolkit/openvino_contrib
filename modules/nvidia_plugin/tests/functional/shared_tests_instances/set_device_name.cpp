@@ -3,8 +3,9 @@
 //
 
 #include "set_device_name.hpp"
-#include <string>
+
 #include <stdexcept>
+#include <string>
 
 namespace ov {
 namespace test {
