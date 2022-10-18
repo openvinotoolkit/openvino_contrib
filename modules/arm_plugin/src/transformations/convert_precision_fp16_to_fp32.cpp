@@ -3,89 +3,85 @@
 
 
 #include "convert_precision_fp16_to_fp32.hpp"
+#include "opset/opset.hpp"
 
 #include <openvino/core/rt_info.hpp>
 #include <openvino/opsets/opset9.hpp>
-#include <openvino/opsets/opset3.hpp>
 
 #define CHECK_TYPE(TYPE, node)                                             \
     if (ov::is_type<TYPE>(node)) {                                         \
-        return false;                                                      \
+        return true;                                                       \
     }
 
 bool check_op_type(const std::shared_ptr<ov::Node>& op) {
-    CHECK_TYPE(ov::opset9::MVN, op);
-    CHECK_TYPE(ov::opset9::NormalizeL2, op);
-    CHECK_TYPE(ov::opset9::Interpolate, op);
-    CHECK_TYPE(ov::opset9::Concat, op);
-    CHECK_TYPE(ov::opset9::Transpose, op);
-    CHECK_TYPE(ov::opset9::StridedSlice, op);
-    CHECK_TYPE(ov::opset9::Gather, op);
-    CHECK_TYPE(ov::opset3::Gather, op);
-    CHECK_TYPE(ov::opset9::ROIPooling, op);
-    CHECK_TYPE(ov::opset9::PSROIPooling, op);
-    CHECK_TYPE(ov::opset9::TopK, op);
-    CHECK_TYPE(ov::opset9::RegionYolo, op);
-    CHECK_TYPE(ov::opset9::Acos, op);
-    CHECK_TYPE(ov::opset9::Acosh, op);
-    CHECK_TYPE(ov::opset9::Cos, op);
-    CHECK_TYPE(ov::opset9::Cosh, op);
-    CHECK_TYPE(ov::opset9::Asin, op);
-    CHECK_TYPE(ov::opset9::Asinh, op);
-    CHECK_TYPE(ov::opset9::Sinh, op);
-    CHECK_TYPE(ov::opset9::Atan, op);
-    CHECK_TYPE(ov::opset9::Atanh, op);
-    CHECK_TYPE(ov::opset9::Tan, op);
-    CHECK_TYPE(ov::opset9::Erf, op);
-    CHECK_TYPE(ov::opset9::HSigmoid, op);
-    CHECK_TYPE(ov::opset9::HardSigmoid, op);
-    CHECK_TYPE(ov::opset9::Gelu, op);
-    CHECK_TYPE(ov::opset9::Selu, op);
-    CHECK_TYPE(ov::opset9::DetectionOutput, op);
-    CHECK_TYPE(ov::opset9::DetectionOutput, op);
-    CHECK_TYPE(ov::opset9::ReverseSequence, op);
-    CHECK_TYPE(ov::opset9::ConvolutionBackpropData, op);
-    CHECK_TYPE(ov::opset9::CumSum, op);
-    CHECK_TYPE(ov::opset9::FloorMod, op);
-    CHECK_TYPE(ov::opset9::CTCGreedyDecoder, op);
-    CHECK_TYPE(ov::opset9::CTCGreedyDecoderSeqLen, op);
-    CHECK_TYPE(ov::opset9::CTCLoss, op);
-    CHECK_TYPE(ov::opset9::Round, op);
-    CHECK_TYPE(ov::opset9::Convert, op);
-    CHECK_TYPE(ov::opset9::ConvertLike, op);
-    CHECK_TYPE(ov::opset9::GatherND, op);
-    CHECK_TYPE(ov::opset9::ScatterUpdate, op);
-    CHECK_TYPE(ov::opset9::ScatterNDUpdate, op);
-    CHECK_TYPE(ov::opset9::ScatterElementsUpdate, op);
-    CHECK_TYPE(ov::opset9::GatherTree, op);
-    CHECK_TYPE(ov::opset9::EmbeddingSegmentsSum, op);
-    CHECK_TYPE(ov::opset9::EmbeddingBagPackedSum, op);
-    CHECK_TYPE(ov::opset9::EmbeddingBagOffsetsSum, op);
-    CHECK_TYPE(ov::opset9::NonMaxSuppression, op);
-    CHECK_TYPE(ov::opset9::ROIAlign, op);
-    CHECK_TYPE(ov::opset3::Proposal, op);
-    CHECK_TYPE(ov::opset9::Proposal, op);
-    CHECK_TYPE(ov::opset9::GroupConvolutionBackpropData, op);
-    CHECK_TYPE(ov::opset9::OneHot, op);
-    CHECK_TYPE(ov::opset9::GatherElements, op);
-    CHECK_TYPE(ov::opset9::ReduceLogicalAnd, op);
-    CHECK_TYPE(ov::opset9::ReduceLogicalOr, op);
-    CHECK_TYPE(ov::opset9::LSTMSequence, op);
-    CHECK_TYPE(ov::opset9::GRUSequence, op);
-    CHECK_TYPE(ov::opset9::RNNSequence, op);
-    CHECK_TYPE(ov::opset9::Bucketize, op);
-    CHECK_TYPE(ov::opset9::DFT, op);
-    CHECK_TYPE(ov::opset9::IDFT, op);
-    CHECK_TYPE(ov::opset9::FakeQuantize, op);
-    CHECK_TYPE(ov::opset9::Split, op);
-    CHECK_TYPE(ov::opset9::AdaptiveAvgPool, op);
-    CHECK_TYPE(ov::opset9::AdaptiveMaxPool, op);
-    CHECK_TYPE(ov::opset9::NV12toBGR, op);
-    CHECK_TYPE(ov::opset9::NV12toRGB, op);
-    CHECK_TYPE(ov::opset9::I420toBGR, op);
-    CHECK_TYPE(ov::opset9::I420toRGB, op);
-    CHECK_TYPE(ov::opset9::MaxPool, op);
-    return true;
+    CHECK_TYPE(opset::Parameter, op);
+    CHECK_TYPE(opset::Constant, op);
+    CHECK_TYPE(opset::ArmConvolution, op);
+    CHECK_TYPE(opset::ArmGroupConvolution, op);
+    CHECK_TYPE(opset::AvgPool, op);
+    CHECK_TYPE(opset::MaxPool, op);
+    CHECK_TYPE(opset::Add, op);
+    CHECK_TYPE(opset::Subtract, op);
+    CHECK_TYPE(opset::Multiply, op);
+    CHECK_TYPE(opset::Reshape, op);
+    CHECK_TYPE(opset::Squeeze, op);
+    CHECK_TYPE(opset::Unsqueeze, op);
+    CHECK_TYPE(opset::Sigmoid, op);
+    CHECK_TYPE(opset::Tanh, op);
+    CHECK_TYPE(opset::Relu, op);
+    CHECK_TYPE(opset::PRelu, op);
+    CHECK_TYPE(opset::Abs, op);
+    CHECK_TYPE(opset::Clamp, op);
+    CHECK_TYPE(opset::Sqrt, op);
+    CHECK_TYPE(opset::Elu, op);
+    CHECK_TYPE(opset::ArmTranspose, op);
+    CHECK_TYPE(opset::Softmax, op);
+    CHECK_TYPE(opset::ArmSplit, op);
+    CHECK_TYPE(opset::LRN, op);
+    CHECK_TYPE(opset::Minimum, op);
+    CHECK_TYPE(opset::Maximum, op);
+    CHECK_TYPE(opset::ArmStridedSlice, op);
+    CHECK_TYPE(opset::Negative, op);
+    CHECK_TYPE(opset::Floor, op);
+    CHECK_TYPE(opset::Exp, op);
+    CHECK_TYPE(opset::MatMul, op);
+    CHECK_TYPE(opset::ArmMatMulBias, op);
+    CHECK_TYPE(opset::Pad, op);
+    CHECK_TYPE(opset::BatchNormInference, op);
+    CHECK_TYPE(opset::HSwish, op);
+    CHECK_TYPE(opset::SoftPlus, op);
+    CHECK_TYPE(opset::Log, op);
+    CHECK_TYPE(opset::Sin, op);
+    CHECK_TYPE(opset::ShuffleChannels, op);
+    CHECK_TYPE(opset::Power, op);
+    CHECK_TYPE(opset::SquaredDifference, op);
+    CHECK_TYPE(opset::ReduceMean, op);
+    CHECK_TYPE(opset::ReduceSum, op);
+    CHECK_TYPE(opset::ReduceProd, op);
+    CHECK_TYPE(opset::ReduceMin, op);
+    CHECK_TYPE(opset::ReduceMax, op);
+    CHECK_TYPE(opset::ArmInterpolate, op);
+    CHECK_TYPE(opset::ArmMVN, op);
+    CHECK_TYPE(opset::ArmNormalizeL2, op);
+    CHECK_TYPE(opset::DepthToSpace, op);
+    CHECK_TYPE(opset::SpaceToDepth, op);
+    CHECK_TYPE(opset::Equal, op);
+    CHECK_TYPE(opset::NotEqual, op);
+    CHECK_TYPE(opset::Less, op);
+    CHECK_TYPE(opset::LessEqual, op);
+    CHECK_TYPE(opset::Greater, op);
+    CHECK_TYPE(opset::GreaterEqual, op);
+    CHECK_TYPE(opset::Select, op);
+    CHECK_TYPE(opset::ReorgYolo, op);
+    CHECK_TYPE(opset::BatchToSpace, op);
+    CHECK_TYPE(opset::SpaceToBatch, op);
+    CHECK_TYPE(opset::ArmConvert, op);
+    CHECK_TYPE(opset::ArmConcat, op);
+    CHECK_TYPE(opset::ArmGather, op);
+    CHECK_TYPE(opset::ArmFFT, op);
+    CHECK_TYPE(opset::ArmQuantize, op);
+    CHECK_TYPE(opset::ArmDequantize, op);
+    return false;
 }
 
 bool ArmPlugin::pass::ConvertPrecisionFP16ToFP32::run_on_model(const std::shared_ptr<ov::Model>& m) {
