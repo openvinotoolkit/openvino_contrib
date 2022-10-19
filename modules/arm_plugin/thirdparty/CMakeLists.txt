@@ -153,7 +153,12 @@ else()
 
         set(extra_cxx_flags "${extra_cxx_flags} -Wno-error=return-stack-address")
         if(HOST_X86_64)
-            set(extra_cxx_flags "${extra_cxx_flags} --sysroot ${CMAKE_OSX_SYSROOT} -mmacosx-version-min=${macosx_sdk}")
+            if(CMAKE_OSX_DEPLOYMENT_TARGET)
+                set(extra_cxx_flags "${extra_cxx_flags} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+            else()
+                message(FATAL_ERROR "Please, specify either env MACOSX_DEPLOYMENT_TARGET or cmake CMAKE_OSX_DEPLOYMENT_TARGET variables")
+            endif()
+            set(extra_cxx_flags "${extra_cxx_flags} --sysroot ${CMAKE_OSX_SYSROOT}")
         endif()
 
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
