@@ -58,7 +58,8 @@ std::shared_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::instance() {
 }
 
 Plugin::SchedulerGuard::~SchedulerGuard() {
-    std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
+    // TODO: understand why mutex is removed ealier
+    // std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
 }
 
@@ -68,7 +69,7 @@ Plugin::Plugin() {
 }
 
 Plugin::~Plugin() {
-    ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
+    executorManager()->clear("CPUStreamsExecutor");
 }
 
 std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Model>& model,

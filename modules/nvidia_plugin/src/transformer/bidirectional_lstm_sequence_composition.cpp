@@ -8,11 +8,13 @@
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
 #include <ngraph/pass/constant_folding.hpp>
+#include <ngraph/pass/manager.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/concat.hpp>
 #include <openvino/op/lstm_sequence.hpp>
+#include <openvino/op/reshape.hpp>
 #include <openvino/op/transpose.hpp>
 #include <transformations/common_optimizations/common_optimizations.hpp>
 #include <transformations/common_optimizations/nop_elimination.hpp>

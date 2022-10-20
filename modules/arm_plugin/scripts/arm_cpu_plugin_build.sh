@@ -79,7 +79,7 @@ checkSrcTree()
 
 # Prepare sources
 checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
-if [ "WITH_OPENCV" = "ON" ]; then
+if [ "$WITH_OPENCV" = "ON" ]; then
     checkSrcTree "$OPENCV_HOME" https://github.com/opencv/opencv.git 4.x
 fi
 checkSrcTree "$OPENVINO_HOME" https://github.com/openvinotoolkit/openvino.git master
@@ -167,7 +167,7 @@ cmake -DENABLE_CPPLINT=OFF \
       -DENABLE_DATA=OFF \
       -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
       -DARM_COMPUTE_SCONS_JOBS="$BUILD_JOBS" \
-      -DIE_EXTRA_MODULES="$ARM_PLUGIN_HOME" \
+      -DOPENVINO_EXTRA_MODULES="$ARM_PLUGIN_HOME" \
       -S "$OPENVINO_HOME" \
       -B "$OPENVINO_BUILD" && \
 cmake --build "$OPENVINO_BUILD" --parallel "$BUILD_JOBS" && \
