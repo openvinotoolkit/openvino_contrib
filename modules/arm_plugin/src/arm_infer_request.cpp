@@ -278,7 +278,7 @@ std::map<std::string, InferenceEngineProfileInfo> ArmInferRequest::GetPerformanc
         info.status = InferenceEngineProfileInfo::EXECUTED;
         info.cpu_uSec = 0;
         info.realTime_uSec = layer._duration.count() / layer._counter;
-        auto type = "v" + std::to_string(node->get_type_info().version) + "::" + std::string {node->get_type_name()};
+        auto type = "v" + std::string(node->get_type_info().version_id) + "::" + std::string {node->get_type_name()};
         {
             auto pos = std::copy_n(type.c_str(), std::min(sizeof(info.layer_type) - 1, type.size()), info.layer_type);
             *pos = '\0';

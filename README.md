@@ -22,14 +22,14 @@ Here is the CMake command for you:
 
 ```sh
 $ cd <openvino_build_directory>
-$ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules <openvino_source_directory>
+$ cmake -DOPENVINO_EXTRA_MODULES=<openvino_contrib>/modules <openvino_source_directory>
 $ cmake --build . -j8
 ```
 
 As the result, OpenVINO will be built in the <openvino_build_directory> with all modules from `openvino_contrib` repository. To disable specific modules, use CMake's `BUILD_<module_name>` boolean options. Like in this example:
 
 ```sh
-$ cmake -DIE_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_java_api=OFF <openvino_source_directory>
+$ cmake -DOPENVINO_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_java_api=OFF <openvino_source_directory>
 ```
 
 Additional build instructions are available for the following modules:
