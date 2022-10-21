@@ -91,6 +91,10 @@ RUN /usr/local/bin/python3.7 -m pip install -U pip && \
     build-pip3 install -U pip wheel setuptools && \
     cross-pip3 install -U pip cython wheel setuptools numpy==1.20.0
 
+RUN unlink /usr/bin/python3 && \
+    ln -s /usr/local/bin/python3.7 /usr/bin/python3 && \
+    python3 -m pip install -U pip && \
+    python3 -m pip install numpy==1.20.0
 RUN rm /usr/bin/lsb_release
 
 RUN git config --global user.name "Your Name" && \
@@ -98,7 +102,6 @@ RUN git config --global user.name "Your Name" && \
 
 ENV ARCH_NAME aarch64-linux-gnu
 ENV TOOLCHAIN_DEFS arm64.toolchain.cmake
-ENV PATH=/opt/cross_venv/cross/bin:$PATH
 COPY scripts/arm_cpu_plugin_build.sh /arm_cpu_plugin_build.sh
 
 # configure paths
