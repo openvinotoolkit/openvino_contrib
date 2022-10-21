@@ -184,7 +184,7 @@ cd "$DEV_HOME" || fail 12 "OpenVINO build failed. Stopping"
 
 # OpenVINO python
 [ "$UPDATE_SOURCES" = "clean" ] && [ -e "$OPENVINO_BUILD/pbuild" ] && rm -rf "$OPENVINO_BUILD/pbuild"
-[ -e "/opt/cross_venv/bin/activate" ] && activate /opt/cross_venv/bin/activate
+[ -e "/opt/cross_venv/bin/activate" ] && source /opt/cross_venv/bin/activate
 
 source /opt/cross_venv/bin/activate && \
 cmake -DOpenVINODeveloperPackage_DIR="$OPENVINO_BUILD" \

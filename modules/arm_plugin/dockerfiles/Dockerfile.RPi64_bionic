@@ -41,6 +41,7 @@ RUN apt-get update && \
         scons \
         cmake \
         build-essential \
+        crossbuild-essential-arm64 \
         python3-dev \
         python3-numpy \
         python3-pip \
