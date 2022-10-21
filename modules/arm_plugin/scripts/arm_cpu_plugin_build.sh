@@ -110,6 +110,7 @@ mkdir -p "$STAGING_DIR"
 
 # Build oneTBB
 cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_CXX_FLAGS="-Wno-error=attributes" \
     -DCMAKE_INSTALL_PREFIX="$ONETBB_BUILD/install" \
     -DTBB_TEST=OFF \
     -S "$ONETBB_HOME" \
