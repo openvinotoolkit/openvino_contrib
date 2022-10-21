@@ -222,7 +222,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
     std::string unsupported;
     for (auto&& node : orderedOps) {
         if (!contains(_conversions, node->get_type_info())) {
-            unsupported += ("\t" + node->get_friendly_name() + " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")\n");
+            unsupported += ("\t" + node->get_friendly_name() + " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")\n");
         }
     }
     if (!unsupported.empty()) {
@@ -234,13 +234,13 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
             conversion = _conversions.at(node->get_type_info())(*node);
         } catch(std::exception& e) {
             unsupported += ("\t" + node->get_friendly_name() +
-                " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + e.what() + ";\n");
+                " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")- " + e.what() + ";\n");
         }
         if (conversion != nullptr) {
             auto status = conversion->Validate();
             if (status.error_code() != arm_compute::ErrorCode::OK) {
                 unsupported += ("\t" + node->get_friendly_name() +
-                    " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + status.error_description() + ";\n");
+                    " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")- " + status.error_description() + ";\n");
             }
         }
     }

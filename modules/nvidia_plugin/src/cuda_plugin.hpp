@@ -47,9 +47,6 @@ private:
      */
     InferenceEngine::ITaskExecutor::Ptr GetStreamExecutor(const Configuration& cfg);
 
-    template <cuda_attribute ID, class Result>
-    Result getCudaAttribute() const;
-
     int cudaDeviceID() const noexcept { return 0; }  // TODO implement
 
     bool isOperationSupported(const std::shared_ptr<ov::Node>& node) const;
@@ -60,9 +57,6 @@ private:
     std::unordered_map<std::string, InferenceEngine::ITaskExecutor::Ptr> _waitExecutors;
     std::unordered_map<std::string, std::shared_ptr<CudaThreadPool>> device_thread_pool_;
 };
-
-template <>
-std::string Plugin::getCudaAttribute<Plugin::cuda_attribute::name, std::string>() const;
 
 }  // namespace nvidia_gpu
 }  // namespace ov

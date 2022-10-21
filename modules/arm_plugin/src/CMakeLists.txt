@@ -25,20 +25,13 @@ target_include_directories(${TARGET_NAME} PRIVATE
     "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
 
 target_link_libraries(${TARGET_NAME} PRIVATE
-    IE::inference_engine
     arm_compute::arm_compute
     arm_compute::arm_compute_core
     arm_compute::half
-    ${NGRAPH_LIBRARIES}
-    IE::inference_engine_transformations
-    IE::inference_engine_lp_transformations
-    IE::ngraph_reference
-    IE::util
+    openvino::ngraph_reference
+    openvino::util
 )
 
-if(NOT DEFINED ENABLE_LTO)
-    set(ENABLE_LTO OFF)
-endif()
 set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
 
 ie_register_plugins(MAIN_TARGET ${TARGET_NAME}

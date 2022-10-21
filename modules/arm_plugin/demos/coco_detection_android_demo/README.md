@@ -64,7 +64,7 @@ cmake -GNinja \
       -DENABLE_INTEL_MYRIAD_COMMON=OFF \
       -DBUILD_java_api=ON \
       -DTHREADING=SEQ \
-      -DIE_EXTRA_MODULES="$WORK_DIR/openvino_contrib/modules" \
+      -DOPENVINO_EXTRA_MODULES="$WORK_DIR/openvino_contrib/modules" \
       -DARM_COMPUTE_SCONS_JOBS=$(nproc) \
       -DCMAKE_INSTALL_PREFIX="$WORK_DIR/openvino_install" \
       -B "$WORK_DIR/openvino_build" -S "$WORK_DIR/openvino"

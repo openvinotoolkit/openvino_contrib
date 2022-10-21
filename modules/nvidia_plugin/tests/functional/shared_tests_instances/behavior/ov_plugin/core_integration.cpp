@@ -39,6 +39,10 @@ INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
+                         OVClassGetMetricTest_DEVICE_UUID,
+                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetMetricTest,
                          OVClassGetMetricTest_AVAILABLE_DEVICES,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 

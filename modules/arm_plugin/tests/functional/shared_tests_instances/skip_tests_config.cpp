@@ -11,7 +11,7 @@ std::vector<std::string> disabledTestPatterns() {
     return {
         ".*(r|R)eusableCPUStreamsExecutor.*",  //  TEST DO not support hetero case when all plugins use executors cache
         ".*ExecGraphTests.*", // Not implemented
-        ".*Eltwise.*eltwiseOpType=Mod.*netPRC=FP16.*", // Failed
+        ".*EltwiseLayerTest.*eltwiseOpType=Mod.*", // Failed
         ".*PreprocessTest.*", // Does not cover all needed cases
         ".*GRUCellTest.*decomposition0.*",  // GruCell should be decomposed
         ".*ConstantResultSubgraphTest.*inPrc=(I8|U64|I64|BOOL).*", // Unsupported precisions
@@ -43,6 +43,7 @@ std::vector<std::string> disabledTestPatterns() {
         ".*checkGetExecGraphInfoIsNotNullptr.*(AUTO|HETERO|MULTI).*", // Dose not supported in OpenVINO
         ".*OVInferenceChaining.*Dynamic.*", // Dynamic shape is not supported
         ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
+        ".*NmsLayerTest.*CompareWithRefs.*numBatches=3.*numBoxes=100.*numClasses=5.*paramsPrec=FP32.*maxBoxPrec=I32.*thrPrec=FP32.*",
 #ifdef __arm__
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
         ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
