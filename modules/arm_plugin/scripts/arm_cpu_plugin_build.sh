@@ -163,12 +163,8 @@ fi
 
 # Build OpenVINO
 cmake -DENABLE_CPPLINT=OFF \
+      -DENABLE_NCC_STYLE=OFF \
       -DENABLE_PYTHON=OFF \
-      -DENABLE_OV_TF_FRONTEND=OFF \
-      -DENABLE_OV_PADDLE_FRONTEND=OFF \
-      -DENABLE_OV_ONNX_FRONTEND=OFF \
-      -DENABLE_OV_IR_FRONTEND=OFF \
-      -DBUILD_arm_plugin=OFF \
       -DENABLE_TEMPLATE=OFF \
       -DENABLE_TESTS=OFF \
       -DENABLE_GAPI_TESTS=OFF \
@@ -186,14 +182,13 @@ cd "$DEV_HOME" || fail 12 "OpenVINO build failed. Stopping"
 [ "$UPDATE_SOURCES" = "clean" ] && [ -e "$OPENVINO_BUILD/pbuild" ] && rm -rf "$OPENVINO_BUILD/pbuild"
 [ -e "/opt/cross_venv/bin/activate" ] && source /opt/cross_venv/bin/activate
 
-source /opt/cross_venv/bin/activate && \
 cmake -DOpenVINODeveloperPackage_DIR="$OPENVINO_BUILD" \
       -DCMAKE_INSTALL_PREFIX="$STAGING_DIR" \
       -DENABLE_PYTHON=ON \
       -DENABLE_WHEEL=ON \
       -S "$OPENVINO_HOME/src/bindings/python" \
       -B "$OPENVINO_BUILD/pbuild" && \
-cmake --build "$OPENVINO_BUILD/pbuild" --parallel "$BUILD_JOBS" --verbose && \
+cmake --build "$OPENVINO_BUILD/pbuild" --parallel "$BUILD_JOBS" && \
 cmake --install "$OPENVINO_BUILD/pbuild" && \
 cd "$DEV_HOME" || fail 13 "OpenVINO python bindings build failed. Stopping"
 
