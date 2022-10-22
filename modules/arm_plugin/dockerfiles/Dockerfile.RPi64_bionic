@@ -41,7 +41,6 @@ RUN apt-get update && \
         scons \
         cmake \
         build-essential \
-        crossbuild-essential-arm64 \
         python3-dev \
         python3-numpy \
         python3-pip \
@@ -60,6 +59,11 @@ RUN apt-get update && \
     && \
     locale-gen en_US.UTF-8 && \
     pip3 install cython && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-cache search --names-only 'g++-aarch64-linux-gnu' | grep -q g++-aarch64-linux-gnu && \
+    apt-get install -y crossbuild-essential-arm64 || exit 0 && \
     rm -rf /var/lib/apt/lists/*
 
 # To cross-compile Python3.7 we need to first compile it for the host
