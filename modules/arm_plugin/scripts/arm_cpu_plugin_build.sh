@@ -76,7 +76,6 @@ checkSrcTree()
     return 0
 }
 
-
 # Prepare sources
 checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
 if [ "$WITH_OPENCV" = "ON" ]; then
@@ -97,11 +96,12 @@ python_library="$python_library_dir/$python_library_name"
 python_inc_dir=$($python_executable -c "import sysconfig as s; print(str(s.get_config_var(\"INCLUDEPY\")))")
 numpy_inc_dir=$($python_executable -c "import numpy; print(numpy.get_include())")
 
-if ! [ -z "$TOOLCHAIN_DEFS" ]; then
+if [ -n "$TOOLCHAIN_DEFS" ]; then
     export CMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS"
     # use cross-compiled binaries
-    python_library="/opt/python3.${python_min_ver}_arm/lib/libpython3.${python_min_ver}m.so"
-    python_inc_dir="/opt/python3.${python_min_ver}_arm/include/python3.${python_min_ver}m"
+    [ "$python_min_ver" -lt "8" ] && pymalloc="m"
+    python_library="/opt/python3.${python_min_ver}_arm/lib/libpython3.${python_min_ver}${pymalloc}.so"
+    python_inc_dir="/opt/python3.${python_min_ver}_arm/include/python3.${python_min_ver}${pymalloc}"
 fi
 
 # cleanup package destination folder
@@ -180,7 +180,7 @@ cd "$DEV_HOME" || fail 12 "OpenVINO build failed. Stopping"
 
 # OpenVINO python
 [ "$UPDATE_SOURCES" = "clean" ] && [ -e "$OPENVINO_BUILD/pbuild" ] && rm -rf "$OPENVINO_BUILD/pbuild"
-[ -e "/opt/cross_venv/bin/activate" ] && source /opt/cross_venv/bin/activate
+[ -e "/opt/cross_venv/bin/activate" ] && . /opt/cross_venv/bin/activate
 
 cmake -DOpenVINODeveloperPackage_DIR="$OPENVINO_BUILD" \
       -DCMAKE_INSTALL_PREFIX="$STAGING_DIR" \
