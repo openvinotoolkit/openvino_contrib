@@ -79,6 +79,6 @@ public class IECoreTests extends IETest {
         }
         assertTrue(
                 exceptionMessage.contains(
-                        "Device with \"DEVICE\" name is not registered in the OpenVINO Runtime"));
+                        "Device with \"DEVICE\" name is not registered in the InferenceEngine"));
     }
 }
