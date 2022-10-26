@@ -7,7 +7,6 @@
 #include <cuda_executable_network.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_plugin.hpp>
-#include <functional_test_utils/include/functional_test_utils/precision_utils.hpp>
 #include <memory>
 #include <ngraph/function.hpp>
 #include <ngraph/node.hpp>

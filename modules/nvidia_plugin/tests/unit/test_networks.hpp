@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <functional_test_utils/include/functional_test_utils/precision_utils.hpp>
 #include <ie_precision.hpp>
+#include <ie_ngraph_utils.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <ngraph_functions/builders.hpp>
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
@@ -13,7 +13,7 @@ inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
-    auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
+    auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
     auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
 
     auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
@@ -67,7 +67,7 @@ inline std::shared_ptr<ngraph::Function> CreateSuperOperationTestNetwork() {
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
-    auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
+    auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
     auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
 
     auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
