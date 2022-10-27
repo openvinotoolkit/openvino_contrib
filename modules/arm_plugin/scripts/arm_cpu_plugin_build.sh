@@ -76,7 +76,6 @@ checkSrcTree()
     return 0
 }
 
-
 # Prepare sources
 checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
 if [ "$WITH_OPENCV" = "ON" ]; then
@@ -90,14 +89,20 @@ fi
 
 # python variables
 python_executable="$(which python3)"
-python_library_name=$($python_executable -c "import sysconfig; print(str(sysconfig.get_config_var(\"LDLIBRARY\")))")
-python_library_dir=$($python_executable -c "import sysconfig; print(str(sysconfig.get_config_var(\"LIBDIR\")))")
+python_min_ver=$($python_executable -c "import sys; print(str(sys.version_info[1]))")
+python_library_name=$($python_executable -c "import sysconfig as s; print(str(s.get_config_var(\"LDLIBRARY\")))")
+python_library_dir=$($python_executable -c "import sysconfig as s; print(str(s.get_config_var(\"LIBDIR\")))")
 python_library="$python_library_dir/$python_library_name"
-python_inc_dir=$($python_executable -c "import sysconfig; print(str(sysconfig.get_config_var(\"INCLUDEPY\")))")
+python_inc_dir=$($python_executable -c "import sysconfig as s; print(str(s.get_config_var(\"INCLUDEPY\")))")
 numpy_inc_dir=$($python_executable -c "import numpy; print(numpy.get_include())")
 
-[ -z "$numpy_inc_dir"] && numpy_inc_dir=/usr/lib/python3/dist-packages/numpy/core/include/
-! [ -z "$TOOLCHAIN_DEFS" ] && export CMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS"
+if [ -n "$TOOLCHAIN_DEFS" ]; then
+    export CMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS"
+    # use cross-compiled binaries
+    [ "$python_min_ver" -lt "8" ] && pymalloc="m"
+    python_library="/opt/python3.${python_min_ver}_arm/lib/libpython3.${python_min_ver}${pymalloc}.so"
+    python_inc_dir="/opt/python3.${python_min_ver}_arm/include/python3.${python_min_ver}${pymalloc}"
+fi
 
 # cleanup package destination folder
 [ -e "$STAGING_DIR" ] && rm -rf "$STAGING_DIR"
@@ -105,6 +110,7 @@ mkdir -p "$STAGING_DIR"
 
 # Build oneTBB
 cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_CXX_FLAGS="-Wno-error=attributes" \
     -DCMAKE_INSTALL_PREFIX="$ONETBB_BUILD/install" \
     -DTBB_TEST=OFF \
     -S "$ONETBB_HOME" \
@@ -129,19 +135,19 @@ if [ "$WITH_OPENCV" = "ON" ]; then
         -DPYTHON3_INCLUDE_PATH="$python_inc_dir" \
         -DPYTHON3_LIBRARIES="$python_library" \
         -DPYTHON3_NUMPY_INCLUDE_DIRS="$numpy_inc_dir" \
-        -D CMAKE_USE_RELATIVE_PATHS=ON \
-        -D CMAKE_SKIP_INSTALL_RPATH=ON \
-        -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
-        -D OPENCV_BIN_INSTALL_PATH=bin \
-        -D OPENCV_PYTHON3_INSTALL_PATH=python \
-        -D OPENCV_INCLUDE_INSTALL_PATH=include \
-        -D OPENCV_LIB_INSTALL_PATH=lib \
-        -D OPENCV_CONFIG_INSTALL_PATH=cmake \
-        -D OPENCV_3P_LIB_INSTALL_PATH=3rdparty \
-        -D OPENCV_SAMPLES_SRC_INSTALL_PATH=samples \
-        -D OPENCV_DOC_INSTALL_PATH=doc \
-        -D OPENCV_OTHER_INSTALL_PATH=etc \
-        -D OPENCV_LICENSES_INSTALL_PATH=etc/licenses \
+        -DCMAKE_USE_RELATIVE_PATHS=ON \
+        -DCMAKE_SKIP_INSTALL_RPATH=ON \
+        -DOPENCV_SKIP_PKGCONFIG_GENERATION=ON \
+        -DOPENCV_BIN_INSTALL_PATH=bin \
+        -DOPENCV_PYTHON3_INSTALL_PATH=python \
+        -DOPENCV_INCLUDE_INSTALL_PATH=include \
+        -DOPENCV_LIB_INSTALL_PATH=lib \
+        -DOPENCV_CONFIG_INSTALL_PATH=cmake \
+        -DOPENCV_3P_LIB_INSTALL_PATH=3rdparty \
+        -DOPENCV_SAMPLES_SRC_INSTALL_PATH=samples \
+        -DOPENCV_DOC_INSTALL_PATH=doc \
+        -DOPENCV_OTHER_INSTALL_PATH=etc \
+        -DOPENCV_LICENSES_INSTALL_PATH=etc/licenses \
         -DWITH_GTK_2_X=OFF \
         -DOPENCV_ENABLE_PKG_CONFIG=ON \
         -S "$OPENCV_HOME" \
@@ -157,10 +163,8 @@ fi
 
 # Build OpenVINO
 cmake -DENABLE_CPPLINT=OFF \
+      -DENABLE_NCC_STYLE=OFF \
       -DENABLE_PYTHON=OFF \
-      -DENABLE_OV_TF_FRONTEND=OFF \
-      -DENABLE_OV_PADDLE_FRONTEND=OFF \
-      -DENABLE_OV_ONNX_FRONTEND=OFF \
       -DENABLE_TEMPLATE=OFF \
       -DENABLE_TESTS=OFF \
       -DENABLE_GAPI_TESTS=OFF \
@@ -176,6 +180,8 @@ cd "$DEV_HOME" || fail 12 "OpenVINO build failed. Stopping"
 
 # OpenVINO python
 [ "$UPDATE_SOURCES" = "clean" ] && [ -e "$OPENVINO_BUILD/pbuild" ] && rm -rf "$OPENVINO_BUILD/pbuild"
+[ -e "/opt/cross_venv/bin/activate" ] && . /opt/cross_venv/bin/activate
+
 cmake -DOpenVINODeveloperPackage_DIR="$OPENVINO_BUILD" \
       -DCMAKE_INSTALL_PREFIX="$STAGING_DIR" \
       -DENABLE_PYTHON=ON \
@@ -186,6 +192,9 @@ cmake --build "$OPENVINO_BUILD/pbuild" --parallel "$BUILD_JOBS" && \
 cmake --install "$OPENVINO_BUILD/pbuild" && \
 cd "$DEV_HOME" || fail 13 "OpenVINO python bindings build failed. Stopping"
 
+# deactivate crossenv
+[ -e "/opt/cross_venv/bin/activate" ] && deactivate
+
 # Open Model Zoo
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
   cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -194,7 +203,6 @@ if [ "$WITH_OMZ_DEMO" = "ON" ]; then
         -DPYTHON_INCLUDE_DIR="$python_inc_dir" \
         -DPYTHON_LIBRARY="$python_library" \
         -DOpenVINO_DIR="$OPENVINO_HOME/build" \
-        -DOpenCV_DIR="$OPENCV_HOME/build" \
         -S "$OMZ_HOME/demos" \
         -B "$OMZ_BUILD" && \
   cmake --build "$OMZ_BUILD" --parallel "$BUILD_JOBS" && \
