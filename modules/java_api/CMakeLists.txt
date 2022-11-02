@@ -12,7 +12,7 @@ endif()
 
 # Build native part
 
-find_package(OpenVINODeveloperPackage REQUIRED
+find_package(OpenVINODeveloperPackage QUIET
              PATHS "${InferenceEngineDeveloperPackage_DIR}")
 if(NOT OpenVINODeveloperPackage_FOUND)
     find_package(OpenVINO REQUIRED)
