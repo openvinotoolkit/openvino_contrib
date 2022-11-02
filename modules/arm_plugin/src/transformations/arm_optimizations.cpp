@@ -95,7 +95,7 @@
 #include <low_precision/multiply.hpp>
 #include <low_precision/network_helper.hpp>
 
-#include "transformations/serialize.hpp"
+#include "openvino/pass/serialize.hpp"
 
 
 #include "arm_optimizations.hpp"

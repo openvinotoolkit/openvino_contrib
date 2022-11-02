@@ -26,7 +26,7 @@
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
-#include "transformations/serialize.hpp"
+#include "openvino/pass/serialize.hpp"
 #include "transformations/utils/utils.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
