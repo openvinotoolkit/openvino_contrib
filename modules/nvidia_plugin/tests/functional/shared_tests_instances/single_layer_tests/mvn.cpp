@@ -24,7 +24,7 @@ TEST_P(Mvn6_4DPreprocessLayerTest, CompareWithRefs) {
     Run();
 }
 
-// TODO: currently these tests do the job if common optimization 'ngraph::pass::MVN6Decomposition' is turned off.
+// TODO: currently these tests do the job if common optimization 'ov::pass::MVN6Decomposition' is turned off.
 
 const std::vector<std::vector<size_t>> inputShapes = {{8},
                                                       {1, 16},
