@@ -9,21 +9,21 @@
 #include <string>
 #include <map>
 
-#include <ie_metric_helpers.hpp>
-#include <ie_plugin_config.hpp>
-#include <threading/ie_executor_manager.hpp>
-#include <ie_input_info.hpp>
-#include <ie_layouts.h>
-#include <ie_algorithm.hpp>
+#include "ie_metric_helpers.hpp"
+#include "ie/ie_plugin_config.hpp"
+#include "threading/ie_executor_manager.hpp"
+#include "ie/ie_input_info.hpp"
+#include "ie/ie_layouts.h"
+#include "ie_algorithm.hpp"
 
-#include <ngraph/function.hpp>
-#include <ngraph/pass/manager.hpp>
-#include <transformations/rt_info/fused_names_attribute.hpp>
-#include <low_precision/low_precision.hpp>
+#include "ngraph/function.hpp"
+#include "ngraph/pass/manager.hpp"
+#include "transformations/rt_info/fused_names_attribute.hpp"
+#include "low_precision/low_precision.hpp"
 
-#include <openvino/runtime/properties.hpp>
+#include "openvino/runtime/properties.hpp"
 
-#include <ie_parallel.hpp>
+#include "ie/ie_parallel.hpp"
 #include "arm_ie_scheduler.hpp"
 #include "arm_compute/runtime/CPP/CPPScheduler.h"
 

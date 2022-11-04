@@ -10,8 +10,8 @@
 #include <vector>
 #include <map>
 
-#include <ie_common.h>
-#include <cpp_interfaces/impl/ie_executable_network_thread_safe_default.hpp>
+#include "ie/ie_common.h"
+#include "cpp_interfaces/impl/ie_executable_network_thread_safe_default.hpp"
 
 #include "arm_config.hpp"
 #include "arm_infer_request.hpp"

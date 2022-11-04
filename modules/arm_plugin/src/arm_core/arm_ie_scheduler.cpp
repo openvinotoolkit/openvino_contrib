@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ie_parallel.hpp>
-#include <ie_common.h>
+#include "ie/ie_parallel.hpp"
+#include "ie/ie_common.h"
 
-#include <arm_ie_scheduler.hpp>
+#include "arm_ie_scheduler.hpp"
 
 using namespace ArmPlugin;
 

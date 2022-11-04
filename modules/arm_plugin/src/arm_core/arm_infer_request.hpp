@@ -11,9 +11,9 @@
 #include <memory>
 #include <unordered_map>
 
-#include <ie_common.h>
+#include "ie/ie_common.h"
 #include "cpp_interfaces/interface/ie_iinfer_request_internal.hpp"
-#include <threading/ie_itask_executor.hpp>
+#include "threading/ie_itask_executor.hpp"
 
 #include "arm_converter/arm_converter.hpp"
 #include "arm_config.hpp"

@@ -1,0 +1,30 @@
+# Copyright (C) 2020-2022 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
+set(TARGET_NAME "openvino_arm_cpu_transformations")
+
+file(GLOB_RECURSE SOURCES_TRANSFORMATIONS
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+file(GLOB_RECURSE HEADERS_TRANSFORMATIONS
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+
+add_library(${TARGET_NAME} STATIC ${SOURCES_TRANSFORMATIONS})
+
+ie_arm_neon_optimization_flags(neon_flags)
+set_source_files_properties(${SOURCES_TRANSFORMATIONS} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
+
+
+target_include_directories(${TARGET_NAME} PRIVATE
+        "${HEADERS_TRANSFORMATIONS}"
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/")
+
+target_link_libraries(${TARGET_NAME} PRIVATE
+        arm_compute::arm_compute
+        arm_compute::arm_compute_core
+        arm_compute::half
+        openvino::ngraph_reference
+        openvino::util
+        openvino::itt
+        openvino::runtime::dev
+        openvino::runtime)

@@ -7,8 +7,8 @@
 #include <vector>
 #include <thread>
 
-#include <ie_plugin_config.hpp>
-#include <openvino/runtime/properties.hpp>
+#include "ie/ie_plugin_config.hpp"
+#include "openvino/runtime/properties.hpp"
 
 #include "arm_config.hpp"
 

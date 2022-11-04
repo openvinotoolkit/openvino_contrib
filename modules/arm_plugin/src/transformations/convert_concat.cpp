@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_concat.hpp"
+#include "convert_concat.hpp"
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>

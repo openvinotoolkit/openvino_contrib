@@ -6,10 +6,16 @@ set(TARGET_NAME "openvino_arm_cpu_plugin")
 
 set(CMAKE_CXX_STANDARD 14)
 
+add_subdirectory(transformations)
+
 file(GLOB_RECURSE SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_core/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.cpp)
 file(GLOB_RECURSE HEADERS
-     ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_core/*.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.hpp)
 
 ie_arm_neon_optimization_flags(neon_flags)
 set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
@@ -18,19 +24,20 @@ set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "CPU"
               SOURCES ${SOURCES} ${HEADERS}
-              VERSION_DEFINES_FOR arm_plugin.cpp)
+              VERSION_DEFINES_FOR arm_core/arm_plugin.cpp)
 
 target_include_directories(${TARGET_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}"
-    "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include"
+        "${HEADERS_TRANSFORMATIONS}")
 
 target_link_libraries(${TARGET_NAME} PRIVATE
-    arm_compute::arm_compute
-    arm_compute::arm_compute_core
-    arm_compute::half
-    openvino::ngraph_reference
-    openvino::util
-)
+        openvino_arm_cpu_transformations
+        arm_compute::arm_compute
+        arm_compute::arm_compute_core
+        arm_compute::half
+        openvino::ngraph_reference
+        openvino::util)
 
 set_target_properties(${TARGET_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
 

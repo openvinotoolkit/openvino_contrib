@@ -9,14 +9,14 @@
 #include <string>
 #include <vector>
 
-#include <ie_metric_helpers.hpp>
-#include <ie_plugin_config.hpp>
-#include <ie_ngraph_utils.hpp>
-#include <threading/ie_executor_manager.hpp>
-#include <ngraph/function.hpp>
-#include <ie_icore.hpp>
+#include "ie_metric_helpers.hpp"
+#include "ie/ie_plugin_config.hpp"
+#include "ie_ngraph_utils.hpp"
+#include "threading/ie_executor_manager.hpp"
+#include "ngraph/function.hpp"
+#include "ie_icore.hpp"
 
-#include <openvino/runtime/properties.hpp>
+#include "openvino/runtime/properties.hpp"
 
 #include "arm_plugin.hpp"
 #include "arm_executable_network.hpp"

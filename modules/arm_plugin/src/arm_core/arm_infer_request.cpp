@@ -9,15 +9,15 @@
 #include <string>
 #include <map>
 
-#include <ie_blob.h>
-#include <debug.h>
-#include <ie_layouts.h>
-#include <threading/ie_executor_manager.hpp>
-#include <blob_transform.hpp>
-#include <precision_utils.h>
-#include <ngraph/function.hpp>
-#include <ie_ngraph_utils.hpp>
-#include <ngraph/runtime/reference/convert.hpp>
+#include "ie/ie_blob.h"
+#include "debug.h"
+#include "ie/ie_layouts.h"
+#include "threading/ie_executor_manager.hpp"
+#include "blob_transform.hpp"
+#include "precision_utils.h"
+#include "ngraph/function.hpp"
+#include "ie_ngraph_utils.hpp"
+#include "ngraph/runtime/reference/convert.hpp"
 
 #include "arm_infer_request.hpp"
 #include "arm_executable_network.hpp"
