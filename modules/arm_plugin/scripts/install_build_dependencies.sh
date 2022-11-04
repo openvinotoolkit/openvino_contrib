@@ -24,10 +24,9 @@ tar -xzf Python-"$PYTHON_ARM_VERSION".tgz
 mv Python-"$PYTHON_ARM_VERSION" Python-"$PYTHON_ARM_VERSION"-host
 cd Python-"$PYTHON_ARM_VERSION"-host || exit
 ./configure --enable-optimizations
-make -j "$NUM_PROC" python Parser/pgen
+make -j "$NUM_PROC" python
 sudo make -j "$NUM_PROC" install
 cp python "$BUILD_PYTHON"
-cp -r Parser/pgen "$BUILD_PYTHON"
 curl https://bootstrap.pypa.io/get-pip.py | "$BUILD_PYTHON"/python - --no-cache-dir numpy cython
 cd "$WORK_DIR" || exit
 
@@ -48,7 +47,6 @@ RANLIB=aarch64-linux-gnu-ranlib \
     --enable-shared
 make -j "$NUM_PROC" \
     HOSTPYTHON="$BUILD_PYTHON"/python \
-    HOSTPGEN="$BUILD_PYTHON"/Parser/pgen \
     CROSS-COMPILE=aarch64-linux-gnu- CROSS_COMPILE_TARGET=yes HOSTARCH=aarch64-linux BUILDARCH=aarch64-linux-gnu
 make -j "$NUM_PROC" install
 cd "$WORK_DIR" || exit
