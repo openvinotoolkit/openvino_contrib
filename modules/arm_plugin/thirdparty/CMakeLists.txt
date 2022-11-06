@@ -118,8 +118,15 @@ else()
                                 "Please, speficy -DANDROID_PLATFORM=android-18 at least")
         endif()
 
+        if(ANDROID_NDK_REVISION LESS "23.0")
+            list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix="${ANDROID_TOOLCHAIN_PREFIX}")
+        else()
+            string(REGEX REPLACE "/bin/[^/]+-" "/bin/llvm-" ANDROID_TOOLCHAIN_PREFIX_FIXED "${ANDROID_TOOLCHAIN_PREFIX}")
+            message(STATUS "SCONS: using ANDROID_TOOLCHAIN_PREFIX=${ANDROID_TOOLCHAIN_PREFIX_FIXED}")
+            list(APPEND ARM_COMPUTE_OPTIONS toolchain_prefix="${ANDROID_TOOLCHAIN_PREFIX_FIXED}")
+        endif()
+
         list(APPEND ARM_COMPUTE_OPTIONS
-            toolchain_prefix="${ANDROID_TOOLCHAIN_PREFIX}"
             compiler_prefix="${ANDROID_TOOLCHAIN_ROOT}/bin/")
 
         set(extra_flags "${extra_flags} --target=${ANDROID_LLVM_TRIPLE}")
