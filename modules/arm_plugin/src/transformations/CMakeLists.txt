@@ -6,8 +6,6 @@ set(TARGET_NAME "openvino_arm_cpu_transformations")
 
 file(GLOB_RECURSE SOURCES_TRANSFORMATIONS
         ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
-file(GLOB_RECURSE HEADERS_TRANSFORMATIONS
-        ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
 add_library(${TARGET_NAME} STATIC ${SOURCES_TRANSFORMATIONS})
 
@@ -16,7 +14,7 @@ set_source_files_properties(${SOURCES_TRANSFORMATIONS} PROPERTIES COMPILE_OPTION
 
 
 target_include_directories(${TARGET_NAME} PRIVATE
-        "${HEADERS_TRANSFORMATIONS}"
+        "${CMAKE_CURRENT_SOURCE_DIR}"
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/")
 
 target_link_libraries(${TARGET_NAME} PRIVATE
@@ -26,5 +24,4 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino::ngraph_reference
         openvino::util
         openvino::itt
-        openvino::runtime::dev
-        openvino::runtime)
+        openvino::runtime::dev)
