@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "openvino/itt.hpp"
+#include <openvino/itt.hpp>
 
 namespace ArmPlugin {
 

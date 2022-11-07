@@ -7,9 +7,9 @@
 #include <string>
 #include <map>
 
-#include "ie/ie_parameter.hpp"
-#include "threading/ie_istreams_executor.hpp"
-#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
+#include <ie_parameter.hpp>
+#include <threading/ie_istreams_executor.hpp>
+#include <cpp_interfaces/interface/ie_internal_plugin_config.hpp>
 
 namespace InferenceEngine {
 namespace PluginConfigInternalParams {

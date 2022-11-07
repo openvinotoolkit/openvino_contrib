@@ -10,8 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ie/cpp/ie_cnn_network.h"
-#include "cpp_interfaces/interface/ie_iplugin_internal.hpp"
+#include <cpp/ie_cnn_network.h>
+#include <cpp_interfaces/interface/ie_iplugin_internal.hpp>
 
 #include "arm_executable_network.hpp"
 #include "arm_config.hpp"
