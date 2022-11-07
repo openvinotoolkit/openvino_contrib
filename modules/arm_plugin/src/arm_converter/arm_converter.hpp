@@ -12,7 +12,7 @@
 #include <arm_compute/runtime/IFunction.h>
 #include <arm_compute/runtime/Tensor.h>
 
-#include "arm_core/arm_config.hpp"
+#include "arm_config.hpp"
 #include "opset/opset.hpp"
 
 

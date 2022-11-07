@@ -10,12 +10,17 @@ add_subdirectory(transformations)
 
 file(GLOB_RECURSE SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/arm_core/*.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.cpp)
+file(GLOB SOURCES_CORE
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+list(APPEND SOURCES ${SOURCES_CORE})
+
 file(GLOB_RECURSE HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/arm_core/*.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.hpp)
+file(GLOB HEADERS_CORE
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+list(APPEND HEADERS ${HEADERS_CORE})
 
 ie_arm_neon_optimization_flags(neon_flags)
 set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
@@ -24,7 +29,7 @@ set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "CPU"
               SOURCES ${SOURCES} ${HEADERS}
-              VERSION_DEFINES_FOR arm_core/arm_plugin.cpp)
+              VERSION_DEFINES_FOR arm_plugin.cpp)
 
 target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
