@@ -9,9 +9,6 @@ file(GLOB_RECURSE SOURCES_TRANSFORMATIONS
 
 add_library(${TARGET_NAME} STATIC ${SOURCES_TRANSFORMATIONS})
 
-ie_arm_neon_optimization_flags(neon_flags)
-set_source_files_properties(${SOURCES_TRANSFORMATIONS} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
-
 
 target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"

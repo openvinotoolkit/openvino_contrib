@@ -33,8 +33,7 @@ ie_add_plugin(NAME ${TARGET_NAME}
 
 target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include"
-        "${HEADERS_TRANSFORMATIONS}")
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
 
 target_link_libraries(${TARGET_NAME} PRIVATE
         openvino_arm_cpu_transformations
