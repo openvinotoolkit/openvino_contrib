@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_prelu.hpp"
+#include "convert_prelu.hpp"
 
 #include <numeric>
 

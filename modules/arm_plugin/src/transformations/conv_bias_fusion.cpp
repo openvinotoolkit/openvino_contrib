@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <details/ie_exception.hpp>
 #include "conv_bias_fusion.hpp"
 
 #include <memory>

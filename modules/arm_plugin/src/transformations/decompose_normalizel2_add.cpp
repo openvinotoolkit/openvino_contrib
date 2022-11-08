@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/decompose_normalizel2_add.hpp"
+#include "decompose_normalizel2_add.hpp"
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>

@@ -11,7 +11,9 @@ addIeTargetTest(
         DEPENDENCIES
                 openvino_arm_cpu_plugin
         LINK_LIBRARIES
-                openvino::funcSharedTests openvino::lptNgraphFunctions
+                openvino_arm_cpu_transformations
+                openvino::funcSharedTests
+                openvino::lptNgraphFunctions
         INCLUDES
             "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include"
         ADD_CPPLINT

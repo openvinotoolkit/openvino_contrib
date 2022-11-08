@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/decompose_swish.hpp"
+#include "decompose_swish.hpp"
 
 #include <numeric>
 
