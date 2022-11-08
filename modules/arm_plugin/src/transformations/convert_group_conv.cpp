@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_group_conv.hpp"
+#include "convert_group_conv.hpp"
 
 #include <numeric>
 
