@@ -7,17 +7,18 @@ set(TARGET_NAME "openvino_arm_cpu_plugin")
 set(CMAKE_CXX_STANDARD 14)
 
 add_subdirectory(transformations)
+add_subdirectory(opset)
 
 file(GLOB_RECURSE SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.cpp)
+#        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.cpp)
 file(GLOB SOURCES_CORE
         ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 list(APPEND SOURCES ${SOURCES_CORE})
 
 file(GLOB_RECURSE HEADERS
-        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.hpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.hpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.hpp)
+#        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.hpp)
 file(GLOB HEADERS_CORE
         ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 list(APPEND HEADERS ${HEADERS_CORE})
@@ -37,6 +38,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
 
 target_link_libraries(${TARGET_NAME} PRIVATE
         openvino_arm_cpu_transformations
+        openvino_arm_cpu_opset
         arm_compute::arm_compute
         arm_compute::arm_compute_core
         arm_compute::half
