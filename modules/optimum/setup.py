@@ -15,8 +15,10 @@ except Exception as error:
 
 
 install_requires = [
-    "transformers",
+    "transformers<4.16.0",
     "openvino",
+    "protobuf==3.20.*",
+    "sentencepiece"
 ]
 
 nncf_deps = [
