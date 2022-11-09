@@ -14,12 +14,7 @@ except Exception as error:
     raise Exception(f"Error: Could not open '{filepath}' due {error}\n")
 
 
-install_requires = [
-    "transformers<4.16.0",
-    "openvino",
-    "protobuf==3.20.*",
-    "sentencepiece"
-]
+install_requires = ["transformers<4.16.0", "openvino", "protobuf==3.20.*", "sentencepiece"]
 
 nncf_deps = [
     "openvino-dev[onnx]",
