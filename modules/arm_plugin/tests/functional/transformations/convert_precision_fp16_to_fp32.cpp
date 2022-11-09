@@ -28,22 +28,6 @@ bool has_type(const std::shared_ptr<ov::Model>& m, const std::string& name_layer
     }
     return false;
 }
-void Dump(const std::shared_ptr<ov::Model>& m, const std::string& postfix) {
-        ov::pass::VisualizeTree{m->get_friendly_name() + "_" + postfix + ".dot",
-                                    [&] (const ngraph::Node& node, std::vector<std::string>& attributes) {
-                                        auto& rt_info = node.get_rt_info();
-                                        auto itInfo = rt_info.find("QuantizationInfo");
-                                        if (itInfo != rt_info.end()) {
-                                            std::stringstream strm;
-                                            auto itLabel = std::find_if(std::begin(attributes), std::end(attributes), [] (const std::string& str) {
-                                                return str.find("label") != std::string::npos;
-                                            });
-                                            IE_ASSERT(itLabel != attributes.end());
-                                            itLabel->pop_back();
-                                            (*itLabel) += strm.str() + '\"';
-                                        }
-                                    }}.run_on_model(m);
-}
 
 TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Bucketize) {
     std::shared_ptr<ov::Model> m(nullptr);
@@ -120,8 +104,12 @@ TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Concat_Native) {
     ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, concat->get_friendly_name()));
     ASSERT_FALSE(has_type<ov::element::Type_t::f32>(m, concat->get_friendly_name()));
 
+    ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, A->get_friendly_name()));
+    ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, B->get_friendly_name()));
+    ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, C->get_friendly_name()));
+
     for (auto&& output : m->outputs()) {
-        ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, output.get_node()->get_friendly_name()));
-        ASSERT_FALSE(has_type<ov::element::Type_t::f32>(m, output.get_node()->get_friendly_name()));
+        ASSERT_FALSE(has_type<ov::element::Type_t::f16>(m, output.get_node()->get_friendly_name()));
+        ASSERT_TRUE(has_type<ov::element::Type_t::f32>(m, output.get_node()->get_friendly_name()));
     }
 }

@@ -11,14 +11,12 @@ add_subdirectory(opset)
 
 file(GLOB_RECURSE SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.cpp)
-#        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.cpp)
 file(GLOB SOURCES_CORE
         ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 list(APPEND SOURCES ${SOURCES_CORE})
 
 file(GLOB_RECURSE HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/arm_converter/*.hpp)
-#        ${CMAKE_CURRENT_SOURCE_DIR}/opset/*.hpp)
 file(GLOB HEADERS_CORE
         ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 list(APPEND HEADERS ${HEADERS_CORE})

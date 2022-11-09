@@ -81,7 +81,6 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::ArmFFT, op);
     CHECK_TYPE(ArmPlugin::opset::ArmQuantize, op);
     CHECK_TYPE(ArmPlugin::opset::ArmDequantize, op);
-    CHECK_TYPE(ArmPlugin::opset::Result, op);
     return false;
 }
 
@@ -92,6 +91,7 @@ bool ArmPlugin::pass::ConvertPrecisionFP16ToFP32::run_on_model(const std::shared
         if (is_natively_supported) {
             continue;
         }
+
         bool convert_for_outputs_required = false;
         for (const auto& input : op->inputs()) {
             if (input.get_element_type() == ov::element::f16) {
