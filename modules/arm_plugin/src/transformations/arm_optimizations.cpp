@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
+#include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
 #include "transformations/common_optimizations/conv_mul_fusion.hpp"
 #include "transformations/convert_precision.hpp"
@@ -154,6 +155,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         // This pass must be called first in pipeline
         manager.register_pass<ngraph::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
+        manager.register_pass<ngraph::pass::CommonOptimizations>();
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
