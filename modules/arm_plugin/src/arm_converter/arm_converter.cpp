@@ -74,7 +74,6 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Negative>();
     Register<opset::Floor>();
     Register<opset::Exp>();
-    Register<opset::MatMul>();
     Register<opset::ArmMatMulBias>();
     Register<opset::Pad>();
     Register<opset::BatchNormInference>();
@@ -113,6 +112,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::ArmDequantize>();
     if (_cfg._ref) {
         Register<opset::MVN>();
+        Register<opset::MatMul>();
         Register<opset::NormalizeL2>();
         Register<opset::Interpolate>();
         Register<opset::Concat>();
