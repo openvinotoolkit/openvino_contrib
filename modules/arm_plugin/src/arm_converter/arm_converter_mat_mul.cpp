@@ -3,6 +3,7 @@
 //
 
 
+#include <ngraph/runtime/reference/matmul.hpp>
 #include <src/cpu/kernels/CpuConvertQuantizedSignednessKernel.h>
 #include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h>
@@ -177,19 +178,21 @@ protected:
     std::unique_ptr<arm_compute::NEFullyConnectedLayer> _fconn;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& node) {
-    if (node.get_transpose_a()) {
-        IE_THROW() << "Can not create MatMul layer with transpose first input";
-    }
-    auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), nullptr, node.output(0), iInfo, wInfo, qInfo);
+    auto make = [&] (auto refFunction) {
+        return this->MakeConversion(refFunction,
+                                    node.input(0),
+                                    node.input(1),
+                                    node.output(0),
+                                    node.get_input_shape(0),
+                                    node.get_input_shape(1),
+                                    node.get_output_shape(0),
+                                    node.get_transpose_a(),
+                                    node.get_transpose_b());
+    };
+
+    return CallSwitch(
+                      AP_WRAP(make, ngraph::runtime::reference::matmul),
+                      node.input(0), allTypes);
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulBias& node) {
     if (node.get_transpose_a()) {
