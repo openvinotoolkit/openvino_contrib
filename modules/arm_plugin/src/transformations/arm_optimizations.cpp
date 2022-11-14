@@ -34,6 +34,7 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 #include "transformations/op_conversions/convert_previous_nms_to_nms_9.hpp"
+#include "transformations/common_optimizations/common_optimizations.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -155,6 +156,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         // This pass must be called first in pipeline
         manager.register_pass<ngraph::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
+        manager.register_pass<ngraph::pass::CommonOptimizations>();
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -191,8 +193,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ngraph::pass::ConvertQuantizeDequantize>();
         #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
             manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-        #else
-            manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f32, ngraph::element::f16);
         #endif
 
         auto pass_config = manager.get_pass_config();
