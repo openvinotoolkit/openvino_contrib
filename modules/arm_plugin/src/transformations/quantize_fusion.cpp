@@ -14,7 +14,7 @@
 
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
-#include <ngraph_ops/type_relaxed.hpp>
+#include <ov_ops/type_relaxed.hpp>
 
 #include "opset/opset.hpp"
 #include <ngraph/pattern/op/wrap_type.hpp>

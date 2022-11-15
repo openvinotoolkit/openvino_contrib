@@ -46,8 +46,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
     ngraph::pass::Manager manager{passConfig};
 
-    passConfig->enable<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
-    passConfig->disable<ngraph::pass::MVN6Decomposition>();
+    passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
+    passConfig->disable<ov::pass::MVN6Decomposition>();
     passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
 
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
@@ -56,16 +56,16 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     // on CUDA, for them decomposed cuDNN versions are faster.
     // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
     // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
-    passConfig->disable<ngraph::pass::ConvertSubtract>();
-    passConfig->disable<ngraph::pass::ConvertDivide>();
-    passConfig->disable<ngraph::pass::ConvertMod>();
+    passConfig->disable<ov::pass::ConvertSubtract>();
+    passConfig->disable<ov::pass::ConvertDivide>();
+    passConfig->disable<ov::pass::ConvertMod>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
-    manager.register_pass<ngraph::pass::InitNodeInfo>();
+    manager.register_pass<ov::pass::InitNodeInfo>();
     manager.register_pass<ngraph::pass::AddPreprocessing>(inputInfoMap);
-    manager.register_pass<ngraph::pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::CommonOptimizations>();
     // NOTE: G-API supports only FP32 networks for pre-processing
     //       nvidia_gpu supports FP16 networks, but this transformation is needed for export
     bool needF16toF32 = false;
@@ -78,7 +78,7 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
         }
     }
     if (needF16toF32) {
-        manager.register_pass<ngraph::pass::ConvertPrecision>(
+        manager.register_pass<ov::pass::ConvertPrecision>(
             precisions_array{{ngraph::element::f16, ngraph::element::f32}});
     }
 
@@ -100,8 +100,8 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
     ngraph::pass::Manager manager{passConfig};
 
-    passConfig->enable<ngraph::pass::ConvertInterpolate1ToInterpolate4>();
-    passConfig->disable<ngraph::pass::MVN6Decomposition>();
+    passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
+    passConfig->disable<ov::pass::MVN6Decomposition>();
     passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
 
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
@@ -110,22 +110,22 @@ std::shared_ptr<ngraph::Function> GraphTransformer::transform(const CUDA::Device
     // on CUDA, for them decomposed cuDNN versions are faster.
     // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
     // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
-    passConfig->disable<ngraph::pass::ConvertSubtract>();
-    passConfig->disable<ngraph::pass::ConvertDivide>();
-    passConfig->disable<ngraph::pass::ConvertMod>();
+    passConfig->disable<ov::pass::ConvertSubtract>();
+    passConfig->disable<ov::pass::ConvertDivide>();
+    passConfig->disable<ov::pass::ConvertMod>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
-    manager.register_pass<ngraph::pass::InitNodeInfo>();
+    manager.register_pass<ov::pass::InitNodeInfo>();
     manager.register_pass<ngraph::pass::AddPreprocessing>(inputInfoMap);
-    manager.register_pass<ngraph::pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::CommonOptimizations>();
     manager.register_pass<ngraph::pass::RemoveDuplicatedResultsTransformation>();
     if (!isHalfSupported(device)) {
-        manager.register_pass<ngraph::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);
+        manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);
     }
     if (!isInt8Supported(device)) {
-        manager.register_pass<ngraph::pass::ConvertPrecision>(
+        manager.register_pass<ov::pass::ConvertPrecision>(
             ov::element::i8, isHalfSupported(device) ? ov::element::f16 : ov::element::f32);
     }
     manager.register_pass<ngraph::pass::RemoveRedundantConvertTransformation>();
