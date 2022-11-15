@@ -16,7 +16,6 @@
 #include <threading/ie_executor_manager.hpp>
 #include <utility>
 
-#include "nvidia/nvidia_config.hpp"
 #include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
@@ -24,9 +23,10 @@
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/model/cuda_memory_model_builder.hpp"
+#include "nvidia/nvidia_config.hpp"
+#include "openvino/pass/serialize.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
-#include "openvino/pass/serialize.hpp"
 #include "transformations/utils/utils.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
