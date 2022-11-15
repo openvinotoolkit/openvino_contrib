@@ -45,11 +45,12 @@ jobs:
     MODELS_PATH: $(REPO_DIR)\..\testdata
     WORK_DIR: $(Pipeline.Workspace)\_w
     BUILD_DIR: D:\build
-    BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64
+    BIN_DIR: $(OPENVINO_REPO_DIR)\bin\intel64\$(BUILD_TYPE)
     MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat
     MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
     INSTALL_DIR: $(WORK_DIR)\install_pkg
     SETUPVARS: $(INSTALL_DIR)\setupvars.bat
+    CUSTOM_OP_LIB: $(BIN_DIR)\user_ov_extensions.dll
     GRADLE_VER: 7.1.1
 
   steps:
@@ -96,6 +97,8 @@ jobs:
       powershell -command "Expand-Archive -Force ninja-win.zip"
       powershell -command "Invoke-WebRequest https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip -OutFile gradle-$(GRADLE_VER)-bin.zip"
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
+      python -m pip install --upgrade pip
+      python -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
@@ -107,6 +110,7 @@ jobs:
         -DENABLE_INTEL_MYRIAD_COMMON=OFF ^
         -DENABLE_CPPLINT=OFF ^
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules ^
+        -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(OPENVINO_REPO_DIR)
