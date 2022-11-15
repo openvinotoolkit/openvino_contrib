@@ -54,15 +54,6 @@ TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Bucketize_Mixed) {
         m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
 
         ov::pass::Manager manager;
-        manager.run_passes(m);
-
-        ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, b->get_friendly_name()));
-        ASSERT_TRUE(has_type<ov::element::Type_t::f32>(m, b->get_friendly_name()));
-    }
-    {
-        m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
-
-        ov::pass::Manager manager;
         manager.register_pass<ArmPlugin::pass::ConvertPrecisionFP16ToFP32>();
         manager.run_passes(m);
 
