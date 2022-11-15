@@ -3,8 +3,6 @@
 //
 
 #include <vector>
-#include <ngraph/function.hpp>
-#include <ngraph/opsets/opset4.hpp>
 #include "convert_precision_fp16_to_fp32.hpp"
 #include "convert_concat.hpp"
 #include "common_test_utils/ngraph_test_utils.hpp"
@@ -32,35 +30,25 @@ bool has_type(const std::shared_ptr<ov::Model>& m, const std::string& name_layer
 TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Bucketize) {
     std::shared_ptr<ov::Model> m(nullptr);
 
-    auto input = std::make_shared<ngraph::opset4::Parameter>(ov::element::f16, ov::Shape{20});
-    auto k = ngraph::opset4::Constant::create(ov::element::f16, ov::Shape{1}, {10});
-    auto b = std::make_shared<ngraph::opset4::Bucketize>(input, k);
+    auto input = std::make_shared<ov::opset8::Parameter>(ov::element::f16, ov::Shape{20});
+    auto k = ov::opset8::Constant::create(ov::element::f16, ov::Shape{1}, {10});
+    auto b = std::make_shared<ov::opset8::Bucketize>(input, k);
+    m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
     {
-        m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
-
-        ov::pass::Manager manager;
-        manager.run_passes(m);
-
-        ASSERT_TRUE(has_type<ov::element::Type_t::f16>(m, b->get_friendly_name()));
-    }
-    {
-        m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
-
         ov::pass::Manager manager;
         manager.register_pass<ArmPlugin::pass::ConvertPrecisionFP16ToFP32>();
         manager.run_passes(m);
-
-        ASSERT_FALSE(has_type<ov::element::Type_t::f16>(m, b->get_friendly_name()));
-        ASSERT_TRUE(has_type<ov::element::Type_t::f32>(m, b->get_friendly_name()));
     }
+    ASSERT_FALSE(has_type<ov::element::Type_t::f16>(m, b->get_friendly_name()));
+    ASSERT_TRUE(has_type<ov::element::Type_t::f32>(m, b->get_friendly_name()));
 }
 
 TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Bucketize_Mixed) {
     std::shared_ptr<ov::Model> m(nullptr);
 
-    auto input = std::make_shared<ngraph::opset4::Parameter>(ov::element::f32, ov::Shape{20});
-    auto k = ngraph::opset4::Constant::create(ov::element::f16, ov::Shape{1}, {10});
-    auto b = std::make_shared<ngraph::opset4::Bucketize>(input, k);
+    auto input = std::make_shared<ov::opset8::Parameter>(ov::element::f32, ov::Shape{20});
+    auto k = ov::opset8::Constant::create(ov::element::f16, ov::Shape{1}, {10});
+    auto b = std::make_shared<ov::opset8::Bucketize>(input, k);
 
     {
         m = std::make_shared<ov::Model>(ov::OutputVector{b}, ov::ParameterVector{input});
@@ -84,19 +72,15 @@ TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Bucketize_Mixed) {
 }
 
 TEST(TransformationConvertFP16ToFP32Tests, ConvertPrecision_Concat_Native) {
-    const auto A = std::make_shared<ngraph::opset1::Parameter>(ov::element::Type_t::f16, ov::Shape{1});
-    const auto B = std::make_shared<ngraph::opset1::Parameter>(ov::element::Type_t::f16, ov::Shape{2});
-    const auto C = std::make_shared<ngraph::opset1::Parameter>(ov::element::Type_t::f16, ov::Shape{3});
-    auto concat = std::make_shared<ngraph::opset1::Concat>(ov::NodeVector{A, B, C}, 0);
+    const auto A = std::make_shared<ov::opset8::Parameter>(ov::element::Type_t::f16, ov::Shape{1});
+    const auto B = std::make_shared<ov::opset8::Parameter>(ov::element::Type_t::f16, ov::Shape{2});
+    const auto C = std::make_shared<ov::opset8::Parameter>(ov::element::Type_t::f16, ov::Shape{3});
+    auto concat = std::make_shared<ov::opset8::Concat>(ov::NodeVector{A, B, C}, 0);
     auto m = std::make_shared<ov::Model>(concat, ov::ParameterVector{A, B, C});
 
     {
         ov::pass::Manager manager;
         manager.register_pass<ArmPlugin::pass::ConvertConcat>();
-        manager.run_passes(m);
-    }
-    {
-        ov::pass::Manager manager;
         manager.register_pass<ArmPlugin::pass::ConvertPrecisionFP16ToFP32>();
         manager.run_passes(m);
     }
