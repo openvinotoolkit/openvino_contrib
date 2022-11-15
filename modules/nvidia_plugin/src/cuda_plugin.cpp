@@ -137,7 +137,7 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     for (auto&& node : transformedFunction->get_ops()) {
         const bool isOpSupported = isOperationSupported(node);
         // Extract transformation history from transformed node as list of nodes
-        for (auto&& fusedLayerName : ngraph::getFusedNamesVector(node)) {
+        for (auto&& fusedLayerName : ov::getFusedNamesVector(node)) {
             // Filter just nodes from original operation set
             if (InferenceEngine::details::contains(originalOps, fusedLayerName)) {
                 if (isOpSupported) {
