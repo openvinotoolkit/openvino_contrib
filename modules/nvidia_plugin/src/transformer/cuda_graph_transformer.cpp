@@ -46,9 +46,9 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
     ngraph::pass::Manager manager{passConfig};
 
-    passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
-    passConfig->disable<ov::pass::MVN6Decomposition>();
-    passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+    passConfig->enable<pass::ConvertInterpolate1ToInterpolate4>();
+    passConfig->disable<pass::MVN6Decomposition>();
+    passConfig->disable<pass::ConvertCompressedOnlyToLegacy>();
 
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
     // are executed faster on CUDA/cuDNN.
@@ -56,9 +56,9 @@ std::shared_ptr<ngraph::Function> GraphTransformer::export_transform(
     // on CUDA, for them decomposed cuDNN versions are faster.
     // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
     // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
-    passConfig->disable<ov::pass::ConvertSubtract>();
-    passConfig->disable<ov::pass::ConvertDivide>();
-    passConfig->disable<ov::pass::ConvertMod>();
+    passConfig->disable<pass::ConvertSubtract>();
+    passConfig->disable<pass::ConvertDivide>();
+    passConfig->disable<pass::ConvertMod>();
 
     [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
