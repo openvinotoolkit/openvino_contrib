@@ -130,7 +130,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
                 }
             }
         }
-        for (auto&& fusedLayerName : ngraph::getFusedNamesVector(node)) {
+        for (auto&& fusedLayerName : ov::getFusedNamesVector(node)) {
             if (contains(originalOps, fusedLayerName)) {
                 if (nodeIsSupported) {
                     supported.emplace(fusedLayerName);

@@ -399,13 +399,13 @@ NGRAPH_RTTI_DEFINITION(ngraph::pass::BidirectionalSequenceComposition, "Bidirect
 
 BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_ptr<PassConfig> pass_config)
     : pass_config_(std::move(pass_config)) {
-    pass_config_->disable<pass::BidirectionalLSTMSequenceDecomposition>();
-    pass_config_->disable<pass::BidirectionalGRUSequenceDecomposition>();
+    pass_config_->disable<ov::pass::BidirectionalLSTMSequenceDecomposition>();
+    pass_config_->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
     // pass_config_->disable<pass::BidirectionalRNNSequenceDecomposition>();
 
-    pass_config_->disable<pass::ConvertLSTMSequenceToTensorIterator>();
-    pass_config_->disable<pass::ConvertGRUSequenceToTensorIterator>();
+    pass_config_->disable<ov::pass::ConvertLSTMSequenceToTensorIterator>();
+    pass_config_->disable<ov::pass::ConvertGRUSequenceToTensorIterator>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
     // pass_config_->disable<pass::ConvertRNNSequenceToTensorIterator>();
 }
@@ -413,13 +413,13 @@ BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_p
 bool BidirectionalSequenceComposition::run_on_function(std::shared_ptr<ngraph::Function> f) {
     ngraph::pass::Manager manager{pass_config_};
 
-    manager.register_pass<pass::ConvertTensorIteratorToLSTMSequence>();
-    manager.register_pass<pass::ConvertTensorIteratorToGRUSequence>();
-    manager.register_pass<pass::NopElimination>();
+    manager.register_pass<ov::pass::ConvertTensorIteratorToLSTMSequence>();
+    manager.register_pass<ov::pass::ConvertTensorIteratorToGRUSequence>();
+    manager.register_pass<ov::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
-    manager.register_pass<pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::CommonOptimizations>();
     manager.register_pass<ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized>();
-    manager.register_pass<pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::CommonOptimizations>();
 
     manager.run_passes(f);
 

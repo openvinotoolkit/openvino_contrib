@@ -12,7 +12,7 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/pattern/op/wrap_type.hpp>
-#include <ngraph_ops/type_relaxed.hpp>
+#include <ov_ops/type_relaxed.hpp>
 
 using namespace ArmPlugin;
 
