@@ -71,6 +71,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Minimum>();
     Register<opset::Maximum>();
     Register<opset::ArmStridedSlice>();
+    Register<opset::ArmSlice>();
     Register<opset::Negative>();
     Register<opset::Floor>();
     Register<opset::Exp>();
@@ -183,6 +184,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<ngraph::op::v8::I420toBGR>();
         Register<ngraph::op::v8::I420toRGB>();
         Register<ngraph::op::v8::MaxPool>();
+        Register<ngraph::op::v8::Slice>();
     }
     Register<opset::Result>();
     for (auto&& node : model->get_ordered_ops()) {
