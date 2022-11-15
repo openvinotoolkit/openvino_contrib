@@ -1,57 +1,89 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <vector>
-
 #include "single_layer_tests/bucketize.hpp"
-#include "common_test_utils/test_constants.hpp"
+
+#include <vector>
 
 using namespace LayerTestsDefinitions;
 
-const std::vector<std::vector<size_t>> dataShapes = {
-    {1, 20, 20},
-    {2, 3, 50, 50}
-};
+namespace {
 
+    const std::vector<std::vector<size_t>> data_shapes = {
+            {1, 20, 20},         // 3D
+            {40, 22, 13, 9},     // 4D
+            {6, 7, 3, 2, 8},     // 5D
+            {6, 7, 3, 2, 8, 5},  // 6D
+    };
 
-const std::vector<std::vector<size_t>> bucketsShapes = {
-    {5},
-    {20},
-    {100}
-};
+    const std::vector<std::vector<size_t>> buckets_shapes = {
+            {5},
+            {20},
+            {100},
+    };
 
-const std::vector<InferenceEngine::Precision> inPrc = {
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::I64,
-    InferenceEngine::Precision::I32
-};
+    const std::vector<bool> with_right_bound = {true, false};
 
-const std::vector<InferenceEngine::Precision> netPrc = {
-    InferenceEngine::Precision::I64,
-    InferenceEngine::Precision::I32
-};
+    const std::vector<InferenceEngine::Precision> out_precision = {
+            InferenceEngine::Precision::I32,
+            InferenceEngine::Precision::I64,
+    };
 
-const auto test_Bucketize_right_edge = ::testing::Combine(
-    ::testing::ValuesIn(dataShapes),
-    ::testing::ValuesIn(bucketsShapes),
-    ::testing::Values(true),
-    ::testing::ValuesIn(inPrc),
-    ::testing::ValuesIn(inPrc),
-    ::testing::ValuesIn(netPrc),
-    ::testing::Values(CommonTestUtils::DEVICE_CPU)
-);
+// We won't test FP32 and FP16 together as it won't make sense for now
+// as ngraph reference implementation use FP32 for FP16 case
 
-const auto test_Bucketize_left_edge = ::testing::Combine(
-    ::testing::ValuesIn(dataShapes),
-    ::testing::ValuesIn(bucketsShapes),
-    ::testing::Values(false),
-    ::testing::ValuesIn(inPrc),
-    ::testing::ValuesIn(inPrc),
-    ::testing::ValuesIn(netPrc),
-    ::testing::Values(CommonTestUtils::DEVICE_CPU)
-);
+    INSTANTIATE_TEST_SUITE_P(smoke_Bucketize_input_fp16,
+                             BucketizeLayerTest,
+                             testing::Combine(testing::ValuesIn(data_shapes),
+                                              testing::ValuesIn(buckets_shapes),
+                                              testing::ValuesIn(with_right_bound),
+                                              testing::Values(InferenceEngine::Precision::FP16),
+                                              testing::Values(InferenceEngine::Precision::FP16,
+                                                              InferenceEngine::Precision::I32,
+                                                              InferenceEngine::Precision::I64),
+                                              testing::ValuesIn(out_precision),
+                                              testing::Values(CommonTestUtils::DEVICE_CPU)),
+                             BucketizeLayerTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_TestsBucketize_right, BucketizeLayerTest, test_Bucketize_right_edge, BucketizeLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_TestsBucketize_left, BucketizeLayerTest, test_Bucketize_left_edge, BucketizeLayerTest::getTestCaseName);
+    INSTANTIATE_TEST_SUITE_P(smoke_Bucketize_input_fp32,
+                             BucketizeLayerTest,
+                             testing::Combine(testing::ValuesIn(data_shapes),
+                                              testing::ValuesIn(buckets_shapes),
+                                              testing::ValuesIn(with_right_bound),
+                                              testing::Values(InferenceEngine::Precision::FP32),
+                                              testing::Values(InferenceEngine::Precision::FP32,
+                                                              InferenceEngine::Precision::I32,
+                                                              InferenceEngine::Precision::I64),
+                                              testing::ValuesIn(out_precision),
+                                              testing::Values(CommonTestUtils::DEVICE_CPU)),
+                             BucketizeLayerTest::getTestCaseName);
+
+    INSTANTIATE_TEST_SUITE_P(smoke_Bucketize_input_i32,
+                             BucketizeLayerTest,
+                             testing::Combine(testing::ValuesIn(data_shapes),
+                                              testing::ValuesIn(buckets_shapes),
+                                              testing::ValuesIn(with_right_bound),
+                                              testing::Values(InferenceEngine::Precision::I32),
+                                              testing::Values(InferenceEngine::Precision::FP16,
+                                                              InferenceEngine::Precision::FP32,
+                                                              InferenceEngine::Precision::I32,
+                                                              InferenceEngine::Precision::I64),
+                                              testing::ValuesIn(out_precision),
+                                              testing::Values(CommonTestUtils::DEVICE_CPU)),
+                             BucketizeLayerTest::getTestCaseName);
+
+    INSTANTIATE_TEST_SUITE_P(smoke_Bucketize_input_i64,
+                             BucketizeLayerTest,
+                             testing::Combine(testing::ValuesIn(data_shapes),
+                                              testing::ValuesIn(buckets_shapes),
+                                              testing::ValuesIn(with_right_bound),
+                                              testing::Values(InferenceEngine::Precision::I64),
+                                              testing::Values(InferenceEngine::Precision::FP16,
+                                                              InferenceEngine::Precision::FP32,
+                                                              InferenceEngine::Precision::I32,
+                                                              InferenceEngine::Precision::I64),
+                                              testing::ValuesIn(out_precision),
+                                              testing::Values(CommonTestUtils::DEVICE_CPU)),
+                             BucketizeLayerTest::getTestCaseName);
+}  // namespace
