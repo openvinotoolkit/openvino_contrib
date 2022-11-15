@@ -139,7 +139,7 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ov::Model>& m
     }
 }
 
-bool ArmPlugin::pass::ArmOptimizations::run_on_function(std::shared_ptr<ov::Model> m) {
+bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::Model> &m) {
     auto quantized = _lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(m);
     {
         ov::pass::Manager manager;
