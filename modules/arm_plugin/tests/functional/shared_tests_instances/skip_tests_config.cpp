@@ -20,7 +20,7 @@ std::vector<std::string> disabledTestPatterns() {
 #ifdef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
         ".*ActivationLayerTest.*CompareWithRefs/Tan_.*netPRC=FP16.*", // Failed (a small input change leads to a large output change)
         ".*PermConvPermConcat.*CompareWithRefs.*1.1.7.32.*1.5.*_netPRC=FP16.*", // accuracy differnce error = 0.001
-        ".*MatmulSqueezeAddTest.CompareWithRefImpl.*1.512.*1000_netPRC=FP16.*", // Sporadic hangs
+        ".*MatmulSqueezeAddTest.CompareWithRefImpl.*1.512.*netPRC=FP16.*", // Sporadic hangs
 #endif
         // need to implement Export / Import
         ".*IEClassImportExportTestP.*",
