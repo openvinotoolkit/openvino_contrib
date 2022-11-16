@@ -1,0 +1,18 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = [".."]
+            include 'benchmark_app/*.java', 'ArgumentParser.java'
+        }
+    }
+}
+mainClassName = 'Main'
+
+dependencies {
+    implementation rootProject
+}

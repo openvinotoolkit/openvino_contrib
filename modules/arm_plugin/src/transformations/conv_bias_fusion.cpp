@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <details/ie_exception.hpp>
 #include "conv_bias_fusion.hpp"
 
 #include <memory>
@@ -13,7 +12,7 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/pattern/op/wrap_type.hpp>
-#include <ngraph_ops/type_relaxed.hpp>
+#include <ov_ops/type_relaxed.hpp>
 
 using namespace ArmPlugin;
 

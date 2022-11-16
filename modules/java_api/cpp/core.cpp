@@ -76,6 +76,34 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *env, j
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *env, jobject obj, jlong coreAddr, jstring device, jstring name)
+{
+    JNI_METHOD("GetProperty",
+        std::string n_device = jstringToString(env, device);
+        std::string n_name = jstringToString(env, name);
+
+        Core *core = (Core *)coreAddr;
+
+        Any *property = new Any();
+        *property = core->get_property(n_device, n_name);
+
+        return (jlong)property;
+    )
+    return 0;
+}
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *env, jobject obj, jlong coreAddr, jstring device, jobject prop) {
+    JNI_METHOD("SetProperty",
+        std::string n_device = jstringToString(env, device);
+        Core *core = (Core *)coreAddr;
+        AnyMap map;
+        for (const auto& it : javaMapToMap(env, prop)) {
+            map[it.first] = it.second;
+        }
+        core->set_property(n_device, map);
+    )
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Core_delete(JNIEnv *, jobject, jlong addr)
 {
     Core *core = (Core *)addr;

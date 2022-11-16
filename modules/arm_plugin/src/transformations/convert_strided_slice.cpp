@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_strided_slice.hpp"
+#include "convert_strided_slice.hpp"
 #include "opset/opset.hpp"
 
 #include <numeric>

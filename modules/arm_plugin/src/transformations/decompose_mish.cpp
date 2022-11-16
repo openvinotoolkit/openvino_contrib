@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/decompose_mish.hpp"
+#include "decompose_mish.hpp"
 
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_inputs_precision.hpp"
+#include "convert_inputs_precision.hpp"
 
 #include <numeric>
 

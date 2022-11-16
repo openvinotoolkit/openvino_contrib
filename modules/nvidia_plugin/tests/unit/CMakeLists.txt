@@ -21,20 +21,24 @@ file(GLOB_RECURSE
 	 *.cu
 )
 addIeTargetTest(
-        NAME ${TARGET_NAME}
-        ROOT ${CMAKE_CURRENT_SOURCE_DIR}
-		OBJECT_FILES
-		${CUDA_SOURCES}
+        NAME
+            ${TARGET_NAME}
+        ROOT
+            ${CMAKE_CURRENT_SOURCE_DIR}
+        OBJECT_FILES
+            ${CUDA_SOURCES}
         LINK_LIBRARIES_WHOLE_ARCHIVE
-        openvino_nvidia_gpu_plugin_obj
-        ${EXCLUDED_SOURCE_PATHS}
+            openvino_nvidia_gpu_plugin_obj
+        EXCLUDED_SOURCE_PATHS
+            ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
-        IE::funcSharedTests
-        gmock
-        ngraphFunctions
+            gtest
+            gtest_main
+            gmock
+            ngraphFunctions
         ADD_CPPLINT
         LABELS
-        CUDA
+            CUDA
 )
 set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")

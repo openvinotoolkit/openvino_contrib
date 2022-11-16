@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_tile_to_concats.hpp"
+#include "convert_tile_to_concats.hpp"
 #include "opset/opset.hpp"
 
 #include <numeric>

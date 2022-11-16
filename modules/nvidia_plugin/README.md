@@ -84,11 +84,11 @@ mkdir build && cd build
   # For old build delete old configuration, generate new one and then build
   ../build.sh --rebuild
   ```
-- Using _InferenceEngineDeveloperPackage_
+- Using _OpenVINODeveloperPackage_
   
   Run the following command:
   ```bash
-  cmake -DInferenceEngineDeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
+  cmake -DOpenVINODeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
   cmake --build . --target nvidia_gpu -j `nproc`
   ```
 
@@ -166,7 +166,7 @@ docker commit openvino/cudaplugin-2022.1 <name of new image>
 ```
 
 ## Supported Configuration Parameters
-The plugin supports the configuration parameters listed below. All parameters must be set before calling `InferenceEngine::Core::LoadNetwork()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
+The plugin supports the configuration parameters listed below. All parameters must be set before calling `ov::Core::compile_model()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
 
 Parameter name  | Parameter values  | Default  | Description
 ------------- | ------------- | ------------- | -------------

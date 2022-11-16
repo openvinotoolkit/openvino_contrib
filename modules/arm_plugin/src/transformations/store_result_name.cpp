@@ -12,7 +12,7 @@ bool ArmPlugin::pass::StoreResultName::run_on_function(std::shared_ptr<ov::Model
         IE_ASSERT(node->inputs().size() == 1);
         auto input = node->input(0);
         auto sourceOutput = input.get_source_output();
-        const auto outputName = ngraph::op::util::get_ie_output_name(sourceOutput);
+        const auto outputName = ov::op::util::get_ie_output_name(sourceOutput);
         node->get_rt_info().emplace("ResultName", outputName);
     }
     return false;

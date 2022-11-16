@@ -42,7 +42,7 @@ cmake "${OPENVINO_HOME}" \
       -DENABLE_TESTS="${ENABLE_TESTS}" \
       -DBUILD_arm_plugin=OFF \
       -DBUILD_java_api=OFF \
-      -DIE_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
+      -DOPENVINO_EXTRA_MODULES="${OPENVINO_CONTRIB}/modules" \
       -DWHEEL_VERSION="${WHEEL_VERSION}" \
       -DVERBOSE_BUILD=ON \
       -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"

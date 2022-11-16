@@ -58,6 +58,39 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_Model_getOutputs(JNIEnv * env,
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getOutput(JNIEnv * env, jobject, jlong modelAddr) {
+    JNI_METHOD("getOutput",
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(modelAddr);
+        Output<Node> *output = new Output<Node>();
+        *output = (*model)->output();
+        return (jlong)output;
+    )
+    return 0;
+}
+
+JNIEXPORT void JNICALL Java_org_intel_openvino_Model_Reshape(JNIEnv *env, jobject, jlong addr, jintArray shape)
+{
+    JNI_METHOD("Reshape",
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(addr);
+
+        PartialShape partialShape;
+        for (auto& value : jintArrayToVector(env, shape))
+            partialShape.push_back(value);
+
+        (*model)->reshape(partialShape);
+    )
+}
+
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getInput(JNIEnv * env, jobject, jlong modelAddr) {
+    JNI_METHOD("getInput",
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(modelAddr);
+        Output<Node> *input = new Output<Node>();
+        *input = (*model)->input();
+        return (jlong)input;
+    )
+    return 0;
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Model_delete(JNIEnv *, jobject, jlong addr)
 {
     std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(addr);
