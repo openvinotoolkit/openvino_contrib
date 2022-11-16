@@ -9,8 +9,8 @@
 
 namespace ArmPlugin {
 template <typename U>
-ngraph::AxisSet mvn_6_reduction_axes(const U* axes, const ngraph::Shape& axes_shape) {
-    auto rank = axes_shape.size();
+ngraph::AxisSet mvn_6_reduction_axes(const U* axes, const ngraph::Shape& axes_shape, const ngraph::Shape& in_shape) {
+    auto rank = in_shape.size();
     auto v = std::vector<U>(axes, axes + axes_shape[0]);
     std::vector<size_t> reduction_axes(v.size(), 0);
     for (int i = 0; i < v.size(); i++) {
@@ -35,7 +35,7 @@ void wrap_mvn_6(const T* arg,
                 bool normalize_variance,
                 double eps,
                 ngraph::op::MVNEpsMode eps_mode) {
-    ngraph::AxisSet reduction_axes = mvn_6_reduction_axes(axes, axes_shape);
+    ngraph::AxisSet reduction_axes = mvn_6_reduction_axes(axes, axes_shape, in_shape);
     ngraph::runtime::reference::mvn_6(arg,
                                       out,
                                       in_shape,

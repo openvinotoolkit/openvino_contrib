@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_grn_to_normalizel2.hpp"
+#include "convert_grn_to_normalizel2.hpp"
 
 #include <numeric>
 

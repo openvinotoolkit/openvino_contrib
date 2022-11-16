@@ -16,10 +16,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: Setup Python 3.7
+    - name: Setup Python 3.8
       uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: 3.8
 
     - name: Install dependencies
       run: |
@@ -41,19 +41,19 @@ jobs:
       matrix:
         transformers-version: [
           "transformers[tf-cpu]==2.11.0",
-          "transformers[torch,tf-cpu] torch==1.9.1",
+          "transformers[torch,tf-cpu]==4.15.* torch==1.9.1",
         ]
         openvino-version: [
           "openvino-dev==2021.4.2",
-          "openvino-dev==2022.1.0",
+          "openvino-dev==2022.2.*",
         ]
     steps:
     - uses: actions/checkout@v2
 
-    - name: Setup Python 3.7
+    - name: Setup Python 3.8
       uses: actions/setup-python@v2
       with:
-        python-version: 3.7
+        python-version: 3.8
 
     - name: Install package
       working-directory: modules/optimum
