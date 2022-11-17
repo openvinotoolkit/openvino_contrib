@@ -34,6 +34,7 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 #include "transformations/op_conversions/convert_previous_nms_to_nms_9.hpp"
+#include "transformations/common_optimizations/common_optimizations.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -76,11 +77,12 @@
 #include "quantize_fusion.hpp"
 #include "store_result_name.hpp"
 #include "replace_power_by_mul.hpp"
+#include "convert_precision_fp16_to_fp32.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 
-#include <transformations/low_precision/disable_convert_constant_folding_on_const_path.hpp>
+#include <transformations/low_precision/mark_dequantization_subgraph.hpp>
 #include <low_precision/common/quantization_granularity_restriction.hpp>
 #include <low_precision/common/precisions_restriction.hpp>
 #include <low_precision/convolution.hpp>
@@ -147,13 +149,14 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         Dump(m, "initial");
 
         if (quantized) {
-            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::DisableConvertConstantFoldingOnConstPath>(
+            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::MarkDequantizationSubgraph>(
                 std::vector<ngraph::element::Type>{ ngraph::element::i8, ngraph::element::u8 });
         }
 
         // This pass must be called first in pipeline
         manager.register_pass<ov::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
+        manager.register_pass<ngraph::pass::CommonOptimizations>();
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -188,9 +191,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertInterpolate1ToInterpolate4>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertMVN1ToMVN6>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertQuantizeDequantize>();
-        // #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-            manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-        // #endif
+        #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
+            manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
+        #endif
 
         auto pass_config = manager.get_pass_config();
 
@@ -295,9 +298,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMatMulToFC>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
-        manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertDivide>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcast3>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcastToTiles>();
@@ -313,6 +313,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);
         manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::AlignNodePrecision>();
+        manager.register_pass<pass::ConvertPrecisionFP16ToFP32>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(m);
     }
