@@ -45,6 +45,12 @@ std::vector<std::string> disabledTestPatterns() {
         ".*OVInferenceChaining.*Dynamic.*", // Dynamic shape is not supported
         ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
         ".*NmsLayerTest.*CompareWithRefs.*numBatches=3.*numBoxes=100.*numClasses=5.*paramsPrec=FP32.*maxBoxPrec=I32.*thrPrec=FP32.*",
+        ".*OVClassNetworkTestP.*QueryNetworkMultiThrows.*",
+        ".*OVClassNetworkTestP.*LoadNetworkMultiWithoutSettingDevicePrioritiesThrows.*",
+        R"(.*OVClassQueryNetworkTest.*DeviceID.*)",
+        R"(.*OVClassLoadNetworkTest.*DeviceID.*)",
+        R"(.*OVClassLoadNetworkTest.*(MULTIwithHETERO|HETEROwithMULTI|MULTIwithAUTO)NoThrow.*)",
+        R"(.*OVClassLoadNetworkTest.*QueryNetwork(MULTIWithHETERO|HETEROWithMULTI)NoThrow_V10.*)",
 #ifdef __arm__
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
         ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
