@@ -33,6 +33,7 @@
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
+#include "transformations/common_optimizations/reshape_prelu.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -121,6 +122,7 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
     manager.register_pass<ov::pass::InitNodeInfo>();
     manager.register_pass<ov::nvidia_gpu::pass::AddPreprocessing>(inputInfoMap);
     manager.register_pass<ov::pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::ReshapePRelu>();
     manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
     if (!isHalfSupported(device)) {
         manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);

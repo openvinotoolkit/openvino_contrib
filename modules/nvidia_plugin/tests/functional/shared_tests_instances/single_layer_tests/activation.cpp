@@ -78,17 +78,15 @@ std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> basic = {
     {{1, 128}, {{}}},
 };
 
-// TODO /*{2},*/is commented because it is not numpy broadcast,
-// e.g. {2} shape can't be broadcasted to {3, 2, 5} according numpy rules
 std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> preluBasic = {
     {{1, 50}, {{1}, {50}}},
     {{1, 128}, {{1}, {128}}},
 
     // Broadcast check
     {{3, 2}, {{1}, {2}, {3, 2}}},
-    {{3, 2, 5}, {{1}, /*{2},*/ {5}, {2, 5}, {3, 1, 5}, {1, 2, 1}, {1, 1, 5}, {3, 1, 1}, {3, 2, 5}}},
+    {{3, 2, 5}, {{1}, {2}, {5}, {2, 5}, {3, 1, 5}, {1, 2, 1}, {1, 1, 5}, {3, 1, 1}, {3, 2, 5}}},
     {{2, 1, 2}, {{2}, {2, 1, 1}}},
-    {{3, 2, 5, 7}, {{1}, {7}, /*{2},*/ {5, 7}, {2, 5, 7}, {2, 1, 1}, {1, 2, 1, 1}, {3, 2, 1, 1}, {3, 2, 5, 7}}},
+    {{3, 2, 5, 7}, {{1}, {7}, {2}, {5, 7}, {2, 5, 7}, {2, 1, 1}, {1, 2, 1, 1}, {3, 2, 1, 1}, {3, 2, 5, 7}}},
 };
 
 const auto basicCases = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(activationTypes)),
