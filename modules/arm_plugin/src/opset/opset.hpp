@@ -15,6 +15,7 @@
 #include "mvn_arm.hpp"
 #include "normalizel2_arm.hpp"
 #include "strided_slice_arm.hpp"
+#include "slice_arm.hpp"
 #include "transpose_arm.hpp"
 #include "fft_arm.hpp"
 #include "quantize.hpp"
