@@ -43,6 +43,7 @@
 #include "convert_logical.hpp"
 #include "convert_strided_slice.hpp"
 #include "convert_strided_slice_arm.hpp"
+#include "convert_slice_arm.hpp"
 #include "convert_group_conv.hpp"
 #include "convert_conv1d_to_conv2d.hpp"
 #include "convert_grn_to_normalizel2.hpp"
@@ -275,6 +276,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeVariadicSplit>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertStridedSliceToArm>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertStridedSlice>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertSliceToArm>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInferenceV0toV5>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInference>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertShuffleChannels>();
