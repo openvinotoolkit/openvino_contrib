@@ -10,7 +10,6 @@
 #include "transformations/common_optimizations/softplus_fusion.hpp"
 #include "transformations/op_conversions/convert_mod.hpp"
 #include "transformations/op_conversions/convert_negative.hpp"
-#include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
@@ -298,7 +297,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMatMulToFC>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertDivide>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcast3>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcastToTiles>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertEltwise>();

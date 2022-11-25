@@ -8,6 +8,7 @@
 #include <arm_compute/runtime/NEON/functions/NEPixelWiseMultiplication.h>
 #include <arm_compute/runtime/NEON/functions/NECopy.h>
 #include <ngraph/runtime/reference/floor_mod.hpp>
+#include <ngraph/runtime/reference/divide.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
@@ -51,4 +52,9 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::FloorMod& 
         AP_WRAP(make, ngraph::runtime::reference::floor_mod),
         node.input(0), allTypes);
 }
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::Divide& node) {
+    return MakeConversion<arm_compute::NEElementwiseDivision>(node.input(0), node.input(1), node.output(0));
+}
+
 } // namespace ArmPlugin
