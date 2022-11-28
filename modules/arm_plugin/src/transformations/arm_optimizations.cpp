@@ -55,7 +55,6 @@
 #include "convert_convert.hpp"
 #include "convert_split.hpp"
 #include "convert_concat.hpp"
-#include "decompose_swish.hpp"
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
 #include "convert_transpose_arm.hpp"
@@ -264,7 +263,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceSumToPooling>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertMod>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeSwish>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeMish>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastPRelu>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLogical>();
