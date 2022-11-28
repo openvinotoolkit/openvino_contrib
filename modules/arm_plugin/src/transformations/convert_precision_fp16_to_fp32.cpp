@@ -27,8 +27,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::Squeeze, op);
     CHECK_TYPE(ArmPlugin::opset::Unsqueeze, op);
     CHECK_TYPE(ArmPlugin::opset::Sigmoid, op);
-//    Failed native layer in ACL for FP16 precision 
-//    CHECK_TYPE(ArmPlugin::opset::Tanh, op);
+    CHECK_TYPE(ArmPlugin::opset::Tanh, op);
     CHECK_TYPE(ArmPlugin::opset::Relu, op);
     CHECK_TYPE(ArmPlugin::opset::PRelu, op);
     CHECK_TYPE(ArmPlugin::opset::Abs, op);
