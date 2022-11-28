@@ -34,6 +34,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::Clamp, op);
     CHECK_TYPE(ArmPlugin::opset::Sqrt, op);
     CHECK_TYPE(ArmPlugin::opset::Elu, op);
+    CHECK_TYPE(ArmPlugin::opset::Gelu, op);
     CHECK_TYPE(ArmPlugin::opset::ArmTranspose, op);
     CHECK_TYPE(ArmPlugin::opset::Softmax, op);
     CHECK_TYPE(ArmPlugin::opset::ArmSplit, op);
@@ -49,6 +50,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::Pad, op);
     CHECK_TYPE(ArmPlugin::opset::BatchNormInference, op);
     CHECK_TYPE(ArmPlugin::opset::HSwish, op);
+    CHECK_TYPE(ArmPlugin::opset::Swish, op);
     CHECK_TYPE(ArmPlugin::opset::SoftPlus, op);
     CHECK_TYPE(ArmPlugin::opset::Log, op);
     CHECK_TYPE(ArmPlugin::opset::Sin, op);
