@@ -64,6 +64,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Clamp>();
     Register<opset::Sqrt>();
     Register<opset::Elu>();
+    Register<opset::Gelu>();
     Register<opset::ArmTranspose>();
     Register<opset::Softmax>();
     Register<opset::ArmSplit>();
@@ -80,6 +81,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Pad>();
     Register<opset::BatchNormInference>();
     Register<opset::HSwish>();
+    Register<opset::Swish>();
     Register<opset::SoftPlus>();
     Register<opset::Log>();
     Register<opset::Sin>();
@@ -138,7 +140,6 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::Erf>();
         Register<opset::HSigmoid>();
         Register<opset::HardSigmoid>();
-        Register<opset::Gelu>();
         Register<opset::Selu>();
         Register<opset::DetectionOutput>();
         Register<ngraph::op::v8::DetectionOutput>();

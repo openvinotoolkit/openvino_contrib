@@ -11,6 +11,7 @@
 #include <ngraph/runtime/reference/selu.hpp>
 #include <ngraph/runtime/reference/gelu.hpp>
 #include "arm_converter/arm_converter.hpp"
+#include <openvino/core/validation_util.hpp>
 
 namespace ArmPlugin {
 template<typename Activation>
@@ -82,6 +83,15 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::SoftPlus& 
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node) {
     arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::GELU);
+    return ConvertActivation(node, info, this);
+}
+
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::Swish& node) {
+    float beta = 1.0;
+    if (ov::get_constant_from_source(node.input_value(1)) != nullptr) {
+        beta = ov::get_constant_from_source(node.input_value(1))->cast_vector<float>()[0];
+    }
+    arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::SWISH, beta);
     return ConvertActivation(node, info, this);
 }
 
