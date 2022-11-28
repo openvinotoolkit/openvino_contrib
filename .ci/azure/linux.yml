@@ -93,7 +93,7 @@ jobs:
 
   - script: |
       set -e
-      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move jdk into contrib install_build_dependencies.sh
       sudo apt --assume-yes install default-jdk
       wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
