@@ -51,6 +51,9 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*OVClassLoadNetworkTest.*DeviceID.*)",
         R"(.*OVClassLoadNetworkTest.*(MULTIwithHETERO|HETEROwithMULTI|MULTIwithAUTO)NoThrow.*)",
         R"(.*OVClassLoadNetworkTest.*QueryNetwork(MULTIWithHETERO|HETEROWithMULTI)NoThrow_V10.*)",
+        // Problem with interface
+        ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=U32.*",
+        ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=I8.*",
 #ifdef __arm__
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
         ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
