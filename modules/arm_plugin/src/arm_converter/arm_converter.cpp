@@ -115,6 +115,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::ArmFFT>();
     Register<opset::ArmQuantize>();
     Register<opset::ArmDequantize>();
+    Register<opset::Range>();
     if (_cfg._ref) {
         Register<opset::MVN>();
         Register<opset::NormalizeL2>();

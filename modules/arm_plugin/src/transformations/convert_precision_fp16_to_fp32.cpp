@@ -85,6 +85,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::ArmFFT, op);
     CHECK_TYPE(ArmPlugin::opset::ArmQuantize, op);
     CHECK_TYPE(ArmPlugin::opset::ArmDequantize, op);
+    CHECK_TYPE(ArmPlugin::opset::Range, op);
     return false;
 }
 
