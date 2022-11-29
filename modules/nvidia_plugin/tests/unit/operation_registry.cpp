@@ -6,7 +6,7 @@
 
 #include <cuda_operation_registry.hpp>
 #include <memory>
-#include <ngraph/node.hpp>
+#include <openvino/op/op.hpp>
 #include <ops/parameter.hpp>
 #include <typeinfo>
 #include <vector>
@@ -25,27 +25,23 @@ public:
     bool optimizeOption = false;
 };
 
-class ParameterDummyNode : public ov::Node {
+class ParameterDummyNode : public ov::op::Op {
 public:
-    static constexpr type_info_t type_info{"Parameter", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("Parameter");
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
         return std::make_shared<ParameterDummyNode>();
     }
 };
-constexpr ov::Node::type_info_t ParameterDummyNode::type_info;
 
-class SuperOperationDummyNode : public ov::Node {
+class SuperOperationDummyNode : public ov::op::Op {
 public:
-    static constexpr type_info_t type_info{"SuperOperation", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("SuperOperation");
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
         return std::make_shared<SuperOperationDummyNode>();
     }
 };
-constexpr ov::Node::type_info_t SuperOperationDummyNode::type_info;
 
 TEST_F(OperationRegistryTest, CheckOperation_Available) {
     auto parameterDummyNode = std::make_shared<ParameterDummyNode>();

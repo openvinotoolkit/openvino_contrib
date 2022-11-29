@@ -49,7 +49,7 @@ struct ParameterTest : testing::Test {
         auto node = std::make_shared<ParameterStubNode>();
         auto inputIDs = std::vector<ov::nvidia_gpu::TensorID>{};
         auto outputIDs = std::vector<ov::nvidia_gpu::TensorID>{ov::nvidia_gpu::TensorID{0}};
-        node->set_friendly_name(ParameterStubNode::type_info.name);
+        node->set_friendly_name(ParameterStubNode::get_type_info_static().name);
         ASSERT_TRUE(registry.hasOperation(node));
         operation = registry.createOperation(CreationContext{device, optimizeOption}, node, inputIDs, outputIDs);
         ASSERT_TRUE(operation);
