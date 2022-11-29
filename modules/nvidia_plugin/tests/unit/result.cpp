@@ -43,7 +43,7 @@ class ov::Output<ParameterStubNode> : public ov::Output<ov::Node> {
 public:
     explicit Output<ParameterStubNode>(std::shared_ptr<ParameterStubNode> node) : ov::Output<ov::Node>(node, 0) {
         auto tensor = std::make_shared<ov::descriptor::Tensor>(
-            ov::element::Type{}, ov::PartialShape{1}, ParameterStubNode::type_info.name);
+            ov::element::Type{}, ov::PartialShape{1}, ParameterStubNode::get_type_info_static().name);
         node->m_outputs.emplace_back(node.get(), 0, tensor);
     }
 };
@@ -61,13 +61,13 @@ struct ResultTest : testing::Test {
         const bool optimizeOption = false;
         auto& registry{OperationRegistry::getInstance()};
         auto paramNode = std::make_shared<ParameterStubNode>();
-        paramNode->set_friendly_name(ParameterStubNode::type_info.name);
+        paramNode->set_friendly_name(ParameterStubNode::get_type_info_static().name);
         auto resultNode = std::make_shared<ResultStubNode>();
         auto outputParameterNode = std::make_shared<ov::Output<ParameterStubNode>>(paramNode);
         resultNode->set_argument(0, *outputParameterNode);
         auto inputIDs = std::vector<TensorID>{TensorID{0}};
         auto outputIDs = std::vector<TensorID>{};
-        resultNode->set_friendly_name(ResultStubNode::type_info.name);
+        resultNode->set_friendly_name(ResultStubNode::get_type_info_static().name);
         ASSERT_TRUE(registry.hasOperation(resultNode));
         operation = registry.createOperation(CreationContext{device, optimizeOption}, resultNode, inputIDs, outputIDs);
         ASSERT_TRUE(operation);

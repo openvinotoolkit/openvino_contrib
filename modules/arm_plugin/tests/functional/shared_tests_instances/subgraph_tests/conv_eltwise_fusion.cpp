@@ -14,8 +14,8 @@ const std::vector<ngraph::element::Type> types{
     ngraph::element::f32,
     ngraph::element::f16
 };
-#define MUL(X) std::tuple<ngraph::NodeTypeInfo, int64_t>(ngraph::opset4::Multiply::type_info, X)
-#define ADD(X) std::tuple<ngraph::NodeTypeInfo, int64_t>(ngraph::opset4::Add::type_info, X)
+#define MUL(X) std::tuple<ngraph::NodeTypeInfo, int64_t>(ngraph::opset4::Multiply::get_type_info_static(), X)
+#define ADD(X) std::tuple<ngraph::NodeTypeInfo, int64_t>(ngraph::opset4::Add::get_type_info_static(), X)
 #define IN std::vector<std::tuple<ngraph::NodeTypeInfo, int64_t>>
 
     const std::vector<ngraph::Shape> const_shapes_2d{
@@ -27,7 +27,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::Convolution::type_info),
+                                    ::testing::Values(ngraph::opset4::Convolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
                                     ::testing::Values(ngraph::Shape{1, 3, 24, 24}),
                                     ::testing::Values(ngraph::Shape{20, 3, 3, 3}),
@@ -38,7 +38,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_4ops, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::Convolution::type_info),
+                                    ::testing::Values(ngraph::opset4::Convolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
                                     ::testing::Values(ngraph::Shape{1, 3, 24, 24}),
                                     ::testing::Values(ngraph::Shape{20, 3, 3, 3}),
@@ -49,7 +49,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_GroupConvolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
+                                    ::testing::Values(ngraph::opset4::GroupConvolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
                                     ::testing::Values(ngraph::Shape{1, 12, 24, 24}),
                                     ::testing::Values(ngraph::Shape{4, 5, 3, 5, 5}),
@@ -60,7 +60,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_DepthwiseConvolution_2D, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
+                                    ::testing::Values(ngraph::opset4::GroupConvolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(4), ADD(5)})),
                                     ::testing::Values(ngraph::Shape{1, 20, 24, 24}),
                                     ::testing::Values(ngraph::Shape{20, 1, 1, 3, 3}),
@@ -82,7 +82,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::Convolution::type_info),
+                                    ::testing::Values(ngraph::opset4::Convolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
                                     ::testing::Values(ngraph::Shape{1, 3, 1, 1}),
                                     ::testing::Values(ngraph::Shape{3, 3, 1, 1}),
@@ -98,7 +98,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_Convolution_2D_Negative_5ops, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::Convolution::type_info),
+                                    ::testing::Values(ngraph::opset4::Convolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({ADD(5)})),
                                     ::testing::Values(ngraph::Shape{1, 3, 1, 1}),
                                     ::testing::Values(ngraph::Shape{3, 3, 1, 1}),
@@ -109,7 +109,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_GroupConvolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
+                                    ::testing::Values(ngraph::opset4::GroupConvolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
                                     ::testing::Values(ngraph::Shape{1, 12, 3, 3}),
                                     ::testing::Values(ngraph::Shape{4, 5, 3, 1, 1}),
@@ -120,7 +120,7 @@ const std::vector<ngraph::element::Type> types{
 
     INSTANTIATE_TEST_CASE_P(smoke_Check_DepthwiseConvolution_2D_Negative, ConvEltwiseFusion,
                             ::testing::Combine(
-                                    ::testing::Values(ngraph::opset4::GroupConvolution::type_info),
+                                    ::testing::Values(ngraph::opset4::GroupConvolution::get_type_info_static()),
                                     ::testing::ValuesIn(IN({MUL(6), ADD(6)})),
                                     ::testing::Values(ngraph::Shape{1, 3, 3, 3}),
                                     ::testing::Values(ngraph::Shape{3, 1, 1, 1, 1}),
