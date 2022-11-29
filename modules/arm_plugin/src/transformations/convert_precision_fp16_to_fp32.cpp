@@ -45,6 +45,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::Negative, op);
     CHECK_TYPE(ArmPlugin::opset::Floor, op);
     CHECK_TYPE(ArmPlugin::opset::Exp, op);
+    CHECK_TYPE(ArmPlugin::opset::Divide, op);
     CHECK_TYPE(ArmPlugin::opset::MatMul, op);
     CHECK_TYPE(ArmPlugin::opset::ArmMatMulBias, op);
     CHECK_TYPE(ArmPlugin::opset::Pad, op);

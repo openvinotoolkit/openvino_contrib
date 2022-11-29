@@ -85,6 +85,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::SoftPlus>();
     Register<opset::Log>();
     Register<opset::Sin>();
+    Register<opset::Divide>();
     Register<opset::ShuffleChannels>();
     Register<opset::Power>();
     Register<opset::SquaredDifference>();
