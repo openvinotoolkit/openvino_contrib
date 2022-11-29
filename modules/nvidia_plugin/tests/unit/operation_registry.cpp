@@ -6,7 +6,7 @@
 
 #include <cuda_operation_registry.hpp>
 #include <memory>
-#include <ngraph/node.hpp>
+#include <openvino/op/op.hpp>
 #include <ops/parameter.hpp>
 #include <typeinfo>
 #include <vector>
@@ -25,7 +25,7 @@ public:
     bool optimizeOption = false;
 };
 
-class ParameterDummyNode : public ov::Node {
+class ParameterDummyNode : public ov::op::Op {
 public:
     OPENVINO_OP("Parameter");
 
@@ -34,7 +34,7 @@ public:
     }
 };
 
-class SuperOperationDummyNode : public ov::Node {
+class SuperOperationDummyNode : public ov::op::Op {
 public:
     OPENVINO_OP("SuperOperation");
 
