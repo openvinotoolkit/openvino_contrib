@@ -20,6 +20,7 @@ namespace ArmPlugin {
 struct NCHW {enum {N, C, H, W, DIMS};};
 struct WEIGHTS {enum {C_OUT, C_IN, K_H, K_W};};
 struct D2 {enum D2_e{H, W};};
+struct D3 {enum D3_e{H, W, D};};
 
 arm_compute::TensorShape ShapeCast(const ngraph::Shape& shape);
 arm_compute::DataType DataTypeCast(const ngraph::element::Type type);

@@ -6,6 +6,7 @@
 #include <src/cpu/kernels/CpuConvertQuantizedSignednessKernel.h>
 #include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEConvolutionLayer.h>
+#include <arm_compute/runtime/NEON/functions/NEConv3D.h>
 #include <arm_compute/runtime/NEON/functions/NEDepthwiseConvolutionLayer.h>
 #include "arm_converter/arm_converter.hpp"
 
@@ -33,6 +34,27 @@ static arm_compute::ActivationLayerInfo GetActivationInfo(const ngraph::Node& no
     } else {
         return {};
     }
+}
+
+template<typename Conv>
+static auto Conv3dParameters(const Conv& node) {
+    unsigned int pad_l    = node.get_pads_begin().at(D3::W);
+    unsigned int pad_r    = node.get_pads_end().at(D3::W);
+    unsigned int pad_t    = node.get_pads_begin().at(D3::H);
+    unsigned int pad_b    = node.get_pads_end().at(D3::H);
+    unsigned int pad_d    = node.get_pads_begin().at(D3::D);
+    unsigned int pad_c    = node.get_pads_end().at(D3::D);
+    unsigned int stride_x = node.get_strides().at(D3::W);
+    unsigned int stride_y = node.get_strides().at(D3::H);
+    unsigned int stride_z = node.get_strides().at(D3::D);
+
+    return arm_compute::Conv3dInfo(
+            {stride_x, stride_y, stride_z},
+            {pad_l, pad_r, pad_t, pad_b, pad_d, pad_c},
+            GetActivationInfo(node),
+            {node.get_dilations().at(D3::W), node.get_dilations().at(D3::H), node.get_dilations().at(D3::D)},
+            arm_compute::DimensionRoundingType::FLOOR,
+            false);
 }
 
 struct NEConvolutionLayerQI final: public arm_compute::IFunction {
@@ -206,28 +228,39 @@ protected:
     std::unique_ptr<arm_compute::NEConvolutionLayer> _conv;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolution& node) {
-    arm_compute::PadStrideInfo conv_info;
-    arm_compute::Size2D dilation;
-    std::tie(conv_info, dilation) = ConvParameters(node);
+    if (node.get_shape().size() < 5) {
+        arm_compute::PadStrideInfo conv_info;
+        arm_compute::Size2D dilation;
+        std::tie(conv_info, dilation) = ConvParameters(node);
 
-    auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-
-    if (node.get_input_size() == 3) {
-        return MakeConversion<NEConvolutionLayerQI>(
-            node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
-            conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), iInfo, wInfo, qInfo);
+        auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
+        const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
+                                                     &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
+        auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
+        const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
+                                                     &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
+        auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
+        const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
+                                                     &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
+        if (node.get_input_size() == 3) {
+            return MakeConversion<NEConvolutionLayerQI>(
+                    node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
+                    conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), iInfo, wInfo, qInfo);
+        } else {
+            return MakeConversion<NEConvolutionLayerQI>(
+                    node.input(Features), node.input(Weights), nullptr, node.output(0),
+                    conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), iInfo, wInfo, qInfo);
+        }
     } else {
-        return MakeConversion<NEConvolutionLayerQI>(
-            node.input(Features), node.input(Weights), nullptr, node.output(0),
-            conv_info, arm_compute::WeightsInfo{}, dilation, GetActivationInfo(node), iInfo, wInfo, qInfo);
+        arm_compute::Conv3dInfo conv3d_info = Conv3dParameters(node);
+        std::cout << node.input(1) << std::endl;
+        if (node.get_input_size() == 3) {
+            return MakeConversion<arm_compute::NEConv3D>(
+                    node.input(Features), node.input(Weights), node.input(Bias), node.output(0), conv3d_info);
+        } else {
+            return MakeConversion<arm_compute::NEConv3D>(
+                    node.input(Features), node.input(Weights), nullptr, node.output(0), conv3d_info);
+        }
     }
 }
 
