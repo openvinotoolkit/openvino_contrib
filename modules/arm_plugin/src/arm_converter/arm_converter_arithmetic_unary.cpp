@@ -16,15 +16,32 @@
 #include <ngraph/runtime/reference/tan.hpp>
 #include <ngraph/runtime/reference/tanh.hpp>
 #include "arm_converter/arm_converter.hpp"
+#include <opset/neon_mathfun.h>
 
 namespace ArmPlugin {
+
+template <typename T>
+void acos_neon_f32(const float* arg, float* out, size_t count) {
+    for (size_t i = 0; i < count; i+=4) {
+        float32x4_t elem = vld1q_f32(arg + i);
+        float32x4_t res = acos_ps(elem);
+        vst1q_f32(out + i, res);
+    }
+}
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::acos),
-        node.input(0), floatTypes);
+    if (node.input(0).get_element_type() == ngraph::element::f32) {
+        return CallSwitch(
+                AP_WRAP(make, acos_neon_f32),
+                node.input(0), floatTypes);
+    } else {
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::acos),
+                node.input(0), floatTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& node) {
@@ -36,13 +53,28 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& nod
         node.input(0), floatTypes);
 }
 
+template <typename T>
+void asin_neon_f32(const float* arg, float* out, size_t count) {
+    for (size_t i = 0; i < count; i+=4) {
+        float32x4_t elem = vld1q_f32(arg + i);
+        float32x4_t res = asin_ps(elem);
+        vst1q_f32(out + i, res);
+    }
+}
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::asin),
-        node.input(0), floatTypes);
+    if (node.input(0).get_element_type() == ngraph::element::f32) {
+        return CallSwitch(
+                AP_WRAP(make, asin_neon_f32),
+                node.input(0), floatTypes);
+    } else {
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::asin),
+                node.input(0), floatTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asinh& node) {
@@ -72,13 +104,27 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
         node.input(0), floatTypes);
 }
 
+template <typename T>
+void cos_neon_f32(const float* arg, float* out, size_t count) {
+    for (size_t i = 0; i < count; i+=4) {
+        float32x4_t elem = vld1q_f32(arg + i);
+        float32x4_t res = cos_ps(elem);
+        vst1q_f32(out + i, res);
+    }
+}
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::cos),
-        node.input(0), floatTypes);
+    if (node.input(0).get_element_type() == ngraph::element::f32) {
+        return CallSwitch(
+                AP_WRAP(make, cos_neon_f32),
+                node.input(0), floatTypes);
+    } else {
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::cos),
+                node.input(0), floatTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cosh& node) {
@@ -103,13 +149,28 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node
         node.input(0), floatTypes);
 }
 
+template <typename T>
+void tan_neon_f32(const float* arg, float* out, size_t count) {
+    for (size_t i = 0; i < count; i+=4) {
+        float32x4_t elem = vld1q_f32(arg + i);
+        float32x4_t res = tan_ps(elem);
+        vst1q_f32(out + i, res);
+    }
+}
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
     };
-    return CallSwitch(
-        AP_WRAP(make, ngraph::runtime::reference::tan),
-        node.input(0), floatTypes);
+    if (node.input(0).get_element_type() == ngraph::element::f32) {
+        return CallSwitch(
+                AP_WRAP(make, tan_neon_f32),
+                node.input(0), floatTypes);
+    } else {
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::tan),
+                node.input(0), floatTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Erf& node) {
