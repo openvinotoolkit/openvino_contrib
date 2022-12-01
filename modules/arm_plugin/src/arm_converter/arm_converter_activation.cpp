@@ -68,7 +68,17 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Exp& node)
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Floor& node) {
-    return MakeConversion<arm_compute::NEFloor>(node.input(0), node.output(0));
+    if (node.input(0).get_element_type() == ngraph::element::f32 ||
+        node.input(0).get_element_type() == ngraph::element::f16) {
+        return MakeConversion<arm_compute::NEFloor>(node.input(0), node.output(0));
+    } else {
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::floor),
+            node.input(0), allTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSwish& node) {
