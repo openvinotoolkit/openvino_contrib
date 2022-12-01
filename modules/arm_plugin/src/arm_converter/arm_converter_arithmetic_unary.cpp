@@ -19,14 +19,23 @@
 #include <opset/neon_mathfun.h>
 
 namespace ArmPlugin {
+void func_neon_f32(const float* arg, float* out, size_t count,
+                   std::function<float32x4_t(float32x4_t)> neon_func,
+                   std::function<float(float)> ref_func) {
+    const size_t count_div = count - count % 4;
+    for (size_t i = 0; i < count_div; i+=4) {
+        float32x4_t elem = vld1q_f32(arg + i);
+        float32x4_t res = neon_func(elem);
+        vst1q_f32(out + i, res);
+    }
+    for (size_t i = count_div; i < count; ++i) {
+        out[i] = ref_func(arg[i]);
+    }
+}
 
 template <typename T>
 void acos_neon_f32(const float* arg, float* out, size_t count) {
-    for (size_t i = 0; i < count; i+=4) {
-        float32x4_t elem = vld1q_f32(arg + i);
-        float32x4_t res = acos_ps(elem);
-        vst1q_f32(out + i, res);
-    }
+    func_neon_f32(arg, out, count, acos_ps, std::acosf);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node) {
@@ -55,11 +64,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& nod
 
 template <typename T>
 void asin_neon_f32(const float* arg, float* out, size_t count) {
-    for (size_t i = 0; i < count; i+=4) {
-        float32x4_t elem = vld1q_f32(arg + i);
-        float32x4_t res = asin_ps(elem);
-        vst1q_f32(out + i, res);
-    }
+    func_neon_f32(arg, out, count, asin_ps, std::asinf);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node) {
@@ -106,11 +111,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
 
 template <typename T>
 void cos_neon_f32(const float* arg, float* out, size_t count) {
-    for (size_t i = 0; i < count; i+=4) {
-        float32x4_t elem = vld1q_f32(arg + i);
-        float32x4_t res = cos_ps(elem);
-        vst1q_f32(out + i, res);
-    }
+    func_neon_f32(arg, out, count, cos_ps, std::cosf);
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node) {
     auto make = [&] (auto refFunction) {
@@ -151,11 +152,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node
 
 template <typename T>
 void tan_neon_f32(const float* arg, float* out, size_t count) {
-    for (size_t i = 0; i < count; i+=4) {
-        float32x4_t elem = vld1q_f32(arg + i);
-        float32x4_t res = tan_ps(elem);
-        vst1q_f32(out + i, res);
-    }
+    func_neon_f32(arg, out, count, tan_ps, std::tanf);
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node) {
