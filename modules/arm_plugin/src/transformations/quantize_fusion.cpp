@@ -66,7 +66,7 @@ std::shared_ptr<ngraph::Node> makeTypeRelaxed(const ngraph::Node* node,
                                               const Types& outputTypes) {
 #define CASE(TYPE)                                                                  \
     if (ngraph::is_type<TYPE>(node)) {                                              \
-        return std::make_shared<ngraph::op::TypeRelaxed<TYPE>>(                     \
+        return std::make_shared<ov::op::TypeRelaxed<TYPE>>(                     \
             *std::static_pointer_cast<TYPE>(node->copy_with_new_inputs(newInputs)), \
             inputTypes,                                                             \
             outputTypes);                                                           \
@@ -106,7 +106,7 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
             if ((input_type.is_real() || input_type.is_quantized()) && output_type.is_quantized()) {
                 auto qInfo = makeQuantizationInfo(input_low, input_high, output_low, output_high);
 
-                std::shared_ptr<ngraph::op::TypeRelaxed<opset::ArmQuantize>> armQuantize;
+                std::shared_ptr<ov::op::TypeRelaxed<opset::ArmQuantize>> armQuantize;
                 if (qInfo.first.size() > 1) {
                     auto fInput = input;
                     if (input_type.is_quantized()) {
@@ -128,11 +128,11 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
                     quantAdd->set_friendly_name(fakeQuantize->get_friendly_name() + "_arm_quantize_shift");
                     ngraph::copy_runtime_info(fakeQuantize, quantAdd);
 
-                    armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, quantAdd);
+                    armQuantize = std::make_shared<ov::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, quantAdd);
                     ngraph::copy_runtime_info(fakeQuantize, armQuantize);
                     armQuantize->get_rt_info()["QuantizationInfo"] = arm_compute::QuantizationInfo{1, 0};
                 } else {
-                    armQuantize = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, input);
+                    armQuantize = std::make_shared<ov::op::TypeRelaxed<opset::ArmQuantize>>(Types{input_type}, Types{output_type}, input);
                     ngraph::copy_runtime_info(fakeQuantize, armQuantize);
                     armQuantize->get_rt_info()["QuantizationInfo"] =
                         arm_compute::QuantizationInfo{1.f/qInfo.first[0], static_cast<std::int32_t>(std::round(qInfo.second[0]))};
@@ -209,7 +209,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
             for (auto&& input : node->inputs()) {
                 inputTypes.emplace_back(realType);
                 newInputs.emplace_back(
-                    ngraph::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
+                    ov::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
             }
 
             std::shared_ptr<ngraph::Node> bias;
@@ -243,7 +243,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                 }
                 weightMultiply->set_friendly_name(node->input_value(1).get_node_shared_ptr()->get_friendly_name() + "_weights_negate");
                 ngraph::copy_runtime_info(node->input_value(1).get_node_shared_ptr(), weightMultiply);
-                newInputs[1] = ngraph::op::TemporaryReplaceOutputType{weightMultiply->output(0), ngraph::element::i8}.get();
+                newInputs[1] = ov::op::TemporaryReplaceOutputType{weightMultiply->output(0), ngraph::element::i8}.get();
 
                 if (bias) {
                     bias = std::make_shared<opset::Multiply>(bias,
@@ -251,7 +251,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                                                                                                ngraph::Shape{negate.size()}, negate));
                     bias->set_friendly_name(node->input_value(2).get_node_shared_ptr()->get_friendly_name() + "_bias_negate");
                     ngraph::copy_runtime_info(node->input_value(2).get_node_shared_ptr(), bias);
-                    newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
+                    newInputs[2] = ov::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
                 }
             }
 
@@ -267,10 +267,10 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
                     bias = std::make_shared<opset::Add>(bias, zpbias);
                     bias->set_friendly_name(node->input_value(2).get_node_shared_ptr()->get_friendly_name() + "_bias_fusedzp");
                     ngraph::copy_runtime_info(node->input_value(2).get_node_shared_ptr(), bias);
-                    newInputs[2] = ngraph::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
+                    newInputs[2] = ov::op::TemporaryReplaceOutputType{bias->output(0), realType}.get();
                 } else {
                     inputTypes.emplace_back(realType);
-                    newInputs.emplace_back(ngraph::op::TemporaryReplaceOutputType{zpbias->output(0), realType}.get());
+                    newInputs.emplace_back(ov::op::TemporaryReplaceOutputType{zpbias->output(0), realType}.get());
                 }
             } else {
                 qiOffset = static_cast<std::int32_t>(std::round(quantizationInfo.second[0]));
@@ -354,7 +354,7 @@ ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
             for (auto&& input : node->inputs()) {
                 inputTypes.emplace_back(realType);
                 newInputs.emplace_back(
-                    ngraph::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
+                    ov::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
             }
             auto newNode = makeTypeRelaxed(node.get(), newInputs, inputTypes, Types{quantizedType});
             newNode->set_friendly_name(node->get_friendly_name() + '_' + fakeQuantize->get_friendly_name());
@@ -481,9 +481,9 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
                 for (auto&& input : node->inputs()) {
                     inputTypes.emplace_back(realType);
                     newInputs.emplace_back(
-                        ngraph::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
+                        ov::op::TemporaryReplaceOutputType{input.get_source_output(), realType}.get());
                 }
-                newInputs[0] = ngraph::op::TemporaryReplaceOutputType{input->input_value(0), realType}.get();
+                newInputs[0] = ov::op::TemporaryReplaceOutputType{input->input_value(0), realType}.get();
                 newNode = makeTypeRelaxed(node.get(), newInputs, inputTypes, Types{node->get_output_element_type(0)});
                 newNode->set_friendly_name(node->get_friendly_name());
                 nodesToCopyRTI.emplace_back(node);
@@ -491,7 +491,7 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
                 newNode->get_rt_info()["InputPrescaleInfo"] = arm_compute::QuantizationInfo(scale, offset);
                 nodeToReplace = node;
             } else {
-                newNode = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(Types{quantizedType}, Types{realType},
+                newNode = std::make_shared<ov::op::TypeRelaxed<opset::ArmDequantize>>(Types{quantizedType}, Types{realType},
                                                                                           input->input_value(0));
                 newNode->set_friendly_name(output->get_friendly_name() + "_arm_dequantize");
                 ngraph::copy_runtime_info(nodesToCopyRTI, newNode);
@@ -536,7 +536,7 @@ ArmPlugin::pass::AddDequantizeOnInputs::AddDequantizeOnInputs() {
                             ngraph::op::is_constant(input.get_source_output().get_node())) {
                             newInputOp = std::make_shared<opset::Convert>(input.get_source_output(), outputType);
                         } else {
-                            newInputOp = std::make_shared<ngraph::op::TypeRelaxed<opset::ArmDequantize>>(Types{inputType}, Types{outputType},
+                            newInputOp = std::make_shared<ov::op::TypeRelaxed<opset::ArmDequantize>>(Types{inputType}, Types{outputType},
                                                                                                          input.get_source_output());
                             newInputOp->set_friendly_name(node->get_friendly_name() + "_on_input_" + std::to_string(input.get_index()) + "_arm_dequantize");
                             newInputOp->get_rt_info()["QuantizationInfo"] = arm_compute::QuantizationInfo{1, 0};
