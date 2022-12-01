@@ -155,7 +155,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         // This pass must be called first in pipeline
         manager.register_pass<ov::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
-        manager.register_pass<ngraph::pass::CommonOptimizations>();
+        manager.register_pass<ov::pass::CommonOptimizations>();
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -191,7 +191,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertMVN1ToMVN6>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertQuantizeDequantize>();
         #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-            manager.register_pass<ngraph::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
+            manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
         #endif
 
         auto pass_config = manager.get_pass_config();
