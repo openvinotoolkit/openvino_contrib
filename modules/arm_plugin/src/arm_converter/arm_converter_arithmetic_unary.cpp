@@ -17,6 +17,7 @@
 #include <ngraph/runtime/reference/tanh.hpp>
 #include "arm_converter/arm_converter.hpp"
 #include <opset/neon_mathfun.h>
+#include <cmath>
 
 namespace ArmPlugin {
 void func_neon_f32(const float* arg, float* out, size_t count,
