@@ -26,10 +26,20 @@ ArmPlugin::pass::BroadcastPRelu::BroadcastPRelu() {
 
         auto input = prelu->input_value(0);
         auto slope = prelu->input_value(1);
-        std::vector<int64_t> broadcasted_shape(input_shape.size(), 1);
-        broadcasted_shape[1] = slope.get_shape()[0]; // ChannelPRelu
+        auto slope_shape = prelu->get_input_shape(1);
+        uint64_t constant_shape;
 
-        auto shape   = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{input_shape.size()}, broadcasted_shape);
+        std::vector<int64_t> broadcasted_shape;
+        if (slope_shape.size() == 1 && input_shape[1] == slope.get_shape()[0]) {
+            broadcasted_shape.assign(input_shape.size(), 1);
+            broadcasted_shape[1] = slope.get_shape()[0]; // ChannelPRelu
+            constant_shape = input_shape.size();
+        } else {
+            std::copy(slope.get_shape().begin(), slope.get_shape().end(), std::back_inserter(broadcasted_shape));
+            constant_shape = slope_shape.size();       
+        }
+
+        auto shape   = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{constant_shape}, broadcasted_shape);
         auto reshape = std::make_shared<opset::Reshape>(slope, shape, true);
 
         prelu->set_argument(1, reshape);
