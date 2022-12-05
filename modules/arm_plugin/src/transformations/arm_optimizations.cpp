@@ -344,7 +344,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ngraph::pass::ConvertPrecision>(precisions, type_to_fuse);
+        manager.register_pass<ov::pass::ConvertPrecision>(precisions, type_to_fuse);
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::AlignNodePrecision>();
         manager.register_pass<pass::ConvertPrecisionFP16ToFP32>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
