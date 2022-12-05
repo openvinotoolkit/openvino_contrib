@@ -57,7 +57,11 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
 
         for (size_t i = 0; i < splits.size(); i++) {
             begin_vec[axis] = end_vec[axis];
-            end_vec[axis]  += splits[i];
+            if (splits[i] == -1) {
+                end_vec[axis] += input_shape[axis] - std::accumulate(splits.begin(), splits.end(), 1);
+            } else {
+                end_vec[axis] += splits[i];
+            }
 
             auto begin  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, begin_vec);
             auto end    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, end_vec);
