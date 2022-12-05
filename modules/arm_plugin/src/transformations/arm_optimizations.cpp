@@ -34,6 +34,12 @@
 #include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
 #include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/op_conversions/gelu7_downgrade.hpp"
+#include "transformations/op_conversions/convert_minimum_to_power_and_max.hpp"
+#include "transformations/op_conversions/convert_divide.hpp"
+#include "transformations/op_conversions/convert_depth_to_space.hpp"
+#include "transformations/op_conversions/convert_space_to_depth.hpp"
+#include "transformations/op_conversions/convert_convertlike.hpp"
+#include "transformations/op_conversions/batch_norm_decomposition.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -161,8 +167,16 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.get_pass_config()->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
         manager.get_pass_config()->disable<ov::pass::HSwishDecomposition>();
         manager.get_pass_config()->disable<ov::pass::LogSoftmaxDecomposition>();
+#ifdef __aarch64__
         manager.get_pass_config()->disable<ov::pass::ConvertGELU>();
+#endif /* __aarch64__ */
         manager.get_pass_config()->disable<ov::pass::ConvertBroadcastToTiles>();
+        manager.get_pass_config()->disable<ov::pass::ConvertMinimum>();
+        manager.get_pass_config()->disable<ov::pass::ConvertSubtract>();
+        manager.get_pass_config()->disable<ov::pass::ConvertDivide>();
+        manager.get_pass_config()->disable<ov::pass::ConvertDepthToSpace>();
+        manager.get_pass_config()->disable<ov::pass::ConvertSpaceToDepth>();
+        manager.get_pass_config()->disable<ov::pass::BatchNormDecomposition>();
 
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RemoveFilteringBoxesBySize>();
@@ -264,7 +278,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceMeanToPooling>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceMaxToPooling>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceSumToPooling>();
-
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeMish>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastPRelu>();
