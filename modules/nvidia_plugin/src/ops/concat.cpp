@@ -29,7 +29,10 @@ ConcatOp::ConcatOp(const CreationContext& context,
     Expects(num_inputs_ == GetInputIds().size());
     Expects(GetOutputIds().size() == 1);
     const auto& outputShape = concatOp.get_output_shape(0);
-    const int64_t axis = concatOp.get_axis();
+    int64_t axis = concatOp.get_axis();
+    if (axis < 0) {
+        axis += static_cast<int64_t>(concatOp.get_input_partial_shape(0).rank().get_length());
+    }
     Expects(axis >= 0 && axis < outputShape.size());
     auto num_chunks =
         std::accumulate(outputShape.begin(), outputShape.begin() + axis + 1, 1, std::multiplies<size_t>());
