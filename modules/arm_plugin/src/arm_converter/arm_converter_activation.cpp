@@ -6,6 +6,9 @@
 #include <arm_compute/runtime/NEON/functions/NEElementwiseUnaryLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEFloor.h>
 #include <arm_compute/runtime/NEON/functions/NEPReluLayer.h>
+#include <ngraph/runtime/reference/abs.hpp>
+#include <ngraph/runtime/reference/clamp.hpp>
+#include <ngraph/runtime/reference/floor.hpp>
 #include <ngraph/runtime/reference/hsigmoid.hpp>
 #include <ngraph/runtime/reference/hard_sigmoid.hpp>
 #include <ngraph/runtime/reference/selu.hpp>
@@ -40,13 +43,34 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::PRelu& nod
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Abs& node) {
-    arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::ABS);
-    return ConvertActivation(node, info, this);
+    if (node.input(0).get_element_type() == ngraph::element::f32 ||
+        node.input(0).get_element_type() == ngraph::element::f16) {
+        arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::ABS);
+        return ConvertActivation(node, info, this);
+    } else {
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::abs),
+            node.input(0), intTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Clamp& node) {
-    arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::LU_BOUNDED_RELU, node.get_max(), node.get_min());
-    return ConvertActivation(node, info, this);
+    if (node.input(0).get_element_type() == ngraph::element::f32 ||
+        node.input(0).get_element_type() == ngraph::element::f16) {
+        arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::LU_BOUNDED_RELU, node.get_max(), node.get_min());
+        return ConvertActivation(node, info, this);
+    } else {
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction, node.input(0), node.output(0),
+                static_cast<std::int32_t>(node.get_min()), static_cast<std::int32_t>(node.get_max()), ngraph::shape_size(node.get_input_shape(0)));
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::clamp),
+            node.input(0), std::tuple<std::int32_t>{});
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sqrt& node) {
@@ -68,7 +92,17 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Exp& node)
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Floor& node) {
-    return MakeConversion<arm_compute::NEFloor>(node.input(0), node.output(0));
+    if (node.input(0).get_element_type() == ngraph::element::f32 ||
+        node.input(0).get_element_type() == ngraph::element::f16) {
+        return MakeConversion<arm_compute::NEFloor>(node.input(0), node.output(0));
+    } else {
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
+        };
+        return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::floor),
+            node.input(0), allTypes);
+    }
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::HSwish& node) {
@@ -88,7 +122,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Swish& node) {
     float beta = 1.0;
-    if (ov::get_constant_from_source(node.input_value(1)) != nullptr) {
+    if (node.get_input_size() > 1 && ov::get_constant_from_source(node.input_value(1)) != nullptr) {
         beta = ov::get_constant_from_source(node.input_value(1))->cast_vector<float>()[0];
     }
     arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::SWISH, beta);
