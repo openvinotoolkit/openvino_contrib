@@ -122,7 +122,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Swish& node) {
     float beta = 1.0;
-    if (node.get_input_size() > 1) {
+    if (node.get_input_size() > 1 && ov::get_constant_from_source(node.input_value(1)) != nullptr) {
         beta = ov::get_constant_from_source(node.input_value(1))->cast_vector<float>()[0];
     }
     arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::SWISH, beta);
