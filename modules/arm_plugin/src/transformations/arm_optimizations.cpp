@@ -8,7 +8,6 @@
 #include "transformations/init_node_info.hpp"
 #include "transformations/decompose_variadic_split.hpp"
 #include "transformations/common_optimizations/softplus_fusion.hpp"
-#include "transformations/op_conversions/convert_mod.hpp"
 #include "transformations/op_conversions/convert_negative.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_broadcast3.hpp"
@@ -19,8 +18,6 @@
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
 #include "transformations/common_optimizations/lin_op_sequence_fusion.hpp"
-#include "transformations/op_conversions/reduce_l1_decomposition.hpp"
-#include "transformations/op_conversions/reduce_l2_decomposition.hpp"
 #include "transformations/op_conversions/log_softmax_decomposition.hpp"
 #include "transformations/common_optimizations/remove_filtering_boxes_by_size.hpp"
 #include "transformations/common_optimizations/hswish_fusion.hpp"
@@ -34,6 +31,9 @@
 #include "transformations/op_conversions/convert_maxpool_downgrade.hpp"
 #include "transformations/op_conversions/convert_previous_nms_to_nms_9.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
+#include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
+#include "transformations/op_conversions/hswish_decomposition.hpp"
+#include "transformations/op_conversions/gelu7_downgrade.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -155,7 +155,15 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         // This pass must be called first in pipeline
         manager.register_pass<ov::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
+
+        // Run common optimizations
         manager.register_pass<ov::pass::CommonOptimizations>();
+        manager.get_pass_config()->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+        manager.get_pass_config()->disable<ov::pass::HSwishDecomposition>();
+        manager.get_pass_config()->disable<ov::pass::LogSoftmaxDecomposition>();
+        manager.get_pass_config()->disable<ov::pass::ConvertGELU>();
+        manager.get_pass_config()->disable<ov::pass::ConvertBroadcastToTiles>();
+
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -171,7 +179,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RNNCellDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::LSTMCellDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::GRUCellDecomposition>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertGELU>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertConv1D>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGroupConv1D>();
@@ -249,18 +256,15 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
     {
         Dump(m, "before_arm_specific_transformations");
         ov::pass::Manager manager;
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::LogSoftmaxDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGRN>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::NormalizeL2Fusion>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeNormalizeL2Add>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertNormalizeL2ToArm>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertReduceMultiAxis>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ReduceL1Decomposition>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ReduceL2Decomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceMeanToPooling>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceMaxToPooling>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceSumToPooling>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertMod>();
+
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeMish>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastPRelu>();
