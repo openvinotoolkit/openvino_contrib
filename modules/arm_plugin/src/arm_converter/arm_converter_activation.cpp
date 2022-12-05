@@ -120,6 +120,11 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Gelu& node
     return ConvertActivation(node, info, this);
 }
 
+template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v0::Gelu& node) {
+    arm_compute::ActivationLayerInfo info(arm_compute::ActivationLayerInfo::ActivationFunction::GELU);
+    return ConvertActivation(node, info, this);
+}
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Swish& node) {
     float beta = 1.0;
     if (node.get_input_size() > 1 && ov::get_constant_from_source(node.input_value(1)) != nullptr) {
