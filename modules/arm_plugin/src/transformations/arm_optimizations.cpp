@@ -140,6 +140,29 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ov::Model>& m
     }
 }
 
+static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
+    if (auto convert = ov::as_type_ptr<ArmPlugin::opset::Convert>(node)) {
+        // For Convert node, converting precision from floating point to boolean will lead to mathematical
+        // error, because here the output precision boolean is replaced by u8. E.g. floating point value 0.01
+        // is converted to be 1 for boolean, but 0 for u8. Thus an Abs and Ceil node should be added before the
+        // Convert node for this scenario.
+        if (convert->input(0).get_element_type().is_real() &&
+            convert->get_convert_element_type() == ngraph::element::boolean && to.is_integral_number()) {
+            auto abs = std::make_shared<ArmPlugin::opset::Abs>(convert->input_value(0).get_node_shared_ptr());
+            auto ceil = std::make_shared<ArmPlugin::opset::Ceiling>(abs);
+            auto new_convert = std::make_shared<ArmPlugin::opset::Convert>(ceil, to);
+            new_convert->set_friendly_name(convert->get_friendly_name());
+            ov::copy_runtime_info(convert, {abs, ceil, new_convert});
+            ov::replace_node(convert, new_convert);
+            return true;
+        } else {
+            convert->set_convert_element_type(to);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::Model> &m) {
     auto quantized = _lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(m);
     {
@@ -190,9 +213,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertInterpolate1ToInterpolate4>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertMVN1ToMVN6>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertQuantizeDequantize>();
-        #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-            manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::f16, ngraph::element::f32);
-        #endif
 
         auto pass_config = manager.get_pass_config();
 
@@ -245,6 +265,23 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         pass_config->disable<ngraph::pass::low_precision::FuseMultiplyToFakeQuantizeTransformation>();
         lptManager.run_passes(m);
     }
+
+    auto get_convert_precisions = []() {
+        precisions_array array = {
+            {ngraph::element::i64,     ngraph::element::i32},
+            {ngraph::element::u64,     ngraph::element::i32},
+            {ngraph::element::f64,     ngraph::element::f32},
+            {ngraph::element::boolean, ngraph::element::u8},
+            {ngraph::element::i4,      ngraph::element::i8},
+            {ngraph::element::u4,      ngraph::element::u8}
+        };
+        #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
+            array.push_back({ngraph::element::f16, ngraph::element::f32});
+        #endif
+        return array;
+    };
+    static const auto precisions = get_convert_precisions();
+    type_to_fuse_map type_to_fuse = {{ArmPlugin::opset::Convert::get_type_info_static(), fuse_type_to_convert}};
 
     {
         Dump(m, "before_arm_specific_transformations");
@@ -307,9 +344,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::boolean, ngraph::element::u8);
-        manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::i64, ngraph::element::i32);
-        manager.register_pass<ov::pass::ConvertPrecision>(ngraph::element::u64, ngraph::element::i32);
+        manager.register_pass<ngraph::pass::ConvertPrecision>(precisions, type_to_fuse);
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::AlignNodePrecision>();
         manager.register_pass<pass::ConvertPrecisionFP16ToFP32>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
