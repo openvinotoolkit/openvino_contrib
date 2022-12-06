@@ -7,6 +7,7 @@
 #include "transformations/init_node_info.hpp"
 #include "transformations/decompose_variadic_split.hpp"
 #include "transformations/common_optimizations/softplus_fusion.hpp"
+#include "transformations/common_optimizations/reshape_prelu.hpp"
 #include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_broadcast3.hpp"
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
@@ -59,7 +60,6 @@
 #include "convert_shuffle_channels.hpp"
 #include "convert_tile_to_concats.hpp"
 #include "convert_transpose_arm.hpp"
-#include "convert_prelu.hpp"
 #include "convert_gather_arm.hpp"
 #include "convert_mvn_arm.hpp"
 #include "convert_reduce_multi_axis.hpp"
@@ -180,6 +180,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
 
         // Run common optimizations
         manager.register_pass<ov::pass::CommonOptimizations>();
+        manager.register_pass<ov::pass::ReshapePRelu>();
         manager.get_pass_config()->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
         manager.get_pass_config()->disable<ov::pass::HSwishDecomposition>();
         manager.get_pass_config()->disable<ov::pass::LogSoftmaxDecomposition>();
@@ -273,7 +274,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertReduceSumToPooling>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeMish>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastPRelu>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLogical>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertComparison>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertTranspose>();
