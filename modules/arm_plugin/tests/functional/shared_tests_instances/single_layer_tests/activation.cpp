@@ -64,7 +64,7 @@ std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> basic = {
 std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> preluBasic = {
         {{1, 50}, {{1}, {50}}},
         {{1, 128}, {{1}, {128}}},
-        
+
         // Broadcast check
         {{3, 2}, {{1}, {2}, {3, 2}}},
         {{3, 2, 5}, {{1}, {2}, {5}, {2, 5}, {3, 1, 5}, {1, 2, 1}, {1, 1, 5}, {3, 1, 1}, {3, 2, 5}}},
