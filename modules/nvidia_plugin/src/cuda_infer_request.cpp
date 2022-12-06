@@ -331,7 +331,7 @@ void CudaInferRequest::Cancel() {
 }
 
 InferenceEngine::Blob::Ptr CudaInferRequest::GetBlob(const std::string& name) {
-    OV_ITT_SCOPED_TASK(itt::domains::TemplatePlugin, "GetBlob");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "GetBlob");
     InputInfo::Ptr foundInput;
     DataPtr foundOutput;
     Blob::Ptr data;
@@ -414,7 +414,7 @@ InferenceEngine::Blob::Ptr CudaInferRequest::GetBlob(const std::string& name) {
 }
 
 void CudaInferRequest::SetBlob(const std::string& name, const InferenceEngine::Blob::Ptr& userBlob) {
-    OV_ITT_SCOPED_TASK(itt::domains::TemplatePlugin, "SetBlob");
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "SetBlob");
     if (name.empty()) {
         IE_THROW(NotFound) << "Failed to set blob with empty name";
     }

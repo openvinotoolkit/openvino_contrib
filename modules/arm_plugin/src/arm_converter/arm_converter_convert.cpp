@@ -131,6 +131,8 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
                     return make(ngraph::runtime::reference::convert<float, std::uint16_t>);
                 case ngraph::element::Type_t::u32 :
                     return make(ngraph::runtime::reference::convert<float, std::uint16_t>);
+                case ngraph::element::Type_t::i8 :
+                    return make(ngraph::runtime::reference::convert<float, std::int8_t>);
                 case ngraph::element::Type_t::i16 :
                     return make(ngraph::runtime::reference::convert<float, std::int16_t>);
             default:
