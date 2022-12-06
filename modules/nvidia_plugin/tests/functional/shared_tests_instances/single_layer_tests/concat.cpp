@@ -13,7 +13,7 @@ using namespace LayerTestsDefinitions;
 
 namespace {
 
-std::vector<int> axes = {0, 1, 2, 3};
+std::vector<int> axes = {-3, -2, -1, 0, 1, 2, 3};
 std::vector<std::vector<std::vector<size_t>>> inShapes = {
     {{10, 10, 10, 10}},
     {{10, 10, 10, 10}, {10, 10, 10, 10}},

@@ -30,7 +30,7 @@ const std::vector<std::vector<size_t>> smoke_numSplits = {
 INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck,
                         VariadicSplitLayerTest,
                         ::testing::Combine(::testing::ValuesIn(smoke_numSplits),
-                                           ::testing::Values(0, 1, 2, 3),
+                                           ::testing::Values(-3, -2, -1, 0, 1, 2, 3),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
