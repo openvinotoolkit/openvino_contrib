@@ -64,9 +64,11 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Clamp>();
     Register<opset::Sqrt>();
     Register<opset::Elu>();
+    Register<ngraph::op::v0::Gelu>();
     Register<opset::Gelu>();
     Register<opset::ArmTranspose>();
     Register<opset::Softmax>();
+    Register<opset::LogSoftmax>();
     Register<opset::ArmSplit>();
     Register<opset::LRN>();
     Register<opset::Minimum>();
