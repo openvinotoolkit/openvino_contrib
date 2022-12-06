@@ -6,6 +6,7 @@
 #include <src/cpu/kernels/CpuConvertQuantizedSignednessKernel.h>
 #include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h>
+#include <arm_compute/runtime/NEON/functions/NEGEMM.h>
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
@@ -189,7 +190,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& no
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                                &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), nullptr, node.output(0), iInfo, wInfo, qInfo);
+    return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), nullptr, node.output(0), 1.f, 1.f);
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulBias& node) {
     if (node.get_transpose_a()) {
@@ -204,6 +205,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulB
     auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
     const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
                                                &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<NEFullyConnectedLayerQI>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0), iInfo, wInfo, qInfo);
+    return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0), 1.f, 1.f);
 }
 }  //  namespace ArmPlugin
