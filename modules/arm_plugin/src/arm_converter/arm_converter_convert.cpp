@@ -130,11 +130,28 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
                 case ngraph::element::Type_t::u16 :
                     return make(ngraph::runtime::reference::convert<float, std::uint16_t>);
                 case ngraph::element::Type_t::u32 :
-                    return make(ngraph::runtime::reference::convert<float, std::uint16_t>);
+                    return make(ngraph::runtime::reference::convert<float, std::uint32_t>);
                 case ngraph::element::Type_t::i8 :
                     return make(ngraph::runtime::reference::convert<float, std::int8_t>);
                 case ngraph::element::Type_t::i16 :
                     return make(ngraph::runtime::reference::convert<float, std::int16_t>);
+            default:
+                IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
+            }
+        case ngraph::element::Type_t::f64 :
+            switch (dst) {
+                case ngraph::element::Type_t::u16 :
+                    return make(ngraph::runtime::reference::convert<double, std::uint16_t>);
+                case ngraph::element::Type_t::u32 :
+                    return make(ngraph::runtime::reference::convert<double, std::uint32_t>);
+                case ngraph::element::Type_t::i8 :
+                    return make(ngraph::runtime::reference::convert<double, std::int8_t>);
+                case ngraph::element::Type_t::i16 :
+                    return make(ngraph::runtime::reference::convert<double, std::int16_t>);
+                case ngraph::element::Type_t::f16 :
+                    return make(ngraph::runtime::reference::convert<double, ngraph::float16>);
+                case ngraph::element::Type_t::f32 :
+                    return make(ngraph::runtime::reference::convert<double, float>);
             default:
                 IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
