@@ -29,8 +29,8 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertComparisionBase::convert_c
             }
             auto&& input = comparison->input_value(brId);
             auto targetShape = std::make_shared<opset::Constant>(ngraph::element::i64,
-                                                                 ngraph::Shape{shapes[1-brId].size()},
-                                                                 std::vector<int64_t>(shapes[1-brId].begin(), shapes[1-brId].end()));
+                                                                 ngraph::Shape{shapes[brId].size()},
+                                                                 std::vector<int64_t>(shapes[brId].begin(), shapes[brId].end()));
             auto broadcastedInp = std::make_shared<opset::Broadcast>(input, targetShape);
             ngraph::OutputVector inputs;
             if (brId == 0) {
