@@ -38,6 +38,8 @@ class BasicFusedConvolution : public TBaseConvolution {
 public:
     using BaseConvolution = TBaseConvolution;
 
+    virtual ~BasicFusedConvolution() = default;
+
     explicit BasicFusedConvolution(const ov::Output<ov::Node>& data_batch,
                                    const ov::Output<ov::Node>& filters,
                                    const ov::Output<ov::Node>& bias,
@@ -141,10 +143,13 @@ private:
 class FusedConvolution : public BasicFusedConvolution<ov::op::v1::Convolution> {
 public:
     using BasicFusedConvolution::BasicFusedConvolution;
+
+    ~FusedConvolution() override;
 };
 class FusedGroupConvolution : public BasicFusedConvolution<ov::op::v1::GroupConvolution> {
 public:
     using BasicFusedConvolution::BasicFusedConvolution;
+    ~FusedGroupConvolution() override;
 };
 
 }  // namespace ov::nvidia_gpu::nodes
