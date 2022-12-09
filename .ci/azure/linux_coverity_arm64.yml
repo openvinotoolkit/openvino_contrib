@@ -99,7 +99,7 @@ jobs:
   - script: |
       set -e
       sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
-      sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
+      sudo apt --assume-yes install scons crossbuild-essential-arm64
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
       # Speed up build
@@ -137,7 +137,10 @@ jobs:
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
         -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/lib/cmake/opencv4
         -DENABLE_FASTER_BUILD=ON
-        -DENABLE_INTEL_MYRIAD=OFF
+        -DENABLE_INTEL_MYRIAD_COMMON=OFF
+        -DENABLE_OV_TF_FRONTEND=OFF
+        -DENABLE_OV_ONNX_FRONTEND=OFF
+        -DENABLE_OV_PADDLE_FRONTEND=OFF
         -DENABLE_STRICT_DEPENDENCIES=OFF
         -DENABLE_REQUIREMENTS_INSTALL=OFF
         $(OPENVINO_REPO_DIR)
