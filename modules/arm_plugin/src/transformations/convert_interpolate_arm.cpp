@@ -106,19 +106,11 @@ ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
             return false;
         }
 
-        std::shared_ptr<opset::ArmInterpolate> arm_interp = nullptr;
-        if (interp->get_input_size() == 4) {
-            arm_interp = std::make_shared<opset::ArmInterpolate>(interp->input_value(0),
-                                                                 interp->input_value(1),
-                                                                 interp->input_value(2),
-                                                                 interp->input_value(3),
-                                                                 attrs);
-        } else {
-            arm_interp = std::make_shared<opset::ArmInterpolate>(interp->input_value(0),
-                                                                 interp->input_value(1),
-                                                                 interp->input_value(2),
-                                                                 attrs);
-        }
+        auto arm_interp = std::make_shared<opset::ArmInterpolate>(interp->input_value(0),
+                                                                  interp->input_value(1),
+                                                                  interp->input_value(2),
+                                                                  interp->input_value(3),
+                                                                  attrs);
         arm_interp->set_friendly_name(interp->get_friendly_name());
         ngraph::copy_runtime_info(interp, arm_interp);
         ngraph::replace_node(interp, arm_interp);
