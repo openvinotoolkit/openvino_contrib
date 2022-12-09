@@ -77,9 +77,7 @@ public:
         TBaseConvolution::constructor_validate_and_infer_types();
     }
 
-    inline static constexpr ov::Node::type_info_t type_info{conv_name<TBaseConvolution>, 0ul};
-
-    const ov::Node::type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP(conv_name<TBaseConvolution>, "nvidia_gpu", TBaseConvolution);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override {
         ov::check_new_args_count(this, new_args);

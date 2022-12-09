@@ -2,21 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "transformer/preprocessing/mean_image_or_value.hpp"
 
 #include <ngraph/opsets/opset3.hpp>
-#include <ngraph/pass/manager.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/manager.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 
-using namespace ngraph;
+ov::nvidia_gpu::pass::AddMeanSubtract::AddMeanSubtract(const MeanMap& inputInfoMap) {
+    MATCHER_SCOPE(AddMeanSubtract);
+    auto label = ov::pass::pattern::wrap_type<ngraph::opset3::Parameter>();
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::AddMeanSubtract, "AddMeanSubtract", 0);
-
-ngraph::pass::AddMeanSubtract::AddMeanSubtract(const MeanMap& inputInfoMap) {
-    // RUN_ON_FUNCTION_SCOPE(AddMeanSubtract);
-    auto label = ngraph::pattern::wrap_type<ngraph::opset3::Parameter>();
-
-    ngraph::matcher_pass_callback callback = [=](pattern::Matcher& m) {
+    matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
         auto param = std::dynamic_pointer_cast<ngraph::opset3::Parameter>(m.get_match_root());
         if (!param) {
             return false;
@@ -28,7 +25,7 @@ ngraph::pass::AddMeanSubtract::AddMeanSubtract(const MeanMap& inputInfoMap) {
         }
 
         auto mean_const = it->second;
-        NGRAPH_CHECK(mean_const->get_element_type() == ngraph::element::f32,
+        NGRAPH_CHECK(mean_const->get_element_type() == ov::element::f32,
                      "Mean for ",
                      param->get_friendly_name(),
                      " must have f32 type");
@@ -44,7 +41,7 @@ ngraph::pass::AddMeanSubtract::AddMeanSubtract(const MeanMap& inputInfoMap) {
     };
 
     // Register pattern with Parameter operation as a pattern root node
-    auto m = std::make_shared<ngraph::pattern::Matcher>(label, "AddMeanSubtract");
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(label, matcher_name);
     // Register Matcher
     register_matcher(m, callback);
 }

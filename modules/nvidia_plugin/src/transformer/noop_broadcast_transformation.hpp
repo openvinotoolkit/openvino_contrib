@@ -4,14 +4,14 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class NoopBroadcastTransformation : public ngraph::pass::MatcherPass {
+class NoopBroadcastTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("NoopBroadcastTransformation", "0");
     NoopBroadcastTransformation();
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass
