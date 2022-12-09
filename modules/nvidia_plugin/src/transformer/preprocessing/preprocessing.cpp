@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "transformer/preprocessing/preprocessing.hpp"
 
 #include <ngraph/opsets/opset3.hpp>
-#include <ngraph/pass/manager.hpp>
+#include "openvino/pass/manager.hpp"
 
 #include "transformer/preprocessing/mean_image_or_value.hpp"
 #include "transformer/preprocessing/std_scale.hpp"
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::AddPreprocessing, "AddPreprocessing", 0);
-
-ngraph::pass::AddPreprocessing::AddPreprocessing(const InferenceEngine::InputsDataMap& inputInfoMap)
+ov::nvidia_gpu::pass::AddPreprocessing::AddPreprocessing(const InferenceEngine::InputsDataMap& inputInfoMap)
     : m_inputInfoMap(inputInfoMap) {}
 
-bool ngraph::pass::AddPreprocessing::run_on_model(const std::shared_ptr<ngraph::Function>& f) {
-    ngraph::pass::AddMeanSubtract::MeanMap meanMap;
-    ngraph::pass::AddStdScale::ScaleMap scaleMap;
+bool ov::nvidia_gpu::pass::AddPreprocessing::run_on_model(const std::shared_ptr<ov::Model>& f) {
+    RUN_ON_MODEL_SCOPE(AddPreprocessing);
+    AddMeanSubtract::MeanMap meanMap;
+    AddStdScale::ScaleMap scaleMap;
 
     for (const auto& it : m_inputInfoMap) {
         bool has_scales = false, has_mean_values = false, has_mean_image = false;
@@ -61,13 +61,13 @@ bool ngraph::pass::AddPreprocessing::run_on_model(const std::shared_ptr<ngraph::
         if (has_scales) {
             ngraph::Shape shape(inputDims.size(), 1);
             shape[1] = stdScales.size();  // C
-            scaleMap[it.first] = ngraph::opset3::Constant::create(ngraph::element::f32, shape, stdScales);
+            scaleMap[it.first] = ngraph::opset3::Constant::create(ov::element::f32, shape, stdScales);
         }
 
         if (has_mean_values) {
             ngraph::Shape shape(inputDims.size(), 1);
             shape[1] = meanValues.size();  // C
-            meanMap[it.first] = ngraph::opset3::Constant::create(ngraph::element::f32, shape, meanValues);
+            meanMap[it.first] = ngraph::opset3::Constant::create(ov::element::f32, shape, meanValues);
         } else if (has_mean_image) {
             ngraph::Shape shape = {cn};
             auto dims = meanImage->getTensorDesc().getDims();
@@ -82,18 +82,18 @@ bool ngraph::pass::AddPreprocessing::run_on_model(const std::shared_ptr<ngraph::
                 i += meanImage->size();
             }
 
-            meanMap[it.first] = ngraph::opset3::Constant::create(ngraph::element::f32, shape, meanImageData);
+            meanMap[it.first] = ngraph::opset3::Constant::create(ov::element::f32, shape, meanImageData);
         }
     }
 
-    ngraph::pass::Manager manager(get_pass_config());
-    auto preproc = manager.register_pass<ngraph::pass::GraphRewrite>();
+    ov::pass::Manager manager(get_pass_config());
+    auto preproc = manager.register_pass<ov::pass::GraphRewrite>();
 
     if (!scaleMap.empty()) {
-        preproc->add_matcher<ngraph::pass::AddStdScale>(scaleMap);
+        preproc->add_matcher<AddStdScale>(scaleMap);
     }
     if (!meanMap.empty()) {
-        preproc->add_matcher<ngraph::pass::AddMeanSubtract>(meanMap);
+        preproc->add_matcher<AddMeanSubtract>(meanMap);
     }
 
     manager.run_passes(f);

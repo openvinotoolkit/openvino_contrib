@@ -38,8 +38,7 @@ public:
                                    const ov::op::PadType& auto_pad,
                                    const ov::CoordinateDiff& output_padding);
 
-    inline static constexpr type_info_t type_info{"FusedConvBackpropData", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("FusedConvBackpropData", "nvidia_gpu");
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
