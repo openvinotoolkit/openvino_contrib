@@ -121,13 +121,9 @@ jobs:
         -GNinja
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
-        -DNGRAPH_ONNX_IMPORT_ENABLE=OFF
         -DBUILD_nvidia_plugin=OFF
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules
         -DENABLE_PYTHON=ON
-        -DPYTHON_EXECUTABLE=/usr/bin/python3.8
-        -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/libpython3.8.so
-        -DPYTHON_INCLUDE_DIR=/usr/include/python3.8
         -DENABLE_WHEEL=ON
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
