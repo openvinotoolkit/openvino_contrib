@@ -9,106 +9,102 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
-#include "transformations/utils/utils.hpp"
 
-using namespace ov;
-using namespace ngraph;
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMatMulToFC, "ConvertMatMulToFC", 0);
+ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
+    auto matmul = ngraph::pattern::wrap_type<opset::MatMul>();
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMatMulToGemm, "ConvertMatMulToGemm", 0);
-ArmPlugin::pass::ConvertMatMulToGemm::ConvertMatMulToGemm() {
-    auto matmul = pattern::wrap_type<opset::MatMul>({pattern::any_input(pattern::has_static_shape()),
-                                                      pattern::any_input(pattern::has_static_shape())},
-                                                     pattern::has_static_shape());
-
-    matcher_pass_callback callback = [this](pattern::Matcher& m) {
-        std::cout << "0" << std::endl;
+    ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto matmul = std::dynamic_pointer_cast<opset::MatMul>(m.get_match_root());
         if (!matmul) {
-            std::cout << "1" << std::endl;
             return false;
         }
 
-        auto input_a = matmul->input(0).get_source_output();
-        auto input_b = matmul->input(1).get_source_output();
-
+        auto input_a = matmul->input_value(0);
+        auto input_b = matmul->input_value(1);
         auto shape_a = input_a.get_shape();
         auto shape_b = input_b.get_shape();
         auto output_shape = matmul->get_shape();
-
-        auto fc_input_a = input_a, fc_input_b = input_b;
-        NodeVector new_ops;
-
-        if (shape_a.size() == 1) {
-            // If the first input is 1D tensor, it is unsqueezed to 2D tensor (row vector)
-            // by adding axes with size 1 at ROW_INDEX_DIM, to the left of the shape.
-            // For example {S} will be reshaped to {1, S}.
-            fc_input_a = std::make_shared<opset::Unsqueeze>(fc_input_a,
-                                                                     opset::Constant::create(ov::element::i64, Shape{1}, {0}));
-            shape_a = fc_input_a.get_shape();
-            new_ops.push_back(fc_input_a.get_node_shared_ptr());
-            // For 1D inputs transpose flag is expected to always act like `false`
-            matmul->set_transpose_a(false);
-        }
-        if (shape_b.size() == 1) {
-            // If the second input is 1D tensor, it is unsqueezed to 2D tensor (column vector)
-            // by adding axes with size 1 at COL_INDEX_DIM, to the right of the shape.
-            // For example {S} will be reshaped to {S, 1}.
-            fc_input_b = std::make_shared<opset::Unsqueeze>(fc_input_b,
-                                                                     opset::Constant::create(ov::element::i64, Shape{1}, {1}));
-            shape_b = fc_input_b.get_shape();
-            new_ops.push_back(fc_input_b.get_node_shared_ptr());
-            // For 1D inputs transpose flag is expected to always act like `false`
-            matmul->set_transpose_b(false);
+        auto out_name = matmul->get_friendly_name();
+        std::cout << "input_a = " << " - " << matmul->input_value(0).get_shape() << std::endl;
+        std::cout << "input_b = " << " - " << matmul->input_value(1).get_shape() << std::endl;
+        if (shape_a.size() <= 2 && shape_b.size() <= 2 &&
+            !matmul->get_transpose_a() && matmul->get_transpose_b()) {
+            return false;
         }
 
-        // WA for IE that Gemm must have inputs with the same length.
-        // If ranks of input arguments are still different,
-        // the smaller tensor is unsqueezed from the left side of the shape
-        // by necessary number of axes to make both shapes of the same rank.
-        if (shape_a.size() < shape_b.size()) {
-            // Reshape first input (fc_input_a)
-            Shape reshape_shape(shape_b.size() - shape_a.size(), 1);
-            reshape_shape.insert(reshape_shape.end(), shape_a.begin(), shape_a.end());
-            fc_input_a = ov::op::util::reshapeTo(fc_input_a, reshape_shape);
-            new_ops.push_back(fc_input_a.get_node_shared_ptr());
-        } else if (shape_b.size() < shape_a.size()) {
-            // Reshape second input (fc_input_b)
-            Shape reshape_shape(shape_a.size() - shape_b.size(), 1);
-            reshape_shape.insert(reshape_shape.end(), shape_b.begin(), shape_b.end());
-            fc_input_b = ov::op::util::reshapeTo(fc_input_b, reshape_shape);
-            new_ops.push_back(fc_input_b.get_node_shared_ptr());
+        if (!(shape_a.size() == 4 || shape_b.size() == 4)) {
+            return false;
         }
+        if ((shape_a.at(0) > 1 && shape_a.size() == 4) ||
+            (shape_b.at(0) > 1 && shape_b.size() == 4)) {
+            return false;
+        }
+        auto create_transpose = [](ngraph::Output<ngraph::Node> node, const std::string& transpose_name) -> ngraph::Output<ngraph::Node> {
+            std::vector<int64_t> transpose_order(node.get_shape().size());
+            std::iota(transpose_order.begin(), transpose_order.end(), 0);
+            std::swap(*(transpose_order.end() - 1), *(transpose_order.end() - 2));
 
-        auto gemm = matmul->clone_with_new_inputs({ fc_input_a, fc_input_b });
-        new_ops.push_back(gemm);
+            auto transpose = std::make_shared<opset::Transpose>(
+                    node, opset::Constant::create(ngraph::element::i64, ngraph::Shape{transpose_order.size()}, transpose_order));
+            transpose->set_friendly_name(transpose_name);
+            return transpose->output(0);
+        };
 
-        if (gemm->get_shape() != output_shape) {
-            // This case is possible when one of the inputs has exactly 1 dimension (that is not supported by GEMM operation)
-            // So to preserve output shape we insert additional reshape operation
-            std::shared_ptr<Node> reshape_output;
-            if (output_shape.size() == 0) {
-                std::vector<int64_t> dim_indices(gemm->get_shape().size());
-                std::iota(dim_indices.begin(), dim_indices.end(), 0);
-                reshape_output = std::make_shared<opset::Squeeze>(gemm,
-                                                                           opset::Constant::create(ov::element::i64, Shape{dim_indices.size()}, dim_indices));
-            } else {
-                reshape_output = ov::op::util::reshapeTo(gemm, output_shape);
+        ngraph::NodeVector new_ops;
+        auto dst_shape = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{output_shape.size()},
+                                                           std::vector<int64_t>(output_shape.begin(), output_shape.end()));
+
+        size_t num_splits_a = ngraph::shape_size(ngraph::Shape(shape_a.begin(), shape_a.end() - 2));
+        size_t num_splits_b = ngraph::shape_size(ngraph::Shape(shape_b.begin(), shape_b.end() - 2));
+
+        auto input_shape = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{2},
+                                                            {-1ll, static_cast<long>(shape_a.back())});
+        auto reshape_a = std::make_shared<opset::Reshape>(input_a, input_shape, true);
+        new_ops.push_back(reshape_a);
+
+        auto weight_shape = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{2},
+                                                             { static_cast<long>(num_splits_b * shape_b[shape_b.size() - 2]),
+                                                               static_cast<long>(shape_b.back()) });
+        auto reshape_b = std::make_shared<opset::Reshape>(input_b, weight_shape, true);
+        new_ops.push_back(reshape_b);
+
+        auto axis = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{}, {0});
+        auto split_a = std::make_shared<opset::Split>(reshape_a, axis, num_splits_a);
+        auto split_b = std::make_shared<opset::Split>(reshape_b, axis, num_splits_b);
+
+        ngraph::NodeVector matmul_sclices;
+        for (size_t i = 0; i < std::max(num_splits_a, num_splits_b); i++) {
+            size_t input_id  = i % num_splits_a;
+            size_t weight_id = i % num_splits_b;
+            // create copy of layer to avoid problem with memory manager
+            ngraph::Output<ngraph::Node> first  = std::make_shared<opset::Concat>(ngraph::OutputVector{split_a->output(input_id)}, 0);
+            ngraph::Output<ngraph::Node> second = std::make_shared<opset::Concat>(ngraph::OutputVector{split_b->output(weight_id)}, 0);
+
+            if (matmul->get_transpose_a()) {
+                first = create_transpose(first, out_name + "/tr_a_" + std::to_string(i));
+                new_ops.push_back(first.get_node_shared_ptr());
             }
-
-            new_ops.push_back(reshape_output);
-            gemm->set_friendly_name(matmul->get_friendly_name() + "/gemm");
-            reshape_output->set_friendly_name(matmul->get_friendly_name());
-            copy_runtime_info(matmul, new_ops);
-            replace_node(matmul, reshape_output);
-        } else {
-            gemm->set_friendly_name(matmul->get_friendly_name());
-            copy_runtime_info(matmul, new_ops);
-            replace_node(matmul, gemm);
+            if (!matmul->get_transpose_b()) {
+                second = create_transpose(second, out_name + "/tr_b_" + std::to_string(i));
+                new_ops.push_back(second.get_node_shared_ptr());
+            }
+            auto mat_mul = std::make_shared<opset::MatMul>(first, second, false, true);
+            new_ops.push_back(mat_mul);
+            matmul_sclices.push_back(mat_mul);
         }
 
+        auto concat = std::make_shared<opset::Concat>(matmul_sclices, 0);
+        auto reshape = std::make_shared<opset::Reshape>(concat, dst_shape, true);
+
+        new_ops.push_back(concat);
+        new_ops.push_back(reshape);
+
+        reshape->set_friendly_name(out_name);
+        ngraph::copy_runtime_info(matmul, new_ops);
+        ngraph::replace_node(matmul, reshape);
         return true;
     };
-
-    auto m = std::make_shared<pattern::Matcher>(matmul, "ConvertMatMulToGemm");
-    this->register_matcher(m, callback);
+    auto m = std::make_shared<ngraph::pattern::Matcher>(matmul, "ConvertMatMulToFC");
+    register_matcher(m, callback);
 }

@@ -8,10 +8,10 @@
 namespace ArmPlugin {
 namespace pass {
 
-class ConvertMatMulToFC: public ngraph::pass::MatcherPass {
+class ConvertTransposeMatMul: public ngraph::pass::MatcherPass {
 public:
     NGRAPH_RTTI_DECLARATION;
-    ConvertMatMulToFC();
+    ConvertTransposeMatMul();
 };
 }  // namespace pass
 }  // namespace ArmPlugin

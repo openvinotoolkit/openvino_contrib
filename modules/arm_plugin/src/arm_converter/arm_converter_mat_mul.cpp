@@ -7,8 +7,9 @@
 #include <arm_compute/runtime/NEON/NEScheduler.h>
 #include <arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h>
 #include <arm_compute/runtime/NEON/functions/NEGEMM.h>
+#include <arm_compute/runtime/NEON/functions/NEGEMMConvolutionLayer.h>
 #include "arm_converter/arm_converter.hpp"
-
+#include <ngraph/runtime/reference/matmul.hpp>
 namespace ArmPlugin {
 enum InputArg {Features, Weights, Bias};
 struct NEFullyConnectedLayerQI final: public arm_compute::IFunction {
@@ -178,33 +179,64 @@ protected:
     std::unique_ptr<arm_compute::NEFullyConnectedLayer> _fconn;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& node) {
-    if (node.get_transpose_a()) {
-        IE_THROW() << "Can not create MatMul layer with transpose first input";
+    std::cout << "!!!!!!!!!!!!!!!!!!!!" << node.input(0).get_shape().size() << std::endl;
+    std::cout << "!!!!!!!!!!!!!!!!!!!!" << node.input(1).get_shape().size() << std::endl;
+    if ((node.input(0).get_shape().at(0) > 1 && node.input(0).get_shape().size() == 4) ||
+        (node.input(1).get_shape().at(0) > 1 && node.input(1).get_shape().size() == 4)) {
+        std::cout << "refernce" << std::endl;
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction,
+                                        node.input(0),
+                                        node.input(1),
+                                        node.output(0),
+                                        node.get_input_shape(0),
+                                        node.get_input_shape(1),
+                                        node.get_output_shape(0),
+                                        node.get_transpose_a(),
+                                        node.get_transpose_b());
+        };
+
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::matmul),
+                node.input(0), allTypes);
+    } else {
+        std::cout << "gemm" << std::endl;
+        arm_compute::GEMMInfo gemmInfo;
+        gemmInfo.set_pretranspose_A(node.get_transpose_a());
+        gemmInfo.set_pretranspose_B(node.get_transpose_b());
+        return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), nullptr, node.output(0),
+                                                   1.f, 1.f, gemmInfo);
     }
-    auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), nullptr, node.output(0), 1.f, 1.f);
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulBias& node) {
     if (node.get_transpose_a()) {
         IE_THROW() << "Can not create MatMul layer with transpose first input";
     }
-    auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
-    const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(iInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto wInfoIt = node.get_rt_info().find("WeightsPrescaleInfo");
-    const arm_compute::QuantizationInfo* wInfo = wInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(wInfoIt->second.as<arm_compute::QuantizationInfo>());
-    auto qInfoIt = node.get_rt_info().find("QuantizationInfo");
-    const arm_compute::QuantizationInfo* qInfo = qInfoIt == node.get_rt_info().end() ? nullptr :
-                                               &(qInfoIt->second.as<arm_compute::QuantizationInfo>());
-    return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0), 1.f, 1.f);
+
+    if ((node.input(0).get_shape().at(0) > 1 && node.input(0).get_shape().size() == 4) ||
+        (node.input(1).get_shape().at(0) > 1 && node.input(1).get_shape().size() == 4)) {
+        std::cout << "dswgfdsg" << std::endl;
+        auto make = [&] (auto refFunction) {
+            return this->MakeConversion(refFunction,
+                                        node.input(0),
+                                        node.input(1),
+                                        node.output(0),
+                                        node.get_input_shape(0),
+                                        node.get_input_shape(1),
+                                        node.get_output_shape(0),
+                                        node.get_transpose_a(),
+                                        node.get_transpose_b());
+        };
+
+        return CallSwitch(
+                AP_WRAP(make, ngraph::runtime::reference::matmul),
+                node.input(0), allTypes);
+    } else {
+        arm_compute::GEMMInfo gemmInfo;
+        gemmInfo.set_pretranspose_A(node.get_transpose_a());
+        gemmInfo.set_pretranspose_B(node.get_transpose_b());
+        return MakeConversion<arm_compute::NEGEMM>(node.input(Features), node.input(Weights), node.input(Bias), node.output(0),
+                                                   1.f, 1.f, gemmInfo);
+    }
 }
 }  //  namespace ArmPlugin
