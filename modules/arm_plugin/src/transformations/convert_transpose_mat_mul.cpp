@@ -95,12 +95,8 @@ ArmPlugin::pass::ConvertTransposeMatMul::ConvertTransposeMatMul() {
             return false;
         }
 
-        std::cout << "input_a = " << transpose_a << " - " << matmul->input_value(MatMulInput::MatA).get_shape() << std::endl;
-        std::cout << "input_b = " << transpose_b << " - " << matmul->input_value(MatMulInput::MatB).get_shape() << std::endl;
-
         ov::NodeVector new_ops;
         if (shape_a.size() == 1 && shape_b.size() == 1) {
-            std::cout << "branch 1" << std::endl;
             // Reshape A
             input_a = std::make_shared<opset::Reshape>(input_a, get_reshape_order(input_a, input_b, false), true);
             input_a->set_friendly_name(matmul->get_friendly_name() + "/reshape_a");
@@ -111,13 +107,11 @@ ArmPlugin::pass::ConvertTransposeMatMul::ConvertTransposeMatMul() {
             new_ops.push_back(input_b);
             transpose_a = transpose_b = false;
         } else if (shape_a.size() == 1 && shape_b.size() > 1) {
-            std::cout << "branch 2" << std::endl;
             // Reshape A
             input_a = std::make_shared<opset::Reshape>(input_a, get_reshape_order(input_a, input_b, false), true);
             input_a->set_friendly_name(matmul->get_friendly_name() + "/reshape_a");
             new_ops.push_back(input_a);
         } else if (shape_a.size() > 1 && shape_b.size() == 1) {
-            std::cout << "branch 3" << std::endl;
             // Reshape B
             input_b = std::make_shared<opset::Reshape>(input_b, get_reshape_order(input_b, input_a, true), true);
             input_b->set_friendly_name(matmul->get_friendly_name() + "/reshape_b");

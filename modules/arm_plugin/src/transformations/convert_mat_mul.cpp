@@ -26,8 +26,6 @@ ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
         auto shape_b = input_b.get_shape();
         auto output_shape = matmul->get_shape();
         auto out_name = matmul->get_friendly_name();
-        std::cout << "input_a = " << " - " << matmul->input_value(0).get_shape() << std::endl;
-        std::cout << "input_b = " << " - " << matmul->input_value(1).get_shape() << std::endl;
         if (shape_a.size() <= 2 && shape_b.size() <= 2 &&
             !matmul->get_transpose_a() && matmul->get_transpose_b()) {
             return false;

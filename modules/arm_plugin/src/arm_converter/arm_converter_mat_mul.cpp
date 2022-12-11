@@ -179,11 +179,8 @@ protected:
     std::unique_ptr<arm_compute::NEFullyConnectedLayer> _fconn;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& node) {
-    std::cout << "!!!!!!!!!!!!!!!!!!!!" << node.input(0).get_shape().size() << std::endl;
-    std::cout << "!!!!!!!!!!!!!!!!!!!!" << node.input(1).get_shape().size() << std::endl;
     if ((node.input(0).get_shape().at(0) > 1 && node.input(0).get_shape().size() == 4) ||
         (node.input(1).get_shape().at(0) > 1 && node.input(1).get_shape().size() == 4)) {
-        std::cout << "refernce" << std::endl;
         auto make = [&] (auto refFunction) {
             return this->MakeConversion(refFunction,
                                         node.input(0),
@@ -200,7 +197,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MatMul& no
                 AP_WRAP(make, ngraph::runtime::reference::matmul),
                 node.input(0), allTypes);
     } else {
-        std::cout << "gemm" << std::endl;
         arm_compute::GEMMInfo gemmInfo;
         gemmInfo.set_pretranspose_A(node.get_transpose_a());
         gemmInfo.set_pretranspose_B(node.get_transpose_b());
@@ -215,7 +211,6 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMatMulB
 
     if ((node.input(0).get_shape().at(0) > 1 && node.input(0).get_shape().size() == 4) ||
         (node.input(1).get_shape().at(0) > 1 && node.input(1).get_shape().size() == 4)) {
-        std::cout << "dswgfdsg" << std::endl;
         auto make = [&] (auto refFunction) {
             return this->MakeConversion(refFunction,
                                         node.input(0),
