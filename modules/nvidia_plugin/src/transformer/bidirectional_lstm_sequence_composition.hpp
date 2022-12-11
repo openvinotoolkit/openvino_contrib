@@ -4,31 +4,31 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 #include <transformations_visibility.hpp>
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class Convert2LSTMSequenceToBidirectionalLSTMSequence : public ngraph::pass::MatcherPass {
+class Convert2LSTMSequenceToBidirectionalLSTMSequence : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("Convert2LSTMSequenceToBidirectionalLSTMSequence", "0");
     Convert2LSTMSequenceToBidirectionalLSTMSequence();
 };
 
-class ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized : public ngraph::pass::MatcherPass {
+class ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized", "0");
     ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized();
 };
 
-class BidirectionalSequenceComposition : public ngraph::pass::FunctionPass {
+class BidirectionalSequenceComposition : public ov::pass::ModelPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
-    explicit BidirectionalSequenceComposition(std::shared_ptr<PassConfig> pass_config);
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+    OPENVINO_RTTI("BidirectionalSequenceComposition", "0");
+    explicit BidirectionalSequenceComposition(std::shared_ptr<ov::pass::PassConfig> pass_config);
+    bool run_on_model(const std::shared_ptr<ov::Model>& f) override;
 
 private:
-    std::shared_ptr<PassConfig> pass_config_;
+    std::shared_ptr<ov::pass::PassConfig> pass_config_;
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

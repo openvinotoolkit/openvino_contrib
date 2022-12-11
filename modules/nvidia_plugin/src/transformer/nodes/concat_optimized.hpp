@@ -12,8 +12,7 @@ class ConcatOptimized : public ov::op::v0::Concat {
 public:
     using ov::op::v0::Concat::Concat;
 
-    inline static constexpr type_info_t type_info{"ConcatOptimized", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("ConcatOptimized", "nvidia_gpu", ov::op::v0::Concat);
 
     std::shared_ptr<Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override {
         return std::make_shared<ConcatOptimized>(new_args, m_axis);

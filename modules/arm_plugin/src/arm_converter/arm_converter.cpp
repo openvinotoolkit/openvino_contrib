@@ -33,6 +33,7 @@ arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
         case ngraph::element::Type_t::i64   : return arm_compute::DataType::S64;
         case ngraph::element::Type_t::f16   : return arm_compute::DataType::F16;
         case ngraph::element::Type_t::f32   : return arm_compute::DataType::F32;
+        case ngraph::element::Type_t::f64   : return arm_compute::DataType::F64;
         case ngraph::element::Type_t::bf16  : return arm_compute::DataType::BFLOAT16;
         default: IE_THROW() << "Unsupported Data Type " << type;
     }

@@ -27,9 +27,9 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
         InferenceEngine::Precision::I64,
         InferenceEngine::Precision::FP16,
         InferenceEngine::Precision::FP32,
+        InferenceEngine::Precision::FP64,
 //  Unsupported types
 //        InferenceEngine::Precision::U64,
-//        InferenceEngine::Precision::FP64,
 //        InferenceEngine::Precision::BF16,
 //        InferenceEngine::Precision::BOOL,
 //        InferenceEngine::Precision::MIXED,

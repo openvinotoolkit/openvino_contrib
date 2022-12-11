@@ -53,9 +53,9 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*OVClassLoadNetworkTest.*QueryNetwork(MULTIWithHETERO|HETEROWithMULTI)NoThrow_V10.*)",
         // Problem with interface
 #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-        ".*ConversionLayerTest.*inputPRC=FP16_targetPRC=U32.*",
         ".*ConversionLayerTest.*inputPRC=FP16_targetPRC=I8.*",
 #endif
+        ".*ConversionLayerTest.*inputPRC=FP16_targetPRC=U32.*", // PR 14292 breaks Convert and ConvertLike tests
         ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=U32.*",
         ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=I8.*",
 #ifdef __arm__
