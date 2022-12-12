@@ -79,6 +79,7 @@
 #include "store_result_name.hpp"
 #include "replace_power_by_mul.hpp"
 #include "convert_precision_fp16_to_fp32.hpp"
+#include "convert_rnn_cell.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -192,6 +193,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::HSwishFusion>();
 
         // LinOpSequenceFusion must be executed after all decompositions
+        manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertRNNCell>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToGRUSequence>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToLSTMSequence>();
@@ -360,6 +363,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.register_pass<ov::pass::Serialize>("/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.xml",
+                                                   "/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.bin");
         manager.run_passes(m);
     }
 
