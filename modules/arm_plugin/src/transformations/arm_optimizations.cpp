@@ -363,8 +363,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::Serialize>("/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.xml",
-                                                   "/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.bin");
         manager.run_passes(m);
     }
 
@@ -389,6 +387,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(m);
     }
+
     Dump(m, "final");
 
     return false;

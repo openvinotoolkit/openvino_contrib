@@ -26,8 +26,9 @@ ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
         auto shape_b = input_b.get_shape();
         auto output_shape = matmul->get_shape();
         auto out_name = matmul->get_friendly_name();
+
         if (shape_a.size() <= 2 && shape_b.size() <= 2 &&
-            !matmul->get_transpose_a() && matmul->get_transpose_b()) {
+           !matmul->get_transpose_a() && matmul->get_transpose_b()) {
             return false;
         }
 
@@ -51,19 +52,19 @@ ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
 
         ngraph::NodeVector new_ops;
         auto dst_shape = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{output_shape.size()},
-                                                           std::vector<int64_t>(output_shape.begin(), output_shape.end()));
+                            std::vector<int64_t>(output_shape.begin(), output_shape.end()));
 
         size_t num_splits_a = ngraph::shape_size(ngraph::Shape(shape_a.begin(), shape_a.end() - 2));
         size_t num_splits_b = ngraph::shape_size(ngraph::Shape(shape_b.begin(), shape_b.end() - 2));
 
         auto input_shape = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{2},
-                                                            {-1ll, static_cast<long>(shape_a.back())});
+            {-1ll, static_cast<long>(shape_a.back())});
         auto reshape_a = std::make_shared<opset::Reshape>(input_a, input_shape, true);
         new_ops.push_back(reshape_a);
 
         auto weight_shape = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{2},
-                                                             { static_cast<long>(num_splits_b * shape_b[shape_b.size() - 2]),
-                                                               static_cast<long>(shape_b.back()) });
+            { static_cast<long>(num_splits_b * shape_b[shape_b.size() - 2]),
+              static_cast<long>(shape_b.back()) });
         auto reshape_b = std::make_shared<opset::Reshape>(input_b, weight_shape, true);
         new_ops.push_back(reshape_b);
 
