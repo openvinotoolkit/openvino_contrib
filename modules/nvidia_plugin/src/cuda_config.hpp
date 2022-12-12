@@ -37,7 +37,6 @@ struct Configuration {
     int deviceId = 0;
     bool perfCount = true;
     bool operation_benchmark = false;
-    bool disabled_tensoriterator_transform = false;
     std::string cuda_throughput_streams_ = std::to_string(1);
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
     // TODO: Should be added usage of this property (What to do with NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) ?)

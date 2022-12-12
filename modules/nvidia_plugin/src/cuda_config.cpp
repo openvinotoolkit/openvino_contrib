@@ -70,14 +70,6 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             } else {
                 throwIEException(fmt::format("operation benchmark option value {} is not supported", value));
             }
-        } else if (NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM) == key) {
-            if (value == NVIDIA_CONFIG_VALUE(YES)) {
-                disabled_tensoriterator_transform = true;
-            } else if (value == NVIDIA_CONFIG_VALUE(NO)) {
-                disabled_tensoriterator_transform = false;
-            } else {
-                throwIEException(fmt::format("disabled_transformations option value {} is not supported", value));
-            }
         } else if (CONFIG_KEY(PERF_COUNT) == key) {
             perfCount = (CONFIG_VALUE(YES) == value);
         } else if (ov::hint::performance_mode == key) {
@@ -100,8 +92,6 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {perfCount};
     } else if (name == NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)) {
         return {std::string(operation_benchmark ? NVIDIA_CONFIG_VALUE(YES) : NVIDIA_CONFIG_VALUE(NO))};
-    } else if (name == NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM)) {
-        return {std::string(disabled_tensoriterator_transform ? NVIDIA_CONFIG_VALUE(YES) : NVIDIA_CONFIG_VALUE(NO))};
     } else if (name == NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)) {
         return {cuda_throughput_streams_};
     } else if (name == CONFIG_KEY(CPU_THROUGHPUT_STREAMS)) {

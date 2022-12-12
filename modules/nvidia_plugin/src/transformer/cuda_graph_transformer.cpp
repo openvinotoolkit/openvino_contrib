@@ -8,17 +8,17 @@
 #include <fmt/format.h>
 
 #include "openvino/pass/manager.hpp"
-#include <transformations/common_optimizations/common_optimizations.hpp>
-#include <transformations/common_optimizations/nop_elimination.hpp>
-#include <transformations/convert_precision.hpp>
-#include <transformations/init_node_info.hpp>
-#include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
-#include <transformations/op_conversions/convert_mod.hpp>
-#include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
-#include <transformations/op_conversions/convert_ti_to_sequences.hpp>
-#include <transformer/convolution_asym_padding_transformation.hpp>
-#include <transformer/fuse_conv_biasadd_activation.hpp>
-#include <transformer/preprocessing/preprocessing.hpp>
+#include "transformations/common_optimizations/common_optimizations.hpp"
+#include "transformations/common_optimizations/nop_elimination.hpp"
+#include "transformations/convert_precision.hpp"
+#include "transformations/init_node_info.hpp"
+#include "transformations/op_conversions/bidirectional_sequences_decomposition.hpp"
+#include "transformations/op_conversions/convert_mod.hpp"
+#include "transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp"
+#include "transformations/op_conversions/convert_ti_to_sequences.hpp"
+#include "transformer/convolution_asym_padding_transformation.hpp"
+#include "transformer/fuse_conv_biasadd_activation.hpp"
+#include "transformer/preprocessing/preprocessing.hpp"
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
@@ -34,6 +34,7 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
+#include "ngraph/opsets/opset10.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -43,7 +44,7 @@ std::shared_ptr<ov::Model> GraphTransformer::export_transform(
     const InferenceEngine::InputsDataMap& inputInfoMap,
     const InferenceEngine::OutputsDataMap& outputsInfoMap,
     const Configuration& config) const {
-    auto transformed_function = ngraph::clone_function(*function);
+    auto transformed_function = ov::clone_model(*function);
 
     auto passConfig = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager manager{passConfig};
@@ -80,7 +81,7 @@ std::shared_ptr<ov::Model> GraphTransformer::export_transform(
         }
     }
     if (needF16toF32) {
-        manager.register_pass<ngraph::pass::ConvertPrecision>(
+        manager.register_pass<ov::pass::ConvertPrecision>(
             precisions_array{{ov::element::f16, ov::element::f32}});
     }
 
@@ -97,10 +98,10 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
                                                               const InferenceEngine::InputsDataMap& inputInfoMap,
                                                               const InferenceEngine::OutputsDataMap& outputsInfoMap,
                                                               const Configuration& config) const {
-    auto transformed_function = ngraph::clone_function(*function);
+    auto transformed_function = ov::clone_model(*function);
 
-    auto passConfig = std::make_shared<ngraph::pass::PassConfig>();
-    ngraph::pass::Manager manager{passConfig};
+    auto passConfig = std::make_shared<ov::pass::PassConfig>();
+    ov::pass::Manager manager{passConfig};
 
     passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     passConfig->disable<ov::pass::MVN6Decomposition>();
@@ -132,10 +133,8 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
             ov::element::i8, isHalfSupported(device) ? ov::element::f16 : ov::element::f32);
     }
     manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
-
-    if (!config.disabled_tensoriterator_transform) {
-        manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(passConfig);
-    }
+    manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(passConfig);
+    manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
     manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation>();
@@ -148,6 +147,34 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
     manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
+
+    // Sequences supported by the plugin shouldn't be converted to TensorIterator.
+    auto is_sequence_primitive_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
+        if (std::dynamic_pointer_cast<const ngraph::opset10::RNNSequence>(node)) {
+            return false;
+        } else if (const auto &gru_seq = std::dynamic_pointer_cast<const ngraph::opset10::GRUSequence>(node)) {
+            return (gru_seq->get_clip() == 0.0f &&
+                    gru_seq->get_activations() == std::vector<std::string>{"sigmoid", "tanh"} &&
+                    (gru_seq->get_input_size() != 1 || gru_seq->get_hidden_size() != 1) &&
+                    (gru_seq->get_direction() != ov::op::RecurrentSequenceDirection::REVERSE) &&
+                    (gru_seq->get_direction() != ov::op::RecurrentSequenceDirection::BIDIRECTIONAL));
+        } else if (const auto &lstm_seq = std::dynamic_pointer_cast<const ngraph::opset10::LSTMSequence>(node)) {
+            return (lstm_seq->get_clip() == 0.0f &&
+                    lstm_seq->get_activations() == std::vector<std::string>{"sigmoid", "tanh", "tanh"} &&
+                    lstm_seq->get_activations_alpha() == std::vector<float>{1.0f, 1.0f, 1.0f} &&
+                    lstm_seq->get_activations_beta() == std::vector<float>{0.0f, 0.0f, 0.0f} &&
+                    (lstm_seq->get_input_size() != 1 || lstm_seq->get_hidden_size() != 1) &&
+                    (lstm_seq->get_direction() != ov::op::RecurrentSequenceDirection::REVERSE));
+        }
+        return false;
+    };
+
+    passConfig->set_callback<ov::pass::ConvertRNNSequenceToTensorIterator,
+                             ov::pass::ConvertGRUSequenceToTensorIterator,
+                             ov::pass::ConvertLSTMSequenceToTensorIterator>(
+            [is_sequence_primitive_supported](const std::shared_ptr<const ov::Node> &node) -> bool {
+                return is_sequence_primitive_supported(node);
+            });
 
     manager.run_passes(transformed_function);
 

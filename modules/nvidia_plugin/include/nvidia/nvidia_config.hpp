@@ -61,10 +61,5 @@ DECLARE_NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS);
  */
 DECLARE_NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK);
 
-/**
- * @brief Defines possibility to disable TensorIterator transformation for test purposes.
- */
-DECLARE_NVIDIA_CONFIG_KEY(DISABLE_TENSORITERATOR_TRANSFORM);
-
 }  // namespace CUDAConfigParams
 }  // namespace InferenceEngine

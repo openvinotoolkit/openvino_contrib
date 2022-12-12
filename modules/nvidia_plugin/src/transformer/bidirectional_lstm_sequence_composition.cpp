@@ -399,19 +399,12 @@ BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_p
     pass_config_->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
     // pass_config_->disable<ov::pass::BidirectionalRNNSequenceDecomposition>();
-
-    pass_config_->disable<ov::pass::ConvertLSTMSequenceToTensorIterator>();
-    pass_config_->disable<ov::pass::ConvertGRUSequenceToTensorIterator>();
-    // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<ov::pass::ConvertRNNSequenceToTensorIterator>();
 }
 
 bool BidirectionalSequenceComposition::run_on_model(const std::shared_ptr<ov::Model>& f) {
     RUN_ON_MODEL_SCOPE(BidirectionalSequenceComposition)
     Manager manager{pass_config_};
 
-    manager.register_pass<ov::pass::ConvertTensorIteratorToLSTMSequence>();
-    manager.register_pass<ov::pass::ConvertTensorIteratorToGRUSequence>();
     manager.register_pass<ov::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
     manager.register_pass<ov::pass::CommonOptimizations>();
