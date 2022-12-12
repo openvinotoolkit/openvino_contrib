@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "matmul_transformations.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/matmul.hpp>
 #include <openvino/op/transpose.hpp>
 
-namespace ngraph::pass {
+using namespace ov::pass::pattern;
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::TransposeMatMulTransformation, "TransposeMatMulTransformation", 0);
-
+namespace ov::nvidia_gpu::pass {
 template <typename T>
 bool verify_permutation(std::shared_ptr<ov::op::v0::Constant> permConstant) {
     const auto perm2D = std::vector<T>{1, 0};
@@ -64,7 +64,7 @@ bool verify_permutation(std::shared_ptr<ov::op::v0::Constant> permConstant) {
     }
 }
 
-bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
+bool fuse_transpose_with_matmul(Matcher &m) {
     auto matmul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(m.get_match_root());
     if (!matmul) {
         return false;
@@ -123,11 +123,12 @@ bool fuse_transpose_with_matmul(ngraph::pattern::Matcher &m) {
 }
 
 TransposeMatMulTransformation::TransposeMatMulTransformation() {
-    auto matmul = ngraph::pattern::wrap_type<ov::op::v0::MatMul>({pattern::any_input(), pattern::any_input()});
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return fuse_transpose_with_matmul(m); };
+    MATCHER_SCOPE(TransposeMatMulTransformation);
+    auto matmul = wrap_type<ov::op::v0::MatMul>({any_input(), any_input()});
+    matcher_pass_callback callback = [](Matcher &m) { return fuse_transpose_with_matmul(m); };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(matmul, ngraph::pass::TransposeMatMulTransformation::Name);
+    auto m = std::make_shared<Matcher>(matmul, matcher_name);
     register_matcher(m, callback);
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

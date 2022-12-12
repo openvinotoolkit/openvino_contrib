@@ -4,16 +4,14 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class RemoveDuplicatedResultsTransformation : public ngraph::pass::FunctionPass {
+class RemoveDuplicatedResultsTransformation : public ov::pass::ModelPass {
 public:
-    static constexpr auto Name = "RemoveDuplicatedResultsTransformation";
-
-    NGRAPH_RTTI_DECLARATION;
-    bool run_on_function(std::shared_ptr<ngraph::Function> f) override;
+    OPENVINO_RTTI("RemoveDuplicatedResultsTransformation", "0");
+    bool run_on_model(const std::shared_ptr<ov::Model>& f) override;
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

@@ -4,38 +4,38 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class ConvolutionAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+class ConvolutionAsymPaddingTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvolutionAsymPaddingTransformation", "0");
     ConvolutionAsymPaddingTransformation();
 };
 
-class GroupConvolutionAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+class GroupConvolutionAsymPaddingTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("GroupConvolutionAsymPaddingTransformation", "0");
     GroupConvolutionAsymPaddingTransformation();
 };
 
-class ConvolutionBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+class ConvolutionBackpropDataAsymPaddingTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvolutionBackpropDataAsymPaddingTransformation", "0");
     ConvolutionBackpropDataAsymPaddingTransformation();
 };
 
-class GroupConvolutionBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+class GroupConvolutionBackpropDataAsymPaddingTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("GroupConvolutionBackpropDataAsymPaddingTransformation", "0");
     GroupConvolutionBackpropDataAsymPaddingTransformation();
 };
 
-class FusedConvBackpropDataAsymPaddingTransformation : public ngraph::pass::MatcherPass {
+class FusedConvBackpropDataAsymPaddingTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FusedConvBackpropDataAsymPaddingTransformation", "0");
     FusedConvBackpropDataAsymPaddingTransformation();
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass
