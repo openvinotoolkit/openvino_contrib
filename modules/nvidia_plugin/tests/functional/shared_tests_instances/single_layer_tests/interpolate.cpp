@@ -91,7 +91,7 @@ const std::vector<double> defaultCubeCoeff = {
     -0.75f,
 };
 
-const std::vector<std::vector<int64_t>> smokeTest4DAxes = {{0, 1, 2, 3}};
+const std::vector<std::vector<int64_t>> smokeTest4DAxes = {{0, 1, 2, 3}, {}};
 const std::vector<std::vector<float>> smokeTest4DScales = {{1.f, 1.f, 2.f, 2.f}};
 const std::vector<std::vector<int64_t>> smokeTest2DAxes = {{2, 3}};
 const std::vector<std::vector<float>> smokeTest2DScales = {{2.f, 2.f}};
