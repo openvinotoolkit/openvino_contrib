@@ -48,7 +48,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         std::string output_name = split->get_friendly_name();
 
         int count_useless_outs = 0;
-        for (auto out : split->outputs()) {
+        for (const auto& out : split->outputs()) {
             auto inputs = out.get_target_inputs();
             if (inputs.empty()) {
                 ++count_useless_outs;
