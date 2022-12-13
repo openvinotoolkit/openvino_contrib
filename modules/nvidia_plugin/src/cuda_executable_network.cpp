@@ -113,9 +113,15 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
                                        const InferenceEngine::OutputsDataMap& outputsInfoMap) {
     CUDA::Device device{cfg_.deviceId};
     GraphTransformer transformer;
+    // Clone model
+    function_ = ngraph::clone_function(*function);
+    // Apply common transformations
+    transformer.common_transform(CUDA::Device{cfg_.deviceId}, function_, inputInfoMap, outputsInfoMap, cfg_);
+    // Clone model and additionally apply export specific transformations
     export_function_ =
-        transformer.export_transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
-    function_ = transformer.transform(CUDA::Device{cfg_.deviceId}, function, inputInfoMap, outputsInfoMap, cfg_);
+        transformer.clone_and_export_transform(CUDA::Device{cfg_.deviceId}, function_, inputInfoMap, outputsInfoMap, cfg_);
+    //  CUDA-specific tranformations
+    transformer.cuda_transform(CUDA::Device{cfg_.deviceId}, function_, cfg_);
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
