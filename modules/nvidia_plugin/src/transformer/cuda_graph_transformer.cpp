@@ -9,6 +9,7 @@
 
 #include "openvino/pass/manager.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
+#include "transformations/disable_decompression_convert_constant_folding.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
 #include "transformations/convert_precision.hpp"
 #include "transformations/init_node_info.hpp"
@@ -51,7 +52,11 @@ std::shared_ptr<ov::Model> GraphTransformer::export_transform(
 
     passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     passConfig->disable<ov::pass::MVN6Decomposition>();
-    passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+    if (!isHalfSupported(device)) {
+        // Allow FP16 Converts to be folded and FP16 constants to be upgraded to FP32 data type
+        passConfig->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
+        passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+    }
 
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
     // are executed faster on CUDA/cuDNN.
@@ -105,7 +110,11 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
 
     passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     passConfig->disable<ov::pass::MVN6Decomposition>();
-    passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+    if (!isHalfSupported(device)) {
+        // Allow FP16 Converts to be folded and FP16 constants to be upgraded to FP32 data type
+        passConfig->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
+        passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
+    }
 
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
     // are executed faster on CUDA/cuDNN.
