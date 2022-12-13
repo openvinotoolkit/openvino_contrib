@@ -9,6 +9,7 @@
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
+#include <transformations/utils/utils.hpp>
 
 enum RNNInput {InputData, HiddenState, Weights, RecurrenceWeights, Bias};
 
@@ -21,37 +22,43 @@ ArmPlugin::pass::ConvertRNNCell::ConvertRNNCell() {
             return false;
         }
 
-        auto input_data = rnn_cell->input_value(RNNInput::InputData).get_node_shared_ptr();
-        auto hidden_state = rnn_cell->input_value(RNNInput::HiddenState).get_node_shared_ptr();
-        auto weights = rnn_cell->input_value(RNNInput::Weights).get_node_shared_ptr();
-        auto recurrence_weights = rnn_cell->input_value(RNNInput::RecurrenceWeights).get_node_shared_ptr();
-        auto bias = rnn_cell->input_value(RNNInput::Bias).get_node_shared_ptr();
-
-        auto clip = rnn_cell->get_clip();
-
-        if (clip == 0.f) {
+        auto name_activation = rnn_cell->get_activations()[0];
+        if ((name_activation == "tanh" || name_activation == "sigmoid") && (rnn_cell->get_clip() == 0.f)) {
             return false;
         }
-        ov::NodeVector new_ops;
-        input_data = std::make_shared<opset::Clamp>(input_data, -clip, clip);
-        input_data->set_friendly_name(rnn_cell->get_friendly_name() + "/clip");
-        new_ops.push_back(input_data);
 
-        auto new_rnn_cell = std::make_shared<opset::RNNCell>(input_data,
-                                                             hidden_state,
-                                                             weights,
-                                                             recurrence_weights,
-                                                             bias,
-                                                             rnn_cell->get_hidden_size(),
-                                                             rnn_cell->get_activations(),
-                                                             rnn_cell->get_activations_alpha(),
-                                                             rnn_cell->get_activations_beta());
-        new_ops.push_back(new_rnn_cell);
-        new_rnn_cell->set_friendly_name(new_rnn_cell->get_friendly_name() + "/new");
-        ngraph::copy_runtime_info(new_rnn_cell, new_ops);
-        ngraph::replace_node(rnn_cell, new_rnn_cell);
+        if (name_activation == "relu" && rnn_cell->get_clip() != 0.f) {
+            return false;
+        }
+
+        auto X = rnn_cell->input_value(InputData);
+        auto H_t = rnn_cell->input_value(HiddenState);
+        auto W = rnn_cell->input_value(Weights);
+        auto R = rnn_cell->input_value(RecurrenceWeights);
+        auto bias = rnn_cell->input_value(Bias);
+
+        // Xt*(W^T)
+        auto Xt_W = std::make_shared<opset::MatMul>(X, W, false, true);
+        // Ht-1*(R^T)
+        auto Ht_R = std::make_shared<opset::MatMul>(H_t, R, false, true);
+        // Xt*(W^T) + Ht-1*(R^T) + Wb + Rb
+        auto add = std::make_shared<opset::Add>(Ht_R, bias);
+        auto i_t = std::make_shared<opset::Add>(Xt_W, add);
+
+        // f(Xt*(Wi^T) + Ht-1*(Ri^T) + Wbi + Rbi)
+        auto clip = rnn_cell->get_clip();
+        std::shared_ptr<ngraph::Node> clamp = i_t;
+        if (clip > 0.f) {
+            clamp = std::make_shared<opset::Clamp>(i_t, -clip, clip);
+            ngraph::copy_runtime_info(rnn_cell, clamp);
+        }
+        auto out = ngraph::op::util::activation(rnn_cell->get_activations()[0], clamp);
+        out->set_friendly_name(rnn_cell->get_friendly_name());
+        ngraph::copy_runtime_info(rnn_cell, {Xt_W, Ht_R, add, i_t, out});
+        ngraph::replace_node(rnn_cell, out);
         return true;
     };
+
     auto m = std::make_shared<ngraph::pattern::Matcher>(rnn_cell, "ConvertRNNCell");
     register_matcher(m, callback);
 }

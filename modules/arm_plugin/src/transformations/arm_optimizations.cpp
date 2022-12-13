@@ -13,7 +13,6 @@
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/convert_gather_downgrade.hpp"
 #include "transformations/op_conversions/convert_softmax_downgrade.hpp"
-//#include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
 #include "transformations/op_conversions/log_softmax_decomposition.hpp"
@@ -194,13 +193,11 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
 
         // LinOpSequenceFusion must be executed after all decompositions
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertRNNCell>();
-        manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToGRUSequence>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToLSTMSequence>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToRNNSequence>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-//        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RNNCellDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertRNNCell>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::LSTMCellDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::GRUCellDecomposition>();
 
@@ -363,8 +360,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::Serialize>("/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.xml",
-                                                   "/Users/anesterov/CLionProjects/openvino/bin/arm64/Release/ser_before_arm2.bin");
         manager.run_passes(m);
     }
 

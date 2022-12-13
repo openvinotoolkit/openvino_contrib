@@ -11,14 +11,13 @@ static arm_compute::ActivationLayerInfo GetActivationInfo(const std::vector<std:
                                                           const std::vector<float>& b,
                                                           float clip) {
     if (activation[0] == "tanh") {
-        std::cout << "tanh" << std::endl;
             return {ArmActivationFunction::TANH, a.empty() ? 1.f : a[0], b.empty() ? 1.f : b[0]};
     } else if (activation[0] == "relu") {
-        std::cout << "relu" << std::endl;
-            std::cout << "relu - 0" << std::endl;
-            return ArmActivationFunction::RELU;
+        if (clip != 0.f) {
+            return {ArmActivationFunction::LU_BOUNDED_RELU, clip, -clip};
+        }
+        return ArmActivationFunction::RELU;
     } else if (activation[0] == "sigmoid") {
-        std::cout << "sigmoid" << std::endl;
         return { ArmActivationFunction::LOGISTIC };
     }
     return arm_compute::ActivationLayerInfo{};
