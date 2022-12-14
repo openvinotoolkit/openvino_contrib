@@ -35,7 +35,7 @@ static void FillLayerInfo(const Pool& node, arm_compute::PoolingLayerInfo& pool_
     }
 }
 
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMaxPoolV1& node) {
     if (node.get_input_shape(0).size() == 4 &&
         (node.input(0).get_element_type() == ngraph::element::f32 ||
         node.input(0).get_element_type() == ngraph::element::f16)) {
@@ -61,7 +61,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& n
     }
 }
 
-template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v8::MaxPool& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmMaxPoolV8& node) {
     if ((node.get_input_shape(0).size() == 4) &&
        (node.get_output_element_type(1) == ngraph::element::u32) &&
        (node.get_kernel() == ngraph::Shape{2, 2}) &&
@@ -206,7 +206,7 @@ protected:
     std::unique_ptr<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel> _i_sgn;
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;
 };
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::AvgPool& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmAvgPool& node) {
     auto iInfoIt = node.get_rt_info().find("InputPrescaleInfo");
     const arm_compute::QuantizationInfo* iInfo = iInfoIt == node.get_rt_info().end() ? nullptr :
                                                &(iInfoIt->second.as<arm_compute::QuantizationInfo>());

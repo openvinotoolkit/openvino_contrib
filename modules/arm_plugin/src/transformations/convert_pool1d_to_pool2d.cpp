@@ -13,10 +13,10 @@
 NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMaxPool1D, "ConvertMaxPool1D", 0);
 ArmPlugin::pass::ConvertMaxPool1D::ConvertMaxPool1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
-        ngraph::pattern::wrap_type<opset::MaxPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+        ngraph::pattern::wrap_type<opset::ArmMaxPoolV1>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
                                                     ngraph::pattern::has_static_shape()), "ConvertMaxPooling1D");
     register_matcher(m, [&](ngraph::pattern::Matcher& m) {
-        auto pool = std::dynamic_pointer_cast<opset::MaxPool>(m.get_match_root());
+        auto pool = std::dynamic_pointer_cast<opset::ArmMaxPoolV1>(m.get_match_root());
         if (!pool) {
             return false;
         }
@@ -34,7 +34,7 @@ ArmPlugin::pass::ConvertMaxPool1D::ConvertMaxPool1D() {
 
         auto input2d   = std::make_shared<opset::Reshape>(input, in2d_shape, true);
         std::shared_ptr<ngraph::Node> pool2d;
-        pool2d = std::make_shared<opset::MaxPool>(input2d,
+        pool2d = std::make_shared<opset::ArmMaxPoolV1>(input2d,
                                             ngraph::Strides{pool->get_strides()[0], 1},
                                             ngraph::Shape{pool->get_pads_begin()[0], 0},
                                             ngraph::Shape{pool->get_pads_end()[0], 0},
@@ -55,10 +55,10 @@ ArmPlugin::pass::ConvertMaxPool1D::ConvertMaxPool1D() {
 NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertAvgPool1D, "ConvertAvgPool1D", 0);
 ArmPlugin::pass::ConvertAvgPool1D::ConvertAvgPool1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
-            ngraph::pattern::wrap_type<opset::AvgPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+            ngraph::pattern::wrap_type<opset::ArmAvgPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
                                                         ngraph::pattern::has_static_shape()), "ConvertAvgPooling1D");
     register_matcher(m, [&](ngraph::pattern::Matcher& m) {
-        auto pool = std::dynamic_pointer_cast<opset::AvgPool>(m.get_match_root());
+        auto pool = std::dynamic_pointer_cast<opset::ArmAvgPool>(m.get_match_root());
         if (!pool) {
             return false;
         }
@@ -76,7 +76,7 @@ ArmPlugin::pass::ConvertAvgPool1D::ConvertAvgPool1D() {
 
         auto input2d   = std::make_shared<opset::Reshape>(input, in2d_shape, true);
         std::shared_ptr<ngraph::Node> pool2d;
-        pool2d = std::make_shared<opset::AvgPool>(input2d,
+        pool2d = std::make_shared<opset::ArmAvgPool>(input2d,
                                             ngraph::Strides{pool->get_strides()[0], 1},
                                             ngraph::Shape{pool->get_pads_begin()[0], 0},
                                             ngraph::Shape{pool->get_pads_end()[0], 0},

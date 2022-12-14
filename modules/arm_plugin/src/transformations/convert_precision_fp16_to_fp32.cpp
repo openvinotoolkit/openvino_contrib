@@ -18,8 +18,9 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::Constant, op);
     CHECK_TYPE(ArmPlugin::opset::ArmConvolution, op);
     CHECK_TYPE(ArmPlugin::opset::ArmGroupConvolution, op);
-    CHECK_TYPE(ArmPlugin::opset::AvgPool, op);
-    CHECK_TYPE(ArmPlugin::opset::MaxPool, op);
+    CHECK_TYPE(ArmPlugin::opset::ArmAvgPool, op);
+    CHECK_TYPE(ArmPlugin::opset::ArmMaxPoolV1, op);
+    CHECK_TYPE(ArmPlugin::opset::ArmMaxPoolV8, op);
     CHECK_TYPE(ArmPlugin::opset::Add, op);
     CHECK_TYPE(ArmPlugin::opset::Subtract, op);
     CHECK_TYPE(ArmPlugin::opset::Multiply, op);
