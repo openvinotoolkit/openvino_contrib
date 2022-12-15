@@ -81,10 +81,10 @@ checkSrcTree "$ONETBB_HOME" https://github.com/oneapi-src/oneTBB.git master
 if [ "$WITH_OPENCV" = "ON" ]; then
     checkSrcTree "$OPENCV_HOME" https://github.com/opencv/opencv.git 4.x
 fi
-checkSrcTree "$OPENVINO_HOME" https://github.com/openvinotoolkit/openvino.git master
-checkSrcTree "$OPENVINO_CONTRIB" https://github.com/openvinotoolkit/openvino_contrib.git master
+checkSrcTree "$OPENVINO_HOME" https://github.com/openvinotoolkit/openvino.git releases/2022/3
+checkSrcTree "$OPENVINO_CONTRIB" https://github.com/openvinotoolkit/openvino_contrib.git releases/2022/3
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree "$OMZ_HOME" https://github.com/openvinotoolkit/open_model_zoo.git master
+    checkSrcTree "$OMZ_HOME" https://github.com/openvinotoolkit/open_model_zoo.git releases/2022/3
 fi
 
 # python variables
