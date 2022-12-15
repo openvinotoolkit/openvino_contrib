@@ -7,7 +7,7 @@
 using namespace ngraph;
 using namespace ArmPlugin;
 
-opset::ArmMaxPoolV1::ArmMaxPoolV1(const ov::Output<Node>& arg,
+opset::v1::ArmMaxPool::ArmMaxPool(const ov::Output<Node>& arg,
                                         const ov::Strides& strides,
                                         const ov::Shape& pads_begin,
                                         const ov::Shape& pads_end,
@@ -16,7 +16,7 @@ opset::ArmMaxPoolV1::ArmMaxPoolV1(const ov::Output<Node>& arg,
                                         const ov::op::PadType auto_pad)
         : ov::op::v1::MaxPool{arg, strides, pads_begin, pads_end, kernel, rounding_type, auto_pad} {}
 
-opset::ArmMaxPoolV8::ArmMaxPoolV8(const ov::Output<Node>& arg,
+opset::v8::ArmMaxPool::ArmMaxPool(const ov::Output<Node>& arg,
                                   const ov::Strides& strides,
                                   const ov::Strides& dilations,
                                   const ov::Shape& pads_begin,
@@ -28,7 +28,7 @@ opset::ArmMaxPoolV8::ArmMaxPoolV8(const ov::Output<Node>& arg,
                                   const int64_t axis)
         : ov::op::v8::MaxPool{arg, strides, dilations, pads_begin, pads_end, kernel, rounding_type, auto_pad, index_element_type, axis} {}
 
-opset::ArmAvgPool::ArmAvgPool(const ov::Output<Node>& arg,
+opset::v1::ArmAvgPool::ArmAvgPool(const ov::Output<Node>& arg,
                               const ov::Strides& strides,
                               const ov::Shape& pads_begin,
                               const ov::Shape& pads_end,

@@ -17,7 +17,7 @@ ArmPlugin::pass::ConvertArmMaxPoolV1::ConvertArmMaxPoolV1() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::ArmMaxPoolV1>(max_pool->input_value(0),
+        auto arm_pool = std::make_shared<opset::v1::ArmMaxPool>(max_pool->input_value(0),
                                                               max_pool->get_strides(),
                                                               max_pool->get_pads_begin(),
                                                               max_pool->get_pads_end(),
@@ -44,7 +44,7 @@ ArmPlugin::pass::ConvertArmMaxPoolV8::ConvertArmMaxPoolV8() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::ArmMaxPoolV8>(max_pool->input_value(0),
+        auto arm_pool = std::make_shared<opset::v8::ArmMaxPool>(max_pool->input_value(0),
                                                               max_pool->get_strides(),
                                                               max_pool->get_dilations(),
                                                               max_pool->get_pads_begin(),
@@ -74,7 +74,7 @@ ArmPlugin::pass::ConvertArmAvgPool::ConvertArmAvgPool() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::ArmAvgPool>(avg_pool->input_value(0),
+        auto arm_pool = std::make_shared<opset::v1::ArmAvgPool>(avg_pool->input_value(0),
                                                           avg_pool->get_strides(),
                                                           avg_pool->get_pads_begin(),
                                                           avg_pool->get_pads_end(),

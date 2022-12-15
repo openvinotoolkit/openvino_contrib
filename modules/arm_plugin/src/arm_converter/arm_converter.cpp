@@ -49,8 +49,8 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Constant>();
     Register<opset::ArmConvolution>();
     Register<opset::ArmGroupConvolution>();
-    Register<opset::ArmAvgPool>();
-    Register<opset::ArmMaxPoolV1>();
+    Register<opset::v1::ArmAvgPool>();
+    Register<opset::v1::ArmMaxPool>();
     Register<opset::Add>();
     Register<opset::Subtract>();
     Register<opset::Multiply>();
@@ -188,7 +188,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<ngraph::op::v8::NV12toRGB>();
         Register<ngraph::op::v8::I420toBGR>();
         Register<ngraph::op::v8::I420toRGB>();
-        Register<opset::ArmMaxPoolV8>();
+        Register<opset::v8::ArmMaxPool>();
         Register<ngraph::op::v8::Slice>();
     }
     Register<opset::Result>();
