@@ -80,6 +80,7 @@
 #include "store_result_name.hpp"
 #include "replace_power_by_mul.hpp"
 #include "convert_precision_fp16_to_fp32.hpp"
+#include "convert_pool_arm.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -354,6 +355,10 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertTile>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertSplit>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertConcat>();
+        // convert ngraph pooling operations to arm opset pooling operations
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV1>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV8>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmAvgPool>();
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
