@@ -157,7 +157,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::Round>();
         Register<opset::Convert>();
         Register<opset::ConvertLike>();
-        Register<opset::GatherND>();
+        Register<ov::op::v8::GatherND>();
         Register<opset::ScatterUpdate>();
         Register<opset::ScatterNDUpdate>();
         Register<opset::ScatterElementsUpdate>();
