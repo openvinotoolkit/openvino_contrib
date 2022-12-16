@@ -72,6 +72,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::LogSoftmax>();
     Register<opset::ArmSplit>();
     Register<opset::LRN>();
+    Register<opset::RNNCell>();
     Register<opset::Minimum>();
     Register<opset::Maximum>();
     Register<opset::ArmStridedSlice>();
