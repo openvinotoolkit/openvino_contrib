@@ -7,10 +7,6 @@
 
 namespace ArmPlugin {
 template<> Converter::Conversion::Ptr Converter::Convert(const ov::op::v8::GatherND& node) {
-    if (node.get_output_shape(0).size() > 5) {
-        IE_THROW() << "GatherND node doesn't support " << node.get_output_shape(0) << " output shape.";
-    }
-
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction,
                                     node.input(0), node.input(1), node.output(0),

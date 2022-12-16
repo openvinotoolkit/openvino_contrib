@@ -81,6 +81,7 @@
 #include "replace_power_by_mul.hpp"
 #include "convert_precision_fp16_to_fp32.hpp"
 #include "convert_pool_arm.hpp"
+#include "convert_gathernd_arm.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -338,6 +339,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::BroadcastSelect>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGather>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertGather8ToGather7>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGatherNDV5toV8>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertSoftMax8ToSoftMax1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertDFT>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertIDFT>();
