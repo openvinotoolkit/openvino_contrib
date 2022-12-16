@@ -13,7 +13,6 @@
 #include "transformations/op_conversions/convert_broadcast_to_tiles.hpp"
 #include "transformations/op_conversions/convert_gather_downgrade.hpp"
 #include "transformations/op_conversions/convert_softmax_downgrade.hpp"
-#include "transformations/op_conversions/rnn_cell_decomposition.hpp"
 #include "transformations/op_conversions/lstm_cell_decomposition.hpp"
 #include "transformations/op_conversions/gru_cell_decomposition.hpp"
 #include "transformations/op_conversions/log_softmax_decomposition.hpp"
@@ -80,6 +79,7 @@
 #include "store_result_name.hpp"
 #include "replace_power_by_mul.hpp"
 #include "convert_precision_fp16_to_fp32.hpp"
+#include "convert_rnn_cell.hpp"
 #include "convert_pool_arm.hpp"
 
 #include <ngraph/pass/manager.hpp>
@@ -199,7 +199,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToLSTMSequence>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertTensorIteratorToRNNSequence>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RNNCellDecomposition>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertRNNCell>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::LSTMCellDecomposition>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::GRUCellDecomposition>();
 
