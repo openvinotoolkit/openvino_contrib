@@ -51,6 +51,7 @@
 #include "convert_conv1d_to_conv2d.hpp"
 #include "convert_grn_to_normalizel2.hpp"
 #include "convert_mat_mul.hpp"
+#include "convert_transpose_mat_mul.hpp"
 #include "convert_batchnorm_v0_to_v5.hpp"
 #include "convert_batch_norm.hpp"
 #include "convert_ceiling.hpp"
@@ -343,6 +344,8 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvBiasFusion>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertMatMulToFC>();
+        manager.register_pass<ngraph::pass::ConstantFolding>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertTransposeMatMul>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcast3>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::ConvertBroadcastToTiles>();
