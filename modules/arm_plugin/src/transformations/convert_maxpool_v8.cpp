@@ -12,11 +12,11 @@ NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMaxPoolV8, "ConvertMaxPoolV8", 0)
 
 ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
-            ngraph::pattern::wrap_type<ngraph::op::v8::MaxPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
+            ngraph::pattern::wrap_type<opset::v8::ArmMaxPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},
                                                                  ngraph::pattern::has_static_shape()), "ConvertMaxPoolV8");
 
     register_matcher(m, [&](ngraph::pattern::Matcher& m) {
-        auto maxpool = std::dynamic_pointer_cast<ngraph::op::v8::MaxPool>(m.get_match_root());
+        auto maxpool = std::dynamic_pointer_cast<opset::v8::ArmMaxPool>(m.get_match_root());
         if (!maxpool) {
             return false;
         }
@@ -28,7 +28,7 @@ ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
             (maxpool->get_axis() != 0)) {
             return false;
         }
-        auto new_maxpool = std::make_shared<ngraph::op::v8::MaxPool>(maxpool->input_value(0),
+        auto new_maxpool = std::make_shared<opset::v8::ArmMaxPool>(maxpool->input_value(0),
                                                                      maxpool->get_strides(),
                                                                      maxpool->get_dilations(),
                                                                      maxpool->get_pads_begin(),
