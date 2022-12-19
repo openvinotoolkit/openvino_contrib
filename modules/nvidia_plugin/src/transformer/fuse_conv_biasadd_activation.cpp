@@ -1,30 +1,33 @@
 // Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include <type_traits>
+#include <utility>
+#include <memory>
 
 #include "openvino/cc/ngraph/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
-#include <exec_graph_info.hpp>
-#include <memory>
-#include <ngraph/graph_util.hpp>
-#include <ngraph/node.hpp>
-#include <ngraph/node_output.hpp>
-#include <ngraph/opsets/opset1.hpp>
-#include <ngraph/pattern/matcher.hpp>
-#include <ngraph/pattern/op/label.hpp>
-#include <ngraph/pattern/op/pattern.hpp>
+#include "exec_graph_info.hpp"
+#include "openvino/core/graph_util.hpp"
+#include "openvino/core/node.hpp"
+#include "openvino/core/node_output.hpp"
+#include "openvino/core/rt_info.hpp"
+#include "openvino/core/shape.hpp"
+#include "openvino/core/type/element_type.hpp"
+#include "openvino/opsets/opset1.hpp"
+#include "openvino/pass/pattern/matcher.hpp"
+#include "openvino/pass/pattern/op/or.hpp"
+#include "openvino/pass/pattern/op/label.hpp"
+#include "openvino/pass/pattern/op/pattern.hpp"
+#include "openvino/pass/manager.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/variant.hpp>
-#include <type_traits>
-#include <utility>
+
 
 #include "nodes/cuda_plugin_custom_node_types.hpp"
 #include "nodes/fused_convolution.hpp"
 #include "nodes/fused_convolution_backprop_data.hpp"
+#include "rt_info/cuda_node_id.hpp"
 
 using namespace ov::pass::pattern;
 
@@ -34,6 +37,9 @@ using ov::nvidia_gpu::nodes::FusedGroupConvolution;
 using ActivationMode = ov::nvidia_gpu::nodes::ActivationMode;
 using FusedConvBackpropData = ov::nvidia_gpu::nodes::FusedConvBackpropData;
 
+using namespace ov::nvidia_gpu::rt_info;
+
+namespace {
 template <class A, class B>
 std::pair<std::shared_ptr<A>, std::shared_ptr<B>> parse_eltwise_inputs(std::shared_ptr<ov::Node> node) {
     auto eltwise = std::dynamic_pointer_cast<A>(node->input(0).get_source_output().get_node_shared_ptr());
@@ -76,26 +82,6 @@ struct FusedConvCallbacks {
         const ov::Output<ov::Node> &filters = m_conv->input(1).get_source_output();
         const ov::Output<ov::Node> &bias = m_const->output(0);
 
-        constexpr auto conv_bias_rank_min{3};
-        constexpr auto conv_bias_rank_max{5};
-        const auto &bias_shape = bias.get_shape();
-        const auto bias_rank = bias_shape.size();
-        if (bias_rank < conv_bias_rank_min || bias_rank > conv_bias_rank_max) {
-            return false;
-        }
-
-        const auto num_spatial_dims = m_conv->get_output_shape(0).size() - 2;
-        const auto nchw_channel_dim_reverse_offset = num_spatial_dims + 1;
-        const auto output_shape = m_conv->get_output_shape(0);
-        if (bias_shape.at(bias_shape.size() - nchw_channel_dim_reverse_offset) !=
-            output_shape.at(output_shape.size() - nchw_channel_dim_reverse_offset)) {
-            return false;
-        }
-
-        if (num_spatial_dims == 3) {
-            return false;  // NOTE: 3D convolution fusing was disabled due to 3d_unet bad performance
-        }
-
         auto fused_conv = std::make_shared<TFusedConvolution>(data,
                                                               filters,
                                                               bias,
@@ -110,6 +96,7 @@ struct FusedConvCallbacks {
         fused_conv->set_friendly_name(eltwise->get_friendly_name());
 
         ov::copy_runtime_info({m_conv, eltwise}, new_conv.get_node_shared_ptr());
+        set_node_id(new_conv.get_node_shared_ptr(), get_node_id(eltwise));
 
         const std::string originalLayers = eltwise->get_friendly_name() + "," + m_conv->get_friendly_name();
         fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
@@ -121,21 +108,29 @@ struct FusedConvCallbacks {
     static std::pair<std::shared_ptr<TFusedConvolution>, std::shared_ptr<ov::Node>> parse_fusedconv_inputs(
         std::shared_ptr<ov::Node> add) {
         std::shared_ptr<TFusedConvolution> fused_conv = nullptr;
-        std::shared_ptr<ov::Node> node = nullptr;
-        node = add->input(1).get_source_output().get_node_shared_ptr();
-        fused_conv =
-            std::dynamic_pointer_cast<TFusedConvolution>(add->input(0).get_source_output().get_node_shared_ptr());
-        if (!fused_conv) {
-            node = add->input(0).get_source_output().get_node_shared_ptr();
-            fused_conv =
-                std::dynamic_pointer_cast<TFusedConvolution>(add->input(1).get_source_output().get_node_shared_ptr());
+
+        auto input0 = add->input(0).get_source_output().get_node_shared_ptr();
+        auto input1 = add->input(1).get_source_output().get_node_shared_ptr();
+
+        auto fused_conv0 = std::dynamic_pointer_cast<TFusedConvolution>(input0);
+        auto fused_conv1 = std::dynamic_pointer_cast<TFusedConvolution>(input1);
+
+        if (fused_conv0 && fused_conv1) {
+            if (get_node_id(fused_conv0) > get_node_id(fused_conv1)) {
+                return {fused_conv0, input1};
+            } else {
+                return {fused_conv1, input0};
+            }
         }
 
-        if (!fused_conv) {
-            return {nullptr, nullptr};
+        if (fused_conv0) {
+            return {fused_conv0, input1};
         }
 
-        return {fused_conv, node};
+        if (fused_conv1) {
+            return {fused_conv1, input0};
+        }
+        return {nullptr, nullptr};
     }
 
     static bool sink_add_to_fused_convolution(Matcher &m) {
@@ -164,6 +159,7 @@ struct FusedConvCallbacks {
 
         fused_conv_add->set_friendly_name(add->get_friendly_name());
         ov::copy_runtime_info({node, fused_conv}, fused_conv_add);
+        set_node_id(fused_conv_add, get_node_id(add));
 
         auto &rt_info = fused_conv->get_rt_info();
         if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
@@ -179,7 +175,7 @@ struct FusedConvCallbacks {
         return true;
     }
 
-    static bool sink_activation_to_fused_convolution(Matcher &m, ActivationMode activation) {
+    static bool sink_activation_to_fused_convolution(Matcher &m) {
         auto activationNode = m.get_match_root();
         auto fused_conv = std::dynamic_pointer_cast<TFusedConvolution>(
             activationNode->input(0).get_source_output().get_node_shared_ptr());
@@ -187,8 +183,20 @@ struct FusedConvCallbacks {
             return false;
         }
 
+        ActivationMode activation = ActivationMode::NO_ACTIVATION;
+        if (ov::is_type<ov::op::v0::Relu>(activationNode)) {
+            activation = ActivationMode::RELU;
+        } else if (ov::is_type<ov::op::v0::Sigmoid>(activationNode)) {
+            activation = ActivationMode::SIGMOID;
+        } else if (ov::is_type<ov::op::v0::Tanh>(activationNode)) {
+            activation = ActivationMode::TANH;
+        } else {
+            return false;
+        }
         fused_conv->set_activation(activation);
+
         fused_conv->set_friendly_name(activationNode->get_friendly_name());
+        set_node_id(fused_conv, get_node_id(activationNode));
 
         auto &rt_info = fused_conv->get_rt_info();
         if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
@@ -273,11 +281,70 @@ bool fuse_convolution_backprop_data_with_add(Matcher &m) {
 
     return true;
 }
+bool is_bias_to_be_fused(const ov::Output<ov::Node>& output) {
+    constexpr auto conv_bias_rank_min{3};
+    constexpr auto conv_bias_rank_max{5};
+    auto node = std::dynamic_pointer_cast<ov::op::v1::Add>(output.get_node_shared_ptr());
+    if (!node) {
+        return false;
+    }
+    if (node->input(0).get_partial_shape().is_dynamic() ||
+        node->input(1).get_partial_shape().is_dynamic()) {
+        return false;
+    }
+    const auto conv_shape = node->input(0).get_shape();
+    const auto bias_shape = node->input(1).get_shape();
+    const auto bias_rank = bias_shape.size();
+    if (bias_rank < conv_bias_rank_min || bias_rank > conv_bias_rank_max) {
+        return false;
+    }
+    const auto num_spatial_dims = conv_shape.size() - 2;
+    const auto nchw_channel_dim_reverse_offset = num_spatial_dims + 1;
+    if (bias_shape.at(bias_shape.size() - nchw_channel_dim_reverse_offset) !=
+        conv_shape.at(conv_shape.size() - nchw_channel_dim_reverse_offset)) {
+        return false;
+    }
+    if (num_spatial_dims == 3) {
+        return false;  // NOTE: 3D convolution fusing was disabled due to 3d_unet bad performance
+    }
+    return true;
+}
+bool is_add_to_be_fused(const ov::Output<ov::Node>& output) {
+    auto node = std::dynamic_pointer_cast<ov::op::v1::Add>(output.get_node_shared_ptr());
+    if (!node) {
+        return false;
+    }
+    const auto shape0 = node->input(0).get_partial_shape();
+    const auto shape1 = node->input(1).get_partial_shape();
+    if (shape0.is_dynamic() || shape1.is_dynamic()) {
+        return false;
+    }
+    return (shape0.to_shape() == shape1.to_shape());
+}
+} // namespace
+
+bool ov::nvidia_gpu::pass::CudaFuseMarkUpNodesOrder::run_on_model(const std::shared_ptr<ov::Model>& m) {
+    RUN_ON_FUNCTION_SCOPE(CudaFuseMarkUpNodesOrder);
+    uint64_t id = 0;
+    for (auto& node : m->get_ordered_ops()) {
+        set_node_id(node, id++);
+    }
+    return false;
+}
+
+bool ov::nvidia_gpu::pass::CudaFuseCleanUpNodesOrder::run_on_model(const std::shared_ptr<ov::Model>& m) {
+    RUN_ON_FUNCTION_SCOPE(CudaFuseCleanUpNodesOrder);
+    for (auto& node : m->get_ordered_ops()) {
+        remove_node_id(node);
+    }
+    return false;
+}
 
 ov::nvidia_gpu::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
     MATCHER_SCOPE(FuseConvolutionWithBiasAdd);
     auto conv = wrap_type<ov::op::v1::Convolution>(consumers_count(1));
-    auto add = wrap_type<ov::op::v1::Add>({conv, any_input()});
+    auto bias = wrap_type<ov::op::v0::Constant>();
+    auto add = wrap_type<ov::op::v1::Add>({conv, bias}, is_bias_to_be_fused);
 
     matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::fuse_convolution_with_biasadd(m);
@@ -290,7 +357,8 @@ ov::nvidia_gpu::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
 ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAdd::FuseGroupConvolutionWithBiasAdd() {
     MATCHER_SCOPE(FuseGroupConvolutionWithBiasAdd);
     auto conv = wrap_type<ov::op::v1::GroupConvolution>(consumers_count(1));
-    auto add = wrap_type<ov::op::v1::Add>({conv, any_input()});
+    auto bias = wrap_type<ov::op::v0::Constant>();
+    auto add = wrap_type<ov::op::v1::Add>({conv, bias}, is_bias_to_be_fused);
 
     matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedGroupConvolution>::fuse_convolution_with_biasadd(m);
@@ -303,8 +371,9 @@ ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAdd::FuseGroupConvolutionWithB
 ov::nvidia_gpu::pass::FuseConvolutionWithBiasAddAdd::FuseConvolutionWithBiasAddAdd() {
     MATCHER_SCOPE(FuseConvolutionWithBiasAddAdd);
     auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
-    auto relu = wrap_type<ov::op::v0::Relu>(consumers_count(2));
-    auto add = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution});
+    auto add1 = wrap_type<ov::op::v1::Add>({fused_convolution, any_input()}, is_add_to_be_fused);
+    auto add2 = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution}, is_add_to_be_fused);
+    auto add = std::make_shared<::op::Or>(ov::OutputVector{ add1, add2 });
 
     matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::sink_add_to_fused_convolution(m);
@@ -317,8 +386,9 @@ ov::nvidia_gpu::pass::FuseConvolutionWithBiasAddAdd::FuseConvolutionWithBiasAddA
 ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAddAdd::FuseGroupConvolutionWithBiasAddAdd() {
     MATCHER_SCOPE(FuseGroupConvolutionWithBiasAddAdd);
     auto fused_convolution = wrap_type<FusedGroupConvolution>(consumers_count(1));
-    auto relu = wrap_type<ov::op::v0::Relu>(consumers_count(2));
-    auto add = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution});
+    auto add1 = wrap_type<ov::op::v1::Add>({fused_convolution, any_input()}, is_add_to_be_fused);
+    auto add2 = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution}, is_add_to_be_fused);
+    auto add = std::make_shared<::op::Or>(ov::OutputVector{ add1, add2 });
 
     matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedGroupConvolution>::sink_add_to_fused_convolution(m);
@@ -328,65 +398,52 @@ ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAddAdd::FuseGroupConvolutionWi
     register_matcher(m, callback);
 }
 
-ov::nvidia_gpu::pass::SinkReluToFusedConvolution::SinkReluToFusedConvolution() {
-    MATCHER_SCOPE(SinkReluToFusedConvolution);
+ov::nvidia_gpu::pass::SinkActivationToFusedConvolution::SinkActivationToFusedConvolution() {
+    MATCHER_SCOPE(SinkActivationToFusedConvolution);
     auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
-    auto activation = wrap_type<ov::op::v0::Relu>({fused_convolution});
-
-    matcher_pass_callback callback = [](Matcher &m) {
-        return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::RELU);
-    };
-
-    auto m = std::make_shared<Matcher>(activation, matcher_name);
-    register_matcher(m, callback);
-}
-
-ov::nvidia_gpu::pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
-    MATCHER_SCOPE(SinkSigmoidToFusedConvolution);
-    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
-    auto activation = wrap_type<ov::op::v0::Sigmoid>({fused_convolution});
-
-    matcher_pass_callback callback = [](Matcher &m) {
-        return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::SIGMOID);
-    };
-
-    auto m = std::make_shared<Matcher>(activation, matcher_name);
-    register_matcher(m, callback);
-}
-
-ov::nvidia_gpu::pass::SinkTanhToFusedConvolution::SinkTanhToFusedConvolution() {
-    MATCHER_SCOPE(SinkTanhToFusedConvolution);
-    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
-    auto activation = wrap_type<ov::op::v0::Tanh>({fused_convolution});
-
-    matcher_pass_callback callback = [](Matcher &m) {
-        return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::TANH);
-    };
-
-    auto m = std::make_shared<Matcher>(activation, matcher_name);
-    register_matcher(m, callback);
-}
-
-ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
-    add_matcher<FuseConvolutionWithBiasAdd>();
-    add_matcher<FuseConvolutionWithBiasAddAdd>();
-    add_matcher<SinkReluToFusedConvolution>();
-    add_matcher<SinkSigmoidToFusedConvolution>();
     // TODO: Uncomment when performance for FusedConvolution+BiasAdd+Tanh would be satisfied
-    // add_matcher<SinkTanhToFusedConvolution>();
+    // auto activation = wrap_type<ov::op::v0::Relu, ov::op::v0::Sigmoid, ov::op::v0::Tanh>({fused_convolution});
+    auto activation = wrap_type<ov::op::v0::Relu, ov::op::v0::Sigmoid>({fused_convolution});
+
+    matcher_pass_callback callback = [](Matcher &m) {
+        return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m);
+    };
+
+    auto m = std::make_shared<Matcher>(activation, matcher_name);
+    register_matcher(m, callback);
 }
 
-ov::nvidia_gpu::pass::CudaFuseGroupConvBiasAddActivation::CudaFuseGroupConvBiasAddActivation() {
-    add_matcher<FuseGroupConvolutionWithBiasAdd>();
-    add_matcher<FuseGroupConvolutionWithBiasAddAdd>();
+bool ov::nvidia_gpu::pass::CudaConvolutionFusion::run_on_model(const std::shared_ptr<ov::Model>& m) {
+    RUN_ON_FUNCTION_SCOPE(CudaConvolutionFusion);
+    ov::pass::Manager manager(get_pass_config());
+
+    manager.register_pass<CudaFuseMarkUpNodesOrder>();
+
+    auto fuse_conv_bias_add_activation = manager.register_pass<ov::pass::GraphRewrite>();
+    ADD_MATCHER(fuse_conv_bias_add_activation, FuseConvolutionWithBiasAdd)
+    ADD_MATCHER(fuse_conv_bias_add_activation, FuseConvolutionWithBiasAddAdd)
+    ADD_MATCHER(fuse_conv_bias_add_activation, SinkActivationToFusedConvolution)
+    fuse_conv_bias_add_activation->set_name("ov::nvidia_gpu::pass::fuse_conv_bias_add_activation");
+
+    auto fuse_group_conv_bias_add_activation = manager.register_pass<ov::pass::GraphRewrite>();
+    ADD_MATCHER(fuse_group_conv_bias_add_activation, FuseGroupConvolutionWithBiasAdd)
+    ADD_MATCHER(fuse_group_conv_bias_add_activation, FuseGroupConvolutionWithBiasAddAdd)
     // TODO: Activations, should check performance first
+    fuse_group_conv_bias_add_activation->set_name("ov::nvidia_gpu::pass::fuse_group_conv_bias_add_activation");
+
+    manager.register_pass<CudaFuseConvBackpropDataAdd>();
+    manager.register_pass<CudaFuseCleanUpNodesOrder>();
+
+    manager.run_passes(m);
+    return false;
 }
 
 ov::nvidia_gpu::pass::CudaFuseConvBackpropDataAdd::CudaFuseConvBackpropDataAdd() {
     MATCHER_SCOPE(CudaFuseConvBackpropDataAdd);
     auto conv_backprop_data =
         wrap_type<ov::op::v1::ConvolutionBackpropData>(consumers_count(1));
-    auto add = wrap_type<ov::op::v1::Add>({conv_backprop_data, any_input()});
+    auto bias = wrap_type<ov::op::v0::Constant>();
+    auto add = wrap_type<ov::op::v1::Add>({conv_backprop_data, bias}, is_add_to_be_fused);
 
     matcher_pass_callback callback = [](Matcher &m) {
         return fuse_convolution_backprop_data_with_add(m);
