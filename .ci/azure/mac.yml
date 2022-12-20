@@ -136,6 +136,12 @@ jobs:
 
   - script: ls -alR $(INSTALL_DIR)
     displayName: 'List install files'
+  
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: $(INSTALL_DIR)
+      artifactName: 'openvino_aarch64_mac'
+    displayName: 'Publish OpenVINO AArch64 Mac package'
 
   - script: |
       . $(SETUPVARS) gradle clean build --info

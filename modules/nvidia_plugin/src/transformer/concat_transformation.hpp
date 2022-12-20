@@ -4,15 +4,15 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 #include <transformations_visibility.hpp>
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class ConcatTransformation : public ngraph::pass::MatcherPass {
+class ConcatTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConcatTransformation", "0");
     ConcatTransformation();
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

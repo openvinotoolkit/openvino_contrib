@@ -2,21 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "concat_transformation.hpp"
 
 #include <exec_graph_info.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/concat.hpp>
 
 #include "nodes/concat_optimized.hpp"
 
-namespace ngraph::pass {
+using namespace ov::pass::pattern;
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::ConcatTransformation, "ConcatTransformation", 0);
-
-bool change_concat_to_concat_optimized(pattern::Matcher& m) {
+namespace ov::nvidia_gpu::pass {
+namespace {
+bool change_concat_to_concat_optimized(Matcher& m) {
     using ov::nvidia_gpu::nodes::ConcatOptimized;
 
     auto concat = std::dynamic_pointer_cast<ov::op::v0::Concat>(m.get_match_root());
@@ -70,14 +71,16 @@ bool change_concat_to_concat_optimized(pattern::Matcher& m) {
 
     return true;
 }
+} // namespace
 
 ConcatTransformation::ConcatTransformation() {
-    auto concat = pattern::wrap_type<ov::op::v0::Concat>();
+    MATCHER_SCOPE(ConcatTransformation);
+    auto concat = wrap_type<ov::op::v0::Concat>();
 
-    matcher_pass_callback callback = [](pattern::Matcher& m) { return change_concat_to_concat_optimized(m); };
+    matcher_pass_callback callback = [](Matcher& m) { return change_concat_to_concat_optimized(m); };
 
-    auto m = std::make_shared<pattern::Matcher>(concat, "ConcatTransformation");
+    auto m = std::make_shared<Matcher>(concat, matcher_name);
     register_matcher(m, callback);
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

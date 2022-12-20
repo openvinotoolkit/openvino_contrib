@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "bidirectional_lstm_sequence_composition.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <gsl/gsl_assert>
 #include <gsl/span_ext>
 #include <ngraph/pass/constant_folding.hpp>
-#include <ngraph/pass/manager.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/manager.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/concat.hpp>
@@ -26,14 +27,10 @@
 
 #include "cuda_rt_info.hpp"
 
-namespace ngraph::pass {
+using namespace ov::pass;
+using namespace ov::pass::pattern;
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::Convert2LSTMSequenceToBidirectionalLSTMSequence,
-                       "Convert2LSTMSequenceToBidirectionalLSTMSequence",
-                       0);
-NGRAPH_RTTI_DEFINITION(ngraph::pass::ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized,
-                       "ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized",
-                       0);
+namespace ov::nvidia_gpu::pass {
 namespace {
 
 Node* findConcat(const Output<Node>& node, ov::op::v1::Transpose*& transpose) {
@@ -91,7 +88,7 @@ auto transposePerm(const Node* tran) {
 
 }  // namespace
 
-bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
+bool bidirectional_lstm_sequence_composition(Matcher& m) {
     auto transpose = std::dynamic_pointer_cast<ov::op::v1::Transpose>(m.get_match_root());
     if (!transpose) {
         return false;
@@ -241,7 +238,7 @@ bool bidirectional_lstm_sequence_composition(ngraph::pattern::Matcher& m) {
     return true;
 }
 
-bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
+bool bidirectional_lstm_sequence_cudnn_optimized(Matcher& m) {
     // Original OpenVINO:
     //   in              - [batch_size, seq_length, input_size]
     //   out             - [batch_size, num_directions, seq_length, hidden_size]
@@ -374,47 +371,40 @@ bool bidirectional_lstm_sequence_cudnn_optimized(ngraph::pattern::Matcher& m) {
 }
 
 Convert2LSTMSequenceToBidirectionalLSTMSequence::Convert2LSTMSequenceToBidirectionalLSTMSequence() {
-    auto transpose = ngraph::pattern::wrap_type<ov::op::v1::Transpose>(pattern::consumers_count(2));
+    MATCHER_SCOPE(Convert2LSTMSequenceToBidirectionalLSTMSequence);
+    auto transpose = wrap_type<ov::op::v1::Transpose>(consumers_count(2));
 
-    ov::matcher_pass_callback callback = [](pattern::Matcher& m) { return bidirectional_lstm_sequence_composition(m); };
+    ov::matcher_pass_callback callback = [](Matcher& m) { return bidirectional_lstm_sequence_composition(m); };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(transpose, "Convert2LSTMSequenceToBidirectionalLSTMSequence");
+    auto m = std::make_shared<Matcher>(transpose, matcher_name);
     this->register_matcher(m, callback);
 }
 
 ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized::
     ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized() {
-    auto transpose = ngraph::pattern::wrap_type<ov::op::v5::LSTMSequence>();
+    MATCHER_SCOPE(ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized);
+    auto transpose = wrap_type<ov::op::v5::LSTMSequence>();
 
-    ov::matcher_pass_callback callback = [](pattern::Matcher& m) {
+    ov::matcher_pass_callback callback = [](Matcher& m) {
         return bidirectional_lstm_sequence_cudnn_optimized(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(
-        transpose, "ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized");
+    auto m = std::make_shared<Matcher>(transpose, matcher_name);
     this->register_matcher(m, callback);
 }
-
-NGRAPH_RTTI_DEFINITION(ngraph::pass::BidirectionalSequenceComposition, "BidirectionalSequenceComposition", 0);
 
 BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_ptr<PassConfig> pass_config)
     : pass_config_(std::move(pass_config)) {
     pass_config_->disable<ov::pass::BidirectionalLSTMSequenceDecomposition>();
     pass_config_->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
     // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<pass::BidirectionalRNNSequenceDecomposition>();
-
-    pass_config_->disable<ov::pass::ConvertLSTMSequenceToTensorIterator>();
-    pass_config_->disable<ov::pass::ConvertGRUSequenceToTensorIterator>();
-    // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<pass::ConvertRNNSequenceToTensorIterator>();
+    // pass_config_->disable<ov::pass::BidirectionalRNNSequenceDecomposition>();
 }
 
-bool BidirectionalSequenceComposition::run_on_function(std::shared_ptr<ngraph::Function> f) {
-    ngraph::pass::Manager manager{pass_config_};
+bool BidirectionalSequenceComposition::run_on_model(const std::shared_ptr<ov::Model>& f) {
+    RUN_ON_MODEL_SCOPE(BidirectionalSequenceComposition)
+    Manager manager{pass_config_};
 
-    manager.register_pass<ov::pass::ConvertTensorIteratorToLSTMSequence>();
-    manager.register_pass<ov::pass::ConvertTensorIteratorToGRUSequence>();
     manager.register_pass<ov::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
     manager.register_pass<ov::pass::CommonOptimizations>();
@@ -426,4 +416,4 @@ bool BidirectionalSequenceComposition::run_on_function(std::shared_ptr<ngraph::F
     return false;
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

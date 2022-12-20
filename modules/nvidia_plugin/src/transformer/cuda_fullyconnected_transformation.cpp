@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 
 #include <exec_graph_info.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/add.hpp>
@@ -13,11 +14,10 @@
 #include <ops/matmul.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 
-namespace ngraph::pass {
+using namespace ov::pass::pattern;
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FullyConnectedTransformation, "FullyConnectedTransformation", 0);
-
-bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
+namespace ov::nvidia_gpu::pass {
+bool fuse_matmul_and_add(Matcher &m) {
     // Decompose Divide into Multiply with Power operations
     auto matMulNode = std::dynamic_pointer_cast<ov::op::v0::MatMul>(m.get_match_root());
     const auto matMulNodeOutputInputs = matMulNode->output(0).get_target_inputs();
@@ -77,12 +77,13 @@ bool fuse_matmul_and_add(ngraph::pattern::Matcher &m) {
 }
 
 FullyConnectedTransformation::FullyConnectedTransformation() {
-    auto matmul = ngraph::pattern::wrap_type<ov::op::v0::MatMul>(pattern::consumers_count(1));
+    MATCHER_SCOPE(FullyConnectedTransformation);
+    auto matmul = wrap_type<ov::op::v0::MatMul>(consumers_count(1));
 
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return fuse_matmul_and_add(m); };
+    matcher_pass_callback callback = [](Matcher &m) { return fuse_matmul_and_add(m); };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(matmul, "FullyConnectedTransformation");
+    auto m = std::make_shared<Matcher>(matmul, matcher_name);
     register_matcher(m, callback);
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

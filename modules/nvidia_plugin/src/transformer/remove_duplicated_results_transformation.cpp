@@ -2,22 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/variant.hpp>
 #include <openvino/op/matmul.hpp>
 #include <openvino/op/transpose.hpp>
 
-namespace ngraph::pass {
-
-NGRAPH_RTTI_DEFINITION(RemoveDuplicatedResultsTransformation, RemoveDuplicatedResultsTransformation::Name, 0);
-
-bool RemoveDuplicatedResultsTransformation::run_on_function(std::shared_ptr<ngraph::Function> f) {
+namespace ov::nvidia_gpu::pass {
+bool RemoveDuplicatedResultsTransformation::run_on_model(const std::shared_ptr<ov::Model>& f) {
+    RUN_ON_MODEL_SCOPE(RemoveDuplicatedResultsTransformation);
     std::unordered_set<std::shared_ptr<ov::op::v0::Result>> duplicated_results;
     for (auto& result : f->get_results()) {
         if (duplicated_results.count(result) > 0) {
@@ -45,4 +44,4 @@ bool RemoveDuplicatedResultsTransformation::run_on_function(std::shared_ptr<ngra
     return false;
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass
