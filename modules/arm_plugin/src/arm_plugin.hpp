@@ -36,6 +36,7 @@ struct Plugin : public InferenceEngine::IInferencePlugin {
                                          const std::map<std::string, InferenceEngine::Parameter> & options) const override;
     std::shared_ptr<ov::Model> Transform(const std::shared_ptr<const ov::Model>& model,
                                          const Configuration& config) const;
+    bool isOperationSupported(const std::shared_ptr<ov::Node>& node, const Converter &converter) const;
 
     struct SchedulerGuard {
         SchedulerGuard();
