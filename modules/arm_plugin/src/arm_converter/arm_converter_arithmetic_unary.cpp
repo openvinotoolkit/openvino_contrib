@@ -36,7 +36,7 @@ void func_neon_f32(const float* arg, float* out, size_t count,
 
 template <typename T>
 void acos_neon_f32(const float* arg, float* out, size_t count) {
-    func_neon_f32(arg, out, count, acos_ps, std::acosf);
+    func_neon_f32(arg, out, count, acos_ps, [&](float x) { return std::acos(x); });
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acos& node) {
@@ -65,7 +65,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Acosh& nod
 
 template <typename T>
 void asin_neon_f32(const float* arg, float* out, size_t count) {
-    func_neon_f32(arg, out, count, asin_ps, std::asinf);
+    func_neon_f32(arg, out, count, asin_ps, [&](float x) { return std::asin(x); });
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Asin& node) {
@@ -112,7 +112,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
 
 template <typename T>
 void cos_neon_f32(const float* arg, float* out, size_t count) {
-    func_neon_f32(arg, out, count, cos_ps, std::cosf);
+    func_neon_f32(arg, out, count, cos_ps, [&](float x) { return std::cos(x); });
 }
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node) {
     auto make = [&] (auto refFunction) {
@@ -153,7 +153,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Sinh& node
 
 template <typename T>
 void tan_neon_f32(const float* arg, float* out, size_t count) {
-    func_neon_f32(arg, out, count, tan_ps, std::tanf);
+    func_neon_f32(arg, out, count, tan_ps, [&](float x) { return std::tan(x); });
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Tan& node) {
