@@ -117,80 +117,16 @@ InferenceEngine::QueryNetworkResult Plugin::QueryNetwork(const InferenceEngine::
     if (function == nullptr) {
         throwIEException("CUDA Plugin supports only ngraph cnn network representation");
     }
-
-    // 1. First of all we should store initial input operation set
-    std::unordered_set<std::string> originalOps;
-    std::map<std::string, ov::NodeTypeInfo> friendlyNameToType;
-    for (auto&& node : function->get_ops()) {
-        originalOps.emplace(node->get_friendly_name());
-        friendlyNameToType[node->get_friendly_name()] = node->get_type_info();
+    auto supported = InferenceEngine::GetSupportedNodes(function,
+    [&](std::shared_ptr<ov::Model>& model) {
+            transformer_.transform(CUDA::Device{cfg.deviceId}, model, network.getInputsInfo(), network.getOutputsInfo(), cfg);
+        },
+    [&](const std::shared_ptr<ngraph::Node>& op) {
+        return isOperationSupported(op);
+    });
+    for (auto&& op_name : supported) {
+        res.supportedLayersMap.emplace(op_name, GetName() + "." + std::to_string(cfg.deviceId));
     }
-
-    // 2. It is needed to apply all transformations as it is done in LoadExeNetworkImpl
-    auto transformedFunction = transformer_.transform(
-        CUDA::Device{cfg.deviceId}, network.getFunction(), network.getInputsInfo(), network.getOutputsInfo(), cfg);
-
-    // 3. The same input node can be transformed into supported and unsupported backend node
-    // So we need store as supported either unsupported node sets
-    std::unordered_set<std::string> supported;
-    std::unordered_set<std::string> unsupported;
-    for (auto&& node : transformedFunction->get_ops()) {
-        const bool isOpSupported = isOperationSupported(node);
-        // Extract transformation history from transformed node as list of nodes
-        for (auto&& fusedLayerName : ov::getFusedNamesVector(node)) {
-            // Filter just nodes from original operation set
-            if (InferenceEngine::details::contains(originalOps, fusedLayerName)) {
-                if (isOpSupported) {
-                    supported.emplace(fusedLayerName);
-                } else {
-                    unsupported.emplace(fusedLayerName);
-                }
-            }
-        }
-    }
-
-    // 4. The result set should contain just nodes from supported set
-    for (auto&& unsupportedNode : unsupported) {
-        supported.erase(unsupportedNode);
-    }
-
-    for (auto&& node : function->get_ops()) {
-        // 5. If some housekeeping nodes were not added - add them.
-        if (InferenceEngine::details::contains(supported, node->get_friendly_name())) {
-            for (auto&& inputNodeOutput : node->input_values()) {
-                if (ov::op::util::is_constant(inputNodeOutput.get_node()) ||
-                    ov::op::util::is_parameter(inputNodeOutput.get_node())) {
-                    supported.emplace(inputNodeOutput.get_node()->get_friendly_name());
-                }
-            }
-            for (auto&& outputs : node->outputs()) {
-                for (auto&& outputNodeInput : outputs.get_target_inputs()) {
-                    if (ov::op::util::is_output(outputNodeInput.get_node())) {
-                        supported.emplace(outputNodeInput.get_node()->get_friendly_name());
-                    }
-                }
-            }
-        }
-
-        // 6. Eliminate subgraphs that consist of housekeeping nodes only
-        if (ov::op::util::is_constant(node) || ov::op::util::is_parameter(node)) {
-            if (!InferenceEngine::details::contains(
-                    supported, node->output(0).get_target_inputs().begin()->get_node()->get_friendly_name())) {
-                supported.erase(node->get_friendly_name());
-            }
-        } else if (ov::op::util::is_output(node)) {
-            auto name = node->input_values().begin()->get_node()->get_friendly_name();
-            if (!InferenceEngine::details::contains(supported, name)) {
-                supported.erase(node->get_friendly_name());
-            }
-        }
-    }
-
-    // 7. Produce the result
-    for (auto&& layerName : supported) {
-        res.supportedLayersMap.emplace(layerName, GetName());
-    }
-
     return res;
 }
 

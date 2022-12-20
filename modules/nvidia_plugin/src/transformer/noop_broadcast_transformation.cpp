@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "noop_broadcast_transformation.hpp"
 
 #include <gsl/gsl_assert>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <openvino/op/broadcast.hpp>
 
-namespace ngraph::pass {
+using namespace ov::pass::pattern;
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::NoopBroadcastTransformation, "NoopBroadcastTransformation", 0);
-
+namespace ov::nvidia_gpu::pass {
 namespace {
 
-bool eliminate_noop_broadcast(ngraph::pattern::Matcher &m) {
+bool eliminate_noop_broadcast(Matcher &m) {
     auto node = std::dynamic_pointer_cast<ov::op::v3::Broadcast>(m.get_match_root());
     Expects(node);
 
@@ -30,12 +30,13 @@ bool eliminate_noop_broadcast(ngraph::pattern::Matcher &m) {
 }  // namespace
 
 NoopBroadcastTransformation::NoopBroadcastTransformation() {
-    const auto op = ngraph::pattern::wrap_type<ov::op::v3::Broadcast>();
-    const auto m = std::make_shared<ngraph::pattern::Matcher>(op, "NoopBroadcastTransformation");
+    MATCHER_SCOPE(NoopBroadcastTransformation);
+    const auto op = wrap_type<ov::op::v3::Broadcast>();
+    const auto m = std::make_shared<Matcher>(op, matcher_name);
 
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) { return eliminate_noop_broadcast(m); };
+    matcher_pass_callback callback = [](Matcher &m) { return eliminate_noop_broadcast(m); };
 
     register_matcher(m, callback);
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

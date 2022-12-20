@@ -18,8 +18,7 @@ public:
                    const bool& transpose_a,
                    const bool& transpose_b);
 
-    inline static constexpr type_info_t type_info{"FullyConnected", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("FullyConnected", "nvidia_gpu");
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 

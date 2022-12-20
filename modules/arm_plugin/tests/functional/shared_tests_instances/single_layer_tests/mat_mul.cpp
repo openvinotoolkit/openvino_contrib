@@ -1,141 +1,62 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2018-2022 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vector>
 
 #include "single_layer_tests/mat_mul.hpp"
-#include "common_test_utils/test_constants.hpp"
 
 using namespace LayerTestsDefinitions;
 
 namespace {
 
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-        InferenceEngine::Precision::FP32,
-        InferenceEngine::Precision::FP16
-};
+    const std::vector<InferenceEngine::Precision> inputPrecisions = {
+            InferenceEngine::Precision::FP16,
+            InferenceEngine::Precision::FP32,
+    };
 
-std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
-        ngraph::helpers::InputLayerType::CONSTANT,
-        ngraph::helpers::InputLayerType::PARAMETER,
-};
+    const std::vector<ShapeRelatedParams> shapeRelatedParams = {
+            { { {1, 4, 5, 6}, false }, { {1, 4, 6, 4}, false } },
+            { { {4, 5, 6}, false }, { {6, 3}, false } },
+            { { {9, 9, 9}, false }, { {9, 9}, false } },
+            { { {1, 2, 3}, false }, { {1, 10, 3}, true } },
+            { { {1, 2, 3}, false }, { {1, 3, 10}, false } },
+            { { {1, 2, 3}, false }, { {1, 1, 3, 2}, false } },
+            { { {1, 3, 2, 4}, false }, { {2, 1, 4, 2}, false } },
+            { { {2, 1, 2, 4}, false }, { {1, 3, 4, 2}, false } },
+            { { {3, 2, 4}, false }, { {2, 1, 4, 2}, false } },
+            { { {2, 1, 4, 2}, false }, { {3, 2, 4}, false } },
+            { { {2, 1, 2, 3}, true }, { {3, 2, 4}, false } },
+            { { {2, 1, 3, 2}, false }, { {3, 4, 2}, true } },
+            { { {2, 1, 2, 3}, true }, { {3, 4, 2}, true } },
+            { { {3}, false }, { {2, 2, 3, 1}, false } },
+            { { {2, 2, 1, 3}, false }, { {3}, false } },
+            { { {1, 5}, false }, { {5, 1}, false } },
+            { { {5, 1}, true }, { {5, 1}, false } },
+            { { {1, 5}, false }, { {10, 5}, true } },
+            { { {1, 5}, false }, { {5}, false } },
+            { { {5}, false }, { {5, 1}, false } },
+            { { {5}, false }, { {5}, false } },
+            { { {5}, true }, { {5}, true } }
+    };
 
-const std::vector<std::vector<size_t>> shapesA2D = {
-        {1, 4},
-        {2, 4},
-        {4, 4},
-};
+    std::vector<ngraph::helpers::InputLayerType> secondaryInputTypes = {
+            ngraph::helpers::InputLayerType::CONSTANT,
+            ngraph::helpers::InputLayerType::PARAMETER,
+    };
 
-const std::vector<std::vector<size_t>> shapesB2D = {
-        {4, 1},
-        {4, 10},
-};
+    std::map<std::string, std::string> additional_config = {};
 
-std::map<std::string, std::string> additionalConfig = {};
+    INSTANTIATE_TEST_SUITE_P(smoke_MatMul, MatMulTest,
+                             ::testing::Combine(
+                                     ::testing::ValuesIn(shapeRelatedParams),
+                                     ::testing::ValuesIn(inputPrecisions),
+                                     ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                     ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                     ::testing::Values(InferenceEngine::Layout::ANY),
+                                     ::testing::ValuesIn(secondaryInputTypes),
+                                     ::testing::Values(CommonTestUtils::DEVICE_CPU),
+                                     ::testing::Values(additional_config)),
+                             MatMulTest::getTestCaseName);
 
-INSTANTIATE_TEST_CASE_P(smoke_MatMul, MatMulTest,
-                        ::testing::Combine(
-                            ::testing::ValuesIn(MatMulTest::combineShapes(shapesA2D, shapesB2D, false, false)),
-                            ::testing::ValuesIn(netPrecisions),
-                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                            ::testing::Values(InferenceEngine::Layout::ANY),
-                            ::testing::ValuesIn(secondaryInputTypes),
-                            ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                            ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-const std::vector<std::vector<size_t>> shapesA2DTranspose = {
-        {4, 1},
-        {4, 2},
-        {4, 4},
-};
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMul2DTransposeA, MatMulTest,
-                        ::testing::Combine(
-                                ::testing::ValuesIn(MatMulTest::combineShapes(shapesA2DTranspose, shapesB2D, true, false)),
-                                ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-const std::vector<std::vector<size_t>> shapesA4D = {
-        {1, 1, 2, 3},
-        {1, 3, 5, 3},
-        {3, 3, 3, 3},
-};
-
-const std::vector<std::vector<size_t>> shapesB4D = {
-        {1, 1, 3, 4},
-        {1, 3, 3, 4},
-        {1, 3, 3, 1},
-        {3, 3, 3, 3},
-};
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMul4D, MatMulTest,
-                        ::testing::Combine(
-                                ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4D, shapesB4D, false, false)),
-                                ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-const std::vector<std::vector<size_t>> shapesB4DTranspose = {
-        {1, 1, 4, 3},
-        {1, 3, 4, 3},
-        {1, 3, 1, 3},
-        {3, 3, 3, 3},
-};
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeB, MatMulTest,
-                        ::testing::Combine(
-                                ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4D, shapesB4DTranspose, false, true)),
-                                ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-const std::vector<std::vector<size_t>> shapesA4DTranspose = {
-        {1, 1, 3, 2},
-        {1, 3, 3, 5},
-        {3, 3, 3, 3},
-};
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeA, MatMulTest,
-                        ::testing::Combine(
-                                ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4DTranspose, shapesB4D, true, false)),
-                                ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(smoke_MatMul4DTransposeAB, MatMulTest,
-                        ::testing::Combine(
-                                ::testing::ValuesIn(MatMulTest::combineShapes(shapesA4DTranspose, shapesB4DTranspose, true, true)),
-                                ::testing::ValuesIn(netPrecisions),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                ::testing::Values(InferenceEngine::Layout::ANY),
-                                ::testing::ValuesIn(secondaryInputTypes),
-                                ::testing::Values(CommonTestUtils::DEVICE_CPU),
-                                ::testing::Values(additionalConfig)),
-                        MatMulTest::getTestCaseName);
-
-}  // namespace
+} // namespace

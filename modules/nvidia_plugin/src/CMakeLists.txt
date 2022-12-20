@@ -33,6 +33,10 @@ ie_add_plugin(NAME ${TARGET_NAME}
               SOURCES ${HEADERS} cuda_create_plugin.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
+
+# Enable support of CC for the plugin
+ie_mark_target_as_cc(${TARGET_NAME})
+
 if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
     set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
 else()
@@ -50,6 +54,7 @@ target_include_directories(${OBJ_NAME}
                            "${CUTENSOR_INCLUDE_DIR}"
                            "${CMAKE_CURRENT_SOURCE_DIR}"
                            "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
+                           PRIVATE $<TARGET_PROPERTY:openvino::conditional_compilation,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 target_link_libraries(${OBJ_NAME}
