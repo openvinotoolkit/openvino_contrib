@@ -4,15 +4,15 @@
 
 #pragma once
 
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 #include <ngraph/pass/pass.hpp>
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class FullyConnectedTransformation : public ngraph::pass::MatcherPass {
+class FullyConnectedTransformation : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FullyConnectedTransformation", "0");
     FullyConnectedTransformation();
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

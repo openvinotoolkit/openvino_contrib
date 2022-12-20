@@ -28,8 +28,8 @@ public:
                                    const std::vector<std::string>& activations = {"sigmoid", "tanh", "tanh"},
                                    const float clip = 0.f);
 
-    inline static constexpr type_info_t type_info{"LSTMSequenceOptimized", 0ul};
-    const type_info_t& get_type_info() const override { return type_info; }
+    OPENVINO_OP("LSTMSequenceOptimized", "nvidia_gpu", ov::op::v5::LSTMSequence);
+
     MajorFormat get_major_format() const { return m_major_format; }
 
     std::shared_ptr<Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;

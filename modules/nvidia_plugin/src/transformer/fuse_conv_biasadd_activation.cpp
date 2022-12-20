@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
 #include <exec_graph_info.hpp>
@@ -13,7 +14,7 @@
 #include <ngraph/pattern/matcher.hpp>
 #include <ngraph/pattern/op/label.hpp>
 #include <ngraph/pattern/op/pattern.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
@@ -24,6 +25,8 @@
 #include "nodes/cuda_plugin_custom_node_types.hpp"
 #include "nodes/fused_convolution.hpp"
 #include "nodes/fused_convolution_backprop_data.hpp"
+
+using namespace ov::pass::pattern;
 
 using ov::nvidia_gpu::nodes::FusedConvolution;
 using ov::nvidia_gpu::nodes::FusedGroupConvolution;
@@ -53,7 +56,7 @@ struct FusedConvCallbacks {
     static_assert(std::is_same_v<TFusedConvolution, FusedConvolution> ||
                       std::is_same_v<TFusedConvolution, FusedGroupConvolution>,
                   "TFusedConvolution should be either FusedConvolution or FusedGroupConvolution");
-    static bool fuse_convolution_with_biasadd(ngraph::pattern::Matcher &m) {
+    static bool fuse_convolution_with_biasadd(Matcher &m) {
         auto eltwise = m.get_match_root();
         auto [m_conv, m_const] =
             parse_eltwise_inputs<typename TFusedConvolution::BaseConvolution, ov::op::v0::Constant>(eltwise);
@@ -135,7 +138,7 @@ struct FusedConvCallbacks {
         return {fused_conv, node};
     }
 
-    static bool sink_add_to_fused_convolution(ngraph::pattern::Matcher &m) {
+    static bool sink_add_to_fused_convolution(Matcher &m) {
         auto add = std::dynamic_pointer_cast<ov::op::v1::Add>(m.get_match_root());
         auto [fused_conv, node] = parse_fusedconv_inputs(m.get_match_root());
 
@@ -176,7 +179,7 @@ struct FusedConvCallbacks {
         return true;
     }
 
-    static bool sink_activation_to_fused_convolution(ngraph::pattern::Matcher &m, ActivationMode activation) {
+    static bool sink_activation_to_fused_convolution(Matcher &m, ActivationMode activation) {
         auto activationNode = m.get_match_root();
         auto fused_conv = std::dynamic_pointer_cast<TFusedConvolution>(
             activationNode->input(0).get_source_output().get_node_shared_ptr());
@@ -202,7 +205,7 @@ struct FusedConvCallbacks {
     }
 };  // struct FusedConvCallbacks
 
-bool fuse_convolution_backprop_data_with_add(ngraph::pattern::Matcher &m) {
+bool fuse_convolution_backprop_data_with_add(Matcher &m) {
     auto add = std::dynamic_pointer_cast<ov::op::v1::Add>(m.get_match_root());
     auto [conv_backprop_data, add_constant] =
         parse_eltwise_inputs<ov::op::v1::ConvolutionBackpropData, ov::op::v0::Constant>(add);
@@ -271,111 +274,100 @@ bool fuse_convolution_backprop_data_with_add(ngraph::pattern::Matcher &m) {
     return true;
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolutionWithBiasAdd, "FuseConvolutionWithBiasAdd", 0);
+ov::nvidia_gpu::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
+    MATCHER_SCOPE(FuseConvolutionWithBiasAdd);
+    auto conv = wrap_type<ov::op::v1::Convolution>(consumers_count(1));
+    auto add = wrap_type<ov::op::v1::Add>({conv, any_input()});
 
-ngraph::pass::FuseConvolutionWithBiasAdd::FuseConvolutionWithBiasAdd() {
-    auto conv = ngraph::pattern::wrap_type<ov::op::v1::Convolution>(pattern::consumers_count(1));
-    auto add = ngraph::pattern::wrap_type<ov::op::v1::Add>({conv, pattern::any_input()});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::fuse_convolution_with_biasadd(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, "FuseConvolutionWithBiasAdd");
+    auto m = std::make_shared<Matcher>(add, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseGroupConvolutionWithBiasAdd, "FuseGroupConvolutionWithBiasAdd", 0);
+ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAdd::FuseGroupConvolutionWithBiasAdd() {
+    MATCHER_SCOPE(FuseGroupConvolutionWithBiasAdd);
+    auto conv = wrap_type<ov::op::v1::GroupConvolution>(consumers_count(1));
+    auto add = wrap_type<ov::op::v1::Add>({conv, any_input()});
 
-ngraph::pass::FuseGroupConvolutionWithBiasAdd::FuseGroupConvolutionWithBiasAdd() {
-    auto conv = ngraph::pattern::wrap_type<ov::op::v1::GroupConvolution>(pattern::consumers_count(1));
-    auto add = ngraph::pattern::wrap_type<ov::op::v1::Add>({conv, pattern::any_input()});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedGroupConvolution>::fuse_convolution_with_biasadd(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, "FuseGroupConvolutionWithBiasAdd");
+    auto m = std::make_shared<Matcher>(add, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseConvolutionWithBiasAddAdd, "FuseConvolutionWithBiasAddAdd", 0);
+ov::nvidia_gpu::pass::FuseConvolutionWithBiasAddAdd::FuseConvolutionWithBiasAddAdd() {
+    MATCHER_SCOPE(FuseConvolutionWithBiasAddAdd);
+    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
+    auto relu = wrap_type<ov::op::v0::Relu>(consumers_count(2));
+    auto add = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution});
 
-ngraph::pass::FuseConvolutionWithBiasAddAdd::FuseConvolutionWithBiasAddAdd() {
-    auto fused_convolution = ngraph::pattern::wrap_type<FusedConvolution>(pattern::consumers_count(1));
-    auto relu = ngraph::pattern::wrap_type<ov::op::v0::Relu>(pattern::consumers_count(2));
-    auto add = ngraph::pattern::wrap_type<ov::op::v1::Add>({pattern::any_input(), fused_convolution});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::sink_add_to_fused_convolution(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, "FuseConvolutionWithBiasAddAdd");
+    auto m = std::make_shared<Matcher>(add, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FuseGroupConvolutionWithBiasAddAdd, "FuseGroupConvolutionWithBiasAddAdd", 0);
+ov::nvidia_gpu::pass::FuseGroupConvolutionWithBiasAddAdd::FuseGroupConvolutionWithBiasAddAdd() {
+    MATCHER_SCOPE(FuseGroupConvolutionWithBiasAddAdd);
+    auto fused_convolution = wrap_type<FusedGroupConvolution>(consumers_count(1));
+    auto relu = wrap_type<ov::op::v0::Relu>(consumers_count(2));
+    auto add = wrap_type<ov::op::v1::Add>({any_input(), fused_convolution});
 
-ngraph::pass::FuseGroupConvolutionWithBiasAddAdd::FuseGroupConvolutionWithBiasAddAdd() {
-    auto fused_convolution = ngraph::pattern::wrap_type<FusedGroupConvolution>(pattern::consumers_count(1));
-    auto relu = ngraph::pattern::wrap_type<ov::op::v0::Relu>(pattern::consumers_count(2));
-    auto add = ngraph::pattern::wrap_type<ov::op::v1::Add>({pattern::any_input(), fused_convolution});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedGroupConvolution>::sink_add_to_fused_convolution(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, "FuseGroupConvolutionWithBiasAddAdd");
+    auto m = std::make_shared<Matcher>(add, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::SinkReluToFusedConvolution, ngraph::pass::SinkReluToFusedConvolution::Name, 0);
+ov::nvidia_gpu::pass::SinkReluToFusedConvolution::SinkReluToFusedConvolution() {
+    MATCHER_SCOPE(SinkReluToFusedConvolution);
+    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
+    auto activation = wrap_type<ov::op::v0::Relu>({fused_convolution});
 
-ngraph::pass::SinkReluToFusedConvolution::SinkReluToFusedConvolution() {
-    auto fused_convolution = ngraph::pattern::wrap_type<FusedConvolution>(pattern::consumers_count(1));
-    auto activation = ngraph::pattern::wrap_type<ov::op::v0::Relu>({fused_convolution});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::RELU);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(activation, pass::SinkReluToFusedConvolution::Name);
+    auto m = std::make_shared<Matcher>(activation, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::SinkSigmoidToFusedConvolution,
-                       ngraph::pass::SinkSigmoidToFusedConvolution::Name,
-                       0);
+ov::nvidia_gpu::pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
+    MATCHER_SCOPE(SinkSigmoidToFusedConvolution);
+    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
+    auto activation = wrap_type<ov::op::v0::Sigmoid>({fused_convolution});
 
-ngraph::pass::SinkSigmoidToFusedConvolution::SinkSigmoidToFusedConvolution() {
-    auto fused_convolution = ngraph::pattern::wrap_type<FusedConvolution>(pattern::consumers_count(1));
-    auto activation = ngraph::pattern::wrap_type<ov::op::v0::Sigmoid>({fused_convolution});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::SIGMOID);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(activation, pass::SinkSigmoidToFusedConvolution::Name);
+    auto m = std::make_shared<Matcher>(activation, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::SinkTanhToFusedConvolution, ngraph::pass::SinkTanhToFusedConvolution::Name, 0);
+ov::nvidia_gpu::pass::SinkTanhToFusedConvolution::SinkTanhToFusedConvolution() {
+    MATCHER_SCOPE(SinkTanhToFusedConvolution);
+    auto fused_convolution = wrap_type<FusedConvolution>(consumers_count(1));
+    auto activation = wrap_type<ov::op::v0::Tanh>({fused_convolution});
 
-ngraph::pass::SinkTanhToFusedConvolution::SinkTanhToFusedConvolution() {
-    auto fused_convolution = ngraph::pattern::wrap_type<FusedConvolution>(pattern::consumers_count(1));
-    auto activation = ngraph::pattern::wrap_type<ov::op::v0::Tanh>({fused_convolution});
-
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return FusedConvCallbacks<FusedConvolution>::sink_activation_to_fused_convolution(m, ActivationMode::TANH);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(activation, pass::SinkTanhToFusedConvolution::Name);
+    auto m = std::make_shared<Matcher>(activation, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBiasAddActivation, "CudaFuseConvBiasAddActivation", 0);
-
-ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
+ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
     add_matcher<FuseConvolutionWithBiasAdd>();
     add_matcher<FuseConvolutionWithBiasAddAdd>();
     add_matcher<SinkReluToFusedConvolution>();
@@ -384,25 +376,22 @@ ngraph::pass::CudaFuseConvBiasAddActivation::CudaFuseConvBiasAddActivation() {
     // add_matcher<SinkTanhToFusedConvolution>();
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseGroupConvBiasAddActivation, "CudaFuseGroupConvBiasAddActivation", 0);
-
-ngraph::pass::CudaFuseGroupConvBiasAddActivation::CudaFuseGroupConvBiasAddActivation() {
+ov::nvidia_gpu::pass::CudaFuseGroupConvBiasAddActivation::CudaFuseGroupConvBiasAddActivation() {
     add_matcher<FuseGroupConvolutionWithBiasAdd>();
     add_matcher<FuseGroupConvolutionWithBiasAddAdd>();
     // TODO: Activations, should check performance first
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::CudaFuseConvBackpropDataAdd, ngraph::pass::CudaFuseConvBackpropDataAdd::Name, 0);
-
-ngraph::pass::CudaFuseConvBackpropDataAdd::CudaFuseConvBackpropDataAdd() {
+ov::nvidia_gpu::pass::CudaFuseConvBackpropDataAdd::CudaFuseConvBackpropDataAdd() {
+    MATCHER_SCOPE(CudaFuseConvBackpropDataAdd);
     auto conv_backprop_data =
-        ngraph::pattern::wrap_type<ov::op::v1::ConvolutionBackpropData>(pattern::consumers_count(1));
-    auto add = ngraph::pattern::wrap_type<ov::op::v1::Add>({conv_backprop_data, pattern::any_input()});
+        wrap_type<ov::op::v1::ConvolutionBackpropData>(consumers_count(1));
+    auto add = wrap_type<ov::op::v1::Add>({conv_backprop_data, any_input()});
 
-    matcher_pass_callback callback = [](ngraph::pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return fuse_convolution_backprop_data_with_add(m);
     };
 
-    auto m = std::make_shared<ngraph::pattern::Matcher>(add, ngraph::pass::CudaFuseConvBackpropDataAdd::Name);
+    auto m = std::make_shared<Matcher>(add, matcher_name);
     register_matcher(m, callback);
 }

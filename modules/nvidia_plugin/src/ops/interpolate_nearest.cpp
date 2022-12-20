@@ -20,7 +20,13 @@ std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::N
     // for calculation scale for nearest mode see
     // https://docs.openvino.ai/2021.1/openvino_docs_ops_image_Interpolate_4.html
     const auto scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
-    const auto axis = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<int64_t>();
+    std::vector<int64_t> axis;
+    if (node.inputs().size() > 3) {
+        axis = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<int64_t>();
+    } else {
+        axis.resize(node.get_input_partial_shape(0).rank().get_length());
+        std::iota(axis.begin(), axis.end(), 0);
+    }
 
     const auto& input_shape = node.get_input_shape(0);
     const auto& output_shape = node.get_output_shape(0);
