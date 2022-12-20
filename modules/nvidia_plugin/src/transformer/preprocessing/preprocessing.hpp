@@ -8,13 +8,15 @@
 
 #include "ie_input_info.hpp"
 
-namespace ngraph {
+namespace ov {
+namespace nvidia_gpu {
 namespace pass {
 
 class AddPreprocessing;
 
 }  // namespace pass
-}  // namespace ngraph
+}  // namespace nvidia_gpu
+}  // namespace ov
 
 /**
  * @brief Converts the following preprocessing information to ngraph operations:
@@ -25,12 +27,12 @@ class AddPreprocessing;
  * The order of operations is the following:
  *      (x - mean) / stdScale
  */
-class ngraph::pass::AddPreprocessing : public ngraph::pass::FunctionPass {
+class ov::nvidia_gpu::pass::AddPreprocessing : public ov::pass::ModelPass {
     const InferenceEngine::InputsDataMap& m_inputInfoMap;
 
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("AddPreprocessing", "0");
     explicit AddPreprocessing(const InferenceEngine::InputsDataMap& inputInfoMap);
 
-    bool run_on_model(const std::shared_ptr<ngraph::Function>& m) override;
+    bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
 };

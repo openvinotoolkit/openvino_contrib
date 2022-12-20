@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/cc/ngraph/itt.hpp"
+
 #include "convolution_asym_padding_transformation.hpp"
 
 #include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
 #include <ngraph/opsets/opset1.hpp>
-#include <ngraph/pattern/op/wrap_type.hpp>
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
 #include <openvino/op/convolution.hpp>
 #include <openvino/op/pad.hpp>
 #include <transformer/nodes/fused_convolution_backprop_data.hpp>
+
+using namespace ov::pass::pattern;
 
 namespace {
 
@@ -24,7 +28,7 @@ ov::CoordinateDiff add_two_zero_pads(const ov::CoordinateDiff &pad) {
 }
 
 template <typename TBaseConvolution>
-bool convolution_with_padding(ngraph::pattern::Matcher &m) {
+bool convolution_with_padding(Matcher &m) {
     static_assert(std::is_same_v<TBaseConvolution, ov::op::v1::Convolution> ||
                       std::is_same_v<TBaseConvolution, ov::op::v1::GroupConvolution>,
                   "TBaseConvolution should be either Convolution or GroupConvolution");
@@ -73,7 +77,7 @@ bool convolution_with_padding(ngraph::pattern::Matcher &m) {
 }
 
 template <typename TBaseConvolution>
-bool convolution_backprop_data_with_padding(ngraph::pattern::Matcher &m) {
+bool convolution_backprop_data_with_padding(Matcher &m) {
     static_assert(std::is_same_v<TBaseConvolution, ov::op::v1::ConvolutionBackpropData> ||
                       std::is_same_v<TBaseConvolution, ov::op::v1::GroupConvolutionBackpropData> ||
                       std::is_same_v<TBaseConvolution, ov::nvidia_gpu::nodes::FusedConvBackpropData>,
@@ -212,71 +216,61 @@ bool convolution_backprop_data_with_padding(ngraph::pattern::Matcher &m) {
 }
 }  // namespace
 
-namespace ngraph::pass {
-
-NGRAPH_RTTI_DEFINITION(ngraph::pass::ConvolutionAsymPaddingTransformation, "ConvolutionAsymPaddingTransformation", 0);
-
+namespace ov::nvidia_gpu::pass {
 ConvolutionAsymPaddingTransformation::ConvolutionAsymPaddingTransformation() {
-    const auto conv = pattern::wrap_type<ov::op::v1::Convolution>();
+    MATCHER_SCOPE(ConvolutionAsymPaddingTransformation);
+    const auto conv = wrap_type<ov::op::v1::Convolution>();
 
-    matcher_pass_callback callback = [](pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return convolution_with_padding<ov::op::v1::Convolution>(m);
     };
 
-    const auto m = std::make_shared<pattern::Matcher>(conv, "ConvolutionAsymPaddingTransformation");
+    const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::GroupConvolutionAsymPaddingTransformation,
-                       "GroupConvolutionAsymPaddingTransformation",
-                       0);
 GroupConvolutionAsymPaddingTransformation::GroupConvolutionAsymPaddingTransformation() {
-    const auto conv = pattern::wrap_type<ov::op::v1::GroupConvolution>();
+    MATCHER_SCOPE(GroupConvolutionAsymPaddingTransformation);
+    const auto conv = wrap_type<ov::op::v1::GroupConvolution>();
 
-    matcher_pass_callback callback = [](pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return convolution_with_padding<ov::op::v1::GroupConvolution>(m);
     };
-    const auto m = std::make_shared<pattern::Matcher>(conv, "GroupConvolutionAsymPaddingTransformation");
+    const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::ConvolutionBackpropDataAsymPaddingTransformation,
-                       "ConvolutionBackpropDataAsymPaddingTransformation",
-                       0);
 ConvolutionBackpropDataAsymPaddingTransformation::ConvolutionBackpropDataAsymPaddingTransformation() {
-    const auto conv = pattern::wrap_type<ov::op::v1::ConvolutionBackpropData>();
+    MATCHER_SCOPE(ConvolutionBackpropDataAsymPaddingTransformation);
+    const auto conv = wrap_type<ov::op::v1::ConvolutionBackpropData>();
 
-    matcher_pass_callback callback = [](pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return convolution_backprop_data_with_padding<ov::op::v1::ConvolutionBackpropData>(m);
     };
-    const auto m = std::make_shared<pattern::Matcher>(conv, "ConvolutionBackpropDataAsymPaddingTransformation");
+    const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::GroupConvolutionBackpropDataAsymPaddingTransformation,
-                       "GroupConvolutionBackpropDataAsymPaddingTransformation",
-                       0);
 GroupConvolutionBackpropDataAsymPaddingTransformation::GroupConvolutionBackpropDataAsymPaddingTransformation() {
-    const auto conv = pattern::wrap_type<ov::op::v1::GroupConvolutionBackpropData>();
+    MATCHER_SCOPE(GroupConvolutionBackpropDataAsymPaddingTransformation);
+    const auto conv = wrap_type<ov::op::v1::GroupConvolutionBackpropData>();
 
-    matcher_pass_callback callback = [](pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return convolution_backprop_data_with_padding<ov::op::v1::GroupConvolutionBackpropData>(m);
     };
-    const auto m = std::make_shared<pattern::Matcher>(conv, "GroupConvolutionBackpropDataAsymPaddingTransformation");
+    const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ngraph::pass::FusedConvBackpropDataAsymPaddingTransformation,
-                       "FusedConvBackpropDataAsymPaddingTransformation",
-                       0);
 FusedConvBackpropDataAsymPaddingTransformation::FusedConvBackpropDataAsymPaddingTransformation() {
-    const auto conv = pattern::wrap_type<ov::nvidia_gpu::nodes::FusedConvBackpropData>();
+    MATCHER_SCOPE(FusedConvBackpropDataAsymPaddingTransformation);
+    const auto conv = wrap_type<ov::nvidia_gpu::nodes::FusedConvBackpropData>();
 
-    matcher_pass_callback callback = [](pattern::Matcher &m) {
+    matcher_pass_callback callback = [](Matcher &m) {
         return convolution_backprop_data_with_padding<ov::nvidia_gpu::nodes::FusedConvBackpropData>(m);
     };
-    const auto m = std::make_shared<pattern::Matcher>(conv, "FusedConvBackpropDataAsymPaddingTransformation");
+    const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
 }
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

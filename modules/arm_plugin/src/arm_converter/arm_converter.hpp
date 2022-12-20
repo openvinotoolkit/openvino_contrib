@@ -540,6 +540,6 @@ constexpr static std::tuple<T0..., T1...> merge(std::tuple<T0...>, std::tuple<T1
 constexpr static auto boolType = std::tuple<bool>{};
 constexpr static auto intTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
 constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
-constexpr static auto floatTypes = std::tuple<ngraph::float16, float>{};
+constexpr static auto floatTypes = std::tuple<ngraph::float16, float, double>{};
 constexpr static auto allTypes = merge(intTypes, floatTypes);
 }  //  namespace ArmPlugin

@@ -32,6 +32,13 @@ ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
             return false;
         }
 
+        if (!(shape_a.size() == 4 || shape_b.size() == 4)) {
+            return false;
+        }
+        if ((shape_a.at(0) > 1 && shape_a.size() == 4) ||
+            (shape_b.at(0) > 1 && shape_b.size() == 4)) {
+            return false;
+        }
         auto create_transpose = [](ngraph::Output<ngraph::Node> node, const std::string& transpose_name) -> ngraph::Output<ngraph::Node> {
             std::vector<int64_t> transpose_order(node.get_shape().size());
             std::iota(transpose_order.begin(), transpose_order.end(), 0);

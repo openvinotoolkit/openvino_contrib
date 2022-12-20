@@ -5,76 +5,68 @@
 #pragma once
 
 #include <ngraph/node.hpp>
-#include <ngraph/pass/graph_rewrite.hpp>
+#include "openvino/pass/graph_rewrite.hpp"
 
-namespace ngraph::pass {
+namespace ov::nvidia_gpu::pass {
 
-class FuseConvolutionWithBiasAdd : public ngraph::pass::MatcherPass {
+class FuseConvolutionWithBiasAdd : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FuseConvolutionWithBiasAdd", "0");
     FuseConvolutionWithBiasAdd();
 };
 
-class FuseGroupConvolutionWithBiasAdd : public ngraph::pass::MatcherPass {
+class FuseGroupConvolutionWithBiasAdd : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FuseGroupConvolutionWithBiasAdd", "0");
     FuseGroupConvolutionWithBiasAdd();
 };
 
-class FuseConvolutionWithBiasAddAdd : public ngraph::pass::MatcherPass {
+class FuseConvolutionWithBiasAddAdd : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FuseConvolutionWithBiasAddAdd", "0");
     FuseConvolutionWithBiasAddAdd();
 };
 
-class FuseGroupConvolutionWithBiasAddAdd : public ngraph::pass::MatcherPass {
+class FuseGroupConvolutionWithBiasAddAdd : public ov::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("FuseGroupConvolutionWithBiasAddAdd", "0");
     FuseGroupConvolutionWithBiasAddAdd();
 };
 
-class SinkReluToFusedConvolution : public ngraph::pass::MatcherPass {
+class SinkReluToFusedConvolution : public ov::pass::MatcherPass {
 public:
-    static constexpr auto Name = "SinkReluToFusedConvolution";
-
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("SinkReluToFusedConvolution", "0");
     SinkReluToFusedConvolution();
 };
 
-class SinkSigmoidToFusedConvolution : public ngraph::pass::MatcherPass {
+class SinkSigmoidToFusedConvolution : public ov::pass::MatcherPass {
 public:
-    static constexpr auto Name = "SinkSigmoidToFusedConvolution";
-
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("SinkSigmoidToFusedConvolution", "0");
     SinkSigmoidToFusedConvolution();
 };
 
-class SinkTanhToFusedConvolution : public ngraph::pass::MatcherPass {
+class SinkTanhToFusedConvolution : public ov::pass::MatcherPass {
 public:
-    static constexpr auto Name = "SinkTanhToFusedConvolution";
-
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("SinkTanhToFusedConvolution", "0");
     SinkTanhToFusedConvolution();
 };
 
-class CudaFuseConvBiasAddActivation : public ngraph::pass::GraphRewrite {
+class CudaFuseConvBiasAddActivation : public ov::pass::GraphRewrite {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("CudaFuseConvBiasAddActivation", "0");
     CudaFuseConvBiasAddActivation();
 };
 
-class CudaFuseGroupConvBiasAddActivation : public ngraph::pass::GraphRewrite {
+class CudaFuseGroupConvBiasAddActivation : public ov::pass::GraphRewrite {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("CudaFuseGroupConvBiasAddActivation", "0");
     CudaFuseGroupConvBiasAddActivation();
 };
 
-class CudaFuseConvBackpropDataAdd : public ngraph::pass::MatcherPass {
+class CudaFuseConvBackpropDataAdd : public ov::pass::MatcherPass {
 public:
-    static constexpr auto Name = "FuseConvBackpropDataAdd";
-
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("CudaFuseConvBackpropDataAdd", "0");
     CudaFuseConvBackpropDataAdd();
 };
 
-}  // namespace ngraph::pass
+}  // namespace ov::nvidia_gpu::pass

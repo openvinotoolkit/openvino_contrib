@@ -33,6 +33,7 @@ arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
         case ngraph::element::Type_t::i64   : return arm_compute::DataType::S64;
         case ngraph::element::Type_t::f16   : return arm_compute::DataType::F16;
         case ngraph::element::Type_t::f32   : return arm_compute::DataType::F32;
+        case ngraph::element::Type_t::f64   : return arm_compute::DataType::F64;
         case ngraph::element::Type_t::bf16  : return arm_compute::DataType::BFLOAT16;
         default: IE_THROW() << "Unsupported Data Type " << type;
     }
@@ -48,8 +49,8 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Constant>();
     Register<opset::ArmConvolution>();
     Register<opset::ArmGroupConvolution>();
-    Register<opset::AvgPool>();
-    Register<opset::MaxPool>();
+    Register<opset::v1::ArmAvgPool>();
+    Register<opset::v1::ArmMaxPool>();
     Register<opset::Add>();
     Register<opset::Subtract>();
     Register<opset::Multiply>();
@@ -71,6 +72,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::LogSoftmax>();
     Register<opset::ArmSplit>();
     Register<opset::LRN>();
+    Register<opset::RNNCell>();
     Register<opset::Minimum>();
     Register<opset::Maximum>();
     Register<opset::ArmStridedSlice>();
@@ -187,7 +189,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<ngraph::op::v8::NV12toRGB>();
         Register<ngraph::op::v8::I420toBGR>();
         Register<ngraph::op::v8::I420toRGB>();
-        Register<ngraph::op::v8::MaxPool>();
+        Register<opset::v8::ArmMaxPool>();
         Register<ngraph::op::v8::Slice>();
     }
     Register<opset::Result>();
