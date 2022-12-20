@@ -39,14 +39,11 @@
 
 using namespace ov::nvidia_gpu;
 
-std::shared_ptr<ov::Model> GraphTransformer::export_transform(
-    const CUDA::Device& device,
-    const std::shared_ptr<const ov::Model>& function,
-    const InferenceEngine::InputsDataMap& inputInfoMap,
-    const InferenceEngine::OutputsDataMap& outputsInfoMap,
-    const Configuration& config) const {
-    auto transformed_function = ov::clone_model(*function);
-
+void GraphTransformer::common_transform(const CUDA::Device& device,
+                                        const std::shared_ptr<ov::Model>& model,
+                                        const InferenceEngine::InputsDataMap& inputInfoMap,
+                                        const InferenceEngine::OutputsDataMap& outputsInfoMap,
+                                        const Configuration& config) const {
     auto passConfig = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager manager{passConfig};
 
@@ -68,65 +65,7 @@ std::shared_ptr<ov::Model> GraphTransformer::export_transform(
     passConfig->disable<ov::pass::ConvertDivide>();
     passConfig->disable<ov::pass::ConvertMod>();
 
-    [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
-    [[maybe_unused]] const auto& originOpsSize = originOps.size();
-
-    manager.register_pass<ov::pass::InitNodeInfo>();
-    manager.register_pass<ov::nvidia_gpu::pass::AddPreprocessing>(inputInfoMap);
-    manager.register_pass<ov::pass::CommonOptimizations>();
-    // NOTE: G-API supports only FP32 networks for pre-processing
-    //       nvidia_gpu supports FP16 networks, but this transformation is needed for export
-    bool needF16toF32 = false;
-    for (const auto& param : function->get_parameters()) {
-        if (param->get_element_type() == ov::element::f16 &&
-            inputInfoMap.at(param->get_friendly_name())->getTensorDesc().getPrecision() !=
-                InferenceEngine::Precision::FP16) {
-            needF16toF32 = true;
-            break;
-        }
-    }
-    if (needF16toF32) {
-        manager.register_pass<ov::pass::ConvertPrecision>(
-            precisions_array{{ov::element::f16, ov::element::f32}});
-    }
-
-    manager.run_passes(transformed_function);
-
-    [[maybe_unused]] const auto& transformedOps = transformed_function->get_ordered_ops();
-    [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
-
-    return transformed_function;
-}
-
-std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& device,
-                                                              const std::shared_ptr<const ov::Model>& function,
-                                                              const InferenceEngine::InputsDataMap& inputInfoMap,
-                                                              const InferenceEngine::OutputsDataMap& outputsInfoMap,
-                                                              const Configuration& config) const {
-    auto transformed_function = ov::clone_model(*function);
-
-    auto passConfig = std::make_shared<ov::pass::PassConfig>();
-    ov::pass::Manager manager{passConfig};
-
-    passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
-    passConfig->disable<ov::pass::MVN6Decomposition>();
-    if (!isHalfSupported(device)) {
-        // Allow FP16 Converts to be folded and FP16 constants to be upgraded to FP32 data type
-        passConfig->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
-        passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
-    }
-
-    // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
-    // are executed faster on CUDA/cuDNN.
-    // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
-    // on CUDA, for them decomposed cuDNN versions are faster.
-    // TODO: Consider as possible optimisations: enabling these decompositions for large shapes, creating cuDNN versions
-    // for these operations, implementing in-place logic in NVIDIA GPU plugin for these operations.
-    passConfig->disable<ov::pass::ConvertSubtract>();
-    passConfig->disable<ov::pass::ConvertDivide>();
-    passConfig->disable<ov::pass::ConvertMod>();
-
-    [[maybe_unused]] const auto& originOps = function->get_ordered_ops();
+    [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
     manager.register_pass<ov::pass::InitNodeInfo>();
@@ -144,18 +83,6 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
     manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(passConfig);
     manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
-    manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseGroupConvBiasAddActivation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBackpropDataAdd>();
-    manager.register_pass<ov::nvidia_gpu::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::FusedConvBackpropDataAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
 
     // Sequences supported by the plugin shouldn't be converted to TensorIterator.
     auto is_sequence_primitive_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
@@ -185,10 +112,79 @@ std::shared_ptr<ov::Model> GraphTransformer::transform(const CUDA::Device& devic
                 return is_sequence_primitive_supported(node);
             });
 
-    manager.run_passes(transformed_function);
+    manager.run_passes(model);
 
-    [[maybe_unused]] const auto& transformedOps = transformed_function->get_ordered_ops();
+    [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
 
-    return transformed_function;
+    return;
+}
+
+std::shared_ptr<ov::Model> GraphTransformer::clone_and_export_transform(
+    const CUDA::Device& device,
+    const std::shared_ptr<const ov::Model>& model,
+    const InferenceEngine::InputsDataMap& inputInfoMap,
+    const InferenceEngine::OutputsDataMap& outputsInfoMap,
+    const Configuration& config) const {
+
+    auto transformed_model = ov::clone_model(*model);
+
+    ov::pass::Manager manager;
+    // NOTE: G-API supports only FP32 networks for pre-processing
+    //       nvidia_gpu supports FP16 networks, but this transformation is needed for export
+    bool needF16toF32 = false;
+    for (const auto& param : model->get_parameters()) {
+        if (param->get_element_type() == ov::element::f16 &&
+            inputInfoMap.at(param->get_friendly_name())->getTensorDesc().getPrecision() !=
+                InferenceEngine::Precision::FP16) {
+            needF16toF32 = true;
+            break;
+        }
+    }
+    if (needF16toF32) {
+        manager.register_pass<ov::pass::ConvertPrecision>(
+            precisions_array{{ov::element::f16, ov::element::f32}});
+
+    }
+    manager.run_passes(transformed_model);
+
+    [[maybe_unused]] const auto& transformedOps = transformed_model->get_ordered_ops();
+    [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
+
+    return transformed_model;
+}
+
+void GraphTransformer::cuda_transform(const CUDA::Device& device,
+                                      const std::shared_ptr<ov::Model>& model,
+                                      const Configuration& config) const {
+    ov::pass::Manager manager;
+
+    manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation>();
+    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseGroupConvBiasAddActivation>();
+    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBackpropDataAdd>();
+    manager.register_pass<ov::nvidia_gpu::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::FusedConvBackpropDataAsymPaddingTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
+    manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
+
+    manager.run_passes(model);
+
+    [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
+    [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
+
+    return;
+}
+
+void GraphTransformer::transform(const CUDA::Device& device,
+                                 const std::shared_ptr<ov::Model>& model,
+                                 const InferenceEngine::InputsDataMap& inputInfoMap,
+                                 const InferenceEngine::OutputsDataMap& outputsInfoMap,
+                                 const Configuration& config) const {
+    common_transform(device, model, inputInfoMap, outputsInfoMap, config);
+    cuda_transform(device, model, config);
 }

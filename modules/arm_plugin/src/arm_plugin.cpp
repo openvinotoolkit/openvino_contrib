@@ -96,6 +96,27 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     return std::make_shared<ExecutableNetwork>(transformedModel, cfg, std::static_pointer_cast<Plugin>(shared_from_this()));
 }
 
+bool Plugin::isOperationSupported(const std::shared_ptr<ov::Node>& node, const Converter& converter) const {
+    auto itConversion = converter._conversions.find(node->get_type_info());
+    bool nodeIsSupported = false;
+    if (itConversion != converter._conversions.end()) {
+        if (ngraph::op::is_constant(node) || ngraph::op::is_parameter(node) || ngraph::op::is_output(node)) {
+            nodeIsSupported = true;
+        } else {
+            Converter::Conversion::Ptr layer;
+            try {
+                layer = converter._conversions.at(node->get_type_info())(*node);
+            } catch(...) {
+                nodeIsSupported = false;
+            }
+            if (layer != nullptr) {
+                nodeIsSupported = static_cast<bool>(layer->Validate());
+            }
+        }
+    }
+    return nodeIsSupported;
+}
+
 QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigMap& config) const {
     QueryNetworkResult res;
     Configuration cfg{config, _cfg, false};
@@ -103,77 +124,19 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     if (model == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
     }
-    std::unordered_set<std::string> originalOps;
-    for (auto&& node : model->get_ops()) {
-        originalOps.emplace(node->get_friendly_name());
-    }
     auto transformedModel = Transform(model, cfg);
-    std::unordered_set<std::string> supported;
-    std::unordered_set<std::string> unsupported;
-    cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(model);
     Converter converter{transformedModel, cfg};
-    for (auto&& node : transformedModel->get_ops()) {
-        auto itConversion = converter._conversions.find(node->get_type_info());
-        bool nodeIsSupported = false;
-        if (itConversion != converter._conversions.end()) {
-            if (ngraph::op::is_constant(node) || ngraph::op::is_parameter(node) || ngraph::op::is_output(node)) {
-                nodeIsSupported = true;
-            } else {
-                Converter::Conversion::Ptr layer;
-                try {
-                    layer = converter._conversions.at(node->get_type_info())(*node);
-                } catch(...) {
-                    nodeIsSupported = false;
-                }
-                if (layer != nullptr) {
-                    nodeIsSupported = static_cast<bool>(layer->Validate());
-                }
-            }
-        }
-        for (auto&& fusedLayerName : ov::getFusedNamesVector(node)) {
-            if (contains(originalOps, fusedLayerName)) {
-                if (nodeIsSupported) {
-                    supported.emplace(fusedLayerName);
-                } else {
-                    unsupported.emplace(fusedLayerName);
-                }
-            }
-        }
-    }
-    for (auto&& unsupportedNode : unsupported) {
-        supported.erase(unsupportedNode);
-    }
-    for (auto&& node : model->get_ops()) {
-        if (contains(supported, node->get_friendly_name())) {
-            for (auto&& inputNodeOutput : node->input_values()) {
-                if (ngraph::op::is_constant(inputNodeOutput.get_node()) || ngraph::op::is_parameter(inputNodeOutput.get_node())) {
-                    supported.emplace(inputNodeOutput.get_node()->get_friendly_name());
-                }
-            }
-            for (auto&& outputs : node->outputs()) {
-                for (auto&& outputNodeInput : outputs.get_target_inputs()) {
-                    if (ngraph::op::is_output(outputNodeInput.get_node())) {
-                        supported.emplace(outputNodeInput.get_node()->get_friendly_name());
-                    }
-                }
-            }
-        }
-    }
-    for (auto&& node : model->get_ops()) {
-        if (ngraph::op::is_constant(node) || ngraph::op::is_parameter(node)) {
-            if (!contains(supported, node->output(0).get_target_inputs().begin()->get_node()->get_friendly_name())) {
-                supported.erase(node->get_friendly_name());
-            }
-        } else if (ngraph::op::is_output(node)) {
-            if (!contains(supported, node->input_values().begin()->get_node()->get_friendly_name())) {
-                supported.erase(node->get_friendly_name());
-            }
-        }
-    }
-    for (auto&& layerName : supported) {
-        res.supportedLayersMap.emplace(layerName, GetName());
-    }
 
+    auto supported = InferenceEngine::GetSupportedNodes(model,
+                                                        [&](std::shared_ptr<ov::Model>& model) {
+                                                            model = transformedModel;
+                                                        },
+                                                        [&](const std::shared_ptr<ngraph::Node>& op) {
+                                                            return isOperationSupported(op, converter);
+                                                        });
+    for (auto&& op_name : supported) {
+        res.supportedLayersMap.emplace(op_name, GetName());
+    }
     return res;
 }
 
