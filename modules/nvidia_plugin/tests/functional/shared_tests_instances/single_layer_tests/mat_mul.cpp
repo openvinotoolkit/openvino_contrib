@@ -50,10 +50,22 @@ const std::vector<ShapeRelatedParams> smokeShapeRelatedParams = {
     {{{3, 2, 20, 10}, true}, {{3, 2, 10, 20}, true}},
 
     // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
+    {{{3, 2, 10, 10}, false}, {{1, 1, 10, 20}, false}},
+    {{{3, 2, 10, 10}, true}, {{1, 1, 10, 20}, false}},
+    {{{3, 2, 10, 20}, false}, {{1, 1, 10, 20}, true}},
+    {{{3, 2, 20, 10}, true}, {{1, 1, 10, 20}, true}},
+
+    // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
     {{{2, 10, 10}, false}, {{2, 10, 20}, false}},
     {{{2, 10, 10}, true}, {{2, 10, 20}, false}},
     {{{2, 10, 20}, false}, {{2, 10, 20}, true}},
     {{{2, 20, 10}, true}, {{2, 10, 20}, true}},
+
+    // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
+    {{{2, 10, 10}, false}, {{1, 10, 20}, false}},
+    {{{2, 10, 10}, true}, {{1, 10, 20}, false}},
+    {{{2, 10, 20}, false}, {{1, 10, 20}, true}},
+    {{{2, 20, 10}, true}, {{1, 10, 20}, true}},
 
     // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
     {{{10, 10}, false}, {{10, 20}, false}},
