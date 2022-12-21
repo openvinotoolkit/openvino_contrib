@@ -48,6 +48,13 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
                                IndexCollection&& outputIds)
     : OperationBase(context, stridedSliceOp, std::move(inputIds), std::move(outputIds)),
       element_type_{stridedSliceOp.get_input_element_type(0)} {
+    for (auto&& input : stridedSliceOp.inputs()) {
+        if (input.get_element_type() != ov::element::Type_t::i64) {
+            throwIEException(fmt::format("Input precision {} is not supported by StridedSliceOp!",
+                input.get_element_type().get_type_name()));
+        }
+    }
+
     const auto begin_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(1));
     const auto end_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(2));
     const auto stride_const = getNodeConstantValues(stridedSliceOp.get_input_node_ptr(3));
