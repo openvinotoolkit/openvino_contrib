@@ -12,7 +12,10 @@ add_library(${TARGET_NAME} STATIC ${SOURCES_TRANSFORMATIONS})
 
 target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/")
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/"
+        PUBLIC
+        $<TARGET_PROPERTY:openvino::ov_shape_inference,INTERFACE_INCLUDE_DIRECTORIES>)
+
 
 target_link_libraries(${TARGET_NAME} PRIVATE
         arm_compute::arm_compute
@@ -21,4 +24,5 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino::ngraph_reference
         openvino::util
         openvino::itt
-        openvino::runtime::dev)
+        openvino::runtime::dev
+        openvino::ov_shape_inference)
