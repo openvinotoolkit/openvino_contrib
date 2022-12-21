@@ -115,19 +115,23 @@ struct FusedConvCallbacks {
         auto fused_conv0 = std::dynamic_pointer_cast<TFusedConvolution>(input0);
         auto fused_conv1 = std::dynamic_pointer_cast<TFusedConvolution>(input1);
 
+        auto can_be_fused = [](const std::shared_ptr<ov::Node>& target, const std::shared_ptr<ov::Node>& fused_input) {
+            return (target && fused_input && (get_node_id(target) > get_node_id(fused_input) || ov::op::util::is_constant(fused_input)));
+        };
+
         if (fused_conv0 && fused_conv1) {
-            if (get_node_id(fused_conv0) > get_node_id(fused_conv1)) {
+            if (can_be_fused(fused_conv0, input1)) {
                 return {fused_conv0, input1};
-            } else {
+            } else if (can_be_fused(fused_conv1, input0)) {
                 return {fused_conv1, input0};
             }
         }
 
-        if (fused_conv0) {
+        if (fused_conv0 && can_be_fused(fused_conv0, input1)) {
             return {fused_conv0, input1};
         }
 
-        if (fused_conv1) {
+        if (fused_conv1 && can_be_fused(fused_conv1, input0)) {
             return {fused_conv1, input0};
         }
         return {nullptr, nullptr};
@@ -136,6 +140,9 @@ struct FusedConvCallbacks {
     static bool sink_add_to_fused_convolution(Matcher &m) {
         auto add = std::dynamic_pointer_cast<ov::op::v1::Add>(m.get_match_root());
         auto [fused_conv, node] = parse_fusedconv_inputs(m.get_match_root());
+        if (!fused_conv || !node) {
+            return false;
+        }
 
         if (fused_conv->has_add_node() || fused_conv->get_activation() != ActivationMode::NO_ACTIVATION) {
             return false;
@@ -288,24 +295,43 @@ bool is_bias_to_be_fused(const ov::Output<ov::Node>& output) {
     if (!node) {
         return false;
     }
-    if (node->input(0).get_partial_shape().is_dynamic() ||
-        node->input(1).get_partial_shape().is_dynamic()) {
+
+    auto input0 = node->input(0);
+    auto input1 = node->input(1);
+
+    const auto partial_shape0 = node->input(0).get_partial_shape();
+    const auto partial_shape1 = node->input(1).get_partial_shape();
+
+    if (partial_shape0.is_dynamic() || partial_shape1.is_dynamic()) {
         return false;
     }
-    const auto conv_shape = node->input(0).get_shape();
-    const auto bias_shape = node->input(1).get_shape();
+
+    if (node->get_autob() != ov::op::AutoBroadcastType::NUMPY) {
+        return false;
+    }
+
+    if (input0.get_element_type() != input1.get_element_type()) {
+        return false;
+    }
+
+    const auto conv_shape = partial_shape0.to_shape();
+    const auto bias_shape = partial_shape1.to_shape();
     const auto bias_rank = bias_shape.size();
     if (bias_rank < conv_bias_rank_min || bias_rank > conv_bias_rank_max) {
         return false;
     }
     const auto num_spatial_dims = conv_shape.size() - 2;
-    const auto nchw_channel_dim_reverse_offset = num_spatial_dims + 1;
-    if (bias_shape.at(bias_shape.size() - nchw_channel_dim_reverse_offset) !=
-        conv_shape.at(conv_shape.size() - nchw_channel_dim_reverse_offset)) {
-        return false;
-    }
     if (num_spatial_dims == 3) {
         return false;  // NOTE: 3D convolution fusing was disabled due to 3d_unet bad performance
+    }
+    const auto nchw_channel_dim_reverse_offset = num_spatial_dims + 1;
+    size_t bias_channel_index = bias_shape.size() - nchw_channel_dim_reverse_offset;
+    size_t conv_channel_index = conv_shape.size() - nchw_channel_dim_reverse_offset;
+    if (bias_shape.at(bias_channel_index) != conv_shape.at(conv_channel_index)) {
+        return false;
+    }
+    for (size_t i = 0; i < bias_shape.size(); i++) {
+        if ((i != bias_channel_index) && (bias_shape.at(i) != 1)) return false;
     }
     return true;
 }
@@ -314,12 +340,21 @@ bool is_add_to_be_fused(const ov::Output<ov::Node>& output) {
     if (!node) {
         return false;
     }
-    const auto shape0 = node->input(0).get_partial_shape();
-    const auto shape1 = node->input(1).get_partial_shape();
-    if (shape0.is_dynamic() || shape1.is_dynamic()) {
+
+    auto input0 = node->input(0);
+    auto input1 = node->input(1);
+
+    const auto partial_shape0 = node->input(0).get_partial_shape();
+    const auto partial_shape1 = node->input(1).get_partial_shape();
+
+    if (input0.get_element_type() != input1.get_element_type()) {
         return false;
     }
-    return (shape0.to_shape() == shape1.to_shape());
+
+    if (partial_shape0.is_dynamic() || partial_shape1.is_dynamic()) {
+        return false;
+    }
+    return (partial_shape0.to_shape() == partial_shape1.to_shape());
 }
 } // namespace
 
