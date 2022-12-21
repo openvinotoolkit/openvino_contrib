@@ -48,10 +48,10 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
                                IndexCollection&& outputIds)
     : OperationBase(context, stridedSliceOp, std::move(inputIds), std::move(outputIds)),
       element_type_{stridedSliceOp.get_input_element_type(0)} {
-    for (auto&& input : stridedSliceOp.inputs()) {
-        if (input.get_element_type() != ov::element::Type_t::i64) {
+    for (size_t i = 1; i < stridedSliceOp.inputs().size(); i++) {
+        if (stridedSliceOp.input(i).get_element_type() != ov::element::Type_t::i64) {
             throwIEException(fmt::format("Input precision {} is not supported by StridedSliceOp!",
-                input.get_element_type().get_type_name()));
+                stridedSliceOp.input(i).get_element_type().get_type_name()));
         }
     }
 
