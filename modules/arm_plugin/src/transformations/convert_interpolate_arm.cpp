@@ -16,8 +16,8 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
     auto& inp_shape = node.get_input_shape(0);
     auto& out_shape = node.get_output_shape(0);
 
-    float scale_h = out_shape[2] / inp_shape[2];
-    float scale_w = out_shape[3] / inp_shape[3];
+    float scale_h = static_cast<float>(out_shape[2]) / inp_shape[2];
+    float scale_w = static_cast<float>(out_shape[3]) / inp_shape[3];
     bool is_upsample = scale_h > 1 && scale_w > 1;
 
     auto& attrs = node.get_attrs();
@@ -48,8 +48,8 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
             return true;
         }
     } else if (scale_h < 1 && scale_w < 1) {
-        float down_scale_h = inp_shape[2] / out_shape[2];
-        float down_scale_w = inp_shape[3] / out_shape[3];
+        float down_scale_h = static_cast<float>(inp_shape[2]) / out_shape[2];
+        float down_scale_w = static_cast<float>(inp_shape[3]) / out_shape[3];
         bool int_factor = down_scale_h == static_cast<int>(down_scale_h) && down_scale_w == static_cast<int>(down_scale_w);
 
         if (int_factor && coord_mode != Transform_mode::ALIGN_CORNERS && nearest_mode == Nearest_mode::SIMPLE) {
