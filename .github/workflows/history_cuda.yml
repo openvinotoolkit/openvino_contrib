@@ -8,7 +8,7 @@ on:
       - 'modules/nvidia_plugin/**'
 jobs:
   history:
-    runs-on: lohika-ci
+    runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch
       run: git -C ~/runner/openvino_contrib checkout master
