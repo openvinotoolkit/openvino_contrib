@@ -1,7 +1,8 @@
-FROM docker.io/library/ubuntu:focal
+FROM nvidia/cuda:11.8.0-runtime-ubuntu20.04
 ARG enable_tensorrt
 ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
 
+# nv-tensorrt-repo-*.deb packages
 COPY *.deb  /
 
 SHELL ["/bin/bash", "-c"]
@@ -18,13 +19,12 @@ RUN set -exuo pipefail ; \
 	add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /" ; \
 	apt update ; \
 	DEBIAN_FRONTEND=noninteractive apt install -y \
-		./libcudnn*.deb \
 		autoconf \
 		automake \
 		build-essential \
 		ca-certificates \
 		clang-format-9 \
-		cuda \
+		cuda-11-8 \
 		curl \
 		g++-multilib \
 		gcc-multilib \
@@ -35,8 +35,8 @@ RUN set -exuo pipefail ; \
 		libavformat-dev \
 		libboost-regex-dev \
 		libcairo2-dev \
-		libcutensor1 \
-		libcutensor-dev \
+		libcutensor1=1.6.1.5-1 \
+		libcutensor-dev=1.6.1.5-1 \
 		libglib2.0-dev \
 		libgstreamer1.0-0 \
 		libgtk2.0-dev \
