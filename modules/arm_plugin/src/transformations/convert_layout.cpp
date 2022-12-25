@@ -84,9 +84,9 @@ ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
                                                                conv->get_auto_pad(),
                                                                DataLayout::NHWC);
         }
-        new_conv->set_friendly_name(conv->get_friendly_name());
         auto transpose = transpose_on_output(new_conv, rank);
-        copy_runtime_info(conv, {new_conv, transpose});
+        transpose->set_friendly_name(conv->get_friendly_name());
+        copy_runtime_info(conv, {new_conv, activations_transpose, weights_transpose, transpose});
         replace_node(conv, transpose);
 
         return true;
@@ -121,9 +121,9 @@ ConvertArmMaxPoolV1Layout::ConvertArmMaxPoolV1Layout() {
                                                                 pool->get_rounding_type(),
                                                                 pool->get_auto_pad(),
                                                                 DataLayout::NHWC);
-        new_pool->set_friendly_name(pool->get_friendly_name());
         auto transpose = transpose_on_output(new_pool, rank);
-        copy_runtime_info(pool, {new_pool, transpose});
+        transpose->set_friendly_name(pool->get_friendly_name());
+        copy_runtime_info(pool, {new_pool, activations_transpose, transpose});
         replace_node(pool, transpose);
 
         return true;
@@ -149,6 +149,10 @@ ConvertArmMaxPoolV8Layout::ConvertArmMaxPoolV8Layout() {
         if (rank < 4 || rank > 5) {
             return false;
         }
+        auto axis = pool->get_axis();
+        if (axis > 1 || (axis < 0 && axis > -static_cast<int64_t>(rank) - 1)) {
+            return false;
+        }
         auto activations_transpose = transpose_on_input(pool->input_value(0), rank);
         auto new_pool = std::make_shared<opset::v8::ArmMaxPool>(activations_transpose,
                                                                 pool->get_strides(),
@@ -161,10 +165,11 @@ ConvertArmMaxPoolV8Layout::ConvertArmMaxPoolV8Layout() {
                                                                 pool->get_index_element_type(),
                                                                 pool->get_axis(),
                                                                 DataLayout::NHWC);
-        new_pool->set_friendly_name(pool->get_friendly_name());
         auto transpose = transpose_on_output(new_pool->output(0), rank);
+        transpose->set_friendly_name(pool->get_friendly_name() + ".0");
         auto transpose_on_indexes = transpose_on_output(new_pool->output(1), rank);
-        copy_runtime_info(pool, {new_pool, transpose, transpose_on_indexes});
+        transpose_on_indexes->set_friendly_name(pool->get_friendly_name() + ".1");
+        copy_runtime_info(pool, {new_pool, activations_transpose, transpose, transpose_on_indexes});
         replace_node(pool, {transpose, transpose_on_indexes});
 
         return true;
@@ -200,9 +205,9 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
                                                                 pool->get_rounding_type(),
                                                                 pool->get_auto_pad(),
                                                                 DataLayout::NHWC);
-        new_pool->set_friendly_name(pool->get_friendly_name());
         auto transpose = transpose_on_output(new_pool, rank);
-        copy_runtime_info(pool, {new_pool, transpose});
+        transpose->set_friendly_name(pool->get_friendly_name());
+        copy_runtime_info(pool, {new_pool, activations_transpose, transpose});
         replace_node(pool, transpose);
 
         return true;
