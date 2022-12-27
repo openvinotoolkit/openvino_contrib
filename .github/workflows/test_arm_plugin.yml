@@ -43,4 +43,4 @@ jobs:
             -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/openvino_contrib/modules/arm_plugin'
 
       - name: CMake build
-        run: cmake --build . --parallel
+        run: cmake --build . --parallel --config Release
