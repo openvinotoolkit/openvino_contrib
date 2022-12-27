@@ -1,0 +1,41 @@
+name: Test ARM plugin
+on:
+  workflow_dispatch:
+  pull_request:
+    types:
+      - labeled
+    branches:
+      - 'releases/**'
+      - 'master'
+    paths:
+      - 'modules/arm_plugin/**'
+
+jobs:
+  Windows-ARM64:
+    runs-on: windows-2022
+    steps:
+      - run: echo "The head of this PR is ${{ GITHUB_SHA }}"
+
+      - name: Clone OpenVINO
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/openvino'
+          ref: 'master'
+          submodules: true
+
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v3
+        with:
+          path: openvino_contrib
+          submodules: true
+
+      - name: CMake config
+        run: |
+          cmake \
+            -A ARM64 \
+            -S ${{ github.workspace }}/openvino \
+            -DENABLE_TESTS=ON \
+            -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/arm_plugin
+
+      - name: CMake build
+        run: cmake --build . --parallel
