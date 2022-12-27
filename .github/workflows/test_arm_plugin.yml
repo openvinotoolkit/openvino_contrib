@@ -9,6 +9,9 @@ on:
       - 'master'
     paths:
       - 'modules/arm_plugin/**'
+  push:
+    branches:
+      - 'master'
 
 jobs:
   Windows-ARM64:
