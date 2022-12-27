@@ -14,8 +14,6 @@ jobs:
   Windows-ARM64:
     runs-on: windows-2022
     steps:
-      - run: echo "The head of this PR is ${{ GITHUB_SHA }}"
-
       - name: Clone OpenVINO
         uses: actions/checkout@v3
         with:
