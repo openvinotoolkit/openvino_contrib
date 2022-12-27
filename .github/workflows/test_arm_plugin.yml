@@ -30,6 +30,9 @@ jobs:
           path: openvino_contrib
           submodules: true
 
+      - name: Setup scons
+        run: python3 -m pip install scons
+
       - name: CMake config
         shell: bash
         run: |
@@ -40,5 +43,4 @@ jobs:
             -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/openvino_contrib/modules/arm_plugin'
 
       - name: CMake build
-        shell: bash
         run: cmake --build . --parallel
