@@ -28,6 +28,7 @@ jobs:
           submodules: true
 
       - name: CMake config
+        shell: bash
         run: |
           cmake \
             -A ARM64 \
@@ -36,4 +37,5 @@ jobs:
             -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/arm_plugin
 
       - name: CMake build
+        shell: bash
         run: cmake --build . --parallel
