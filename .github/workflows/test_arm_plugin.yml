@@ -32,9 +32,9 @@ jobs:
         run: |
           cmake \
             -A ARM64 \
-            -S ${{ github.workspace }} \
+            -S '${{ github.workspace }}' \
             -DENABLE_TESTS=ON \
-            -DOPENVINO_EXTRA_MODULES=${{ github.workspace }}/openvino_contrib/modules/arm_plugin
+            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/openvino_contrib/modules/arm_plugin'
 
       - name: CMake build
         shell: bash
