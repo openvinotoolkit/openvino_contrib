@@ -29,7 +29,7 @@ jobs:
         run: |
           git diff >java_code_style_diff.patch
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: java_code_style_diff
