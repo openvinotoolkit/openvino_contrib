@@ -41,7 +41,7 @@ jobs:
       matrix:
         transformers-version: [
           "transformers[tf-cpu]==2.11.0",
-          "transformers[torch,tf-cpu]==4.15.* torch==1.9.1",
+          "transformers[torch,tf-cpu]==4.15.* torch==1.13.1",
         ]
         openvino-version: [
           "openvino-dev==2021.4.2",
@@ -89,7 +89,7 @@ jobs:
       working-directory: modules/optimum
       run: |
         python -m pip install --upgrade pip
-        python -m pip install .[all] torch==1.9.1
+        python -m pip install .[all] torch==1.13.1
 
     - name: Test MaskedLM example
       working-directory: modules/optimum/examples

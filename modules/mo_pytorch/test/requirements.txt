@@ -1,4 +1,4 @@
-torch==1.9.1
+torch==1.13.1
 torchvision==0.10.1
 opencv-python==4.5.4.60
 --find-links https://dl.fbaipublicfiles.com/detectron2/wheels/cpu/torch1.9/index.html

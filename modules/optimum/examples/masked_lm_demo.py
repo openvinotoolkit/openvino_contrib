@@ -9,7 +9,7 @@
 #
 # To run this model, please install openvino-optimum[all]
 # (see https://github.com/openvinotoolkit/openvino_contrib/blob/master/modules/optimum/README.md )
-# and PyTorch. The demo is tested with torch==1.9.1.
+# and PyTorch. The demo is tested with torch==1.13.1.
 #
 # NOTE: openvino-optimum initializes the model on first inference, so the first inference
 #       is expected to take longer.
