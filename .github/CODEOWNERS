@@ -20,6 +20,3 @@
 
 # AI extension for OVMS:
 /modules/ovms_ai_extension/ @openvinotoolkit/openvino_contrib-ovms_ai_extension-maintainers
-
-# OpenVINO™ Integration with Hugging Face Optimum:
-/modules/optimum/ @openvinotoolkit/openvino_contrib-optimum-maintainers
