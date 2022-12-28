@@ -5,6 +5,7 @@ on:
       - 'modules/java_api/**'
   pull_request:
     paths:
+      - '.github/workflows/code_style.yml'
       - 'modules/java_api/**'
 
 jobs:
@@ -12,9 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-java@v1
+      - uses: actions/setup-java@v3
         with:
           java-version: '11'
+          distribution: 'microsoft'
 
       - name: Install dependencies
         run: |
