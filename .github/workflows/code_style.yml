@@ -2,21 +2,21 @@ name: Code Style
 on:
   push:
     paths:
-      - '**'
-      - '!modules/nvidia_plugin/**'
+      - 'modules/java_api/**'
   pull_request:
     paths:
-      - '**'
-      - '!modules/nvidia_plugin/**'
+      - '.github/workflows/code_style.yml'
+      - 'modules/java_api/**'
 
 jobs:
   Java:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-java@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
         with:
           java-version: '11'
+          distribution: 'microsoft'
 
       - name: Install dependencies
         run: |
@@ -31,7 +31,7 @@ jobs:
         run: |
           git diff >java_code_style_diff.patch
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         if: failure()
         with:
           name: java_code_style_diff
