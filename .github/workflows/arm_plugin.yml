@@ -29,7 +29,7 @@ jobs:
           - os: "windows-latest"
             cmake-options: "-A ARM64"
           - os: "ubuntu-latest"
-            cmake-optinos: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/arm64.toolchain.cmake"
+            cmake-options: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/arm64.toolchain.cmake"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO
@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           cmake \
-            ${{ matrix.cmake-optinos }} \
+            ${{ matrix.cmake-options }} \
             -S '${{ github.workspace }}' \
             -DENABLE_TESTS=ON \
             -DENABLE_INTEL_MYRIAD_COMMON=OFF \
