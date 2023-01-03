@@ -1,21 +1,32 @@
-name: Test ARM plugin
+name: ARM plugin
 on:
   workflow_dispatch:
   pull_request:
-    types:
-      - labeled
     branches:
       - 'releases/**'
       - 'master'
     paths:
       - 'modules/arm_plugin/**'
-  push:
-    branches:
-      - 'master'
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
-  Windows-ARM64:
-    runs-on: windows-2022
+  Build:
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        include:
+          - os: "macos-latest"
+            cmake-options: "-DCMAKE_OSX_ARCHITECTUES=arm64"
+          - os: "windows-latest"
+            cmake-options: "-A ARM64"
+          - os: "ubuntu-latest"
+            cmake-optinos: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/arm64.toolchain.cmake"
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO
         uses: actions/checkout@v3
@@ -37,7 +48,7 @@ jobs:
         shell: bash
         run: |
           cmake \
-            -A ARM64 \
+            ${{ matrix.cmake-optinos }} \
             -S '${{ github.workspace }}' \
             -DENABLE_TESTS=ON \
             -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/openvino_contrib/modules/arm_plugin'
