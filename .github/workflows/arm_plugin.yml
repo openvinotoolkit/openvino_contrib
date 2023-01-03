@@ -25,24 +25,24 @@ jobs:
       matrix:
         include:
           - os: "macos-latest"
-            cmake-options: "-DCMAKE_OSX_ARCHITECTUES=arm64"
+            cmake-options: "-DCMAKE_OSX_ARCHITECTURES=arm64"
           - os: "windows-latest"
             cmake-options: "-A ARM64"
           - os: "ubuntu-latest"
-            cmake-options: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/arm64.toolchain.cmake"
+            cmake-options: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../openvino/cmake/arm64.toolchain.cmake"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO
         uses: actions/checkout@v3
         with:
           repository: 'openvinotoolkit/openvino'
+          path: ../openvino
           ref: 'master'
           submodules: true
 
       - name: Clone OpenVINO Contrib
         uses: actions/checkout@v3
         with:
-          path: openvino_contrib
           submodules: true
 
       - name: Setup Python
@@ -54,7 +54,7 @@ jobs:
         run: python3 -m pip install scons
 
       - name: Install cross-compiler
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y crossbuild-essential-arm64
@@ -64,10 +64,11 @@ jobs:
         run: |
           cmake \
             ${{ matrix.cmake-options }} \
-            -S '${{ github.workspace }}' \
+            -S '${{ github.workspace }}/../openvino' \
             -DENABLE_TESTS=ON \
+            -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_MYRIAD_COMMON=OFF \
-            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/openvino_contrib/modules/arm_plugin'
+            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/modules/arm_plugin'
 
       - name: CMake build
         run: cmake --build . --parallel --config Release
