@@ -89,7 +89,7 @@ else()
              logging=1)
     endif()
 
-    if(EMSCRIPTEN)
+    if(EMSCRIPTEN OR LINUX)
         list(APPEND ARM_COMPUTE_OPTIONS os=linux)
     elseif(ANDROID)
         list(APPEND ARM_COMPUTE_OPTIONS os=android)
@@ -135,6 +135,15 @@ else()
 
         set(extra_link_flags "${extra_link_flags} ${extra_flags}")
         set(extra_cxx_flags "${extra_cxx_flags} ${extra_flags}")
+    elseif(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        get_filename_component(cxx_compiler "${CMAKE_CXX_COMPILER}" NAME)
+        get_filename_component(c_compiler "${CMAKE_C_COMPILER}" NAME)
+        get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
+
+        set(cmake_build_env
+            CC=${c_compiler}
+            CXX=${cxx_compiler})
+        list(APPEND ARM_COMPUTE_OPTIONS compiler_prefix="${compiler_prefix}/")
     elseif(EMSCRIPTEN)
         set(cmake_build_env
             CC=emcc
