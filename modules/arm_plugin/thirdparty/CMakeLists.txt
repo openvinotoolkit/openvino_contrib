@@ -99,7 +99,13 @@ elseif(NOT TARGET arm_compute_static_libs)
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
     endif()
 
-    if(CMAKE_CROSSCOMPILING)
+    # pseudo cross-compilation cases (no CMAKE_SYSTEM_NAME is defined)
+    # - on Windows x64, we compile for ARM / ARM64 architectures
+    if(MSVC)
+        set(OV_PSEUDO_CROSS_COMPILE ON)
+    endif()
+
+    if(CMAKE_CROSSCOMPILING OR OV_PSEUDO_CROSS_COMPILE)
         list(APPEND ARM_COMPUTE_OPTIONS build=cross_compile)
     else()
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
@@ -137,7 +143,7 @@ elseif(NOT TARGET arm_compute_static_libs)
 
         set(extra_link_flags "${extra_link_flags} ${extra_flags}")
         set(extra_cxx_flags "${extra_cxx_flags} ${extra_flags}")
-    elseif((CMAKE_HOST_APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Linux") OR MSVC)
+    elseif((CMAKE_HOST_APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Linux") OR OV_PSEUDO_CROSS_COMPILE)
         get_filename_component(cxx_compiler "${CMAKE_CXX_COMPILER}" NAME)
         get_filename_component(c_compiler "${CMAKE_C_COMPILER}" NAME)
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
