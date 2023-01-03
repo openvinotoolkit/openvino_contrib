@@ -63,12 +63,13 @@ jobs:
         shell: bash
         run: |
           cmake \
-            ${{ matrix.cmake-options }} \
-            -S '${{ github.workspace }}/openvino' \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_MYRIAD_COMMON=OFF \
-            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/modules/arm_plugin'
+            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/modules/arm_plugin' \
+            ${{ matrix.cmake-options }} \
+            -S '${{ github.workspace }}/openvino' \
+            -B '${{ github.workspace }}/build'
 
       - name: CMake build
-        run: cmake --build . --parallel --config Release
+        run: cmake --build '${{ github.workspace }}/build' --parallel --config Release
