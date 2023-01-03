@@ -29,14 +29,14 @@ jobs:
           - os: "windows-latest"
             cmake-options: "-A ARM64"
           - os: "ubuntu-latest"
-            cmake-options: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/../openvino/cmake/arm64.toolchain.cmake"
+            cmake-options: "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/openvino/cmake/arm64.toolchain.cmake"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO
         uses: actions/checkout@v3
         with:
           repository: 'openvinotoolkit/openvino'
-          path: ../openvino
+          path: openvino
           ref: 'master'
           submodules: true
 
@@ -64,7 +64,7 @@ jobs:
         run: |
           cmake \
             ${{ matrix.cmake-options }} \
-            -S '${{ github.workspace }}/../openvino' \
+            -S '${{ github.workspace }}/openvino' \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_MYRIAD_COMMON=OFF \
