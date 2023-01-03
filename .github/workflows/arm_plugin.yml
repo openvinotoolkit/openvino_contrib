@@ -56,11 +56,11 @@ jobs:
       - name: CMake config
         run: |
           echo "::group::Define cmake arguments"
-          if [[ runner.os == "Linux" ]] ; then
+          if [[ $RUNNER_OS == "Linux" ]] ; then
             cmake_args="-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/openvino/cmake/arm64.toolchain.cmake"
-          elif [[ runner.os == "Windows" ]] ; then
+          elif [[ $RUNNER_OS == "Windows" ]] ; then
             cmake_args="-A ARM64"
-          else
+          elif [[ $RUNNER_OS == "macOS" ]] ; then
             cmake_args="-DCMAKE_OSX_ARCHITECTURES=arm64"
           fi
           echo "cmake_args=$cmake_args"
