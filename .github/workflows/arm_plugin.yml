@@ -60,7 +60,6 @@ jobs:
           sudo apt-get install -y crossbuild-essential-arm64
 
       - name: CMake config
-        shell: bash
         run: |
           cmake \
             -DENABLE_TESTS=ON \
