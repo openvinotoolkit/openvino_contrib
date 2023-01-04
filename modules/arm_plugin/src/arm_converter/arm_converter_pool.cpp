@@ -27,7 +27,7 @@ static void FillLayerInfo(const Pool& node, arm_compute::PoolingLayerInfo& pool_
                                              ? arm_compute::DimensionRoundingType::FLOOR
                                              : arm_compute::DimensionRoundingType::CEIL;
 
-    pool_info.data_layout       = arm_compute::DataLayout::NCHW;
+    pool_info.data_layout       = arm_compute::DataLayout::NHWC;
     pool_info.pool_size         = arm_compute::Size2D(kernel_w, kernel_h);
     pool_info.pad_stride_info   = arm_compute::PadStrideInfo(stride_x, stride_y, pad_left, pad_right, pad_top, pad_bottom, round);
     if (node.get_auto_pad() != ngraph::op::PadType::EXPLICIT) {
