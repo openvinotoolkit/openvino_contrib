@@ -6,19 +6,21 @@ on:
   pull_request:
     paths:
       - 'modules/nvidia_plugin/**'
+      - '.github/workflows/history_cuda.yml'
 jobs:
   history:
     runs-on: ubuntu-22.04
     steps:
     - name: checkout master branch
-      run: git -C ~/runner/openvino_contrib checkout master
-    - name: fetch master branch
-      run: git -C ~/runner/openvino_contrib pull origin master
+      uses: actions/checkout@v3
+      with:
+        ref: master
+        fetch-depth: 0
     - name: delete temporary branch
-      run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
+      run: git branch -D temporary-ci-branch | echo 1
     - name: fetch
-      run: git -C ~/runner/openvino_contrib fetch origin $GITHUB_REF:temporary-ci-branch
+      run: git fetch origin $GITHUB_REF:temporary-ci-branch
     - name: rebased
-      run: git -C ~/runner/openvino_contrib merge-base --is-ancestor origin/master temporary-ci-branch
+      run: git merge-base --is-ancestor origin/master temporary-ci-branch
     - name: autosquashed
-      run: "! git -C ~/runner/openvino_contrib rev-list --pretty=oneline  -E --grep '^(fixup|squash|amend)!' origin/master..temporary-ci-branch | fgrep !"
+      run: "! git rev-list --pretty=oneline  -E --grep '^(fixup|squash|amend)!' origin/master..temporary-ci-branch | fgrep !"
