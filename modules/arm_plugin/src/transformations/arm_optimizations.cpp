@@ -82,6 +82,7 @@
 #include "convert_rnn_cell.hpp"
 #include "convert_pool_arm.hpp"
 #include "convert_layout.hpp"
+#include "convert_batchnorm_to_arm.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -304,6 +305,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
     {
         Dump(m, "before_arm_specific_transformations");
         ov::pass::Manager manager;
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLayout>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGRN>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::NormalizeL2Fusion>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeNormalizeL2Add>();
@@ -326,6 +328,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertStridedSlice>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertSliceToArm>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInferenceV0toV5>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInferenceToARM>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchNormInference>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertShuffleChannels>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertInterpolate>();
@@ -360,6 +363,11 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV8>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmAvgPool>();
+        if (!quantized) {
+            manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLayout>();
+            manager.register_pass<ov::pass::Serialize>("/Users/anesterov/CLionProjects/openvino/bin/batch_norm.xml",
+                                                       "/Users/anesterov/CLionProjects/openvino/bin/batch_norm.bin");
+        }
         manager.register_pass<pass::FinalizeTrailingNodes>();
         manager.register_pass<pass::StoreResultName>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -369,7 +377,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvert>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmConvertLike>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLayout>();
         manager.run_passes(m);
     }
 

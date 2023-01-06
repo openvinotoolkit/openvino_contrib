@@ -7,6 +7,7 @@
 #include "concat_arm.hpp"
 #include "split_arm.hpp"
 #include "conv_arm.hpp"
+#include "batch_norm_arm.hpp"
 #include "convert_arm.hpp"
 #include "gather_arm.hpp"
 #include "group_conv_arm.hpp"

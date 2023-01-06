@@ -83,7 +83,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::MatMul>();
     Register<opset::ArmMatMulBias>();
     Register<opset::Pad>();
-    Register<opset::BatchNormInference>();
+    Register<opset::ArmBatchNormInference>();
     Register<opset::HSwish>();
     Register<opset::Swish>();
     Register<opset::SoftPlus>();
@@ -217,8 +217,10 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
                 } else {
                     tensorInfo = {tensorShape, 1, DataTypeCast(output.get_element_type())};
                 }
-                if ((node->get_friendly_name().find("ArmConvolution") > 0) ||
-                (node->get_friendly_name().find("ArmGroupConvolution") > 0)) {
+                if ((node->get_friendly_name().find("ArmConvolution") > 0 ||
+                    node->get_friendly_name().find("ArmMaxPool") > 0 ||
+                    node->get_friendly_name().find("ArmAvgPool") > 0 ||
+                    node->get_friendly_name().find("ArmBatchNormInference") > 0) && !_cfg._lpt) {
                     tensorInfo.set_data_layout(arm_compute::DataLayout::NHWC);
                 }
                 tensor->allocator()->init(tensorInfo);

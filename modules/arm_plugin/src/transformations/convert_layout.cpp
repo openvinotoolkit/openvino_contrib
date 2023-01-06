@@ -217,6 +217,41 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
     register_matcher(m, callback);
 }
 
+ConvertBatchNormLayout::ConvertBatchNormLayout() {
+    enum BatchNormInput {Features, Gamma, Beta, Mean, Variance};
+    auto root = ov::pass::pattern::wrap_type<opset::ArmBatchNormInference>(ov::pass::pattern::has_static_rank());
+    matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
+        auto node = m.get_match_root();
+        if (transformation_callback(node)) {
+            return false;
+        }
+        auto batch_norm = ov::as_type_ptr<opset::ArmBatchNormInference>(node);
+        if (!batch_norm) {
+            return false;
+        }
+        size_t rank = batch_norm->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        auto input_transpose = transpose_on_input(batch_norm->input_value(BatchNormInput::Features), rank);
+        auto new_batch_norm = std::make_shared<opset::ArmBatchNormInference>(input_transpose,
+                                                                               batch_norm->input_value(BatchNormInput::Gamma),
+                                                                               batch_norm->input_value(BatchNormInput::Beta),
+                                                                               batch_norm->input_value(BatchNormInput::Mean),
+                                                                               batch_norm->input_value(BatchNormInput::Variance),
+                                                                               batch_norm->get_eps_value(),
+                                                                               DataLayout::NHWC);
+        auto transpose = transpose_on_output(new_batch_norm, rank);
+        transpose->set_friendly_name(batch_norm->get_friendly_name());
+        copy_runtime_info(batch_norm, {new_batch_norm, input_transpose, transpose});
+        replace_node(batch_norm, transpose);
+
+        return true;
+    };
+
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertBatchNormLayout");
+    register_matcher(m, callback);
+}
 } // pass
 } // ArmPlugin
 
