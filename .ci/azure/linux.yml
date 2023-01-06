@@ -155,21 +155,18 @@ jobs:
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
 
-# Temporarily disable failing tests
-#
-#
-#   - script: |
-#       python3 -m pip install $(INSTALL_DIR)/tools/*.whl
-#       python3 -m pip install -U setuptools==51.0.0
-#       python3 -m pip install -r requirements.txt
-#       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
-#       git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'Install PyTorch tests dependencies'
-#
-#     # tests should be installed and PYTHONPATH must be set by tests
-#   - script: |
-#       export PYTHONPATH=$(REPO_DIR)/modules/mo_pytorch
-#       . $(SETUPVARS) -pyver 3.8 && env && python3 run_tests.py
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'PyTorch conversion tests'
+  - script: |
+      python3 -m pip install $(INSTALL_DIR)/tools/*.whl
+      python3 -m pip install -U setuptools==51.0.0
+      python3 -m pip install -r requirements.txt
+      python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
+      git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
+    workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+    displayName: 'Install PyTorch tests dependencies'
+
+  # tests should be installed and PYTHONPATH must be set by tests
+  - script: |
+      export PYTHONPATH=$(REPO_DIR)/modules/mo_pytorch
+      . $(SETUPVARS) -pyver 3.8 && env && python3 run_tests.py
+    workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
+    displayName: 'PyTorch conversion tests'
