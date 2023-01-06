@@ -27,6 +27,7 @@
 
 'dependencies':
 - '**/requirement*.txt'
-- '**/thirdparty/**/*'
 - '.gitmodules'
 - '**/setup.py'
+- any: ['**/CMakeLists.txt',
+        '!**/CMakeLists.txt']
