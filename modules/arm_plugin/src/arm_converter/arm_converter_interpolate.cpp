@@ -16,8 +16,8 @@ static void pad_input_data(const uint8_t* data_ptr,
                            const ngraph::Shape& input_shape,
                            const ngraph::Shape& padded_input_shape,
                            const std::vector<size_t>& pads_begin) {
-    ngraph::CoordinateTransform input_transform(input_shape);
-    ngraph::CoordinateTransform padded_transform(padded_input_shape);
+    ArmPlugin::opset::CoordinateTransform input_transform(input_shape);
+    ArmPlugin::opset::CoordinateTransform padded_transform(padded_input_shape);
 
     for (const ngraph::Coordinate& input_coord : input_transform) {
         auto padded_coord = input_coord;
