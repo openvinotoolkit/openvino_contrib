@@ -37,7 +37,7 @@ if(ARM_COMPUTE_INCLUDE_DIR OR ARM_COMPUTE_LIB_DIR)
     add_library(half INTERFACE IMPORTED GLOBAL)
     set_target_properties(half PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES  ${ARM_COMPUTE_INCLUDE_DIR})
-else()
+elseif(NOT TARGET arm_compute_static_libs)
     message(STATUS "Configure to build ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary")
 
     find_host_program(SCONS scons)
