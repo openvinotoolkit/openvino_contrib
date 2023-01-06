@@ -12,7 +12,6 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**nvidia_plugin**](./modules/nvidia_plugin): NVIDIA GPU Plugin -- allows to perform deep neural networks inference on NVIDIA GPUs using CUDA, using OpenVINO API.
 * [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
 * [**mo_pytorch**](./modules/mo_pytorch): PyTorch extensions for Model Optimizer -- native PyTorch to OpenVINO IR converter
-* [**optimum**](./modules/optimum): Optimum OpenVINO -- Python extension for Hugging Face [Transformers](https://github.com/huggingface/transformers) including runtime and NNCF quantization.
 * [**Azure Video Analyzer**](./modules/ovms_ai_extension/): Azure Video Analyzer Extension -- enables exchange of video frames and inference results between [Azure Video Analyzer (AVA)](https://docs.microsoft.com/en-us/azure/azure-video-analyzer/video-analyzer-docs/overview) and OpenVINO™ Model Server.
 
 ## How to build OpenVINO with extra modules
