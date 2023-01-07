@@ -29,5 +29,5 @@
 - '**/requirement*.txt'
 - '.gitmodules'
 - '**/setup.py'
-- any: ['**/thirdparty/**/*'
+- any: ['**/thirdparty/**/*',
         '!**/CMakeLists.txt']
