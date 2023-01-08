@@ -59,12 +59,15 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]] ; then
             cmake_args=("-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/openvino/cmake/arm64.toolchain.cmake")
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
+            build_jobs=8
           elif [[ "$RUNNER_OS" == "Windows" ]] ; then
             cmake_args=(-A ARM64)
+            build_jobs=4
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
             cmake_args+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
+            build_jobs=2
           fi
           echo "cmake_args=${cmake_args[@]}"
           echo "::endgroup::"
@@ -80,4 +83,4 @@ jobs:
           echo "::endgroup::"
 
       - name: CMake build
-        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release
+        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel "$build_jobs" --config Release
