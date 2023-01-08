@@ -57,24 +57,24 @@ jobs:
         run: |
           echo "::group::Define cmake arguments"
           if [[ "$RUNNER_OS" == "Linux" ]] ; then
-            cmake_args="-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/openvino/cmake/arm64.toolchain.cmake"
+            cmake_args=("-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/openvino/cmake/arm64.toolchain.cmake")
           elif [[ "$RUNNER_OS" == "Windows" ]] ; then
-            cmake_args="-A ARM64"
+            cmake_args=(-A ARM64)
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
-            cmake_args="-DCMAKE_OSX_ARCHITECTURES=arm64"
+            cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
           fi
-          echo "cmake_args=$cmake_args"
+          echo "cmake_args=${cmake_args[@]}"
           echo "::endgroup::"
 
           echo "::group::Cmake configure"
-          cmake $cmake_args \
+          cmake "${cmake_args[@]}" \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_INTEL_MYRIAD_COMMON=OFF \
-            -DOPENVINO_EXTRA_MODULES='${{ github.workspace }}/modules/arm_plugin' \
-            -S '${{ github.workspace }}/openvino' \
-            -B '${{ github.workspace }}/build'
+            -DOPENVINO_EXTRA_MODULES="$GITHUB_WORKSPACE/modules/arm_plugin" \
+            -S "$GITHUB_WORKSPACE/openvino" \
+            -B "$GITHUB_WORKSPACE/build"
           echo "::endgroup::"
 
       - name: CMake build
-        run: cmake --build '${{ github.workspace }}/build' --parallel --config Release
+        run: cmake --build "$GITHUB_WORKSPACE" --parallel --config Release
