@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-latest', 'windows-latest-8-cores', 'ubuntu-20.04-8-cores']
+        os: ['macos-11', 'windows-latest-8-cores', 'ubuntu-20.04-8-cores']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO Contrib
@@ -58,6 +58,7 @@ jobs:
           echo "::group::Define cmake arguments"
           if [[ "$RUNNER_OS" == "Linux" ]] ; then
             cmake_args=("-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/openvino/cmake/arm64.toolchain.cmake")
+            cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
           elif [[ "$RUNNER_OS" == "Windows" ]] ; then
             cmake_args=(-A ARM64)
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
