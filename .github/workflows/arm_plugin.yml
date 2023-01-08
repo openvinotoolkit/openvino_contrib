@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - 'master'
+      - 'github-actions'
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
@@ -23,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["macos-latest", "windows-latest", "ubuntu-20.04"]
+        os: ['macos-latest', 'windows-latest-8-cores', 'ubuntu-latest-16-cores']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO Contrib
@@ -34,9 +35,8 @@ jobs:
       - name: Clone OpenVINO
         uses: actions/checkout@v3
         with:
-          repository: 'ilya-lavrenov/openvino'
+          repository: 'openvinotoolkit/openvino'
           path: openvino
-          ref: 'cross-arm-win'
           submodules: true
 
       - name: Setup Python
