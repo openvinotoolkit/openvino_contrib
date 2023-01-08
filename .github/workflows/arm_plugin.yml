@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-latest', 'windows-latest-8-cores', 'ubuntu-latest-16-cores']
+        os: ['macos-latest', 'windows-latest-8-cores', 'ubuntu-20.04-8-cores']
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO Contrib
