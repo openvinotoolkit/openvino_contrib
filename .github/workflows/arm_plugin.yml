@@ -80,4 +80,4 @@ jobs:
 
       - name: CMake build
         run: |
-          cmake --build "$GITHUB_WORKSPACE" --verbose --parallel --config Release
+          cmake --build "$GITHUB_WORKSPACE/build" --verbose --parallel --config Release
