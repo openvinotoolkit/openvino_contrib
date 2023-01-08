@@ -63,6 +63,7 @@ jobs:
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
             cmake_args+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+            cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
           echo "cmake_args=${cmake_args[@]}"
           echo "::endgroup::"
@@ -78,4 +79,5 @@ jobs:
           echo "::endgroup::"
 
       - name: CMake build
-        run: cmake --build "$GITHUB_WORKSPACE" --verbose --parallel --config Release
+        run: |
+          cmake --build "$GITHUB_WORKSPACE" --verbose --parallel --config Release
