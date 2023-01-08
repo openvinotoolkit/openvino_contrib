@@ -80,5 +80,4 @@ jobs:
           echo "::endgroup::"
 
       - name: CMake build
-        run: |
-          cmake --build "$GITHUB_WORKSPACE/build" --verbose --parallel --config Release
+        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release
