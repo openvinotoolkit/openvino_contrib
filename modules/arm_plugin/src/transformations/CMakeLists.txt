@@ -22,3 +22,5 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino::util
         openvino::itt
         openvino::runtime::dev)
+
+ov_install_static_lib(${TARGET_NAME} cpu)

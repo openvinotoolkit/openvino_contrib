@@ -24,9 +24,15 @@ list(APPEND HEADERS ${HEADERS_CORE})
 ie_arm_neon_optimization_flags(neon_flags)
 set_source_files_properties(${SOURCES} PROPERTIES COMPILE_OPTIONS "${neon_flags}")
 
+if(TARGET openvino_intel_cpu_plugin)
+    set(device_name "ARM_CPU")
+else()
+    set(device_name "CPU")
+endif()
+
 # adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
-              DEVICE_NAME "CPU"
+              DEVICE_NAME "${device_name}"
               SOURCES ${SOURCES} ${HEADERS}
               VERSION_DEFINES_FOR arm_plugin.cpp)
 
