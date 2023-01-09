@@ -147,12 +147,11 @@ void MatMulOp::BroadcastShapes(
     } else if (matrixAShape.size() > 1 && matrixBShape.size() > 1) {
         // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
         auto broadcastNdToMd = [](const auto& shapeToBroadcast, auto& broadcastShape) {
-            Expects(shapeToBroadcast.size() > broadcastShape.size());
-            const size_t abShapeDiff = shapeToBroadcast.size() - broadcastShape.size();
+            Expects(shapeToBroadcast.size() >= broadcastShape.size());
             std::vector<size_t> newAxies;
             newAxies.reserve(shapeToBroadcast.size());
-            newAxies.insert(newAxies.end(), shapeToBroadcast.begin(), shapeToBroadcast.begin() + abShapeDiff);
-            newAxies.insert(newAxies.end(), broadcastShape.begin(), broadcastShape.end());
+            newAxies.insert(newAxies.end(), shapeToBroadcast.begin(), shapeToBroadcast.end() - 2);
+            newAxies.insert(newAxies.end(), broadcastShape.end() - 2, broadcastShape.end());
             broadcastShape = ov::Shape{newAxies};
         };
         const size_t batchA = GetMatrixNumBatches(matrixAShape);

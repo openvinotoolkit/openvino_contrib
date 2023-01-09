@@ -26,3 +26,4 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino::itt
         openvino::runtime::dev
         openvino::ov_shape_inference)
+ov_install_static_lib(${TARGET_NAME} cpu)
