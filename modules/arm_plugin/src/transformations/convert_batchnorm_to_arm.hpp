@@ -8,13 +8,11 @@
 namespace ArmPlugin {
 namespace pass {
 
-class ConvertBatchNormInferenceToARM;
-
-} // namespace pass
-} // namespace ArmPlugin
-
-class ArmPlugin::pass::ConvertBatchNormInferenceToARM : public ngraph::pass::MatcherPass {
+class ConvertBatchNormInferenceToARM : public ngraph::pass::MatcherPass {
 public:
     NGRAPH_RTTI_DECLARATION;
     ConvertBatchNormInferenceToARM();
 };
+
+} // namespace pass
+} // namespace ArmPlugin

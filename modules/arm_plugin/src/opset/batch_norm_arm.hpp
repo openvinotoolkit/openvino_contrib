@@ -16,6 +16,7 @@ struct ChannelShapedInputSpec {
     ov::PartialShape m_shape;
     std::string m_input_name;
 };
+
 static std::tuple<ov::element::Type, ov::PartialShape, ov::PartialShape> infer_batch_norm_forward(
         const ov::Node* node,
         ov::element::Type input_element_type,
@@ -29,15 +30,17 @@ static std::tuple<ov::element::Type, ov::PartialShape, ov::PartialShape> infer_b
         const ov::PartialShape& mean_shape,
         const ov::PartialShape& variance_shape,
         DataLayout layout);
+
 static std::tuple<ov::element::Type, ov::PartialShape, ov::PartialShape> infer_batch_norm_forward_helper(
         const ov::Node* node,
         ov::element::Type input_element_type,
         const ov::PartialShape& input_shape,
         const std::vector<ChannelShapedInputSpec>& channel_shaped_inputs,
         DataLayout layout);
+
 class ArmBatchNormInference : public ov::op::Op {
 public:
-    OPENVINO_OP("ArmBatchNormInference", "arm_opset");
+    OPENVINO_OP("ArmBatchNormInference", "arm_opset", ov::op::Op);
     ArmBatchNormInference() = default;
     ArmBatchNormInference(const ov::Output<Node>& input,
                           const ov::Output<Node>& gamma,

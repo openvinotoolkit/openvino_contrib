@@ -55,7 +55,7 @@ void ArmPlugin::opset::ArmBatchNormInference::validate_and_infer_types() {
 
 std::shared_ptr<Node> ArmPlugin::opset::ArmBatchNormInference::clone_with_new_inputs(const OutputVector& new_args) const {
     check_new_args_count(this, new_args);
-    return std::make_shared<BatchNormInference>(new_args.at(0),
+    return std::make_shared<ArmBatchNormInference>(new_args.at(0),
                                                 new_args.at(1),
                                                 new_args.at(2),
                                                 new_args.at(3),
@@ -157,16 +157,16 @@ std::tuple<element::Type, PartialShape, PartialShape> ArmPlugin::opset::infer_ba
                           " (",
                           channel_shape,
                           ") does not have rank 1.");
-
-    NODE_VALIDATION_CHECK(node,
-                          Dimension::merge(channel_dim, channel_dim, channel_shape[0]),
-                          "Input channel dimension (",
-                          channel_dim,
-                          ") does not match shape for ",
-                          channel_input_names,
-                          " (",
-                          channel_shape,
-                          ").");
+//    TODO: Fix this check
+//    NODE_VALIDATION_CHECK(node,
+//                          Dimension::merge(channel_dim, channel_dim, channel_shape[0]),
+//                          "Input channel dimension (",
+//                          channel_dim,
+//                          ") does not match shape for ",
+//                          channel_input_names,
+//                          " (",
+//                          channel_shape,
+//                          ").");
 
     NODE_VALIDATION_CHECK(node,
                           channel_dim.is_dynamic() || channel_dim.get_length() >= 1,

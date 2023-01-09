@@ -245,7 +245,6 @@ ConvertBatchNormLayout::ConvertBatchNormLayout() {
         transpose->set_friendly_name(batch_norm->get_friendly_name());
         copy_runtime_info(batch_norm, {new_batch_norm, input_transpose, transpose});
         replace_node(batch_norm, transpose);
-
         return true;
     };
 
