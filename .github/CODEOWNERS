@@ -2,17 +2,21 @@
 
 *  @openvinotoolkit/openvino_contrib-maintainers
 
-CODEOWNERS  @openvinotoolkit/openvino-admins @openvinotoolkit/openvino_contrib-maintainers
-
 # CI:
-/.github/  @openvinotoolkit/openvino-admins
-/.ci/  @openvinotoolkit/openvino-admins
+/.github/  @openvinotoolkit/openvino-ci-maintainers
+/.ci/  @openvinotoolkit/openvino-ci-maintainers
 
-# ARM Plugin:
+# OpenVINO ARM Plugin:
 /modules/arm_plugin/ @openvinotoolkit/openvino_contrib-arm_plugin-maintainers
 
-# Inference Engine Java API:
+# OpenVINO Runtime Java API:
 /modules/java_api/ @openvinotoolkit/openvino_contrib-java_api-maintainers
+
+# OpenVINO NVIDIA plugin:
+/modules/nvidia_plugin/ @openvinotoolkit/openvino_contrib-nvidia_plugin-maintainters
 
 # PyTorch extension for Model Optimizer:
 /modules/mo_pytorch/ @openvinotoolkit/openvino_contrib-mo_pytorch-maintainers
+
+# AI extension for OVMS:
+/modules/ovms_ai_extension/ @openvinotoolkit/openvino_contrib-ovms_ai_extension-maintainers
