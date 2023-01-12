@@ -93,7 +93,9 @@ struct Argument<Tensor*> {
         _tensor{tensor} {
         _tensor->_notPaddedTensor = std::make_unique<arm_compute::Tensor>();
     }
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value ||
+                                    std::is_same<ngraph::float16, T>::value ||
+                                    std::is_same<ngraph::bfloat16, T>::value>>
     operator T*() {
         if (_tensor->_tensor->info()->has_padding()) {
             return static_cast<T*>(static_cast<void*>(_tensor->_notPaddedTensor->buffer()));
@@ -102,7 +104,9 @@ struct Argument<Tensor*> {
         }
     }
 
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value ||
+                                                     std::is_same<ngraph::float16, T>::value ||
+                                                     std::is_same<ngraph::bfloat16, T>::value>>
     operator const T*() const {
         return const_cast<Argument<Tensor*>*>(this)->operator T*();
     }
@@ -539,6 +543,6 @@ constexpr static std::tuple<T0..., T1...> merge(std::tuple<T0...>, std::tuple<T1
 constexpr static auto boolType = std::tuple<bool>{};
 constexpr static auto intTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, std::uint64_t>{};
 constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
-constexpr static auto floatTypes = std::tuple<ngraph::float16, float, double>{};
+constexpr static auto floatTypes = std::tuple<ngraph::bfloat16, ngraph::float16, float, double>{};
 constexpr static auto allTypes = merge(intTypes, floatTypes);
 }  //  namespace ArmPlugin
