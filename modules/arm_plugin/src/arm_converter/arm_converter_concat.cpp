@@ -48,7 +48,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& no
 
     return CallSwitch(
         AP_WRAP(make, wrap_concat),
-        node.input(0), allTypes);
+        node.input(0), merge(allTypes, boolType));
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConcat& node) {
