@@ -83,6 +83,7 @@
 #include "convert_pool_arm.hpp"
 #include "convert_layout.hpp"
 #include "convert_batchnorm_to_arm.hpp"
+#include "convert_batch_to_space_to_arm.hpp"
 
 #include <ngraph/pass/manager.hpp>
 #include <ngraph/pass/constant_folding.hpp>
@@ -363,6 +364,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV1>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmMaxPoolV8>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertArmAvgPool>();
+        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertBatchToSpaceToARM>();
         if (!quantized) {
             manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLayout>();
             manager.register_pass<ov::pass::Serialize>("/Users/anesterov/CLionProjects/openvino/bin/batch_norm.xml",

@@ -40,6 +40,12 @@ public:
     ConvertBatchNormLayout();
 };
 
+class ConvertBatchToSpaceLayout : public ov::pass::MatcherPass {
+public:
+    OPENVINO_RTTI("ConvertBatchToSpaceLayout", "0");
+    ConvertBatchToSpaceLayout();
+};
+
 class ConvertLayout: public ov::pass::GraphRewrite {
 public:
     OPENVINO_RTTI("ConvertLayout", "0");
@@ -49,6 +55,7 @@ public:
         add_matcher<ConvertArmMaxPoolV8Layout>();
         add_matcher<ConvertArmAvgPoolLayout>();
         add_matcher<ConvertBatchNormLayout>();
+        add_matcher<ConvertBatchToSpaceLayout>();
     }
 };
 

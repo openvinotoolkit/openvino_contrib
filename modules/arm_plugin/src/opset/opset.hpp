@@ -21,5 +21,6 @@
 #include "pool_arm.hpp"
 #include "fft_arm.hpp"
 #include "quantize.hpp"
+#include "batch_to_space_arm.hpp"
 #include "ngraph_opset.hpp"
 #include "utils.hpp"
