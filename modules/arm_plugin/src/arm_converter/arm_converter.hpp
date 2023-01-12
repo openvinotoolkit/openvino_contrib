@@ -506,7 +506,7 @@ auto CallSwitchPT(std::tuple<int, PT...>, F&& f) {
 
 template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... TRest>
 [[noreturn]] ReturnT CallSwitchPT(std::tuple<int, PT...>, std::tuple<int>, F&& f, const IO& io, TRest ... args) {
-    IE_THROW() << "Unsupported Type: " << io;
+    IE_THROW() << "Arm Plugin (CallSwitchPT): Unsupported Type: " << io;
 }
 
 template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
