@@ -37,7 +37,7 @@ if(ARM_COMPUTE_INCLUDE_DIR OR ARM_COMPUTE_LIB_DIR)
     add_library(half INTERFACE IMPORTED GLOBAL)
     set_target_properties(half PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES  ${ARM_COMPUTE_INCLUDE_DIR})
-else()
+elseif(NOT TARGET arm_compute_static_libs)
     message(STATUS "Configure to build ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary")
 
     find_host_program(SCONS scons)
@@ -135,7 +135,7 @@ else()
 
         set(extra_link_flags "${extra_link_flags} ${extra_flags}")
         set(extra_cxx_flags "${extra_cxx_flags} ${extra_flags}")
-    elseif(CMAKE_HOST_APPLE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    elseif(CMAKE_CROSSCOMPILING AND LINUX)
         get_filename_component(cxx_compiler "${CMAKE_CXX_COMPILER}" NAME)
         get_filename_component(c_compiler "${CMAKE_C_COMPILER}" NAME)
         get_filename_component(compiler_prefix "${CMAKE_CXX_COMPILER}" DIRECTORY)
@@ -188,9 +188,7 @@ else()
     endif()
 
     if(ENABLE_LTO)
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
-            CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-           AND (NOT CMAKE_CROSSCOMPILING))
+        if((CMAKE_COMPILER_IS_GNUCXX OR OV_COMPILER_IS_CLANG) AND (NOT CMAKE_CROSSCOMPILING))
             set(extra_cxx_flags "${extra_cxx_flags} -flto=thin")
             set(extra_link_flags "${extra_link_flags} -flto=thin")
         endif()
