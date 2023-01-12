@@ -54,7 +54,7 @@ ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
             return false;
         }
         auto conv = ov::as_type_ptr<opset::ArmConvolution>(node);
-        if (!conv) {
+        if (!conv || conv->get_layout() == DataLayout::NHWC) {
             return false;
         }
         size_t rank = conv->get_output_partial_shape(0).size();
@@ -105,7 +105,7 @@ ConvertArmMaxPoolV1Layout::ConvertArmMaxPoolV1Layout() {
             return false;
         }
         auto pool = ov::as_type_ptr<opset::v1::ArmMaxPool>(node);
-        if (!pool) {
+        if (!pool || pool->get_layout() == DataLayout::NHWC) {
             return false;
         }
         size_t rank = pool->get_output_partial_shape(0).size();
@@ -142,7 +142,7 @@ ConvertArmMaxPoolV8Layout::ConvertArmMaxPoolV8Layout() {
             return false;
         }
         auto pool = ov::as_type_ptr<opset::v8::ArmMaxPool>(node);
-        if (!pool) {
+        if (!pool || pool->get_layout() == DataLayout::NHWC) {
             return false;
         }
         size_t rank = pool->get_output_partial_shape(0).size();
@@ -188,7 +188,7 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
             return false;
         }
         auto pool = ov::as_type_ptr<opset::v1::ArmAvgPool>(node);
-        if (!pool) {
+        if (!pool || pool->get_layout() == DataLayout::NHWC) {
             return false;
         }
         size_t rank = pool->get_output_partial_shape(0).size();

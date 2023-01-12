@@ -60,6 +60,5 @@ std::vector<std::string> disabledTestPatterns() {
         // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
         ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
 #endif
-        "TransformationTestsF.ConvertLayoutArmMaxPoolV8.*",
     };
 }
