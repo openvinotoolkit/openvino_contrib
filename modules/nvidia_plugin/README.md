@@ -18,7 +18,7 @@ OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenV
 
 ### Prerequisites
 
-In order to build NVIDIA GPU plugin the next dependencies must be installed.
+NVIDIA GPU plugin uses the following dependencies to be downloaded and installed separately. Upon downloading them the user should agree with license of each component:
 
 1. Install one of the following compilers with support of **C++17**:
 - Install **gcc-7** compiler
