@@ -54,26 +54,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y crossbuild-essential-arm64
 
-      - name: CMake config
+      - name: CMake configure
+        id: cmake-configure
         run: |
           echo "::group::Define cmake arguments"
           if [[ "$RUNNER_OS" == "Linux" ]] ; then
             cmake_args=("-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/openvino/cmake/arm64.toolchain.cmake")
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
-            build_jobs=8
+            build_jobs=12
           elif [[ "$RUNNER_OS" == "Windows" ]] ; then
             cmake_args=(-A ARM64 -DBUILD_arm_plugin=OFF)
-            build_jobs=4
+            build_jobs=6
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
             cmake_args+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
             build_jobs=2
           fi
+          echo "build_jobs=$build_jobs" >> $GITHUB_OUTPUT
+
+          echo "build_jobs=$build_jobs"
           echo "cmake_args=${cmake_args[@]}"
           echo "::endgroup::"
 
-          echo "::group::Cmake configure"
+          echo "::group::CMake configure"
           cmake "${cmake_args[@]}" \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
@@ -84,4 +88,4 @@ jobs:
           echo "::endgroup::"
 
       - name: CMake build
-        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel "$build_jobs" --config Release
+        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel ${{ steps.cmake-configure.outputs.build_jobs }} --config Release
