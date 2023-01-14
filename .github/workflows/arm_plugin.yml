@@ -35,7 +35,8 @@ jobs:
       - name: Clone OpenVINO
         uses: actions/checkout@v3
         with:
-          repository: 'openvinotoolkit/openvino'
+          repository: 'ilya-lavrenov/openvino'
+          ref: windows-arm-build
           path: openvino
           submodules: true
 
@@ -61,7 +62,7 @@ jobs:
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
             build_jobs=8
           elif [[ "$RUNNER_OS" == "Windows" ]] ; then
-            cmake_args=(-A ARM64)
+            cmake_args=(-A ARM64 -DBUILD_arm_plugin=OFF)
             build_jobs=4
           elif [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
