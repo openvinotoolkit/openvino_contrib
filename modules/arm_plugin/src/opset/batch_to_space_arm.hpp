@@ -14,7 +14,7 @@ namespace v1 {
 
 class ArmBatchToSpace : public ov::op::v1::BatchToSpace {
 public:
-    OPENVINO_OP("ArmBatchToSpace", "arm_opset", BatchToSpace, 1);
+    OPENVINO_OP("ArmBatchToSpace", "arm_opset", ov::op::v1::BatchToSpace, 1);
     ArmBatchToSpace(const ov::Output<Node>& data,
                     const ov::Output<Node>& block_shape,
                     const ov::Output<Node>& crops_begin,

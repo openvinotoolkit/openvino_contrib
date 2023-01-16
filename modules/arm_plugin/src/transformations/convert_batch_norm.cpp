@@ -12,11 +12,11 @@
 
 NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertBatchNormInference, "ConvertBatchNormInference", 0);
 ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() {
-    auto batch_norm = ngraph::pattern::wrap_type<opset::ArmBatchNormInference>();
+    auto batch_norm = ngraph::pattern::wrap_type<opset::v5::ArmBatchNormInference>();
 
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         enum Input {Features, Gamma, Beta, Mean, Variance};
-        auto node = std::dynamic_pointer_cast<opset::ArmBatchNormInference>(m.get_match_root());
+        auto node = std::dynamic_pointer_cast<opset::v5::ArmBatchNormInference>(m.get_match_root());
 
         if (!node) {
             return false;
@@ -38,7 +38,7 @@ ArmPlugin::pass::ConvertBatchNormInference::ConvertBatchNormInference() {
         auto shape = std::make_shared<opset::Constant>(ngraph::element::i64, ngraph::Shape{4}, new_shape);
 
         auto reshape = std::make_shared<opset::Reshape>(node->input_value(Input::Features), shape, true);
-        auto bn      = std::make_shared<opset::ArmBatchNormInference>(reshape,
+        auto bn      = std::make_shared<opset::v5::ArmBatchNormInference>(reshape,
                                                                    node->input_value(Input::Gamma),
                                                                    node->input_value(Input::Beta),
                                                                    node->input_value(Input::Mean),

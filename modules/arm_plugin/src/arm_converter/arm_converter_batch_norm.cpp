@@ -7,7 +7,7 @@
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
-template <> Converter::Conversion::Ptr Converter::Convert(const opset::ArmBatchNormInference& node) {
+template <> Converter::Conversion::Ptr Converter::Convert(const opset::v5::ArmBatchNormInference& node) {
     enum Input {Features, Gamma, Beta, Mean, Variance};
     float eps = static_cast<float>(node.get_eps_value());
     return MakeConversion<arm_compute::NEBatchNormalizationLayer>(node.input(Input::Features), node.output(0),

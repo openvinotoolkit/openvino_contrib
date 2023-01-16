@@ -4,6 +4,8 @@
 
 #include "conv_arm.hpp"
 
+#include <utility>
+
 using namespace ngraph;
 using namespace ArmPlugin;
 
@@ -14,7 +16,7 @@ opset::ArmConvolution::ArmConvolution(const ngraph::Output<ngraph::Node>& data_b
                                       const ngraph::CoordinateDiff& pads_end,
                                       const ngraph::Strides& dilations,
                                       const ngraph::op::PadType& auto_pad,
-                                      const ngraph::PartialShape& output_shape) : m_output_shape{output_shape} {
+                                      ngraph::PartialShape  output_shape) : m_output_shape{std::move(output_shape)} {
     set_arguments({data_batch, filters});
     set_strides(strides);
     set_pads_begin(pads_begin);
@@ -32,7 +34,7 @@ opset::ArmConvolution::ArmConvolution(const ngraph::Output<ngraph::Node>& data_b
                                       const ngraph::CoordinateDiff& pads_end,
                                       const ngraph::Strides& dilations,
                                       const ngraph::op::PadType& auto_pad,
-                                      const ngraph::PartialShape& output_shape) : m_output_shape{output_shape} {
+                                      ngraph::PartialShape  output_shape) : m_output_shape{std::move(output_shape)} {
     set_arguments({data_batch, filters, bias});
     set_strides(strides);
     set_pads_begin(pads_begin);

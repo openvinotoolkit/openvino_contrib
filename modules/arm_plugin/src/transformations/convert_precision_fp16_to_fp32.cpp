@@ -50,7 +50,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::MatMul, op);
     CHECK_TYPE(ArmPlugin::opset::ArmMatMulBias, op);
     CHECK_TYPE(ArmPlugin::opset::Pad, op);
-    CHECK_TYPE(ArmPlugin::opset::ArmBatchNormInference, op);
+    CHECK_TYPE(ArmPlugin::opset::v5::ArmBatchNormInference, op);
     CHECK_TYPE(ArmPlugin::opset::HSwish, op);
     CHECK_TYPE(ArmPlugin::opset::Swish, op);
     CHECK_TYPE(ArmPlugin::opset::SoftPlus, op);

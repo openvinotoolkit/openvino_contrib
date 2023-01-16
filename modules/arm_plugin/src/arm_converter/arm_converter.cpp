@@ -83,7 +83,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::MatMul>();
     Register<opset::ArmMatMulBias>();
     Register<opset::Pad>();
-    Register<opset::ArmBatchNormInference>();
+    Register<opset::v5::ArmBatchNormInference>();
     Register<opset::HSwish>();
     Register<opset::Swish>();
     Register<opset::SoftPlus>();
@@ -101,7 +101,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::ArmInterpolate>();
     Register<opset::ArmMVN>();
     Register<opset::ArmNormalizeL2>();
-    Register<opset::DepthToSpace>();
+    Register<opset::v0::ArmDepthToSpace>();
     Register<opset::SpaceToDepth>();
     Register<opset::Equal>();
     Register<opset::NotEqual>();
@@ -221,6 +221,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
                     node->get_friendly_name().find("ArmMaxPool") > 0 ||
                     node->get_friendly_name().find("ArmAvgPool") > 0 ||
                     node->get_friendly_name().find("BatchToSpace") > 0 ||
+                    node->get_friendly_name().find("ArmDepthToSpace") > 0 ||
                     node->get_friendly_name().find("ArmBatchNormInference") > 0) && !_cfg._lpt) {
                     tensorInfo.set_data_layout(arm_compute::DataLayout::NHWC);
                 }

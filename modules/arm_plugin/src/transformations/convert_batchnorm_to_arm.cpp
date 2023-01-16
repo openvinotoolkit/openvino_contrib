@@ -17,7 +17,7 @@ ArmPlugin::pass::ConvertBatchNormInferenceToARM::ConvertBatchNormInferenceToARM(
         }
 
         enum ArmBatchNorm {Features, Gamma, Beta, Mean, Variance};
-        auto bnv_arm = std::make_shared<opset::ArmBatchNormInference>(
+        auto bnv_arm = std::make_shared<opset::v5::ArmBatchNormInference>(
                                         bnv5->input_value(ArmBatchNorm::Features),
                                         bnv5->input_value(ArmBatchNorm::Gamma),
                                         bnv5->input_value(ArmBatchNorm::Beta),

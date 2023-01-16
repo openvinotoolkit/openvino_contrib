@@ -234,13 +234,13 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
 
 ConvertBatchNormLayout::ConvertBatchNormLayout() {
     enum BatchNormInput {Features, Gamma, Beta, Mean, Variance};
-    auto root = ov::pass::pattern::wrap_type<opset::ArmBatchNormInference>(ov::pass::pattern::has_static_rank());
+    auto root = ov::pass::pattern::wrap_type<opset::v5::ArmBatchNormInference>(ov::pass::pattern::has_static_rank());
     matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
         auto node = m.get_match_root();
         if (transformation_callback(node)) {
             return false;
         }
-        auto batch_norm = ov::as_type_ptr<opset::ArmBatchNormInference>(node);
+        auto batch_norm = ov::as_type_ptr<opset::v5::ArmBatchNormInference>(node);
         if (!batch_norm) {
             return false;
         }
@@ -249,13 +249,14 @@ ConvertBatchNormLayout::ConvertBatchNormLayout() {
             return false;
         }
         auto input_transpose = transpose_on_input(batch_norm->input_value(BatchNormInput::Features), rank);
-        auto new_batch_norm = std::make_shared<opset::ArmBatchNormInference>(input_transpose,
+        auto output_shape = transpose_output_shape(batch_norm, rank);
+        auto new_batch_norm = std::make_shared<opset::v5::ArmBatchNormInference>(input_transpose,
                                                                                batch_norm->input_value(BatchNormInput::Gamma),
                                                                                batch_norm->input_value(BatchNormInput::Beta),
                                                                                batch_norm->input_value(BatchNormInput::Mean),
                                                                                batch_norm->input_value(BatchNormInput::Variance),
                                                                                batch_norm->get_eps_value(),
-                                                                               DataLayout::NHWC);
+                                                                               output_shape);
         auto transpose = transpose_on_output(new_batch_norm, rank);
         transpose->set_friendly_name(batch_norm->get_friendly_name());
         copy_runtime_info(batch_norm, {new_batch_norm, input_transpose, transpose});
@@ -297,6 +298,38 @@ ConvertBatchToSpaceLayout::ConvertBatchToSpaceLayout() {
     };
 
     auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertBatchToSpaceLayout");
+    register_matcher(m, callback);
+}
+
+ConvertDepthToSpaceLayout::ConvertDepthToSpaceLayout() {
+    auto root = ov::pass::pattern::wrap_type<opset::v0::ArmDepthToSpace>(ov::pass::pattern::has_static_rank());
+    matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
+        auto node = m.get_match_root();
+        if (transformation_callback(node)) {
+            return false;
+        }
+        auto depth_to_space = ov::as_type_ptr<opset::v0::ArmDepthToSpace>(node);
+        if (!depth_to_space) {
+            return false;
+        }
+        size_t rank = depth_to_space->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        auto input_transpose = transpose_on_input(depth_to_space->input_value(0), rank);
+        auto output_shape = transpose_output_shape(depth_to_space, rank);
+        auto new_depth_to_space = std::make_shared<opset::v0::ArmDepthToSpace>(input_transpose,
+                                                                             depth_to_space->get_mode(),
+                                                                             depth_to_space->get_block_size(),
+                                                                             output_shape);
+        auto transpose = transpose_on_output(new_depth_to_space, rank);
+        transpose->set_friendly_name(depth_to_space->get_friendly_name());
+        copy_runtime_info(depth_to_space, {new_depth_to_space, input_transpose, transpose});
+        replace_node(depth_to_space, transpose);
+        return true;
+    };
+
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertDepthToSpaceLayout");
     register_matcher(m, callback);
 }
 } // pass
