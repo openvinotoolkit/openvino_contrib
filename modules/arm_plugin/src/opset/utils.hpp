@@ -54,9 +54,4 @@ struct SafeCast {
 
 #define safe_cast SafeCast{__FILE__, __LINE__}.call
 
-enum class DataLayout {
-    NCHW,
-    NHWC,
-};
-
 }  // namespace ArmPlugin

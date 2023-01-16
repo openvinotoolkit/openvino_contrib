@@ -15,7 +15,6 @@ target_include_directories(${TARGET_NAME} PRIVATE
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/")
 
 target_link_libraries(${TARGET_NAME} PRIVATE
-        openvino_arm_cpu_opset
         arm_compute::arm_compute
         arm_compute::arm_compute_core
         arm_compute::half
