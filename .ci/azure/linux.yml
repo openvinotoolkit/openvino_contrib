@@ -96,6 +96,8 @@ jobs:
       sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move jdk into contrib install_build_dependencies.sh
       sudo apt --assume-yes install default-jdk
+      # Install gradle for Java
+      sudo apt -y --no-install-recommends install unzip
       wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
       unzip gradle-$(GRADLE_VER)-bin.zip
       # For opencv-python: python3-setuptools and pip upgrade
