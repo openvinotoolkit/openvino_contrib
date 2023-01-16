@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -45,6 +45,17 @@ std::shared_ptr<ArmPlugin::opset::Transpose> transpose_on_output(const Output<No
     }
 }
 
+PartialShape transpose_output_shape(const std::shared_ptr<Node>& node, size_t rank) {
+    const auto& shape = node->get_output_partial_shape(0);
+    PartialShape new_output_shape;
+    new_output_shape.reserve(rank);
+    const auto& perm = rank == 4 ? nchw_to_nhwc : ncdhw_to_ndhwc;
+    for (size_t i = 0; i < rank; i++) {
+        new_output_shape.push_back(shape[perm[i]]);
+    }
+    return new_output_shape;
+}
+
 ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
     auto root = ov::pass::pattern::wrap_type<opset::ArmConvolution>(ov::pass::pattern::has_static_rank());
 
@@ -63,6 +74,7 @@ ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
         }
         auto activations_transpose = transpose_on_input(conv->input_value(0), rank);
         auto weights_transpose = transpose_on_input(conv->input_value(1), rank);
+        auto output_shape = transpose_output_shape(conv, rank);
         std::shared_ptr<opset::ArmConvolution> new_conv;
         if (conv->get_input_size() > 2) {
             new_conv = std::make_shared<opset::ArmConvolution>(activations_transpose,
@@ -73,7 +85,7 @@ ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
                                                                conv->get_pads_end(),
                                                                conv->get_dilations(),
                                                                conv->get_auto_pad(),
-                                                               DataLayout::NHWC);
+                                                               output_shape);
         } else {
             new_conv = std::make_shared<opset::ArmConvolution>(activations_transpose,
                                                                weights_transpose,
@@ -82,7 +94,7 @@ ConvertArmConvolutionLayout::ConvertArmConvolutionLayout() {
                                                                conv->get_pads_end(),
                                                                conv->get_dilations(),
                                                                conv->get_auto_pad(),
-                                                               DataLayout::NHWC);
+                                                               output_shape);
         }
         auto transpose = transpose_on_output(new_conv, rank);
         transpose->set_friendly_name(conv->get_friendly_name());
@@ -113,6 +125,7 @@ ConvertArmMaxPoolV1Layout::ConvertArmMaxPoolV1Layout() {
             return false;
         }
         auto activations_transpose = transpose_on_input(pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(pool, rank);
         auto new_pool = std::make_shared<opset::v1::ArmMaxPool>(activations_transpose,
                                                                 pool->get_strides(),
                                                                 pool->get_pads_begin(),
@@ -120,7 +133,7 @@ ConvertArmMaxPoolV1Layout::ConvertArmMaxPoolV1Layout() {
                                                                 pool->get_kernel(),
                                                                 pool->get_rounding_type(),
                                                                 pool->get_auto_pad(),
-                                                                DataLayout::NHWC);
+                                                                output_shape);
         auto transpose = transpose_on_output(new_pool, rank);
         transpose->set_friendly_name(pool->get_friendly_name());
         copy_runtime_info(pool, {new_pool, activations_transpose, transpose});
@@ -154,6 +167,7 @@ ConvertArmMaxPoolV8Layout::ConvertArmMaxPoolV8Layout() {
             return false;
         }
         auto activations_transpose = transpose_on_input(pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(pool, rank);
         auto new_pool = std::make_shared<opset::v8::ArmMaxPool>(activations_transpose,
                                                                 pool->get_strides(),
                                                                 pool->get_dilations(),
@@ -164,7 +178,7 @@ ConvertArmMaxPoolV8Layout::ConvertArmMaxPoolV8Layout() {
                                                                 pool->get_auto_pad(),
                                                                 pool->get_index_element_type(),
                                                                 pool->get_axis(),
-                                                                DataLayout::NHWC);
+                                                                output_shape);
         auto transpose = transpose_on_output(new_pool->output(0), rank);
         transpose->set_friendly_name(pool->get_friendly_name() + ".0");
         auto transpose_on_indexes = transpose_on_output(new_pool->output(1), rank);
@@ -196,6 +210,7 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
             return false;
         }
         auto activations_transpose = transpose_on_input(pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(pool, rank);
         auto new_pool = std::make_shared<opset::v1::ArmAvgPool>(activations_transpose,
                                                                 pool->get_strides(),
                                                                 pool->get_pads_begin(),
@@ -204,7 +219,7 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
                                                                 pool->get_exclude_pad(),
                                                                 pool->get_rounding_type(),
                                                                 pool->get_auto_pad(),
-                                                                DataLayout::NHWC);
+                                                                output_shape);
         auto transpose = transpose_on_output(new_pool, rank);
         transpose->set_friendly_name(pool->get_friendly_name());
         copy_runtime_info(pool, {new_pool, activations_transpose, transpose});
