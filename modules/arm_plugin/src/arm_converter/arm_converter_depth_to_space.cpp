@@ -3,6 +3,7 @@
 
 
 #include <arm_compute/runtime/NEON/functions/NEDepthToSpaceLayer.h>
+#include <ngraph/runtime/reference/depth_to_space.hpp>
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
