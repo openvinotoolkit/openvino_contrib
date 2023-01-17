@@ -122,6 +122,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Atanh& nod
         AP_WRAP(make, ngraph::runtime::reference::atanh),
         node.input(0), floatTypes);
 }
+
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::Cos& node) {
     auto make = [&] (auto refFunction) {
         return this->MakeConversion(refFunction, node.input(0), node.output(0), ngraph::shape_size(node.get_output_shape(0)));
