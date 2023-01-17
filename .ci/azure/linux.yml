@@ -122,6 +122,7 @@ jobs:
       cmakeArgs: >
         -GNinja
         -DVERBOSE_BUILD=ON
+        -DENABLE_INTEL_MYRIAD_COMMON=OFF
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DBUILD_nvidia_plugin=OFF
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules
