@@ -39,6 +39,7 @@ ie_add_plugin(NAME ${TARGET_NAME}
 target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
+
 target_include_directories(${TARGET_NAME} INTERFACE
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/thirdparty/external_kernels/ncnn")
 target_link_libraries(${TARGET_NAME} PRIVATE
