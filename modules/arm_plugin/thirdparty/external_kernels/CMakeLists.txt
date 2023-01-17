@@ -7,5 +7,4 @@ set(TARGET_NAME "openvino_arm_cpu_external_kernels")
 add_library(${TARGET_NAME} INTERFACE)
 
 target_include_directories(${TARGET_NAME} INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ncnn>
-        $<INSTALL_INTERFACE:ncnn>)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ncnn>)
