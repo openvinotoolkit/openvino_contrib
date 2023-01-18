@@ -4,8 +4,6 @@
 
 #include "conv_arm.hpp"
 
-#include <utility>
-
 using namespace ngraph;
 using namespace ArmPlugin;
 

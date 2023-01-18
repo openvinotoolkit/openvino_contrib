@@ -107,6 +107,7 @@ public:
                    const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_ERROR_ON_NULLPTR(input, output);
         ARM_COMPUTE_ERROR_THROW_ON(NEPoolingLayerQI::validate(input->info(), output->info(), pool_info, ip, qi));
+
         _input = input;
         arm_compute::ITensor *conv_input = input;
         _ip = ip;

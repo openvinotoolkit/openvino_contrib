@@ -11,6 +11,7 @@
 
 namespace ArmPlugin {
 namespace opset {
+
 class ArmConvolution : public Convolution {
 public:
     OPENVINO_OP("ArmConvolution", "arm_opset", Convolution);
