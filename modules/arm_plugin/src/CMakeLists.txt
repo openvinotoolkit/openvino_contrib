@@ -4,8 +4,6 @@
 
 set(TARGET_NAME "openvino_arm_cpu_plugin")
 
-set(CMAKE_CXX_STANDARD 14)
-
 add_subdirectory(transformations)
 add_subdirectory(opset)
 
