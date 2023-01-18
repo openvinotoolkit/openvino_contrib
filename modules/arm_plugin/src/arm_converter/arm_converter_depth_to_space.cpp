@@ -7,7 +7,7 @@
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::DepthToSpace& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::v0::ArmDepthToSpace& node) {
     if (node.get_input_shape(0).size() > 4 ||
         node.get_mode() != opset::DepthToSpace::DepthToSpaceMode::BLOCKS_FIRST) {
         auto make = [&] (auto refFunction) {
