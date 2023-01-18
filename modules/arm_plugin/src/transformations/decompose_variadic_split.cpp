@@ -21,7 +21,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto input = split->input_value(0).get_node_shared_ptr();
         auto axes = std::dynamic_pointer_cast<opset::Constant>(split->input_value(1).get_node_shared_ptr());
         auto split_lengths = std::dynamic_pointer_cast<opset::Constant>(split->input_value(2).get_node_shared_ptr());
-        auto input_shape = input->get_shape();
+        auto input_shape = split->get_input_shape(0);
         auto size = input_shape.size();
 
 
