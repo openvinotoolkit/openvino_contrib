@@ -34,7 +34,6 @@ class ConvertArmAvgPoolLayout : public ov::pass::MatcherPass {
         ConvertArmAvgPoolLayout();
 };
 
-<<<<<<< HEAD
 class ConvertBatchNormLayout : public ov::pass::MatcherPass {
 public:
     OPENVINO_RTTI("ConvertBatchNormLayout", "0");
@@ -53,8 +52,6 @@ public:
     ConvertDepthToSpaceLayout();
 };
 
-=======
->>>>>>> acc9f738c7ff628bfd2056ab6453a592d94ae583
 class ConvertLayout: public ov::pass::GraphRewrite {
 public:
     OPENVINO_RTTI("ConvertLayout", "0");
@@ -63,12 +60,9 @@ public:
         add_matcher<ConvertArmMaxPoolV1Layout>();
         add_matcher<ConvertArmMaxPoolV8Layout>();
         add_matcher<ConvertArmAvgPoolLayout>();
-<<<<<<< HEAD
         add_matcher<ConvertBatchNormLayout>();
         add_matcher<ConvertBatchToSpaceLayout>();
         add_matcher<ConvertDepthToSpaceLayout>();
-=======
->>>>>>> acc9f738c7ff628bfd2056ab6453a592d94ae583
     }
 };
 

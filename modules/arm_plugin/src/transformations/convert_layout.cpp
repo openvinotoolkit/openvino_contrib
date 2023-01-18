@@ -232,7 +232,6 @@ ConvertArmAvgPoolLayout::ConvertArmAvgPoolLayout() {
     register_matcher(m, callback);
 }
 
-<<<<<<< HEAD
 ConvertBatchNormLayout::ConvertBatchNormLayout() {
     enum BatchNormInput {Features, Gamma, Beta, Mean, Variance};
     auto root = ov::pass::pattern::wrap_type<opset::v5::ArmBatchNormInference>(ov::pass::pattern::has_static_rank());
@@ -333,8 +332,6 @@ ConvertDepthToSpaceLayout::ConvertDepthToSpaceLayout() {
     auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertDepthToSpaceLayout");
     register_matcher(m, callback);
 }
-=======
->>>>>>> acc9f738c7ff628bfd2056ab6453a592d94ae583
 } // pass
 } // ArmPlugin
 
