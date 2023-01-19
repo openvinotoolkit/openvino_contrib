@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 
 project(inference_engine_java_api)
 
