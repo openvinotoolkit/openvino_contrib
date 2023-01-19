@@ -155,7 +155,7 @@ template <> Converter::Conversion::Ptr Converter::Convert(const opset::Convert& 
             default:
                 IE_THROW() << "Unsupported convertion from " << src << " to " << dst; return {};
             }
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
+        default: IE_THROW() << "Unsupported convertion from " << node.get_input_element_type(0); return {};
     }
 }
 
