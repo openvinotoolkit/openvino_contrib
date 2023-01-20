@@ -1,0 +1,26 @@
+# Accuracy-aware 🤗 Transformers models training using the NNCF toolkit
+
+We provide here an example of text-classification task accuracy-aware finetuning with the [Neural Network Compression Framework (NNCF)](https://github.com/openvinotoolkit/nncf) for the 🤗 Transformers models. The finetuned models can the converted using the OpenVINO™ Integration with Optimum module to use the optimizations provided by the Intel® Distribution of OpenVINO™ Toolkit. <br>
+
+NNCF provides various neural networks compression optimizations such as quantization, filter pruning, sparsity and binarization. Additionally, the framework supports an [accuracy-aware finetuning](https://github.com/openvinotoolkit/nncf/blob/develop/docs/Usage.md#accuracy-aware-model-training) process to meet the accuracy constraints set by the user.
+
+To run the accuracy aware finetuning on 🤗 Transformers models:
+* Install the required dependencies:
+> pip install -r requirements.txt
+
+* Install OpenVINO™ Integration with Optimum module (with or without NNCF support):
+> pip install openvino-optimum[nncf]
+
+* Run the provided example on a device, model and parameters of choice, for example:
+> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name stsb --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cpu' --acc_metric 'pearson' --nncf_config nncf_configs/nncf_roberta_glue_config.json --val_subset_name 'dev' --labels_name 'similarity_score'
+
+OR
+
+> python run_nncf_glue_notrainer_accaware.py --model_name_or_path gchhablani/bert-base-cased-finetuned-stsb --task_name stsb --do_train True --do_eval True --max_length 128 --per_device_train_batch_size 32 --learning_rate 2e-5 --num_train_epochs 3 --device 'cuda' --acc_metric 'pearson' --nncf_config nncf_configs/nncf_roberta_glue_config.json --val_subset_name 'dev' --labels_name 'similarity_score'
+
+The NNCF config example is provided in [nncf_configs](nncf_configs).
+The optimized model is generated under `NNCF_optimized_model` by default.
+
+The example included here is adapted from 🤗 Transformers [examples](https://github.com/huggingface/transformers/tree/main/examples) which is licensed under: <br>
+**Apache License 2.0** <br>
+A permissive license whose main conditions require preservation of copyright and license notices. Contributors provide an express grant of patent rights. Licensed works, modifications, and larger works may be distributed under different terms and without source code.

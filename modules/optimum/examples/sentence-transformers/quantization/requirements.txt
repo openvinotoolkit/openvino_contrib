@@ -1,0 +1,6 @@
+accelerate
+datasets >= 1.8.0
+sentence-transformers==2.2.0
+torch >= 1.3
+nncf==2.2.0
+openvino-dev
