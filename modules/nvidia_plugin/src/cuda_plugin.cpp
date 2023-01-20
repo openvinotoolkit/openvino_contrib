@@ -231,8 +231,11 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
-        std::string arch = "NVIDIA: " + std::string(props.name);
-        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, arch);
+        std::stringstream ss;
+        ss << "NVIDIA: ";
+        ss << "v" << props.major;
+        ss << "." << props.minor;
+        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, ss.str());
     } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
         // TODO: fill actual list of supported capabilities: e.g. Cuda device supports only FP32
         std::vector<std::string> capabilities = {METRIC_VALUE(FP32) /*, TEMPLATE_METRIC_VALUE(HARDWARE_CONVOLUTION)*/};
