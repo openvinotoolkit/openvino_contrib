@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -81,6 +81,27 @@ std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Mod
     return transformedModel;
 }
 
+static std::tuple<bool, std::string> CheckStatic(const std::shared_ptr<const ov::Model> model) {
+    bool res = true;
+    std::stringstream errMsg;
+    if (model) {
+        for (const auto& input : model->inputs()) {
+            if (input.get_partial_shape().is_dynamic()) {
+                errMsg << "{ input:'";
+                for (const auto& name : input.get_names()) {
+                    errMsg << name << ",";
+                }
+                if (auto node = input.get_node_shared_ptr()) {
+                    errMsg << node->get_friendly_name();
+                }
+                errMsg << "', shape=" << input.get_partial_shape() << "} ";
+                res = false;
+            }
+        }
+    }
+    return {res, errMsg.str()};
+}
+
 InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(const InferenceEngine::CNNNetwork& network,
                                                                             const ConfigMap& config) {
     auto cfg = Configuration{config, _cfg};
@@ -90,6 +111,10 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
     auto model = network.getFunction();
     if (model == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
+    }
+    auto valid = CheckStatic(model);
+    if (!std::get<0>(valid)) {
+        IE_THROW() << "Arm Plugin doesn't support inputs having dynamic shapes. Dynamic inputs are: " << std::get<1>(valid);
     }
     auto transformedModel = Transform(model, cfg);
     cfg._lpt = cfg._lpt && ngraph::pass::low_precision::LowPrecision::isFunctionQuantized(model);
@@ -123,6 +148,10 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
     auto model = network.getFunction();
     if (model == nullptr) {
          IE_THROW() << "Arm Plugin supports only ngraph cnn network representation";
+    }
+    auto valid = CheckStatic(model);
+    if (!std::get<0>(valid)) {
+        IE_THROW() << "Arm Plugin doesn't support inputs having dynamic shapes. Dynamic inputs are: " << std::get<1>(valid);
     }
     auto transformedModel = Transform(model, cfg);
     Converter converter{transformedModel, cfg};

@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -38,7 +38,10 @@ target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
 
+target_include_directories(${TARGET_NAME} INTERFACE
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/thirdparty/external_kernels/ncnn")
 target_link_libraries(${TARGET_NAME} PRIVATE
+        openvino_arm_cpu_external_kernels
         openvino_arm_cpu_transformations
         openvino_arm_cpu_opset
         arm_compute::arm_compute

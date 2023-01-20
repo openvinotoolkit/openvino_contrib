@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -248,3 +248,5 @@ elseif(NOT TARGET arm_compute_static_libs)
     set_target_properties(arm_compute::half PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary/include)
 endif()
+
+add_subdirectory(external_kernels)
