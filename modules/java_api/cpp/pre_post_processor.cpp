@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <jni.h> // JNI header provided by JDK
@@ -38,12 +38,17 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Output(JNIEnv *
     return 0;
 }
 
-JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *env, jobject, jlong addr)
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *env, jobject, jlong addr)
 {
     JNI_METHOD("Build",
         preprocess::PrePostProcessor *processor = (preprocess::PrePostProcessor *)addr;
-        processor->build();
+
+        std::shared_ptr<Model> *model = new std::shared_ptr<Model>();
+        *model = processor->build();
+
+        return reinterpret_cast<jlong>(model);
     )
+    return 0;
 }
 
 JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_delete(JNIEnv *, jobject, jlong addr)

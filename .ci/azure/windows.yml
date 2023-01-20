@@ -1,14 +1,36 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
 resources:
   repositories:
   - repository: openvino
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+    ref: releases/2022/3
 
   - repository: testdata
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/testdata
+    ref: releases/2022/3
 
 jobs:
 - job: Win
@@ -83,7 +105,13 @@ jobs:
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
-      call "$(MSVS_VARS_PATH)" && cmake -GNinja -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DIE_EXTRA_MODULES=$(REPO_DIR)/modules -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" $(OPENVINO_REPO_DIR)
+      call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
+        -DBUILD_nvidia_plugin=OFF ^
+        -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules ^
+        -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
+        -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
+        $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
     displayName: 'CMake'
 

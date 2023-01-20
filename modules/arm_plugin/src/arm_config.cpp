@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -40,6 +40,12 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _lpt = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(DUMP_GRAPH) == key) {
             _dump = (CONFIG_VALUE(YES) == value);
+        } else if (CONFIG_KEY(PERFORMANCE_HINT) == key) {
+                if (value == "THROUGHPUT") {
+                    _perfHint = ov::hint::PerformanceMode::THROUGHPUT;
+                } else if (value == "LATENCY") {
+                    _perfHint = ov::hint::PerformanceMode::LATENCY;
+                }
         }  else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
         }
@@ -63,6 +69,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return {_lpt};
     } else if (name == CONFIG_KEY_INTERNAL(DUMP_GRAPH)) {
         return {_dump};
+    } else if (name == CONFIG_KEY(PERFORMANCE_HINT)) {
+        return {_perfHint};
     }  else {
         IE_THROW(NotFound) << ": " << name;
     }

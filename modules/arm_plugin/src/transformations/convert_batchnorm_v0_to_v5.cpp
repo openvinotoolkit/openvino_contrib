@@ -1,8 +1,8 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_batchnorm_v0_to_v5.hpp"
+#include "convert_batchnorm_v0_to_v5.hpp"
 #include "ngraph/op/batch_norm.hpp"
 #include "ngraph/rt_info.hpp"
 

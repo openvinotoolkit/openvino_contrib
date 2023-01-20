@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,8 +38,9 @@ struct Configuration {
     bool _exclusiveAsyncRequests = false;
     bool _perfCount              = true;
     bool _ref                    = true;
-    bool _lpt                    = true;
+    bool _lpt                    = false;
     bool _dump                   = false;
+    ov::hint::PerformanceMode _perfHint = ov::hint::PerformanceMode::UNDEFINED;
     mutable InferenceEngine::IStreamsExecutor::Config _streamsExecutorConfig;
 };
 }  //  namespace ArmPlugin

@@ -1,22 +1,50 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
 resources:
   repositories:
   - repository: openvino
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+    ref: releases/2022/3
 
   - repository: testdata
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/testdata
+    ref: releases/2022/3
 
 jobs:
 - job: Mac
+  strategy:
+    matrix:
+      # x86_64:
+      #   CMAKE_OSX_ARCHITECTURES: x86_64
+      arm64:
+        CMAKE_OSX_ARCHITECTURES: arm64
   # About 200% of total time (perfomace of Mac hosts is unstable)
   timeoutInMinutes: 180
 
   pool:
-    vmImage: 'macOS-10.15'
+    vmImage: 'macOS-11'
 
   variables:
     system.debug: true
@@ -71,6 +99,8 @@ jobs:
   - script: |
       brew install cython
       brew install automake
+      # for ARM compute
+      brew install scons
       # Speed up build
       brew install ninja
 
@@ -79,13 +109,20 @@ jobs:
 
   - script: |
       export PATH="/usr/local/opt/cython/bin:$PATH"
-      export CC=gcc
-      export CXX=g++
-      # Disable errors with Ninja
-      export CXXFLAGS="-Wno-error=unused-command-line-argument"
-      export CFLAGS="-Wno-error=unused-command-line-argument"
-      cmake -GNinja -DVERBOSE_BUILD=ON -DNGRAPH_ONNX_IMPORT_ENABLE=OFF -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DIE_EXTRA_MODULES=$(REPO_DIR)/modules $(OPENVINO_REPO_DIR)
-    workingDirectory: $(BUILD_DIR)
+      cmake -GNinja \
+        -DVERBOSE_BUILD=ON \
+        -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+        -DBUILD_nvidia_plugin=OFF \
+        -DENABLE_INTEL_MYRIAD=OFF \
+        -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+        -DCMAKE_OSX_ARCHITECTURES=$(CMAKE_OSX_ARCHITECTURES) \
+        -DENABLE_OV_PADDLE_FRONTEND=OFF \
+        -DENABLE_OV_ONNX_FRONTEND=OFF \
+        -DENABLE_OV_TF_FRONTEND=OFF \
+        -DENABLE_CPPLINT=OFF \
+        -S $(OPENVINO_REPO_DIR) \
+        -B $(BUILD_DIR)
     displayName: 'CMake'
 
   - script: ninja
@@ -109,3 +146,4 @@ jobs:
       done
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
+    condition: eq(variables['CMAKE_OSX_ARCHITECTURES'], 'x86_64')

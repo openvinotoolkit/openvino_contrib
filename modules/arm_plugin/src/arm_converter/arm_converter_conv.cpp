@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -206,6 +206,10 @@ protected:
     std::unique_ptr<arm_compute::NEConvolutionLayer> _conv;
 };
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConvolution& node) {
+    if (node.get_shape().size() != 4) {
+            IE_THROW() << "Only Convolution2D is supported.";
+    }
+
     arm_compute::PadStrideInfo conv_info;
     arm_compute::Size2D dilation;
     std::tie(conv_info, dilation) = ConvParameters(node);

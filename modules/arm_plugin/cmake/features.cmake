@@ -1,4 +1,4 @@
-# Copyright (C) 2022 Intel Corporation
+# Copyright (C) 2022-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -6,13 +6,13 @@ set(ARM_COMPUTE_INCLUDE_DIR "" CACHE PATH "Path to custom ARM ComputeLibrary hea
 set(ARM_COMPUTE_LIB_DIR "" CACHE PATH "Path to custom ARM ComputeLibrary libraries")
 set(ARM_COMPUTE_TOOLCHAIN_PREFIX "" CACHE PATH "Toolchain prefix for cross-compilation")
 
-if(ARM)
+if(ARM OR EMSCRIPTEN)
     set(ARM_COMPUTE_TARGET_ARCH_DEFAULT armv7a)
     set(ARM_COMPUTE_TARGET_ARCHS armv7a)
 elseif(AARCH64)
     if(APPLE)
-        # Apple M1 is assumed
-        set(ARM_COMPUTE_TARGET_ARCH_DEFAULT armv8.6-a)
+        # Apple M1 / M2 is assumed
+        set(ARM_COMPUTE_TARGET_ARCH_DEFAULT armv8.2-a)
     else()
         set(ARM_COMPUTE_TARGET_ARCH_DEFAULT arm64-v8a)
     endif()
@@ -24,7 +24,7 @@ endif()
 set(ARM_COMPUTE_TARGET_ARCH "${ARM_COMPUTE_TARGET_ARCH_DEFAULT}" CACHE STRING "Architecture for ARM ComputeLibrary")
 set_property(CACHE ARM_COMPUTE_TARGET_ARCH PROPERTY STRINGS ${ARM_COMPUTE_TARGET_ARCHS})
 
-set(ARM_COMPUTE_SCONS_JOBS "" CACHE STRING "Number of simultaneous jobs to build ARM ComputeLibrary with")
+set(ARM_COMPUTE_SCONS_JOBS "8" CACHE STRING "Number of simultaneous jobs to build ARM ComputeLibrary with")
 
 # Print features
 

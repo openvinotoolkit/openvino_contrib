@@ -1,8 +1,8 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_conv1d_to_conv2d.hpp"
+#include "convert_conv1d_to_conv2d.hpp"
 
 #include <numeric>
 

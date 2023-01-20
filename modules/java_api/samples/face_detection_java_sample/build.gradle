@@ -1,0 +1,31 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+def opencv_path = System.getenv('OpenCV_DIR')
+def opencv_build_path = new File(opencv_path + '/bin')
+def opencv_install_path = new File(opencv_path + '/share/java')
+
+if (opencv_build_path.exists() ) {
+  opencv_path = opencv_build_path
+} else if (opencv_install_path.exists() ) {
+  opencv_path = opencv_install_path 
+} else {
+    throw new GradleException('Incorrect OpenCV_DIR path!')
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = [".."]
+            include 'face_detection_java_sample/*.java', 'ArgumentParser.java'
+        }
+    }
+}
+mainClassName = 'Main'
+
+dependencies {  
+    implementation rootProject
+    implementation fileTree(dir: opencv_path, include: '*.jar')
+}

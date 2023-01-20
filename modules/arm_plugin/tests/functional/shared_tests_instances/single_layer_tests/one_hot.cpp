@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -48,9 +48,9 @@ const std::vector<ngraph::element::Type> argDepthType_Ax = {
 };
 const std::vector<int64_t> argDepth_Ax = { 3 };
 const std::vector<ngraph::element::Type> argSetType_Ax = {
-        ngraph::element::u8,
+        // ngraph::element::u8,     // Cannot use unsigned type bevause argOffValue_Ax = -3
         ngraph::element::i16,
-        ngraph::element::u16,
+        // ngraph::element::u16,    // Cannot use unsigned type bevause argOffValue_Ax = -3
         ngraph::element::i32,
         ngraph::element::f32,
 };

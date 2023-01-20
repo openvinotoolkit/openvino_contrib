@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <details/ie_exception.hpp>
@@ -23,15 +23,12 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::GroupConvo
                                     node.get_strides(),
                                     node.get_dilations(),
                                     node.get_pads_begin(),
-                                    node.get_pads_end());
+                                    node.get_pads_end(),
+                                    node.get_output_padding());
     };
 
-    switch (node.get_input_element_type(0)) {
-        case ngraph::element::Type_t::f16 :
-            return make(ngraph::runtime::reference::group_convolution_backprop_data<ngraph::float16, ngraph::float16, ngraph::float16>);
-        case ngraph::element::Type_t::f32 :
-            return make(ngraph::runtime::reference::group_convolution_backprop_data<float, float, float>);
-        default: IE_THROW() << "Unsupported Type: " << node.get_input_element_type(0); return {};
-    }
+    return CallSwitch(
+            AP_WRAP(make, ngraph::runtime::reference::group_convolution_backprop_data),
+            node.input(0), allTypes);
 }
 }  //  namespace ArmPlugin

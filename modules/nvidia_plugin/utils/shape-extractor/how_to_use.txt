@@ -1,0 +1,10 @@
+First of all install dependencies:
+python3 -m pip install -r ./requirements.txt
+
+Then run it in one of this ways:
+./main.py --models <path>/resnet-50-tf.xml <path>/vgg16.xml --ops MatMul MaxPool
+./main.py --models <path>/vgg16.xml --ops MatMul MaxPool
+./main.py --models <path>/*.xml --ops MatMul MaxPool
+./main.py --models <path>/*.xml --ops all
+./main.py --models <path>/vgg16.xml
+./main.py --models <path>/vgg16.xml --exclude-models <path>/resnet-50-tf.xml

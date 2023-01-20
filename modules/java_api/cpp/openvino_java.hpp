@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <jni.h>
@@ -129,14 +129,24 @@ extern "C"
 
     // ov::Core
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *, jobject);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore1(JNIEnv *, jobject, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel1(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *, jobject, jlong, jlong, jstring);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *, jobject, jlong, jstring, jstring);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *, jobject, jlong, jstring, jobject);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Core_delete(JNIEnv *, jobject, jlong);
+
+    // ov::Any
+    JNIEXPORT jint JNICALL Java_org_intel_openvino_Any_asInt(JNIEnv *, jobject, jlong);
 
     // ov::Model
     JNIEXPORT jstring JNICALL Java_org_intel_openvino_Model_getName(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getBatch(JNIEnv *, jobject, jlong);
+    JNIEXPORT jobject JNICALL Java_org_intel_openvino_Model_getOutputs(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getOutput(JNIEnv *, jobject, jlong);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Model_Reshape(JNIEnv *, jobject, jlong, jintArray);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Model_getInput(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Model_delete(JNIEnv *, jobject, jlong);
 
     // ov::CompiledModel
@@ -145,13 +155,17 @@ extern "C"
 
     // ov::InferRequest
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_Infer(JNIEnv *, jobject, jlong);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_StartAsync(JNIEnv *, jobject, jlong);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_Wait(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetInputTensor(JNIEnv *, jobject, jlong, jlong);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetOutputTensor(JNIEnv *, jobject, jlong, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *, jobject, jlong);
 
     // ov::Tensor
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorCArray(JNIEnv *, jobject, jint, jintArray, jlong);
-    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *, jobject, jintArray, jfloatArray, jint);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *, jobject, jintArray, jfloatArray);
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetSize(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_GetShape(JNIEnv *, jobject, jlong);
     JNIEXPORT jfloatArray JNICALL Java_org_intel_openvino_Tensor_asFloat(JNIEnv *, jobject, jlong);
@@ -161,7 +175,7 @@ extern "C"
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_GetPrePostProcessor(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Input(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Output(JNIEnv *, jobject, jlong);
-    JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *, jobject, jlong);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_PrePostProcessor_Build(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_PrePostProcessor_delete(JNIEnv *, jobject, jlong);
 
     // ov::preprocess::InputInfo
@@ -198,6 +212,11 @@ extern "C"
     // ov::Dimension
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Dimension_getLength(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Dimension_delete(JNIEnv *, jobject, jlong);
+
+    // ov::Output<ov::Node>
+    JNIEXPORT jstring JNICALL Java_org_intel_openvino_Output_GetAnyName(JNIEnv *, jobject, jlong);
+    JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Output_GetShape(JNIEnv *, jobject, jlong);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Output_delete(JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus
 }

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -36,7 +36,9 @@ static void FillLayerInfo(const Pool& node, arm_compute::PoolingLayerInfo& pool_
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::MaxPool& node) {
-    if (node.get_input_shape(0).size() == 4) {
+    if (node.get_input_shape(0).size() == 4 &&
+        (node.input(0).get_element_type() == ngraph::element::f32 ||
+        node.input(0).get_element_type() == ngraph::element::f16)) {
         arm_compute::PoolingLayerInfo pool_info;
         FillLayerInfo(node, pool_info);
         pool_info.pool_type = arm_compute::PoolingType::MAX;

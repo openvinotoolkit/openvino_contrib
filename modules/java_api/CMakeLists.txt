@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 
 project(inference_engine_java_api)
 
@@ -12,21 +12,17 @@ endif()
 
 # Build native part
 
-if(DEFINED OpenVINO_SOURCE_DIR)
-    set(InferenceEngine_LIBRARIES inference_engine)
-else()
-    find_package(InferenceEngineDeveloperPackage QUIET)
-    if(NOT InferenceEngineDeveloperPackage_FOUND)
-      find_package(InferenceEngine REQUIRED)
-    endif()
-    set(InferenceEngine_LIBRARIES IE::inference_engine)
+find_package(OpenVINODeveloperPackage QUIET
+             PATHS "${InferenceEngineDeveloperPackage_DIR}")
+if(NOT OpenVINODeveloperPackage_FOUND)
+    find_package(OpenVINO REQUIRED)
 endif()
 
 file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/cpp/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${sources})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ${InferenceEngine_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE openvino::runtime)
 target_include_directories(${PROJECT_NAME} PRIVATE ${JNI_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 

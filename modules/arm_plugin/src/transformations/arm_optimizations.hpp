@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -9,11 +9,11 @@
 namespace ArmPlugin {
 namespace pass {
 
-class ArmOptimizations: public ngraph::pass::FunctionPass {
+class ArmOptimizations: public ov::pass::ModelPass {
 public:
     NGRAPH_RTTI_DECLARATION;
     ArmOptimizations(const bool lpt, const bool dump) : _lpt{lpt}, _dump{dump} {}
-    bool run_on_function(std::shared_ptr<ov::Model> m) override;
+    bool run_on_model(const std::shared_ptr<ov::Model> &m) override;
 
     void Dump(const std::shared_ptr<ov::Model>& m, const std::string& postfix);
 

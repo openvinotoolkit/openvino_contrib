@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -45,7 +45,7 @@ ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() {
         if (shape_size(eps_attr->get_shape()) > 1) {
             return false;
         }
-        const auto eps_attr_value = ngraph::op::util::has_constant_value<float>(exp_input, 2.0f);
+        const auto eps_attr_value = ov::op::util::has_constant_value<float>(exp_input, 2.0f);
 
         auto normalize_l2 = std::make_shared<opset::NormalizeL2>(data_input, axes_input, eps_attr_value, ngraph::op::EpsMode::MAX);
 

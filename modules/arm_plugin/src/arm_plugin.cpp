@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,25 +37,39 @@ using namespace InferenceEngine::details;
 using namespace InferenceEngine::PluginConfigParams;
 using namespace ArmPlugin;
 
-static std::mutex armSchedulerMutex;
+std::mutex Plugin::SchedulerGuard::mutex;
+std::weak_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::ptr;
 
-Plugin::Plugin() {
-    _pluginName = "CPU";
-    std::lock_guard<std::mutex> lock{armSchedulerMutex};
+Plugin::SchedulerGuard::SchedulerGuard() {
 #if IE_THREAD == IE_THREAD_SEQ
-    arm_compute::Scheduler::get();  // Init default AC scheduler list
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::CPP);
 #else
     arm_compute::Scheduler::set(std::make_shared<IEScheduler>());
 #endif
 }
 
-Plugin::~Plugin() {
-    {
-        std::lock_guard<std::mutex> lock{armSchedulerMutex};
-        arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+std::shared_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::instance() {
+    std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
+    auto scheduler_guard_ptr = SchedulerGuard::ptr.lock();
+    if (scheduler_guard_ptr == nullptr) {
+        SchedulerGuard::ptr = scheduler_guard_ptr = std::make_shared<SchedulerGuard>();
     }
-    ExecutorManager::getInstance()->clear("CPUStreamsExecutor");
+    return scheduler_guard_ptr;
+}
+
+Plugin::SchedulerGuard::~SchedulerGuard() {
+    // TODO: understand why mutex is removed ealier
+    // std::lock_guard<std::mutex> lock{SchedulerGuard::mutex};
+    arm_compute::Scheduler::set(arm_compute::Scheduler::Type::ST);
+}
+
+Plugin::Plugin() {
+    _pluginName = "CPU";
+    scheduler_guard = SchedulerGuard::instance();
+}
+
+Plugin::~Plugin() {
+    executorManager()->clear("CPUStreamsExecutor");
 }
 
 std::shared_ptr<ov::Model> Plugin::Transform(const std::shared_ptr<const ov::Model>& model,
@@ -116,7 +130,7 @@ QueryNetworkResult Plugin::QueryNetwork(const CNNNetwork& network, const ConfigM
                 }
             }
         }
-        for (auto&& fusedLayerName : ngraph::getFusedNamesVector(node)) {
+        for (auto&& fusedLayerName : ov::getFusedNamesVector(node)) {
             if (contains(originalOps, fusedLayerName)) {
                 if (nodeIsSupported) {
                     supported.emplace(fusedLayerName);
@@ -198,6 +212,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name, const std:
             {ov::device::full_name.name(), ov::PropertyMutability::RO},
             {ov::device::capabilities.name(), ov::PropertyMutability::RO},
             {ov::range_for_async_infer_requests.name(), ov::PropertyMutability::RO},
+            {ov::hint::performance_mode.name(), ov::PropertyMutability::RW},
             {ov::range_for_streams.name(), ov::PropertyMutability::RO}};
         for (auto&& configKey : IStreamsExecutor::Config{}.SupportedKeys()) {
             supported_properties.emplace_back(configKey, ov::PropertyMutability::RW);

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -21,7 +21,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto input = split->input_value(0).get_node_shared_ptr();
         auto axes = std::dynamic_pointer_cast<opset::Constant>(split->input_value(1).get_node_shared_ptr());
         auto split_lengths = std::dynamic_pointer_cast<opset::Constant>(split->input_value(2).get_node_shared_ptr());
-        auto input_shape = input->get_shape();
+        auto input_shape = split->get_input_shape(0);
         auto size = input_shape.size();
 
 
@@ -57,7 +57,11 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
 
         for (size_t i = 0; i < splits.size(); i++) {
             begin_vec[axis] = end_vec[axis];
-            end_vec[axis]  += splits[i];
+            if (splits[i] == -1) {
+                end_vec[axis] += input_shape[axis] - std::accumulate(splits.begin(), splits.end(), 1);
+            } else {
+                end_vec[axis] += splits[i];
+            }
 
             auto begin  = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, begin_vec);
             auto end    = opset::Constant::create<int64_t>(ngraph::element::i64, ngraph::Shape{size}, end_vec);

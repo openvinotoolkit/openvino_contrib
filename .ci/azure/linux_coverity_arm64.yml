@@ -1,9 +1,30 @@
+trigger:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
+pr:
+  branches:
+    include:
+    - master
+    - releases/*
+  paths:
+    exclude:
+    - modules/optimum
+    - modules/nvidia_plugin
+
 resources:
   repositories:
   - repository: openvino
     type: github
     endpoint: openvinotoolkit
     name: openvinotoolkit/openvino
+    ref: releases/2022/3
   - repository: opencv
     type: github
     endpoint: openvinotoolkit
@@ -78,7 +99,7 @@ jobs:
 
   - script: |
       set -e
-      $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
+      sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       sudo apt --assume-yes install scons crossbuild-essential-arm64 libprotoc-dev protobuf-compiler
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
@@ -134,7 +155,7 @@ jobs:
         -DVERBOSE_BUILD=ON
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
-        -DInferenceEngineDeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
+        -DOpenVINODeveloperPackage_DIR=$(BUILD_DIR_OPENVINO)
         $(REPO_DIR)/modules/arm_plugin
       workingDirectory: $(BUILD_DIR_ARM_PLUGIN)
 

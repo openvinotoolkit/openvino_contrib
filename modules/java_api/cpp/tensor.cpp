@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <jni.h> // JNI header provided by JDK
@@ -41,18 +41,14 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorCArray(JNIEnv *env,
     return 0;
 }
 
-JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *env, jobject, jintArray shape, jfloatArray data, jint size)
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *env, jobject, jintArray shape, jfloatArray data)
 {
     JNI_METHOD(
         "TensorFloat",
-        Tensor *ov_tensor = new Tensor();
         Shape input_shape = jintArrayToVector(env, shape);
+        Tensor *ov_tensor = new Tensor(element::f32, input_shape);
 
-        // std::vector<float> input(size);
-        *ov_tensor = Tensor(element::f32, input_shape, new Allocator());
         env->GetFloatArrayRegion(data, 0, ov_tensor->get_size(), (jfloat*)ov_tensor->data());
-
-        // float* input = new float[size];
 
         return (jlong)ov_tensor;
     );

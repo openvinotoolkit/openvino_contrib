@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -8,9 +8,10 @@ project(openvino_arm_cpu_plugin)
 
 set(IE_MAIN_ARM_PLUGIN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-find_package(InferenceEngineDeveloperPackage REQUIRED)
+find_package(OpenVINODeveloperPackage REQUIRED
+             PATHS "${InferenceEngineDeveloperPackage_DIR}")
 
-if(NOT ARM AND NOT AARCH64)
+if(NOT (ARM OR AARCH64 OR EMSCRIPTEN))
     message(WARNING "ARM CPU plugin can be built only for ARM or ARM64 target. Exiting..")
     return()
 endif()

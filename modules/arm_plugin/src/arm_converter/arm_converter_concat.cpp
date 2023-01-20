@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <details/ie_exception.hpp>
@@ -19,6 +19,9 @@ static void wrap_concat(const std::vector<Argument<Tensor*>>& inputs,
     std::vector<const char*> char_inputs;
     for (const auto& inp : inputs) {
         char_inputs.push_back(reinterpret_cast<const char*>(static_cast<const T*>(inp)));
+    }
+    if (axis < 0) {
+        axis += static_cast<int64_t>(inp_shapes[0].size());
     }
     ngraph::runtime::reference::concat(char_inputs,
                                        reinterpret_cast<char*>(out),
@@ -52,9 +55,12 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConcat&
     if (node.get_input_size() == 1) {
         return MakeConversion<arm_compute::NECopy>(node.input(0), node.output(0));
     }
-
+    int64_t axis = node.get_axis();
+    if (axis < 0) {
+        axis += static_cast<int64_t>(node.get_shape().size());
+    }
     return MakeConversion<arm_compute::NEConcatenateLayer>(node.inputs(),
                                                            node.output(0),
-                                                           AxisCast(node.get_axis(), node.get_input_shape(0).size()));
+                                                           AxisCast(axis, node.get_input_shape(0).size()));
 }
 } // namespace ArmPlugin

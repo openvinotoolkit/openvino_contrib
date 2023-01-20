@@ -1,8 +1,8 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_strided_slice_arm.hpp"
+#include "convert_strided_slice_arm.hpp"
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>

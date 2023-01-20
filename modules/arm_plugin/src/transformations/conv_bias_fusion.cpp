@@ -1,8 +1,7 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <details/ie_exception.hpp>
 #include "conv_bias_fusion.hpp"
 
 #include <memory>
@@ -13,7 +12,7 @@
 
 #include "opset/opset.hpp"
 #include <ngraph/pattern/op/wrap_type.hpp>
-#include <ngraph_ops/type_relaxed.hpp>
+#include <ov_ops/type_relaxed.hpp>
 
 using namespace ArmPlugin;
 
@@ -79,12 +78,12 @@ void ArmPlugin::pass::ConvBiasFusionBase::registerMatcher(const std::string& nam
 
         std::shared_ptr<ngraph::Node> new_conv;
         if (quantized) {
-            new_conv = std::make_shared<ngraph::op::TypeRelaxed<Conv>>(
+            new_conv = std::make_shared<ov::op::TypeRelaxed<Conv>>(
                 std::vector<ngraph::element::Type>{outputType, outputType, outputType},
                 std::vector<ngraph::element::Type>{outputType},
-                ngraph::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Data), outputType).get(),
-                ngraph::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Weights), outputType).get(),
-                ngraph::op::TemporaryReplaceOutputType(new_bias, outputType).get(),
+                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Data), outputType).get(),
+                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Weights), outputType).get(),
+                ov::op::TemporaryReplaceOutputType(new_bias, outputType).get(),
                 conv->get_strides(),
                 conv->get_pads_begin(),
                 conv->get_pads_end(),
@@ -125,11 +124,11 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
 
         std::shared_ptr<ngraph::Node> conv_arm;
         if (quantized) {
-            conv_arm = std::make_shared<ngraph::op::TypeRelaxed<ArmConv>>(
+            conv_arm = std::make_shared<ov::op::TypeRelaxed<ArmConv>>(
                 std::vector<ngraph::element::Type>{outputType, outputType},
                 std::vector<ngraph::element::Type>{outputType},
-                ngraph::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Data), outputType).get(),
-                ngraph::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Weights), outputType).get(),
+                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Data), outputType).get(),
+                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Weights), outputType).get(),
                 conv->get_strides(),
                 conv->get_pads_begin(),
                 conv->get_pads_end(),

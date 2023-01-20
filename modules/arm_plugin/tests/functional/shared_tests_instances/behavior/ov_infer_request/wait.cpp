@@ -1,10 +1,11 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include <vector>
 
 #include "behavior/ov_infer_request/wait.hpp"
+#include "ie_plugin_config.hpp"
 
 using namespace ov::test::behavior;
 

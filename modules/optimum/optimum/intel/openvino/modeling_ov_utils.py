@@ -20,10 +20,7 @@ except ImportError:
 
 from transformers.file_utils import cached_path, hf_bucket_url
 from transformers.file_utils import is_torch_available
-from transformers import (
-    TF2_WEIGHTS_NAME,
-    AutoConfig,
-)
+from transformers import TF2_WEIGHTS_NAME, AutoConfig, AutoTokenizer
 
 
 if is_torch_available():
@@ -51,20 +48,34 @@ def load_ov_model_from_pytorch(model, inputs=None):
     import io
 
     buf = io.BytesIO()
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model.name_or_path)
+        input_names = tokenizer.model_input_names
+    except OSError:
+        input_names = [model.main_input_name, "attention_mask"]
+
+    if "token_type_ids" in input_names:
+        # token_type_ids should be last input
+        input_names = [model.main_input_name, "attention_mask", "token_type_ids"]
+
     if inputs is None:
-        dummy_input_ids = torch.zeros((1, 18), dtype=torch.int32)
-        dummy_mask = torch.zeros((1, 18), dtype=torch.int32)
+        dummy_inputs = torch.zeros((1, 18), dtype=torch.int64)
+
         if model.config.model_type == "gpt2":
             if model.config.use_cache:
                 raise NotImplementedError("GPT2 model with use_cache=True is not implemented for OpenVINO backend")
 
-            inputs = (dummy_input_ids, None, dummy_mask)
+            inputs = (dummy_inputs, None, dummy_inputs)
         elif model.main_input_name == "input_values":
             inputs = torch.zeros((1, 16000), dtype=torch.float32)
         else:
-            inputs = (dummy_input_ids, dummy_mask)
-
-        input_names = [model.main_input_name, "attention_mask"]
+            inputs = tuple(
+                [
+                    dummy_inputs,
+                ]
+                * len(input_names)
+            )
     else:
         input_names = []
         for name, tensor in inputs.items():
@@ -101,7 +112,7 @@ def load_ov_model_from_pytorch(model, inputs=None):
             buf if not use_external_data_format else os.path.join(model_cache_dir, "model.onnx"),
             input_names=input_names,
             output_names=outputs,
-            opset_version=11,
+            opset_version=12,
             use_external_data_format=use_external_data_format,
         )
 
@@ -148,6 +159,7 @@ def load_ov_model_from_tf(model, tf_weights_path):
     with tf.io.gfile.GFile(pb_model_path, "wb") as f:
         f.write(graph_def.SerializeToString())
 
+    # TODO: fix for models with different input names
     subprocess.run(  # nosec
         [
             "mo",
@@ -498,7 +510,15 @@ class OVPreTrainedModel(GenerationMixin):
         if arch.endswith("ForSequenceClassification"):
             return SequenceClassifierOutput(logits=logits)
         elif arch.endswith("ForQuestionAnswering"):
-            return QuestionAnsweringModelOutput(start_logits=outs["output_s"], end_logits=outs["output_e"])
+            # For OpenVINO API 1.0, output names are not necessarily in correct order
+            if "output_s" in outs.keys() and "output_e" in outs.keys():
+                output_s, output_e = "output_s", "output_e"
+            else:
+                # Get output names from model.
+                # For quantized models, output names are not necessarily "output_s" and "output_e"
+                output_s, output_e = list(outs.keys())
+
+            return QuestionAnsweringModelOutput(start_logits=outs[output_s], end_logits=outs[output_e])
         else:
             return ModelOutput(logits=torch.tensor(logits), past_key_values=past_key_values)
 

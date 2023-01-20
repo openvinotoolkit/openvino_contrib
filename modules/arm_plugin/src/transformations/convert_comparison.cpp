@@ -1,10 +1,10 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <ngraph/rt_info.hpp>
 
 #include "opset/opset.hpp"
-#include "transformations/convert_comparison.hpp"
+#include "convert_comparison.hpp"
 
 using namespace ArmPlugin;
 

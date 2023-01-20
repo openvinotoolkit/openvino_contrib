@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -64,13 +64,17 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Clamp>();
     Register<opset::Sqrt>();
     Register<opset::Elu>();
+    Register<ngraph::op::v0::Gelu>();
+    Register<opset::Gelu>();
     Register<opset::ArmTranspose>();
     Register<opset::Softmax>();
+    Register<opset::LogSoftmax>();
     Register<opset::ArmSplit>();
     Register<opset::LRN>();
     Register<opset::Minimum>();
     Register<opset::Maximum>();
     Register<opset::ArmStridedSlice>();
+    Register<opset::ArmSlice>();
     Register<opset::Negative>();
     Register<opset::Floor>();
     Register<opset::Exp>();
@@ -79,9 +83,11 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::Pad>();
     Register<opset::BatchNormInference>();
     Register<opset::HSwish>();
+    Register<opset::Swish>();
     Register<opset::SoftPlus>();
     Register<opset::Log>();
     Register<opset::Sin>();
+    Register<opset::Divide>();
     Register<opset::ShuffleChannels>();
     Register<opset::Power>();
     Register<opset::SquaredDifference>();
@@ -137,7 +143,6 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::Erf>();
         Register<opset::HSigmoid>();
         Register<opset::HardSigmoid>();
-        Register<opset::Gelu>();
         Register<opset::Selu>();
         Register<opset::DetectionOutput>();
         Register<ngraph::op::v8::DetectionOutput>();
@@ -159,7 +164,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<opset::EmbeddingSegmentsSum>();
         Register<opset::EmbeddingBagPackedSum>();
         Register<opset::EmbeddingBagOffsetsSum>();
-        Register<opset::NonMaxSuppression>();
+        Register<ngraph::op::v9::NonMaxSuppression>();
         Register<opset::ROIAlign>();
         Register<ngraph::op::v0::Proposal>();
         Register<opset::Proposal>();
@@ -183,6 +188,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
         Register<ngraph::op::v8::I420toBGR>();
         Register<ngraph::op::v8::I420toRGB>();
         Register<ngraph::op::v8::MaxPool>();
+        Register<ngraph::op::v8::Slice>();
     }
     Register<opset::Result>();
     for (auto&& node : model->get_ordered_ops()) {
@@ -222,7 +228,7 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
     std::string unsupported;
     for (auto&& node : orderedOps) {
         if (!contains(_conversions, node->get_type_info())) {
-            unsupported += ("\t" + node->get_friendly_name() + " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")\n");
+            unsupported += ("\t" + node->get_friendly_name() + " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")\n");
         }
     }
     if (!unsupported.empty()) {
@@ -234,13 +240,13 @@ Layer::Map Converter::Configure(const std::shared_ptr<arm_compute::IMemoryManage
             conversion = _conversions.at(node->get_type_info())(*node);
         } catch(std::exception& e) {
             unsupported += ("\t" + node->get_friendly_name() +
-                " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + e.what() + ";\n");
+                " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")- " + e.what() + ";\n");
         }
         if (conversion != nullptr) {
             auto status = conversion->Validate();
             if (status.error_code() != arm_compute::ErrorCode::OK) {
                 unsupported += ("\t" + node->get_friendly_name() +
-                    " (" + node->get_type_name() + '.' + std::to_string(node->get_type_info().version) + ")- " + status.error_description() + ";\n");
+                    " (" + node->get_type_name() + '.' + node->get_type_info().version_id + ")- " + status.error_description() + ";\n");
             }
         }
     }

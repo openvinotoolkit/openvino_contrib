@@ -1,8 +1,8 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
-#include "transformations/convert_convert.hpp"
+#include "convert_convert.hpp"
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
@@ -22,10 +22,12 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertArmConvertBase::convert_to
         auto src_type = convert->get_input_element_type(0);
         auto dst_type = convert->get_output_element_type(0);
 
-        if ((src_type == type::u8  && (dst_type == type::u16 || dst_type == type::i16  || dst_type == type::i32)) ||
+        if ((src_type == type::u8  && (dst_type == type::u16 || dst_type == type::i16  || dst_type == type::i32 || dst_type == type::f16 || dst_type == type::f32)) ||
             (src_type == type::u16 && (dst_type == type::u8  || dst_type == type::u32)) || (src_type == dst_type) ||
             (src_type == type::i16 && (dst_type == type::u8  || dst_type == type::i32)) ||
-            (src_type == type::f16 && dst_type == type::f32) || (src_type == type::f32 && dst_type == type::f16)) {
+            (src_type == type::i32 && (dst_type == type::f16 || dst_type == type::f32 || dst_type == type::u8)) ||
+            (src_type == type::f16 && (dst_type == type::f32 || dst_type == type::i32 || dst_type == type::u8)) ||
+            (src_type == type::f32 && (dst_type == type::f16 || dst_type == type::i32 || dst_type == type::u8))) {
             auto arm_convert = std::make_shared<opset::ArmConvert>(convert->input_value(0), dst_type);
             arm_convert->set_friendly_name(convert->get_friendly_name());
             ngraph::copy_runtime_info(convert, arm_convert);

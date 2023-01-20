@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -37,13 +37,22 @@ ArmPlugin::ExecutableNetwork::ExecutableNetwork(const std::shared_ptr<const ov::
 }
 
 void ArmPlugin::ExecutableNetwork::InitExecutor() {
+    if (_cfg._perfHint == ov::hint::PerformanceMode::THROUGHPUT) {
+        _cfg._streamsExecutorConfig._streams = std::thread::hardware_concurrency();
+        _cfg._streamsExecutorConfig._threadsPerStream = 1;
+        _cfg._streamsExecutorConfig._threadPreferredCoreType = _cfg._streamsExecutorConfig.PreferredCoreType::ROUND_ROBIN;
+    } else if (_cfg._perfHint == ov::hint::PerformanceMode::LATENCY) {
+        _cfg._streamsExecutorConfig._streams = 1;
+        _cfg._streamsExecutorConfig._threadPreferredCoreType = _cfg._streamsExecutorConfig.PreferredCoreType::BIG;
+    }
+
     if (_cfg._exclusiveAsyncRequests) {
-        _taskExecutor = ExecutorManager::getInstance()->getExecutor("CPU");
+        _taskExecutor = InferenceEngine::executorManager()->getExecutor("CPU");
     } else {
         auto streamsExecutorConfig = InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(_cfg._streamsExecutorConfig);
         streamsExecutorConfig._name = "CPUStreamsExecutor";
         streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
-        _taskExecutor = ExecutorManager::getInstance()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
+        _taskExecutor = InferenceEngine::executorManager()->getIdleCPUStreamsExecutor(streamsExecutorConfig);
     }
     _executor = _taskExecutor.get();
 }

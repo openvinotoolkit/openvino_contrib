@@ -27,6 +27,8 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         locales \
+        sudo \
+        shellcheck \
         apt-transport-https \
         debian-archive-keyring \
         software-properties-common \
@@ -37,7 +39,6 @@ RUN apt-get update && \
         wget \
         git \
         scons \
-        cmake \
         build-essential \
         crossbuild-essential-arm64 \
         python3-dev \
@@ -53,37 +54,47 @@ RUN apt-get update && \
         libavcodec-dev:arm64 \
         libavformat-dev:arm64 \
         libswscale-dev:arm64 \
+        libhwloc-dev:arm64 \
+        patchelf \
     && \
     locale-gen en_US.UTF-8 && \
     pip3 install cython && \
     rm -rf /var/lib/apt/lists/*
 
-# To cross-compile Python3.7 we need to first compile it for the host
-RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
-    tar -xf Python-3.7.9.tar.xz && \
-    cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
-    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython
+# To cross-compile Python3.8 we need to first compile it for the host
+RUN curl -O https://www.python.org/ftp/python/3.8.9/Python-3.8.9.tar.xz && \
+    tar -xf Python-3.8.9.tar.xz && \
+    cd Python-3.8.9 && ./configure && make -j4 && make altinstall
 
-# Cross-compile Python3.7 for ARM
-RUN cd Python-3.7.9 && make distclean && \
+# Cross-compile Python3.8 for ARM
+RUN cd Python-3.8.9 && make distclean && \
     ./configure \
         --host=aarch64-linux-gnu \
         --build=x86_64-linux-gnu \
-        --disable-ipv6 \
+        --without-ensurepip \
         --enable-shared \
-        --prefix=/opt/python3.7_arm \
-        ac_cv_file__dev_ptmx=no \
+        --prefix=/opt/python3.8_arm \
+        ac_cv_buggy_getaddrinfo=no \
+        ac_cv_file__dev_ptmx=yes \
         ac_cv_file__dev_ptc=no && \
     make -j4 && make altinstall
 
-# Replace exceptional Python version. It's used in case of failed test check which we
-# have in our case because CMake tries to run cross-compiled python to detect version.
-RUN sed -i -E 's|PYTHON_VERSION_STRING "1.4"|PYTHON_VERSION_STRING "3.7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MAJOR "1"|PYTHON_VERSION_MAJOR "3"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_MINOR "4"|PYTHON_VERSION_MINOR "7"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake && \
-    sed -i -E 's|PYTHON_VERSION_PATCH "0"|PYTHON_VERSION_PATCH "9"|' /usr/share/cmake-3.16/Modules/FindPythonInterp.cmake
+RUN wget https://www.cmake.org/files/v3.21/cmake-3.21.7.tar.gz && \
+    tar xf cmake-3.21.7.tar.gz && \
+    (cd cmake-3.21.7 && ./bootstrap --parallel=$(nproc --all) && make --jobs=$(nproc --all) && make install) && \
+    rm -rf cmake-3.21.7 cmake-3.21.7.tar.gz
 
-RUN rm -f /usr/bin/python3 && ln -s /usr/local/bin/python3.7 /usr/bin/python3
+RUN /usr/local/bin/python3.8 -m pip install -U pip && \
+    /usr/local/bin/python3.8 -m pip install crossenv && \
+    /usr/local/bin/python3.8 -m crossenv /opt/python3.8_arm/bin/python3.8 /opt/cross_venv && \
+    . /opt/cross_venv/bin/activate && \
+    build-pip3 install -U pip wheel setuptools && \
+    cross-pip3 install -U pip cython wheel setuptools numpy==1.20.0
+
+RUN unlink /usr/bin/python3 && \
+    ln -s /usr/local/bin/python3.8 /usr/bin/python3 && \
+    python3 -m pip install -U pip && \
+    python3 -m pip install numpy==1.20.0
 RUN rm /usr/bin/lsb_release
 
 RUN git config --global user.name "Your Name" && \
@@ -93,7 +104,7 @@ ENV ARCH_NAME aarch64-linux-gnu
 ENV TOOLCHAIN_DEFS arm64.toolchain.cmake
 COPY scripts/arm_cpu_plugin_build.sh /arm_cpu_plugin_build.sh
 
-#configure paths
+# configure paths
 RUN mkdir -p /arm_cpu_plugin
 WORKDIR /arm_cpu_plugin/
 
