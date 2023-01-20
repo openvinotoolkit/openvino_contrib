@@ -228,8 +228,10 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
     } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
         IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
     } else if (METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
-        // TODO: return device architecture for device specified by DEVICE_ID config
-        std::string arch = "CUDA";
+        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        CUDA::Device device{std::stoi(deviceId)};
+        const auto& props = device.props();
+        std::string arch = "NVIDIA: " + std::string(props.name);
         IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, arch);
     } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
         // TODO: fill actual list of supported capabilities: e.g. Cuda device supports only FP32
