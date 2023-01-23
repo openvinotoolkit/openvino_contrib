@@ -6,7 +6,7 @@
 #include "arm_converter/arm_converter.hpp"
 
 namespace ArmPlugin {
-template<> Converter::Conversion::Ptr Converter::Convert(const opset::BatchToSpace& node) {
+template<> Converter::Conversion::Ptr Converter::Convert(const opset::v1::ArmBatchToSpace& node) {
     auto block_shape = safe_cast<opset::Constant>(node.input_value(1).get_node_shared_ptr());
     auto crops_begin = safe_cast<opset::Constant>(node.input_value(2).get_node_shared_ptr());
     auto crops_end   = safe_cast<opset::Constant>(node.input_value(3).get_node_shared_ptr());

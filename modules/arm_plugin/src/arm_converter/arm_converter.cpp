@@ -111,7 +111,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::GreaterEqual>();
     Register<opset::Select>();
     Register<opset::ReorgYolo>();
-    Register<opset::BatchToSpace>();
+    Register<opset::v1::ArmBatchToSpace>();
     Register<opset::SpaceToBatch>();
     Register<opset::ArmConvert>();
     Register<opset::ArmConcat>();
@@ -220,8 +220,9 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
                 if ((node->get_friendly_name().find("ArmConvolution") > 0 ||
                     node->get_friendly_name().find("ArmMaxPool") > 0 ||
                     node->get_friendly_name().find("ArmAvgPool") > 0 ||
-                    node->get_friendly_name().find("BatchToSpace") > 0 ||
+                    node->get_friendly_name().find("ArmBatchToSpace") > 0 ||
                     node->get_friendly_name().find("ArmDepthToSpace") > 0 ||
+                    node->get_friendly_name().find("ArmInterpolate") > 0 ||
                     node->get_friendly_name().find("ArmBatchNormInference") > 0) && !_cfg._lpt) {
                     tensorInfo.set_data_layout(arm_compute::DataLayout::NHWC);
                 }

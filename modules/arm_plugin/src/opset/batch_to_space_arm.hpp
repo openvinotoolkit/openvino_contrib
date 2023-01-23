@@ -18,7 +18,13 @@ public:
     ArmBatchToSpace(const ov::Output<Node>& data,
                     const ov::Output<Node>& block_shape,
                     const ov::Output<Node>& crops_begin,
-                    const ov::Output<Node>& crops_end);
+                    const ov::Output<Node>& crops_end,
+                    ov::PartialShape  output_shape = {});
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
+    void validate_and_infer_types() override;
+
+private:
+    ov::PartialShape m_output_shape;
 };
 
 }
