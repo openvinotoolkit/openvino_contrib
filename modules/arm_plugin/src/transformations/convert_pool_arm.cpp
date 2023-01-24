@@ -3,6 +3,7 @@
 
 
 #include "transformations/convert_pool_arm.hpp"
+#include "transpose_utils.hpp"
 #include "opset/opset.hpp"
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
@@ -17,16 +18,25 @@ ArmPlugin::pass::ConvertArmMaxPoolV1::ConvertArmMaxPoolV1() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::v1::ArmMaxPool>(max_pool->input_value(0),
+        size_t rank = max_pool->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        auto activations_transpose = transpose_on_input(max_pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(max_pool, rank);
+        auto arm_pool = std::make_shared<opset::v1::ArmMaxPool>(activations_transpose,
                                                               max_pool->get_strides(),
                                                               max_pool->get_pads_begin(),
                                                               max_pool->get_pads_end(),
                                                               max_pool->get_kernel(),
+                                                              output_shape,
                                                               max_pool->get_rounding_type(),
                                                               max_pool->get_auto_pad());
-        arm_pool->set_friendly_name(max_pool->get_friendly_name());
-        ngraph::copy_runtime_info(max_pool, arm_pool);
-        ngraph::replace_node(max_pool, arm_pool);
+        auto transpose = transpose_on_output(arm_pool, rank);
+        transpose->set_friendly_name(max_pool->get_friendly_name());
+        ngraph::copy_runtime_info(max_pool, {arm_pool, activations_transpose, transpose});
+        ngraph::replace_node(max_pool, transpose);
+
         return true;
     };
 
@@ -44,19 +54,35 @@ ArmPlugin::pass::ConvertArmMaxPoolV8::ConvertArmMaxPoolV8() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::v8::ArmMaxPool>(max_pool->input_value(0),
+        size_t rank = max_pool->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        auto axis = max_pool->get_axis();
+        if (axis > 1 || (axis < 0 && axis > -static_cast<int64_t>(rank) - 1)) {
+            return false;
+        }
+        auto activations_transpose = transpose_on_input(max_pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(max_pool, rank);
+        auto arm_pool = std::make_shared<opset::v8::ArmMaxPool>(activations_transpose,
                                                               max_pool->get_strides(),
                                                               max_pool->get_dilations(),
                                                               max_pool->get_pads_begin(),
                                                               max_pool->get_pads_end(),
                                                               max_pool->get_kernel(),
+                                                              output_shape,
                                                               max_pool->get_rounding_type(),
                                                               max_pool->get_auto_pad(),
                                                               max_pool->get_index_element_type(),
                                                               max_pool->get_axis());
-        arm_pool->set_friendly_name(max_pool->get_friendly_name());
-        ngraph::copy_runtime_info(max_pool, arm_pool);
-        ngraph::replace_node(max_pool, arm_pool);
+
+        auto transpose = transpose_on_output(arm_pool->output(0), rank);
+        transpose->set_friendly_name(max_pool->get_friendly_name() + ".0");
+        auto transpose_on_indexes = transpose_on_output(arm_pool->output(1), rank);
+        transpose_on_indexes->set_friendly_name(max_pool->get_friendly_name() + ".1");
+        ngraph::copy_runtime_info(max_pool, {arm_pool, activations_transpose, transpose, transpose_on_indexes});
+        ngraph::replace_node(max_pool, {transpose, transpose_on_indexes});
+
         return true;
     };
 
@@ -74,17 +100,25 @@ ArmPlugin::pass::ConvertArmAvgPool::ConvertArmAvgPool() {
             return false;
         }
 
-        auto arm_pool = std::make_shared<opset::v1::ArmAvgPool>(avg_pool->input_value(0),
+        size_t rank = avg_pool->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        auto activations_transpose = transpose_on_input(avg_pool->input_value(0), rank);
+        auto output_shape = transpose_output_shape(avg_pool, rank);
+        auto arm_pool = std::make_shared<opset::v1::ArmAvgPool>(activations_transpose,
                                                           avg_pool->get_strides(),
                                                           avg_pool->get_pads_begin(),
                                                           avg_pool->get_pads_end(),
                                                           avg_pool->get_kernel(),
                                                           avg_pool->get_exclude_pad(),
+                                                          output_shape,
                                                           avg_pool->get_rounding_type(),
                                                           avg_pool->get_auto_pad());
-        arm_pool->set_friendly_name(avg_pool->get_friendly_name());
-        ngraph::copy_runtime_info(avg_pool, arm_pool);
-        ngraph::replace_node(avg_pool, arm_pool);
+        auto transpose = transpose_on_output(arm_pool, rank);
+        transpose->set_friendly_name(avg_pool->get_friendly_name());
+        ngraph::copy_runtime_info(avg_pool, {arm_pool, activations_transpose, transpose});
+        ngraph::replace_node(avg_pool, transpose);
         return true;
     };
 

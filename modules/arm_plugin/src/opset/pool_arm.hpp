@@ -20,9 +20,9 @@ public:
                const ov::Shape& pads_begin,
                const ov::Shape& pads_end,
                const ov::Shape& kernel,
+               const ov::PartialShape& output_shape,
                const ov::op::RoundingType& rounding_type = ov::op::RoundingType::FLOOR,
-               const ov::op::PadType& auto_pad = ov::op::PadType::EXPLICIT,
-               const ov::PartialShape& output_shape = {});
+               const ov::op::PadType& auto_pad = ov::op::PadType::EXPLICIT);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
     void validate_and_infer_types() override;
@@ -41,9 +41,9 @@ public:
                const ov::Shape& pads_end,
                const ov::Shape& kernel,
                bool exclude_pad,
+               const ov::PartialShape& output_shape,
                const ov::op::RoundingType& rounding_type = ov::op::RoundingType::FLOOR,
-               const ov::op::PadType& auto_pad = ov::op::PadType::EXPLICIT,
-               const ov::PartialShape& output_shape = {});
+               const ov::op::PadType& auto_pad = ov::op::PadType::EXPLICIT);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
     void validate_and_infer_types() override;
@@ -64,11 +64,11 @@ public:
                const ov::Shape& pads_begin,
                const ov::Shape& pads_end,
                const ov::Shape& kernel,
+               const ov::PartialShape& output_shape,
                const ov::op::RoundingType& rounding_type = ov::op::RoundingType::FLOOR,
                const ov::op::PadType& auto_pad = ov::op::PadType::EXPLICIT,
                const ov::element::Type& index_element_type = ov::element::i64,
-               int64_t axis = 0,
-               const ov::PartialShape& output_shape = {});
+               int64_t axis = 0);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
     void validate_and_infer_types() override;

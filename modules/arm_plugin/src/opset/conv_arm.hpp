@@ -22,7 +22,7 @@ public:
                    const ngraph::CoordinateDiff& pads_end,
                    const ngraph::Strides& dilations,
                    const ngraph::op::PadType& auto_pad,
-                   const ngraph::PartialShape& output_shape = {});
+                   const ngraph::PartialShape& output_shape);
 
     ArmConvolution(const ngraph::Output<ngraph::Node>& data_batch,
                    const ngraph::Output<ngraph::Node>& filters,
@@ -32,7 +32,7 @@ public:
                    const ngraph::CoordinateDiff& pads_end,
                    const ngraph::Strides& dilations,
                    const ngraph::op::PadType& auto_pad,
-                   const ngraph::PartialShape& output_shape = {});
+                   const ngraph::PartialShape& output_shape);
 
     std::shared_ptr<ngraph::Node> clone_with_new_inputs(const ngraph::OutputVector& new_args) const override;
     void validate_and_infer_types() override;

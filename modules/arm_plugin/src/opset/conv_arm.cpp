@@ -69,9 +69,5 @@ std::shared_ptr<ngraph::Node> opset::ArmConvolution::clone_with_new_inputs(const
 }
 
 void opset::ArmConvolution::validate_and_infer_types() {
-    if (m_output_shape == PartialShape{}) {
-        Convolution::validate_and_infer_types();
-    } else {
-        set_output_type(0, get_input_element_type(0), m_output_shape);
-    }
+    set_output_type(0, get_input_element_type(0), m_output_shape);
 }
