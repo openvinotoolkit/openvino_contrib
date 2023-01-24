@@ -331,9 +331,6 @@ struct Converter {
         Argument<Tensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
-            if (input.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same " << input << " " << type;
-            }
             return {_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input), ArgumentType::Input};
         }
 
@@ -341,9 +338,6 @@ struct Converter {
         Argument<Tensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
             auto type = ngraph::element::from<
                 std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
-            if (output.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same " << output << " " << type;
-            }
             return {&(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)), ArgumentType::Output};
         }
 
