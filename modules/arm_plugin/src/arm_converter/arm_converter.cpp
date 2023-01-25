@@ -22,6 +22,21 @@ arm_compute::TensorShape ShapeCast(const ngraph::Shape& shape) {
     return tensorShape;
 }
 
+bool isNHWCOperation(const std::string& op_name) {
+    std::vector<std::string> list_of_nhwc_ops = {
+            "ArmConvolution",
+            "ArmMaxPool",
+            "ArmAvgPool",
+            "ArmBatchToSpace",
+            "ArmDepthToSpace",
+            "ArmInterpolate",
+            "ArmBatchNormInference"};
+    for (const auto& op_nhwc : list_of_nhwc_ops) {
+        if (op_name.find(op_nhwc) > 0) return true;
+    }
+    return false;
+}
+
 arm_compute::DataType DataTypeCast(const ngraph::element::Type type) {
     switch (static_cast<ngraph::element::Type_t>(type)) {
         case ngraph::element::Type_t::u8    : return arm_compute::DataType::U8;
@@ -111,7 +126,7 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
     Register<opset::GreaterEqual>();
     Register<opset::Select>();
     Register<opset::ReorgYolo>();
-    Register<opset::BatchToSpace>();
+    Register<opset::v1::ArmBatchToSpace>();
     Register<opset::SpaceToBatch>();
     Register<opset::ArmConvert>();
     Register<opset::ArmConcat>();
@@ -217,14 +232,10 @@ Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configu
                 } else {
                     tensorInfo = {tensorShape, 1, DataTypeCast(output.get_element_type())};
                 }
-                if ((node->get_friendly_name().find("ArmConvolution") > 0 ||
-                    node->get_friendly_name().find("ArmMaxPool") > 0 ||
-                    node->get_friendly_name().find("ArmAvgPool") > 0 ||
-                    node->get_friendly_name().find("BatchToSpace") > 0 ||
-                    node->get_friendly_name().find("ArmDepthToSpace") > 0 ||
-                    node->get_friendly_name().find("ArmBatchNormInference") > 0) && !_cfg._lpt) {
+                if (isNHWCOperation(node->get_friendly_name()) && !_cfg._lpt) {
                     tensorInfo.set_data_layout(arm_compute::DataLayout::NHWC);
                 }
+
                 tensor->allocator()->init(tensorInfo);
                 layer._outputs.emplace(output, Tensor{std::move(tensor)});
             }

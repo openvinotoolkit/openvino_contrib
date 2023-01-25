@@ -159,6 +159,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmInterpo
                                                                              arm_compute::PixelValue(),
                                                                              coord,
                                                                              false,
-                                                                             coord_mode == Transform_mode::ALIGN_CORNERS));
+                                                                             coord_mode == Transform_mode::ALIGN_CORNERS,
+                                                                             arm_compute::DataLayout::NHWC));
 }
 } //  namespace ArmPlugin

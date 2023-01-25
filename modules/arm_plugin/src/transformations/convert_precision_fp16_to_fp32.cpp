@@ -78,7 +78,7 @@ bool check_op_type(const std::shared_ptr<ov::Node>& op) {
     CHECK_TYPE(ArmPlugin::opset::GreaterEqual, op);
     CHECK_TYPE(ArmPlugin::opset::Select, op);
     CHECK_TYPE(ArmPlugin::opset::ReorgYolo, op);
-    CHECK_TYPE(ArmPlugin::opset::BatchToSpace, op);
+    CHECK_TYPE(ArmPlugin::opset::v1::ArmBatchToSpace, op);
     CHECK_TYPE(ArmPlugin::opset::SpaceToBatch, op);
     CHECK_TYPE(ArmPlugin::opset::ArmConvert, op);
     CHECK_TYPE(ArmPlugin::opset::ArmConcat, op);

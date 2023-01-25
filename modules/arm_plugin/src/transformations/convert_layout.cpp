@@ -52,13 +52,13 @@ ConvertBatchNormLayout::ConvertBatchNormLayout() {
 
 ConvertBatchToSpaceLayout::ConvertBatchToSpaceLayout() {
     enum BatchToSpace {Data, BlockShape, CropsBegin, CropsEnd};
-    auto root = ov::pass::pattern::wrap_type<ov::op::v1::BatchToSpace>(ov::pass::pattern::has_static_rank());
+    auto root = ov::pass::pattern::wrap_type<opset::v1::ArmBatchToSpace>(ov::pass::pattern::has_static_rank());
     matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
         auto node = m.get_match_root();
         if (transformation_callback(node)) {
             return false;
         }
-        auto batch_to_space = ov::as_type_ptr<ov::op::v1::BatchToSpace>(node);
+        auto batch_to_space = ov::as_type_ptr<opset::v1::ArmBatchToSpace>(node);
         if (!batch_to_space) {
             return false;
         }
@@ -66,14 +66,15 @@ ConvertBatchToSpaceLayout::ConvertBatchToSpaceLayout() {
         if (rank < 4 || rank > 5) {
             return false;
         }
-        std::cout << batch_to_space->get_friendly_name() << std::endl;
         auto input_transpose = transpose_on_input(batch_to_space->input_value(BatchToSpace::Data), rank);
-        auto new_batch_to_space = std::make_shared<ov::op::v1::BatchToSpace>(input_transpose,
+        auto output_shape = transpose_output_shape(batch_to_space, rank);
+        auto new_batch_to_space = std::make_shared<opset::v1::ArmBatchToSpace>(input_transpose,
                                                                              batch_to_space->input_value(BatchToSpace::BlockShape),
                                                                              batch_to_space->input_value(BatchToSpace::CropsBegin),
-                                                                             batch_to_space->input_value(BatchToSpace::CropsEnd));
+                                                                             batch_to_space->input_value(BatchToSpace::CropsEnd),
+                                                                             output_shape);
         auto transpose = transpose_on_output(new_batch_to_space, rank);
-        transpose->set_friendly_name(batch_to_space->get_friendly_name());
+        transpose->set_friendly_name(transpose->get_friendly_name());
         copy_runtime_info(batch_to_space, {new_batch_to_space, input_transpose, transpose});
         replace_node(batch_to_space, transpose);
         return true;
@@ -87,6 +88,7 @@ ConvertDepthToSpaceLayout::ConvertDepthToSpaceLayout() {
     auto root = ov::pass::pattern::wrap_type<opset::v0::ArmDepthToSpace>(ov::pass::pattern::has_static_rank());
     matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
         auto node = m.get_match_root();
+        std::cout << node->get_friendly_name() << std::endl;
         if (transformation_callback(node)) {
             return false;
         }
@@ -112,6 +114,40 @@ ConvertDepthToSpaceLayout::ConvertDepthToSpaceLayout() {
     };
 
     auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertDepthToSpaceLayout");
+    register_matcher(m, callback);
+}
+
+ConvertInterpolateLayout::ConvertInterpolateLayout() {
+    auto root = ov::pass::pattern::wrap_type<opset::ArmInterpolate>(ov::pass::pattern::has_static_rank());
+    matcher_pass_callback callback = [=](ov::pass::pattern::Matcher& m) {
+        auto node = m.get_match_root();
+        if (transformation_callback(node)) {
+            return false;
+        }
+        auto interpolate_op = ov::as_type_ptr<opset::ArmInterpolate>(node);
+        if (!interpolate_op) {
+            return false;
+        }
+        size_t rank = interpolate_op->get_output_partial_shape(0).size();
+        if (rank < 4 || rank > 5) {
+            return false;
+        }
+        enum InterpolateInput {data, sizes, scales, axes};
+        auto input_transpose = transpose_on_input(interpolate_op->input_value(InterpolateInput::data), rank);
+        auto output_shape = transpose_output_shape(interpolate_op, rank);
+        auto new_interpolate_op = std::make_shared<opset::ArmInterpolate>(input_transpose,
+                                                                          interpolate_op->input_value(InterpolateInput::sizes),
+                                                                          interpolate_op->input_value(InterpolateInput::scales),
+                                                                          interpolate_op->input_value(InterpolateInput::axes),
+                                                                          interpolate_op->get_attrs());
+        auto transpose = transpose_on_output(new_interpolate_op, rank);
+        transpose->set_friendly_name(interpolate_op->get_friendly_name());
+        copy_runtime_info(interpolate_op, {new_interpolate_op, input_transpose, transpose});
+        replace_node(interpolate_op, transpose);
+        return true;
+    };
+
+    auto m = std::make_shared<ov::pass::pattern::Matcher>(root, "ConvertInterpolateLayout");
     register_matcher(m, callback);
 }
 } // pass

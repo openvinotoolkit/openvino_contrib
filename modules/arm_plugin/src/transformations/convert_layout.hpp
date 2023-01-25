@@ -27,6 +27,12 @@ public:
     ConvertDepthToSpaceLayout();
 };
 
+class ConvertInterpolateLayout : public ov::pass::MatcherPass {
+public:
+    OPENVINO_RTTI("ConvertDepthToSpaceLayout", "0");
+    ConvertInterpolateLayout();
+};
+
 class ConvertLayout: public ov::pass::GraphRewrite {
 public:
     OPENVINO_RTTI("ConvertLayout", "0");
@@ -34,6 +40,7 @@ public:
         add_matcher<ConvertBatchNormLayout>();
         add_matcher<ConvertBatchToSpaceLayout>();
         add_matcher<ConvertDepthToSpaceLayout>();
+        add_matcher<ConvertInterpolateLayout>();
     }
 };
 

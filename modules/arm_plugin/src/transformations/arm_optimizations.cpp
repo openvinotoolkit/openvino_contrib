@@ -36,6 +36,7 @@
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include <transformations/op_conversions/normalize_l2_decomposition.hpp>
 #include <transformations/op_conversions/softmax_decomposition.hpp>
+#include "transformations/common_optimizations/batch_to_space_fusion.hpp"
 
 #include "conv_bias_fusion.hpp"
 #include "convert_eltwise.hpp"
@@ -186,7 +187,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         // This pass must be called first in pipeline
         manager.register_pass<ov::pass::InitNodeInfo>();
         manager.register_pass<pass::StoreResultName>();
-
         // Resolves dynamism (replaces NonZero), CF needed
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<ov::pass::RemoveFilteringBoxesBySize>();
         manager.register_pass<ngraph::pass::ConstantFolding>();
@@ -307,7 +307,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
     {
         Dump(m, "before_arm_specific_transformations");
         ov::pass::Manager manager;
-        manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertLayout>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::ConvertGRN>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::NormalizeL2Fusion>();
         manager.register_pass<ov::pass::GraphRewrite>()->add_matcher<pass::DecomposeNormalizeL2Add>();
@@ -405,7 +404,6 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
         manager.register_pass<ngraph::pass::ConstantFolding>();
         manager.run_passes(m);
     }
-
     Dump(m, "final");
 
     return false;

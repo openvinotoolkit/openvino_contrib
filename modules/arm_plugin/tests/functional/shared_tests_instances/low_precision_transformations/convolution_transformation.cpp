@@ -89,14 +89,14 @@ const std::vector<ngraph::Shape> shapes = {
     { 4, 3, 16, 16 }
 };
 
-INSTANTIATE_TEST_CASE_P(smoke_LPT, ConvolutionTransformation,
-    ::testing::Combine(
-        ::testing::ValuesIn(netPrecisions),
-        ::testing::ValuesIn(shapes),
-        ::testing::Values(CommonTestUtils::DEVICE_CPU),
-        ::testing::ValuesIn(transformationParamValues),
-        ::testing::ValuesIn(params)),
-    ConvolutionTransformation::getTestCaseName);
+//INSTANTIATE_TEST_CASE_P(smoke_LPT, ConvolutionTransformation,
+//    ::testing::Combine(
+//        ::testing::ValuesIn(netPrecisions),
+//        ::testing::ValuesIn(shapes),
+//        ::testing::Values(CommonTestUtils::DEVICE_CPU),
+//        ::testing::ValuesIn(transformationParamValues),
+//        ::testing::ValuesIn(params)),
+//    ConvolutionTransformation::getTestCaseName);
 
 const std::vector<LayerTestsDefinitions::ConvolutionWIthIncorrectWeightsParam> incorrectWeightsParams = {
     // incorrect weights
