@@ -1,6 +1,7 @@
 
 # [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - ARM CPU plugin
 
+
 OpenVINO™ ARM CPU plugin is developed in order to enable deep neural networks inference on ARM CPUs, using OpenVINO™ API. The plugin uses [ARM Compute Library\*](https://github.com/ARM-software/ComputeLibrary) as a backend.
 
 ## Supported Platforms

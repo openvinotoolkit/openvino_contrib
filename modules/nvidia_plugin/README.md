@@ -1,6 +1,7 @@
 
 # [OpenVINO™ Toolkit](https://01.org/openvinotoolkit) - NVIDIA GPU plugin
 
+
 OpenVINO™ NVIDIA GPU plugin is developed in order to enable deep neural networks inference on NVIDIA GPUs, using OpenVINO™ API.
 The plugin uses custom kernels and [cuBLAS, cuDNN, cuTENSOR libraries\*] as a backend.
 
