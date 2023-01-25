@@ -143,7 +143,7 @@ std::shared_ptr<ov::Model> GraphTransformer::clone_and_export_transform(
     }
     if (needF16toF32) {
         manager.register_pass<ov::pass::ConvertPrecision>(
-            precisions_array{{ov::element::f16, ov::element::f32}});
+            precisions_map{{ov::element::f16, ov::element::f32}});
 
     }
     manager.run_passes(transformed_model);
