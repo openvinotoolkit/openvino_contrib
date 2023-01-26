@@ -34,6 +34,7 @@ ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
                                                                      maxpool->get_pads_begin(),
                                                                      maxpool->get_pads_end(),
                                                                      maxpool->get_kernel(),
+                                                                     maxpool->get_output_partial_shape(0),
                                                                      maxpool->get_rounding_type(),
                                                                      maxpool->get_auto_pad(),
                                                                      ngraph::element::u32,

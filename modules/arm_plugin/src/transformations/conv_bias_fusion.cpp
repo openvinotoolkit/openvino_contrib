@@ -7,10 +7,12 @@
 #include <memory>
 #include <numeric>
 #include <vector>
+#include <type_traits>
 
 #include <ngraph/rt_info.hpp>
 
 #include "opset/opset.hpp"
+#include "transpose_utils.hpp"
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ov_ops/type_relaxed.hpp>
 
@@ -18,6 +20,27 @@ using namespace ArmPlugin;
 
 enum Layout {N, C, H, W};
 enum Inputs {Data, Weights, Bias};
+
+template <typename T, typename std::enable_if<std::is_same<T, opset::Convolution>::value, bool>::type = true>
+static std::shared_ptr<ArmPlugin::opset::Transpose> transpose_on_conv_weights(const ov::Output<ov::Node>& input, size_t rank) {
+    return pass::transpose_on_input(input, rank);
+}
+
+template <typename T, typename std::enable_if<std::is_same<T, opset::GroupConvolution>::value, bool>::type = true>
+static std::shared_ptr<ArmPlugin::opset::Transpose> transpose_on_conv_weights(const ov::Output<ov::Node>& input, size_t rank) {
+    switch (rank) {
+    case 4:
+        return std::make_shared<ArmPlugin::opset::Transpose>(input,
+                ArmPlugin::opset::Constant::create(ov::element::i32, ov::Shape{5}, {0, 1, 3, 4, 2}));
+    case 5:
+        return std::make_shared<ArmPlugin::opset::Transpose>(input,
+                ArmPlugin::opset::Constant::create(ov::element::i32, ov::Shape{6}, {0, 1, 3, 4, 5, 2}));
+    default:
+        IE_THROW() << "ConvertLayout: unsupported rank";
+    }
+
+    return nullptr;
+}
 
 NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvBiasFusionBase, "ConvBiasFusionBase", 0);
 template <class Conv, class Eltwise>
@@ -88,7 +111,8 @@ void ArmPlugin::pass::ConvBiasFusionBase::registerMatcher(const std::string& nam
                 conv->get_pads_begin(),
                 conv->get_pads_end(),
                 conv->get_dilations(),
-                conv->get_auto_pad());
+                conv->get_auto_pad(),
+                conv->get_output_partial_shape(0));
         } else {
             new_conv = std::make_shared<Conv>(
                 conv->input_value(Inputs::Data),
@@ -98,7 +122,8 @@ void ArmPlugin::pass::ConvBiasFusionBase::registerMatcher(const std::string& nam
                 conv->get_pads_begin(),
                 conv->get_pads_end(),
                 conv->get_dilations(),
-                conv->get_auto_pad());
+                conv->get_auto_pad(),
+                conv->get_output_partial_shape(0));
         }
 
         ngraph::copy_runtime_info({conv, eltwise}, new_conv);
@@ -122,32 +147,42 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
         auto outputType = conv->get_output_element_type(0);
         IE_ASSERT(outputType.is_real());
 
+        const size_t rank = conv->get_output_partial_shape(0).size();
+        const auto activations_transpose = transpose_on_input(conv->input_value(Inputs::Data), rank);
+        const auto weights_transpose = transpose_on_conv_weights<Conv>(conv->input_value(Inputs::Weights), rank);
+        const auto output_shape = transpose_output_shape(conv, rank);
+
         std::shared_ptr<ngraph::Node> conv_arm;
         if (quantized) {
             conv_arm = std::make_shared<ov::op::TypeRelaxed<ArmConv>>(
                 std::vector<ngraph::element::Type>{outputType, outputType},
                 std::vector<ngraph::element::Type>{outputType},
-                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Data), outputType).get(),
-                ov::op::TemporaryReplaceOutputType(conv->input_value(Inputs::Weights), outputType).get(),
+                ov::op::TemporaryReplaceOutputType(activations_transpose, outputType).get(),
+                ov::op::TemporaryReplaceOutputType(weights_transpose, outputType).get(),
                 conv->get_strides(),
                 conv->get_pads_begin(),
                 conv->get_pads_end(),
                 conv->get_dilations(),
-                conv->get_auto_pad());
+                conv->get_auto_pad(),
+                output_shape);
         } else {
             conv_arm = std::make_shared<ArmConv>(
-                conv->input_value(Inputs::Data),
-                conv->input_value(Inputs::Weights),
+                activations_transpose,
+                weights_transpose,
                 conv->get_strides(),
                 conv->get_pads_begin(),
                 conv->get_pads_end(),
                 conv->get_dilations(),
-                conv->get_auto_pad());
+                conv->get_auto_pad(),
+                output_shape);
         }
 
-        ngraph::copy_runtime_info(conv, conv_arm);
-        conv_arm->set_friendly_name(conv->get_friendly_name());
-        ngraph::replace_node(conv, conv_arm);
+        auto transpose = transpose_on_output(conv_arm, rank);
+
+        transpose->set_friendly_name(conv->get_friendly_name());
+        copy_runtime_info(conv, {conv_arm, activations_transpose, weights_transpose, transpose});
+        replace_node(conv, transpose);
+
         return true;
     };
 }
