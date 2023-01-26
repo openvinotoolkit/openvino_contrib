@@ -17,6 +17,9 @@ ArmPlugin::pass::ConvertArmMaxPoolV1::ConvertArmMaxPoolV1() {
         if (!max_pool) {
             return false;
         }
+        if (std::dynamic_pointer_cast<opset::v1::ArmMaxPool>(m.get_match_root())) {
+            return false;
+        }
 
         size_t rank = max_pool->get_output_partial_shape(0).size();
         if (rank < 4 || rank > 5) {
@@ -51,6 +54,9 @@ ArmPlugin::pass::ConvertArmMaxPoolV8::ConvertArmMaxPoolV8() {
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto max_pool = std::dynamic_pointer_cast<ov::op::v8::MaxPool>(m.get_match_root());
         if (!max_pool) {
+            return false;
+        }
+        if (std::dynamic_pointer_cast<opset::v8::ArmMaxPool>(m.get_match_root())) {
             return false;
         }
 
@@ -97,6 +103,9 @@ ArmPlugin::pass::ConvertArmAvgPool::ConvertArmAvgPool() {
     ngraph::matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
         auto avg_pool = std::dynamic_pointer_cast<ov::op::v1::AvgPool>(m.get_match_root());
         if (!avg_pool) {
+            return false;
+        }
+        if (std::dynamic_pointer_cast<opset::v1::ArmAvgPool>(m.get_match_root())) {
             return false;
         }
 
