@@ -12,9 +12,6 @@
 'category: java API':
 - 'modules/java_api/**/*'
 
-'category: MO pytorch extension':
-- 'modules/mo_pytorch/**/*'
-
 'category: NVIDIA plugin':
 - 'modules/nvidia_plugin/**/*'
 
