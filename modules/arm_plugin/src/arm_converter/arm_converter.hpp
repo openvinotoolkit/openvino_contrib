@@ -329,15 +329,11 @@ struct Converter {
 
         template<std::size_t I>
         Argument<Tensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
-            auto type = ngraph::element::from<
-                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             return {_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input), ArgumentType::Input};
         }
 
         template<std::size_t I>
         Argument<Tensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
-            auto type = ngraph::element::from<
-                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
             return {&(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)), ArgumentType::Output};
         }
 
