@@ -41,11 +41,12 @@ std::mutex Plugin::SchedulerGuard::mutex;
 std::weak_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::ptr;
 
 Plugin::SchedulerGuard::SchedulerGuard() {
-#if IE_THREAD == IE_THREAD_SEQ
+// TODO: Fix TBB scheduler. TBB scheduler has been explicitly disabled to avoid its usage at all
+//#if IE_THREAD == IE_THREAD_SEQ
     arm_compute::Scheduler::set(arm_compute::Scheduler::Type::CPP);
-#else
-    arm_compute::Scheduler::set(std::make_shared<IEScheduler>());
-#endif
+//#else
+//    arm_compute::Scheduler::set(std::make_shared<IEScheduler>());
+//#endif
 }
 
 std::shared_ptr<Plugin::SchedulerGuard> Plugin::SchedulerGuard::instance() {
