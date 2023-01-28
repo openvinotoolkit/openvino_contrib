@@ -1,0 +1,30 @@
+'category: ARM plugin':
+- 'modules/arm_plugin/**/*'
+
+'category: CI':
+- '.github/**/*'
+- '.ci/**/*'
+- 'Jenkinsfile'
+
+'category: custom operations':
+- 'modules/custom_operations/**/*'
+
+'category: java API':
+- 'modules/java_api/**/*'
+
+'category: NVIDIA plugin':
+- 'modules/nvidia_plugin/**/*'
+
+'category: OVMS AI extension':
+- 'modules/ovms_ai_extension/**/*'
+
+'category: build':
+- '**/CMakeLists.txt'
+- '**/*.cmake'
+
+'dependencies':
+- '**/requirement*.txt'
+- '.gitmodules'
+- '**/setup.py'
+- any: ['**/thirdparty/**/*',
+        '!**/CMakeLists.txt']

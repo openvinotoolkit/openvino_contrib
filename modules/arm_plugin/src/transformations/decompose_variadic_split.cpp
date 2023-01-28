@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -21,7 +21,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         auto input = split->input_value(0).get_node_shared_ptr();
         auto axes = std::dynamic_pointer_cast<opset::Constant>(split->input_value(1).get_node_shared_ptr());
         auto split_lengths = std::dynamic_pointer_cast<opset::Constant>(split->input_value(2).get_node_shared_ptr());
-        auto input_shape = input->get_shape();
+        auto input_shape = split->get_input_shape(0);
         auto size = input_shape.size();
 
 
@@ -48,7 +48,7 @@ ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
         std::string output_name = split->get_friendly_name();
 
         int count_useless_outs = 0;
-        for (auto out : split->outputs()) {
+        for (const auto& out : split->outputs()) {
             auto inputs = out.get_target_inputs();
             if (inputs.empty()) {
                 ++count_useless_outs;

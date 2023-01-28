@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Intel Corporation
+# Copyright (C) 2019-2023 Intel Corporation
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -36,6 +36,7 @@ addIeTargetTest(
             gtest_main
             gmock
             ngraphFunctions
+            commonTestUtils_s
         ADD_CPPLINT
         LABELS
             CUDA

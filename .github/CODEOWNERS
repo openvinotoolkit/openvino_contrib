@@ -1,0 +1,19 @@
+# See help here: https://help.github.com/en/github/creating-cloning-and-archiving-repositories/about-code-owners
+
+*  @openvinotoolkit/openvino_contrib-maintainers
+
+# CI:
+/.github/  @openvinotoolkit/openvino-ci-maintainers
+/.ci/  @openvinotoolkit/openvino-ci-maintainers
+
+# OpenVINO ARM Plugin:
+/modules/arm_plugin/ @openvinotoolkit/openvino_contrib-arm_plugin-maintainers
+
+# OpenVINO Runtime Java API:
+/modules/java_api/ @openvinotoolkit/openvino_contrib-java_api-maintainers
+
+# OpenVINO NVIDIA plugin:
+/modules/nvidia_plugin/ @openvinotoolkit/openvino_contrib-nvidia_plugin-maintainters
+
+# AI extension for OVMS:
+/modules/ovms_ai_extension/ @openvinotoolkit/openvino_contrib-ovms_ai_extension-maintainers

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,18 @@
 #include "openvino/pass/graph_rewrite.hpp"
 
 namespace ov::nvidia_gpu::pass {
+
+class CudaFuseMarkUpNodesOrder : public ov::pass::ModelPass {
+public:
+    OPENVINO_RTTI("CudaFuseMarkUpNodesOrder", "0");
+    bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
+};
+
+class CudaFuseCleanUpNodesOrder : public ov::pass::ModelPass {
+public:
+    OPENVINO_RTTI("CudaFuseCleanUpNodesOrder", "0");
+    bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
+};
 
 class FuseConvolutionWithBiasAdd : public ov::pass::MatcherPass {
 public:
@@ -33,34 +45,16 @@ public:
     FuseGroupConvolutionWithBiasAddAdd();
 };
 
-class SinkReluToFusedConvolution : public ov::pass::MatcherPass {
+class SinkActivationToFusedConvolution : public ov::pass::MatcherPass {
 public:
-    OPENVINO_RTTI("SinkReluToFusedConvolution", "0");
-    SinkReluToFusedConvolution();
+    OPENVINO_RTTI("SinkActivationToFusedConvolution", "0");
+    SinkActivationToFusedConvolution();
 };
 
-class SinkSigmoidToFusedConvolution : public ov::pass::MatcherPass {
+class CudaConvolutionFusion : public ov::pass::ModelPass {
 public:
-    OPENVINO_RTTI("SinkSigmoidToFusedConvolution", "0");
-    SinkSigmoidToFusedConvolution();
-};
-
-class SinkTanhToFusedConvolution : public ov::pass::MatcherPass {
-public:
-    OPENVINO_RTTI("SinkTanhToFusedConvolution", "0");
-    SinkTanhToFusedConvolution();
-};
-
-class CudaFuseConvBiasAddActivation : public ov::pass::GraphRewrite {
-public:
-    OPENVINO_RTTI("CudaFuseConvBiasAddActivation", "0");
-    CudaFuseConvBiasAddActivation();
-};
-
-class CudaFuseGroupConvBiasAddActivation : public ov::pass::GraphRewrite {
-public:
-    OPENVINO_RTTI("CudaFuseGroupConvBiasAddActivation", "0");
-    CudaFuseGroupConvBiasAddActivation();
+    OPENVINO_RTTI("CudaConvolutionFusion", "0");
+    bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
 };
 
 class CudaFuseConvBackpropDataAdd : public ov::pass::MatcherPass {

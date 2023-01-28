@@ -1,4 +1,4 @@
-// Copyright (C) 2020 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 #include <subgraph_tests/get_output_before_activation.hpp>
 #include "common_test_utils/test_constants.hpp"

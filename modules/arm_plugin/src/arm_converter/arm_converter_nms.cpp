@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -137,7 +137,7 @@ static void nms9(const float* boxes_data,
 template<> Converter::Conversion::Ptr Converter::Convert(const ngraph::op::v9::NonMaxSuppression& node) {
     auto make = [&] (auto refFunction) {
         ngraph::HostTensorVector hosts;
-        for (auto output : node.outputs()) {
+        for (const auto& output : node.outputs()) {
             auto tensor = std::make_shared<ngraph::HostTensor>(output.get_element_type(),
                                                                output.get_partial_shape().get_max_shape());
             hosts.push_back(tensor);

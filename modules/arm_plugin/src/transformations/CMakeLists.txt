@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -22,3 +22,5 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino::util
         openvino::itt
         openvino::runtime::dev)
+
+ov_install_static_lib(${TARGET_NAME} cpu)

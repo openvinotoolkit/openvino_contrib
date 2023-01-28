@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -161,9 +161,7 @@ void GraphTransformer::cuda_transform(const CUDA::Device& device,
 
     manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBiasAddActivation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseGroupConvBiasAddActivation>();
-    manager.register_pass<ov::nvidia_gpu::pass::CudaFuseConvBackpropDataAdd>();
+    manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
     manager.register_pass<ov::nvidia_gpu::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::FusedConvBackpropDataAsymPaddingTransformation>();

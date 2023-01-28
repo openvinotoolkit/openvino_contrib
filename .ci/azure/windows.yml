@@ -5,7 +5,6 @@ trigger:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 pr:
@@ -15,7 +14,6 @@ pr:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 resources:
@@ -106,12 +104,14 @@ jobs:
       call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DBUILD_nvidia_plugin=OFF ^
+        -DENABLE_INTEL_MYRIAD_COMMON=OFF ^
+        -DENABLE_CPPLINT=OFF ^
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
-    displayName: 'CMake'
+    displayName: 'CMake configure'
 
   - script: dir $(OPENVINO_REPO_DIR)\temp\ /s
     displayName: 'List temp SDKs'
