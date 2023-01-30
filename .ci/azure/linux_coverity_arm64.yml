@@ -5,7 +5,6 @@ trigger:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 pr:
@@ -15,7 +14,6 @@ pr:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 resources:
@@ -103,6 +101,7 @@ jobs:
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
       # Speed up build
+      sudo apt -y --no-install-recommends install unzip
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/

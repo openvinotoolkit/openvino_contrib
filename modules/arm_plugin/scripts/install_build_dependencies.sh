@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (C) 2018-2022 Intel Corporation
+# Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
@@ -19,21 +19,21 @@ unzip ninja-linux.zip
 sudo cp -v ninja /usr/local/bin/
 
 #### Build python for host
-wget https://www.python.org/ftp/python/"$PYTHON_ARM_VERSION"/Python-"$PYTHON_ARM_VERSION".tgz
-tar -xzf Python-"$PYTHON_ARM_VERSION".tgz
-mv Python-"$PYTHON_ARM_VERSION" Python-"$PYTHON_ARM_VERSION"-host
-cd Python-"$PYTHON_ARM_VERSION"-host || exit
+wget "https://www.python.org/ftp/python/$PYTHON_ARM_VERSION/Python-$PYTHON_ARM_VERSION.tgz"
+tar -xzf "Python-$PYTHON_ARM_VERSION.tgz"
+mv "Python-$PYTHON_ARM_VERSION" "Python-$PYTHON_ARM_VERSION-host"
+cd "Python-$PYTHON_ARM_VERSION-host" || exit
 ./configure --enable-optimizations
 make -j "$NUM_PROC" python
 sudo make -j "$NUM_PROC" install
 cp python "$BUILD_PYTHON"
-curl https://bootstrap.pypa.io/get-pip.py | "$BUILD_PYTHON"/python - --no-cache-dir numpy cython
+curl https://bootstrap.pypa.io/get-pip.py | "$BUILD_PYTHON/python" - --no-cache-dir numpy cython
 cd "$WORK_DIR" || exit
 
 #### Build python for ARM
-wget https://www.python.org/ftp/python/"$PYTHON_ARM_VERSION"/Python-"$PYTHON_ARM_VERSION".tgz
-tar -xzf Python-"$PYTHON_ARM_VERSION".tgz
-cd Python-"$PYTHON_ARM_VERSION" || exit
+wget "https://www.python.org/ftp/python/$PYTHON_ARM_VERSION/Python-$PYTHON_ARM_VERSION.tgz"
+tar -xzf "Python-$PYTHON_ARM_VERSION.tgz"
+cd "Python-$PYTHON_ARM_VERSION" || exit
 CC=aarch64-linux-gnu-gcc \
 CXX=aarch64-linux-gnu-g++ \
 AR=aarch64-linux-gnu-ar \
@@ -50,44 +50,44 @@ make -j "$NUM_PROC" \
     CROSS-COMPILE=aarch64-linux-gnu- CROSS_COMPILE_TARGET=yes HOSTARCH=aarch64-linux BUILDARCH=aarch64-linux-gnu
 make -j "$NUM_PROC" install
 cd "$WORK_DIR" || exit
-sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install --upgrade pip
-sudo /usr/local/bin/"$PYTHON_EXEC" -m pip install numpy cython
+sudo "/usr/local/bin/$PYTHON_EXEC" -m pip install --upgrade pip
+sudo "/usr/local/bin/$PYTHON_EXEC" -m pip install numpy cython
 
 # hwloc install
-wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P $HWLOC_DIR
-tar -xzf $HWLOC_DIR/hwloc-2.5.0.tar.gz -C $HWLOC_DIR
-mkdir -p $HWLOC_INSTALL
-cd $HWLOC_DIR/hwloc-2.5.0
+wget https://download.open-mpi.org/release/hwloc/v2.5/hwloc-2.5.0.tar.gz -P "$HWLOC_DIR"
+tar -xzf "$HWLOC_DIR/hwloc-2.5.0.tar.gz" -C "$HWLOC_DIR"
+mkdir -p "$HWLOC_INSTALL"
+cd "$HWLOC_DIR/hwloc-2.5.0"
 CC=aarch64-linux-gnu-gcc \
 CXX=aarch64-linux-gnu-g++ \
 ./configure \
      --host=aarch64-linux-gnu \
-     --prefix=$HWLOC_INSTALL \
+     --prefix="$HWLOC_INSTALL" \
      --with-pic=yes
 make -j $(nproc --all)
 make install
 
 # oneTBB install
-git clone --recursive https://github.com/oneapi-src/oneTBB.git $ONETBB_REPO_DIR
+git clone --recursive https://github.com/oneapi-src/oneTBB.git "$ONETBB_REPO_DIR"
 cmake -GNinja \
-      -DCMAKE_HWLOC_2_5_LIBRARY_PATH=$HWLOC_INSTALL/lib/libhwloc.so \
-      -DCMAKE_HWLOC_2_5_INCLUDE_PATH=$HWLOC_INSTALL/include \
+      -DCMAKE_HWLOC_2_5_LIBRARY_PATH="$HWLOC_INSTALL/lib/libhwloc.so" \
+      -DCMAKE_HWLOC_2_5_INCLUDE_PATH="$HWLOC_INSTALL/include" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
+      -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR/cmake/arm64.toolchain.cmake" \
       -DCMAKE_INSTALL_PREFIX="$INSTALL_ONETBB" \
       -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
       -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DTBB_INSTALL_VARS=ON \
       -DTBB_TEST=False \
-      -S$ONETBB_REPO_DIR \
-      -B$BUILD_ONETBB
-export CCACHE_DIR=$ONETBB_CCACHE_DIR
-ninja -C $BUILD_ONETBB
-ninja -C $BUILD_ONETBB install
+      -S "$ONETBB_REPO_DIR" \
+      -B "$BUILD_ONETBB"
+export CCACHE_DIR="$ONETBB_CCACHE_DIR"
+ninja -C "$BUILD_ONETBB"
+ninja -C "$BUILD_ONETBB" install
 
-touch "$INSTALL_ONETBB"/setupvars.sh
-printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/lib/cmake/TBB;" >> "$INSTALL_ONETBB"/setupvars.sh
-printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_ONETBB"/setupvars.sh
+touch "$INSTALL_ONETBB/setupvars.sh"
+printf "export TBB_DIR=\$INSTALLDIR/extras/oneTBB/lib/cmake/TBB;" >> "$INSTALL_ONETBB/setupvars.sh"
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/oneTBB/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_ONETBB/setupvars.sh"
 cd "$WORK_DIR" || fail 11 "oneTBB build failed. Stopping"
 
 # OpenCV install
@@ -100,9 +100,9 @@ cmake -G Ninja \
       -D BUILD_opencv_python3=ON \
       -D OPENCV_SKIP_PYTHON_LOADER=OFF \
       -D PYTHON3_LIMITED_API=ON \
-      -D PYTHON3_INCLUDE_PATH="$INSTALL_PYTHON"/include/"$PYTHON_EXEC" \
-      -D PYTHON3_LIBRARIES="$INSTALL_PYTHON"/lib \
-      -D PYTHON3_NUMPY_INCLUDE_DIRS=/usr/local/lib/"$PYTHON_EXEC"/site-packages/numpy/core/include \
+      -D PYTHON3_INCLUDE_PATH="$INSTALL_PYTHON/include/$PYTHON_EXEC" \
+      -D PYTHON3_LIBRARIES="$INSTALL_PYTHON/lib" \
+      -D PYTHON3_NUMPY_INCLUDE_DIRS="/usr/local/lib/$PYTHON_EXEC/site-packages/numpy/core/include" \
       -D CMAKE_USE_RELATIVE_PATHS=ON \
       -D CMAKE_SKIP_INSTALL_RPATH=ON \
       -D OPENCV_SKIP_PKGCONFIG_GENERATION=ON \
@@ -116,7 +116,7 @@ cmake -G Ninja \
       -D OPENCV_DOC_INSTALL_PATH=doc \
       -D OPENCV_OTHER_INSTALL_PATH=etc \
       -D OPENCV_LICENSES_INSTALL_PATH=etc/licenses \
-      -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR"/cmake/arm64.toolchain.cmake \
+      -D CMAKE_TOOLCHAIN_FILE="$OPENVINO_REPO_DIR/cmake/arm64.toolchain.cmake" \
       -D WITH_GTK_2_X=OFF \
       -D OPENCV_ENABLE_PKG_CONFIG=ON \
       -D ENABLE_CCACHE=ON \
@@ -126,11 +126,11 @@ cmake -G Ninja \
       -D CMAKE_INSTALL_PREFIX="$INSTALL_OPENCV" \
       -S "$OPENCV_REPO_DIR" \
       -B "$BUILD_OPENCV"
-export CCACHE_DIR=$OPENCV_CCACHE_DIR
+export CCACHE_DIR="$OPENCV_CCACHE_DIR"
 ninja -C "$BUILD_OPENCV"
 ninja -C "$BUILD_OPENCV" install
-touch "$INSTALL_OPENCV"/setupvars.sh
-printf "export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake;" >> "$INSTALL_OPENCV"/setupvars.sh
-printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/opencv/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENCV"/setupvars.sh
-mkdir -p "$INSTALL_OPENVINO"/python/python3
-cp -r "$INSTALL_OPENCV"/python/cv2 "$INSTALL_OPENVINO"/python/python3
+touch "$INSTALL_OPENCV/setupvars.sh"
+printf "export OpenCV_DIR=\$INSTALLDIR/extras/opencv/cmake;" >> "$INSTALL_OPENCV/setupvars.sh"
+printf "export LD_LIBRARY_PATH=\$INSTALLDIR/extras/opencv/lib:\$LD_LIBRARY_PATH" >> "$INSTALL_OPENCV/setupvars.sh"
+mkdir -p "$INSTALL_OPENVINO/python/python3"
+cp -r "$INSTALL_OPENCV/python/cv2" "$INSTALL_OPENVINO/python/python3"

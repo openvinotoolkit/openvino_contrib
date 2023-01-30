@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 #include <details/ie_exception.hpp>
@@ -48,7 +48,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::Concat& no
 
     return CallSwitch(
         AP_WRAP(make, wrap_concat),
-        node.input(0), allTypes);
+        node.input(0), merge(allTypes, bfloatType));
 }
 
 template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmConcat& node) {

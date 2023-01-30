@@ -1,5 +1,0 @@
-seqeval
-datasets>=1.18.0
-librosa
-torchaudio
-torch==1.9.1
