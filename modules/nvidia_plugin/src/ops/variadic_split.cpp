@@ -92,7 +92,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
     const auto element_type = input_element_type;
 
     const auto& data_shape = variadic_split_node->get_input_shape(0);
-    int64_t axis = *axis_node->get_data_ptr<int64_t>();
+    auto axis = axis_node->cast_vector<int64_t>()[0];
     if (axis < 0) {
         axis += static_cast<int64_t>(variadic_split_node->get_input_partial_shape(0).rank().get_length());
     }
