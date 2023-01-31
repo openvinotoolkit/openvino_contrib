@@ -49,6 +49,7 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
+    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     GRADLE_VER: 7.1.1
 
   steps:
@@ -93,7 +94,7 @@ jobs:
       set -e
       sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move jdk into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install default-jdk
+      sudo apt --assume-yes install default-jdk libopencv-dev
       # Install gradle for Java
       sudo apt -y --no-install-recommends install unzip
       wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
@@ -155,3 +156,20 @@ jobs:
       done
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
+
+  - script: |
+      python3 -m pip install --user virtualenv
+      python3 -m virtualenv -p /usr/bin/python3.8 .env3
+      source .env3/bin/activate
+      python -m pip install --upgrade pip
+      python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
+      cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Create custom ops env'
+
+  - script: |
+      . $(SETUPVARS)
+      source  $(WORK_DIR)/.env3/bin/activate
+      python -m pytest tests/run_tests.py
+    workingDirectory: $(REPO_DIR)/modules/custom_operations
+    displayName: 'Custom ops tests'
