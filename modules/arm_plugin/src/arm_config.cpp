@@ -31,7 +31,13 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             _streamsExecutorConfig.SetConfig(key, value);
             _streamsExecutorConfig._threadBindingType = InferenceEngine::IStreamsExecutor::NONE;
         } else if (ov::enable_profiling == key) {
-            _perfCount = (CONFIG_VALUE(YES) == value);
+            if (CONFIG_VALUE(YES) == value) {
+                _perfCount = true;
+            } else if (CONFIG_VALUE(NO) == value) {
+                _perfCount = false;
+            } else {
+                IE_THROW(NotFound) << ": " << value;
+            }
         } else if (CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS) == key) {
             _exclusiveAsyncRequests = (CONFIG_VALUE(YES) == value);
         } else if (CONFIG_KEY_INTERNAL(USE_REF_IMPL) == key) {
@@ -45,6 +51,8 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
                     _perfHint = ov::hint::PerformanceMode::THROUGHPUT;
                 } else if (value == "LATENCY") {
                     _perfHint = ov::hint::PerformanceMode::LATENCY;
+                } else {
+                    IE_THROW(NotFound) << ": " << value;
                 }
         }  else if (throwOnUnsupported) {
             IE_THROW(NotFound) << ": " << key;
