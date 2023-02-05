@@ -146,16 +146,16 @@ struct Layer {
     std::string                                 _execType;
 };
 
-static std::size_t GetNodeId(const ngraph::Input<const ngraph::Node>& input) {
+inline std::size_t GetNodeId(const ngraph::Input<const ngraph::Node>& input) {
     return input.get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
+inline std::size_t GetNodeId(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
     return inputs.front().get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const ngraph::Output<const ngraph::Node>& output) {
+inline std::size_t GetNodeId(const ngraph::Output<const ngraph::Node>& output) {
     return output.get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
+inline std::size_t GetNodeId(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
     return outputs.front().get_node()->get_instance_id();
 }
 
@@ -485,11 +485,11 @@ struct ConversionArg<std::vector<ngraph::Output<const ngraph::Node>>&> {
 #define AP_WRAP(MAKE, F) [&](auto ... v) {return MAKE(F<decltype(v)...>);}
 
 template<typename IO>
-static auto get_element_type(const IO& io) {
+inline auto get_element_type(const IO& io) {
     return io.get_element_type();
 }
 
-static auto get_element_type(const ngraph::element::Type& type) {
+inline auto get_element_type(const ngraph::element::Type& type) {
     return type;
 }
 
