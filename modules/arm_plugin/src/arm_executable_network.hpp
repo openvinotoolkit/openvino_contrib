@@ -18,7 +18,7 @@
 
 namespace ArmPlugin {
 
-class Plugin;
+struct Plugin;
 
 struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDefault {
     ExecutableNetwork(const std::shared_ptr<const ov::Model>&  model,

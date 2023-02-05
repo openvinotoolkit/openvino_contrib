@@ -11,8 +11,7 @@
 namespace ArmPlugin {
 struct NEQuantizationLayerQI final: public arm_compute::IFunction {
 public:
-    NEQuantizationLayerQI():
-        _quant(), _output(nullptr), _outputqi() {}
+    NEQuantizationLayerQI() = default;
     NEQuantizationLayerQI(const NEQuantizationLayerQI &) = delete;
     NEQuantizationLayerQI &operator=(const NEQuantizationLayerQI &) = delete;
     NEQuantizationLayerQI(NEQuantizationLayerQI &&) = delete;
@@ -42,7 +41,7 @@ public:
     }
 
 protected:
-    const arm_compute::ITensor *_output;
+    const arm_compute::ITensor *_output = nullptr;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::NEQuantizationLayer> _quant;
 };
@@ -57,8 +56,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::ArmQuantiz
 
 struct NEDequantizationLayerQI final: public arm_compute::IFunction {
 public:
-    NEDequantizationLayerQI():
-        _dequant(), _input(nullptr), _inputqi() {}
+    NEDequantizationLayerQI() = default;
     NEDequantizationLayerQI(const NEDequantizationLayerQI &) = delete;
     NEDequantizationLayerQI &operator=(const NEDequantizationLayerQI &) = delete;
     NEDequantizationLayerQI(NEDequantizationLayerQI &&) = delete;
@@ -88,7 +86,7 @@ public:
     }
 
 protected:
-    const arm_compute::ITensor *_input;
+    const arm_compute::ITensor *_input = nullptr;
     arm_compute::Tensor _inputqi;
     std::unique_ptr<arm_compute::NEDequantizationLayer> _dequant;
 };

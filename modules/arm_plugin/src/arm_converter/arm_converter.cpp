@@ -44,7 +44,7 @@ std::size_t AxisCast(const std::size_t axis, const std::size_t shapeSize) {
 }
 
 Converter::Converter(const std::shared_ptr<const ov::Model> model, const Configuration& cfg) :
-    _model{model}, _cfg{cfg} {
+    _cfg{cfg}, _model{model} {
     Register<opset::Parameter>();
     Register<opset::Constant>();
     Register<opset::ArmConvolution>();

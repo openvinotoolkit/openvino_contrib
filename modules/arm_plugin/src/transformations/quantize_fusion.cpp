@@ -453,8 +453,6 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
                 itAdd != pattern_map.end() || itSub != pattern_map.end()) {
                 std::vector<float> offsets = getFloatVector(pattern_map[offset_pattern].get_node());
                 if (!allEqualToFirst(offsets)) return false;
-                float foffset = (itPreAdd != pattern_map.end() || itAdd != pattern_map.end()) ? - offsets.front() : offsets.front();
-                if (itMul != pattern_map.end()) foffset /= scale;
                 offset = static_cast<std::int32_t>(std::round(itPreAdd != pattern_map.end() ? - offsets.front() :
                                                              (itAdd != pattern_map.end() ? - offsets.front() : offsets.front()) / scale));
             }
