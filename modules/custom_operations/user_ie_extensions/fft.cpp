@@ -139,11 +139,11 @@ bool FFT::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) co
     std::vector<size_t> dims = inputs[0].get_shape();
     const size_t numSignalDims = inputs[1].get_shape()[0];
 
-    if (!(dims.size() == 3 && (numSignalDims == 1 && signalDimsData[0] == 1) ||
-          dims.size() == 4 && ((numSignalDims == 1 && signalDimsData[0] == 1) ||
-                               (numSignalDims == 2 && signalDimsData[0] == 1 && signalDimsData[1] == 2)) ||
-          dims.size() == 5 && ((numSignalDims == 2 && signalDimsData[0] == 1 && signalDimsData[1] == 2) ||
-                               (numSignalDims == 2 && signalDimsData[0] == 2 && signalDimsData[1] == 3)))) {
+    if (!((dims.size() == 3 && numSignalDims == 1 && signalDimsData[0] == 1) ||
+          (dims.size() == 4 && ((numSignalDims == 1 && signalDimsData[0] == 1) ||
+                                (numSignalDims == 2 && signalDimsData[0] == 1 && signalDimsData[1] == 2))) ||
+          (dims.size() == 5 && ((numSignalDims == 2 && signalDimsData[0] == 1 && signalDimsData[1] == 2) ||
+                                (numSignalDims == 2 && signalDimsData[0] == 2 && signalDimsData[1] == 3))))) {
         std::ostringstream ss;
         for (size_t i = 0; i < numSignalDims; ++i)
             ss << signalDimsData[i] << " ";

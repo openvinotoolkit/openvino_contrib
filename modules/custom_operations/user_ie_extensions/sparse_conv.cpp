@@ -74,9 +74,9 @@ bool SparseConv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
                 const int d = std::min(static_cast<int>(zj - zi + kd * 0.5f), kd - 1);
 
                 const float* featuresOffset = features + j * IC;
-                for (size_t ic = 0; ic < IC; ++ic) {
+                for (int ic = 0; ic < IC; ++ic) {
                     const float* kernelOffset = kernel + OC * (ic + IC * (w + kw * (h + kh * d)));
-                    for (size_t oc = 0; oc < OC; ++oc) {
+                    for (int oc = 0; oc < OC; ++oc) {
                         out[i * OC + oc] += kernelOffset[oc] * featuresOffset[ic];
                     }
                 }
