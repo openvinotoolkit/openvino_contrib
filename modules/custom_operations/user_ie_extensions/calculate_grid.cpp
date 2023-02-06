@@ -49,7 +49,7 @@ bool CalculateGrid::evaluate(ov::TensorVector& outputs, const ov::TensorVector& 
     }
 
     int i = 0;
-    for (const auto it : outPos) {
+    for (const auto& it : outPos) {
         out[i * 3] = 0.5f + std::get<0>(it);
         out[i * 3 + 1] = 0.5f + std::get<1>(it);
         out[i * 3 + 2] = 0.5f + std::get<2>(it);
