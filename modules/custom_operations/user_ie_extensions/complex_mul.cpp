@@ -36,7 +36,7 @@ bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::Tensor
     // x2 = x_r * y_i + x_i * y_r
     if (channels0 == channels1)
         ov::parallel_for(channels0 * batch, [&](size_t ch) {
-            for (int i = 0; i < spatialSize; ++i) {
+            for (size_t i = 0; i < spatialSize; ++i) {
                     int outIdx = (ch * spatialSize + i) * 2;
                     float real0 = inp0[outIdx];
                     float imag0 = inp0[outIdx + 1];
@@ -49,7 +49,7 @@ bool ComplexMultiplication::evaluate(ov::TensorVector& outputs, const ov::Tensor
     else if (channels1 == 1)
         ov::parallel_for(channels0 * batch, [&](size_t ch) {
             int b = ch / channels0;
-            for (int i = 0; i < spatialSize; ++i) {
+            for (size_t i = 0; i < spatialSize; ++i) {
                 int outIdx = (ch * spatialSize + i) * 2;
                 int inpIdx = (b * spatialSize + i) * 2;
                 float real0 = inp0[outIdx];
