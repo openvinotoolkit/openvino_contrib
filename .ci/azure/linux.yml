@@ -175,6 +175,7 @@ jobs:
   - script: |
       . $(SETUPVARS)
       source  $(WORK_DIR)/.env3/bin/activate
-      python -m pytest tests/run_tests.py
+    # need to enable sparse_conv tests with new Open3D release
+      python -m pytest -k "not sparse_conv" tests/run_tests.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations
     displayName: 'Custom ops tests'
