@@ -12,7 +12,6 @@ addIeTargetTest(
                 openvino_arm_cpu_plugin
         LINK_LIBRARIES
                 arm_compute::arm_compute
-                arm_compute::arm_compute_core
                 arm_compute::half
                 openvino_arm_cpu_transformations
                 openvino_arm_cpu_opset
@@ -20,8 +19,8 @@ addIeTargetTest(
                 openvino::funcSharedTests
                 openvino::lptNgraphFunctions
         INCLUDES
-        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/transformations"
-        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/opset"
+                "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/transformations"
+                "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/src/opset"
         ADD_CPPLINT
         LABELS
                 ARM
