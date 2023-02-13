@@ -5,7 +5,7 @@
 #pragma once
 
 #include "memory_manager/model/cuda_memory_model.hpp"
-#include "memory_manager/model/details/cuda_memory_solver.hpp"
+#include "memory_solver.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

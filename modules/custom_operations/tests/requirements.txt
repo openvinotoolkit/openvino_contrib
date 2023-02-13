@@ -1,0 +1,4 @@
+torch==1.13.1
+# open3d==0.16.0 - need to update with new release
+tensorboard
+pytest

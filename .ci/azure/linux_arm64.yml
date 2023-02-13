@@ -5,7 +5,6 @@ trigger:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 pr:
@@ -15,7 +14,6 @@ pr:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 resources:
@@ -150,10 +148,11 @@ jobs:
         -DOpenCV_DIR=$(INSTALL_OPENCV)/cmake
         -DENABLE_OPENCV=OFF
         -DENABLE_PYTHON=OFF
-        -DENABLE_INTEL_MYRIAD_COMMON=OFF
         -DENABLE_OV_TF_FRONTEND=OFF
         -DENABLE_OV_ONNX_FRONTEND=OFF
         -DENABLE_OV_PADDLE_FRONTEND=OFF
+        -DENABLE_OV_TF_LITE_FRONTEND=OFF
+        -DENABLE_OV_PYTORCH_FRONTEND=OFF
         -DENABLE_TESTS=ON
         -DENABLE_GAPI_TESTS=OFF
         -DENABLE_GAPI_PREPROCESSING=OFF

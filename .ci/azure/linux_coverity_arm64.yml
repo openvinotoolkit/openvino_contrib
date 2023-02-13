@@ -5,7 +5,6 @@ trigger:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 pr:
@@ -15,7 +14,6 @@ pr:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 resources:
@@ -103,6 +101,7 @@ jobs:
       # Move jdk into contrib
       sudo apt --assume-yes install openjdk-11-jdk
       # Speed up build
+      sudo apt -y --no-install-recommends install unzip
       wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
       unzip ninja-linux.zip
       sudo cp -v ninja /usr/local/bin/
@@ -137,10 +136,11 @@ jobs:
         -DCMAKE_TOOLCHAIN_FILE=$(OPENVINO_REPO_DIR)/cmake/arm64.toolchain.cmake
         -DOpenCV_DIR=$(BUILD_DIR_OPENCV)/install/lib/cmake/opencv4
         -DENABLE_FASTER_BUILD=ON
-        -DENABLE_INTEL_MYRIAD_COMMON=OFF
         -DENABLE_OV_TF_FRONTEND=OFF
         -DENABLE_OV_ONNX_FRONTEND=OFF
         -DENABLE_OV_PADDLE_FRONTEND=OFF
+        -DENABLE_OV_TF_LITE_FRONTEND=OFF
+        -DENABLE_OV_PYTORCH_FRONTEND=OFF
         -DENABLE_STRICT_DEPENDENCIES=OFF
         -DENABLE_REQUIREMENTS_INSTALL=OFF
         $(OPENVINO_REPO_DIR)

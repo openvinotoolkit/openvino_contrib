@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Intel Corporation
+# Copyright (C) 2021-2023 Intel Corporation
 
 FROM openvino/model_server:2021.4.1-gpu
 USER root 

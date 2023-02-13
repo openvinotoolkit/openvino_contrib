@@ -1,4 +1,4 @@
-// Copyright (C) 2022 Intel Corporation
+// Copyright (C) 2022-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -10,7 +10,6 @@
 #include <gsl/span_ext>
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
-#include <ngraph/variant.hpp>
 #include <openvino/op/matmul.hpp>
 #include <openvino/op/transpose.hpp>
 

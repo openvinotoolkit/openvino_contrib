@@ -24,21 +24,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-11', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
+        os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Clone OpenVINO Contrib
-        uses: actions/checkout@v3
-        with:
-          submodules: true
-
-      - name: Clone OpenVINO
-        uses: actions/checkout@v3
-        with:
-          repository: 'ilya-lavrenov/openvino'
-          ref: windows-arm-build
-          path: openvino
-          submodules: true
+      - name: Clone OpenVINO with cache
+        run: |
+          git clone https://github.com/openvinotoolkit/openvino.git --reference-if-able $GITHUB_WORKSPACE/submodule_cache
+          cd $GITHUB_WORKSPACE/openvino && git submodule update --reference $GITHUB_WORKSPACE/submodule_cache
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -58,34 +50,49 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::Define cmake arguments"
-          if [[ "$RUNNER_OS" == "Linux" ]] ; then
-            cmake_args=("-DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/openvino/cmake/arm64.toolchain.cmake")
+          if [[ "$RUNNER_OS" == "macOS" ]] ; then
+            cmake_args=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
             cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
-            build_jobs=12
-          elif [[ "$RUNNER_OS" == "Windows" ]] ; then
-            cmake_args=(-A ARM64 -DBUILD_arm_plugin=OFF)
-            build_jobs=6
-          elif [[ "$RUNNER_OS" == "macOS" ]] ; then
-            cmake_args=(-DCMAKE_OSX_ARCHITECTURES=arm64)
-            cmake_args+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
-            cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
-            build_jobs=2
           fi
-          echo "build_jobs=$build_jobs" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
 
-          echo "build_jobs=$build_jobs"
-          echo "cmake_args=${cmake_args[@]}"
+          echo "::group::Clean ccache stats"
+          ccache --zero-stats --max-size=50G --show-config
           echo "::endgroup::"
 
           echo "::group::CMake configure"
           cmake "${cmake_args[@]}" \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
-            -DENABLE_INTEL_MYRIAD_COMMON=OFF \
-            -DOPENVINO_EXTRA_MODULES="$GITHUB_WORKSPACE/modules/arm_plugin" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DENABLE_PYTHON=ON \
+            -DENABLE_WHEEL=ON \
+            -DENABLE_TESTS=ON \
             -S "$GITHUB_WORKSPACE/openvino" \
             -B "$GITHUB_WORKSPACE/build"
           echo "::endgroup::"
 
-      - name: CMake build
-        run: cmake --build "$GITHUB_WORKSPACE/build" --parallel ${{ steps.cmake-configure.outputs.build_jobs }} --config Release
+      - name: CMake build & install
+        run: |
+          echo "::group::Cmake build logs"
+          cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release
+          cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install"
+          echo "::endgroup::"
+
+          echo "::group::Show ccache stats"
+          ccache --show-stats
+          echo "::endgroup::"
+
+      - name: 'Install wheel packages'
+        run: cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" --component python_wheels
+      
+      - name: 'Install Python wheels'
+        run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
+
+      - name: Run core tests
+        run:
+          cd "$GITHUB_WORKSPACE/install"
+          source setupvars.sh
+          ./tests/ov_core_unit_tests
+

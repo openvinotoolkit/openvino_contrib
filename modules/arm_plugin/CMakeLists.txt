@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
@@ -18,14 +18,14 @@ endif()
 
 include(cmake/features.cmake)
 
+set(CMAKE_CXX_STANDARD 14)
+
 add_subdirectory(thirdparty)
 add_subdirectory(src)
 
 if(ENABLE_TESTS)
     include(CTest)
     enable_testing()
-
-    disable_deprecated_warnings()
 
     if(ENABLE_FUNCTIONAL_TESTS)
         add_subdirectory(tests/functional)

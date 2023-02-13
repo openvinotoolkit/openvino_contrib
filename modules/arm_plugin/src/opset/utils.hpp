@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -6,7 +6,6 @@
 
 #include <ie_common.h>
 #include <ngraph/node.hpp>
-#include <ngraph/variant.hpp>
 #include "arm_compute/core/QuantizationInfo.h"
 #include "arm_compute/core/Types.h"
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -96,8 +96,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::v8::ArmMax
 struct NEPoolingLayerQI final: public arm_compute::IFunction {
 public:
     NEPoolingLayerQI(std::shared_ptr<arm_compute::IMemoryManager> memory_manager = nullptr):
-        _memory_manager(memory_manager), _memory_group{std::make_unique<arm_compute::MemoryGroup>(memory_manager)},
-        _i_sgn(nullptr), _pool(nullptr), _input(nullptr), _ip(nullptr), _inputqi(), _output(nullptr), _qi(nullptr), _outputqi() {}
+        _memory_manager(memory_manager), _memory_group{std::make_unique<arm_compute::MemoryGroup>(memory_manager)} {}
     NEPoolingLayerQI(const NEPoolingLayerQI &) = delete;
     NEPoolingLayerQI &operator=(const NEPoolingLayerQI &) = delete;
     NEPoolingLayerQI(NEPoolingLayerQI &&) = delete;
@@ -111,8 +110,8 @@ public:
         _input = input;
         arm_compute::ITensor *conv_input = input;
         _ip = ip;
-        if (output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _input->info()->data_type() == arm_compute::DataType::QASYMM8 ||
-            output->info()->data_type() == arm_compute::DataType::QASYMM8 && _input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+        if ((output->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED && _input->info()->data_type() == arm_compute::DataType::QASYMM8) ||
+            (output->info()->data_type() == arm_compute::DataType::QASYMM8 && _input->info()->data_type() == arm_compute::DataType::QASYMM8_SIGNED)) {
             _i_sgn = std::make_unique<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel>();
             _memory_group->manage(&_inputqi);
             _inputqi.allocator()->init(*(_input->info()));
@@ -152,8 +151,8 @@ public:
                                         const arm_compute::QuantizationInfo *ip, const arm_compute::QuantizationInfo *qi) {
         ARM_COMPUTE_RETURN_ERROR_ON_NULLPTR(input, output);
         arm_compute::TensorInfo vld_input(*input);
-        if (output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8 ||
-            output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED) {
+        if ((output->data_type() == arm_compute::DataType::QASYMM8_SIGNED && input->data_type() == arm_compute::DataType::QASYMM8) ||
+            (output->data_type() == arm_compute::DataType::QASYMM8 && input->data_type() == arm_compute::DataType::QASYMM8_SIGNED)) {
             vld_input.set_data_type(output->data_type());
             float scale = 1.f;
             std::int32_t offset = output->data_type() == arm_compute::DataType::QASYMM8 ? 128 : -128;
@@ -197,11 +196,11 @@ public:
 protected:
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
     std::unique_ptr<arm_compute::MemoryGroup> _memory_group;
-    const arm_compute::QuantizationInfo *_ip;
-    arm_compute::ITensor *_input;
+    const arm_compute::QuantizationInfo *_ip = nullptr;
+    arm_compute::ITensor *_input = nullptr;
     arm_compute::Tensor _inputqi;
-    const arm_compute::QuantizationInfo *_qi;
-    arm_compute::ITensor *_output;
+    const arm_compute::QuantizationInfo *_qi = nullptr;
+    arm_compute::ITensor *_output = nullptr;
     arm_compute::Tensor _outputqi;
     std::unique_ptr<arm_compute::cpu::kernels::CpuConvertQuantizedSignednessKernel> _i_sgn;
     std::unique_ptr<arm_compute::NEPoolingLayer> _pool;

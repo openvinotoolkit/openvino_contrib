@@ -1,10 +1,8 @@
-# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) 2020-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 
 set(TARGET_NAME "openvino_arm_cpu_plugin")
-
-set(CMAKE_CXX_STANDARD 14)
 
 add_subdirectory(transformations)
 add_subdirectory(opset)
@@ -40,11 +38,13 @@ target_include_directories(${TARGET_NAME} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
         "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/include")
 
+target_include_directories(${TARGET_NAME} INTERFACE
+        "${IE_MAIN_ARM_PLUGIN_SOURCE_DIR}/thirdparty/external_kernels/ncnn")
 target_link_libraries(${TARGET_NAME} PRIVATE
+        openvino_arm_cpu_external_kernels
         openvino_arm_cpu_transformations
         openvino_arm_cpu_opset
         arm_compute::arm_compute
-        arm_compute::arm_compute_core
         arm_compute::half
         openvino::ngraph_reference
         openvino::util)

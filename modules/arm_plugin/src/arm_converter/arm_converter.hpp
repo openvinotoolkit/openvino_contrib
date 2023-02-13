@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -93,7 +93,9 @@ struct Argument<Tensor*> {
         _tensor{tensor} {
         _tensor->_notPaddedTensor = std::make_unique<arm_compute::Tensor>();
     }
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value ||
+                                    std::is_same<ngraph::float16, T>::value ||
+                                    std::is_same<ngraph::bfloat16, T>::value>>
     operator T*() {
         if (_tensor->_tensor->info()->has_padding()) {
             return static_cast<T*>(static_cast<void*>(_tensor->_notPaddedTensor->buffer()));
@@ -102,7 +104,9 @@ struct Argument<Tensor*> {
         }
     }
 
-    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value || std::is_same<ngraph::float16, T>::value>>
+    template<typename T, typename = std::enable_if_t<std::is_arithmetic<T>::value ||
+                                                     std::is_same<ngraph::float16, T>::value ||
+                                                     std::is_same<ngraph::bfloat16, T>::value>>
     operator const T*() const {
         return const_cast<Argument<Tensor*>*>(this)->operator T*();
     }
@@ -142,16 +146,16 @@ struct Layer {
     std::string                                 _execType;
 };
 
-static std::size_t GetNodeId(const ngraph::Input<const ngraph::Node>& input) {
+inline std::size_t GetNodeId(const ngraph::Input<const ngraph::Node>& input) {
     return input.get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
+inline std::size_t GetNodeId(const std::vector<ngraph::Input<const ngraph::Node>>& inputs) {
     return inputs.front().get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const ngraph::Output<const ngraph::Node>& output) {
+inline std::size_t GetNodeId(const ngraph::Output<const ngraph::Node>& output) {
     return output.get_node()->get_instance_id();
 }
-static std::size_t GetNodeId(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
+inline std::size_t GetNodeId(const std::vector<ngraph::Output<const ngraph::Node>>& outputs) {
     return outputs.front().get_node()->get_instance_id();
 }
 
@@ -325,21 +329,11 @@ struct Converter {
 
         template<std::size_t I>
         Argument<Tensor*> MakeArgument(ngraph::Input<const ngraph::Node>& input) {
-            auto type = ngraph::element::from<
-                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
-            if (input.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same " << input << " " << type;
-            }
             return {_converter._layers.at(input.get_node()->get_instance_id())._inputs.at(input), ArgumentType::Input};
         }
 
         template<std::size_t I>
         Argument<Tensor*> MakeArgument(ngraph::Output<const ngraph::Node>& output) {
-            auto type = ngraph::element::from<
-                std::remove_const_t<std::remove_pointer_t<std::decay_t<typename FunctionArgument<I, std::decay_t<Callable>>::type>>>>();
-            if (output.get_element_type() != type) {
-                IE_THROW() << "Argument types should be the same " << output << " " << type;
-            }
             return {&(_converter._layers.at(output.get_node()->get_instance_id())._outputs.at(output)), ArgumentType::Output};
         }
 
@@ -491,11 +485,11 @@ struct ConversionArg<std::vector<ngraph::Output<const ngraph::Node>>&> {
 #define AP_WRAP(MAKE, F) [&](auto ... v) {return MAKE(F<decltype(v)...>);}
 
 template<typename IO>
-static auto get_element_type(const IO& io) {
+inline auto get_element_type(const IO& io) {
     return io.get_element_type();
 }
 
-static auto get_element_type(const ngraph::element::Type& type) {
+inline auto get_element_type(const ngraph::element::Type& type) {
     return type;
 }
 
@@ -506,7 +500,7 @@ auto CallSwitchPT(std::tuple<int, PT...>, F&& f) {
 
 template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... TRest>
 [[noreturn]] ReturnT CallSwitchPT(std::tuple<int, PT...>, std::tuple<int>, F&& f, const IO& io, TRest ... args) {
-    IE_THROW() << "Unsupported Type: " << io;
+    IE_THROW() << "Arm Plugin (CallSwitchPT): Unsupported Type: " << io;
 }
 
 template<typename ReturnT, typename ... PT, typename F, typename IO, typename ... T, typename ... TRest>
@@ -537,8 +531,9 @@ template<typename ...T0, typename ...T1>
 constexpr static std::tuple<T0..., T1...> merge(std::tuple<T0...>, std::tuple<T1...>) {return {};}
 
 constexpr static auto boolType = std::tuple<bool>{};
-constexpr static auto intTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t>{};
+constexpr static auto intTypes = std::tuple<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t, std::int64_t, std::uint64_t>{};
 constexpr static auto indexTypes = std::tuple<std::int32_t, std::int64_t>{};
 constexpr static auto floatTypes = std::tuple<ngraph::float16, float, double>{};
+constexpr static auto bfloatType = std::tuple<ngraph::bfloat16>{};
 constexpr static auto allTypes = merge(intTypes, floatTypes);
 }  //  namespace ArmPlugin

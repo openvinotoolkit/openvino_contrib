@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,7 +18,7 @@
 
 namespace ArmPlugin {
 
-class Plugin;
+struct Plugin;
 
 struct ExecutableNetwork : public InferenceEngine::ExecutableNetworkThreadSafeDefault {
     ExecutableNetwork(const std::shared_ptr<const ov::Model>&  model,

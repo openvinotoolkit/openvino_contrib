@@ -1,4 +1,4 @@
-// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) 2020-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 
 
@@ -110,7 +110,7 @@ template<> Converter::Conversion::Ptr Converter::Convert(const opset::IDFT& node
 struct NEFFT1Ds2 final: public arm_compute::IFunction {
 public:
     NEFFT1Ds2(const std::shared_ptr<arm_compute::IMemoryManager>& memory_manager):
-        _memory_manager(memory_manager), _fft(), _input(nullptr), _output(nullptr), _input2c(), _output2c() {}
+        _memory_manager(memory_manager) {}
     NEFFT1Ds2(const NEFFT1Ds2 &) = delete;
     NEFFT1Ds2 &operator=(const NEFFT1Ds2 &) = delete;
     NEFFT1Ds2(NEFFT1Ds2 &&) = delete;
@@ -148,8 +148,8 @@ protected:
         return arm_compute::TensorInfo(shape, num_channels, t_info->data_type());
     }
     std::shared_ptr<arm_compute::IMemoryManager> _memory_manager;
-    const arm_compute::ITensor *_input;
-    arm_compute::ITensor *_output;
+    const arm_compute::ITensor *_input = nullptr;
+    arm_compute::ITensor *_output = nullptr;
     arm_compute::Tensor                          _input2c;
     arm_compute::Tensor                          _output2c;
     std::unique_ptr<arm_compute::NEFFT1D>        _fft;
