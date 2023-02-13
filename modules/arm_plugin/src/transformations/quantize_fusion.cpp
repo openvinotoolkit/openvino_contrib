@@ -13,7 +13,6 @@
 #include <ie_algorithm.hpp>
 
 #include <ngraph/rt_info.hpp>
-#include <ngraph/variant.hpp>
 #include <ov_ops/type_relaxed.hpp>
 
 #include "opset/opset.hpp"
