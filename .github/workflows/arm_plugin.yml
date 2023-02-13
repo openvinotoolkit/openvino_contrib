@@ -72,6 +72,10 @@ jobs:
         run: |
           sudo "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
 
+      - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+        id: cpu-cores
+
       - name: CMake configure
         id: cmake-configure
         run: |
@@ -107,7 +111,7 @@ jobs:
           echo "::group::Cmake build logs"
           export CCACHE_DIR="$GITHUB_WORKSPACE/build_cache"
           export CCACHE_MAXSIZE=10G
-          cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release || exit 1
+          cmake --build "$GITHUB_WORKSPACE/build" --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
           cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" || exit 1
           echo "::endgroup::"
 
