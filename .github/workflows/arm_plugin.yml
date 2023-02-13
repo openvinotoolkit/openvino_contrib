@@ -31,7 +31,8 @@ jobs:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
         run: |
-          git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/openvino_cache
+          rm -fr openvino
+          git clone --reference /Users/sandye51/actions-runner/openvino_cache https://github.com/openvinotoolkit/openvino.git
           cd $GITHUB_WORKSPACE/openvino && \
              git submodule init && \
              git submodule update --reference /Users/sandye51/actions-runner/submodules_cache
@@ -89,10 +90,13 @@ jobs:
           cmake "${cmake_args[@]}" \
             -DENABLE_TESTS=ON \
             -DENABLE_CPPLINT=OFF \
+            -DENABLE_NCC_STYLE=OFF \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
+            -DENABLE_OV_PADDLE_FRONTEND=OFF \
+            -DENABLE_OV_ONNX_FRONTEND=OFF \
             -DENABLE_TESTS=ON \
             -S "$GITHUB_WORKSPACE/openvino" \
             -B "$GITHUB_WORKSPACE/build"
