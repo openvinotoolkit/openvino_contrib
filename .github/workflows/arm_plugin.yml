@@ -30,6 +30,7 @@ jobs:
       - name: Clone OpenVINO with cache
         if: matrix.os == 'self-hosted'
         run: |
+          rm -fr openvino
           git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/submodule_cache
           cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference /Users/sandye51/actions-runner/submodule_cache
 
@@ -55,7 +56,7 @@ jobs:
       - name: Install build dependencies
         if: runner.os == 'Linux'
         run: |
-          "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
+          sudo "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
 
       - name: CMake configure
         id: cmake-configure
