@@ -31,8 +31,8 @@ jobs:
         if: matrix.os == 'self-hosted'
         run: |
           rm -fr openvino
-          git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/submodule_cache
-          cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference /Users/sandye51/actions-runner/submodule_cache
+          git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/submodules_cache
+          cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference /Users/sandye51/actions-runner/submodules_cache
 
       - name: Clone OpenVINO
         if: matrix.os != 'self-hosted'
@@ -52,6 +52,15 @@ jobs:
             openvino/src/frontends/paddle/tests/requirements.txt
             openvino/src/frontends/onnx/tests/requirements.txt
             openvino/src/frontends/tensorflow/tests/requirements.txt
+
+      - name: Install python dependencies
+        run: |
+            python3 -m pip install -r openvino/src/bindings/python/wheel/requirements-dev.txt
+            python3 -m pip install -r openvino/src/bindings/python/requirements.txt
+            python3 -m pip install -r openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+            python3 -m pip install -r openvino/src/frontends/paddle/tests/requirements.txt
+            python3 -m pip install -r openvino/src/frontends/onnx/tests/requirements.txt
+            python3 -m pip install -r openvino/src/frontends/tensorflow/tests/requirements.txt
 
       - name: Install build dependencies
         if: runner.os == 'Linux'
