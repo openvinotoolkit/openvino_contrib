@@ -129,4 +129,4 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/install"
           source setupvars.sh
-          ./tests/ov_core_unit_tests
+          $GITHUB_WORKSPACE/install/tests/ov_core_unit_tests
