@@ -21,7 +21,11 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: macos-arm64
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['self-hosted', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
