@@ -21,20 +21,16 @@ jobs:
     defaults:
       run:
         shell: bash
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-arm64
     steps:
       - name: Clone OpenVINO with cache
-        if: runner.os == 'Linux'
+        if: runner.os == 'macOS'
         run: |
-          git clone https://github.com/openvinotoolkit/openvino.git --reference-if-able $GITHUB_WORKSPACE/submodule_cache
+          git clone https://github.com/openvinotoolkit/openvino.git --reference $GITHUB_WORKSPACE/submodule_cache
           cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference $GITHUB_WORKSPACE/submodule_cache
 
       - name: Clone OpenVINO
-        if: runner.os != 'Linux'
+        if: runner.os != 'macOS'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git
           cd $GITHUB_WORKSPACE/openvino && git submodule update --init
