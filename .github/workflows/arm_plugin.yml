@@ -126,7 +126,7 @@ jobs:
         run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
 
       - name: Run core tests
-        run:
+        run: |
           cd "$GITHUB_WORKSPACE/install"
           source setupvars.sh
           ./tests/ov_core_unit_tests
