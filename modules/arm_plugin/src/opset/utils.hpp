@@ -6,7 +6,6 @@
 
 #include <ie_common.h>
 #include <ngraph/node.hpp>
-#include <ngraph/variant.hpp>
 #include "arm_compute/core/QuantizationInfo.h"
 #include "arm_compute/core/Types.h"
 
