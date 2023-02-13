@@ -31,9 +31,10 @@ jobs:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
         run: |
-          rm -fr openvino
-          git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/submodules_cache
-          cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference /Users/sandye51/actions-runner/submodules_cache
+          git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/openvino_cache
+          cd $GITHUB_WORKSPACE/openvino && \
+             git submodule init && \
+             git submodule update --reference /Users/sandye51/actions-runner/submodules_cache
 
       - name: Clone OpenVINO
         if: runner.os != 'macOS'
@@ -100,8 +101,10 @@ jobs:
       - name: CMake build & install
         run: |
           echo "::group::Cmake build logs"
-          cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release
-          cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install"
+          export CCACHE_DIR="$GITHUB_WORKSPACE/build_cache"
+          export CCACHE_MAXSIZE=10G
+          cmake --build "$GITHUB_WORKSPACE/build" --parallel --config Release || exit 1
+          cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" || exit 1
           echo "::endgroup::"
 
           echo "::group::Show ccache stats"
@@ -110,7 +113,7 @@ jobs:
 
       - name: 'Install wheel packages'
         run: cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" --component python_wheels
-      
+
       - name: 'Install Python wheels'
         run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
 
