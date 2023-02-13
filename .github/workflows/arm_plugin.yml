@@ -21,21 +21,21 @@ jobs:
     defaults:
       run:
         shell: bash
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ['self-hosted', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ${{ matrix.os }}
+    # strategy:
+    #   fail-fast: false
+    #   matrix:
+    #     os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
+    runs-on: ['self-hosted', 'macOS']
     steps:
       - name: Clone OpenVINO with cache
-        if: matrix.os == 'self-hosted'
+        if: runner.os == 'macOS'
         run: |
           rm -fr openvino
           git clone https://github.com/openvinotoolkit/openvino.git --reference /Users/sandye51/actions-runner/submodules_cache
           cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference /Users/sandye51/actions-runner/submodules_cache
 
       - name: Clone OpenVINO
-        if: matrix.os != 'self-hosted'
+        if: runner.os != 'macOS'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git
           cd $GITHUB_WORKSPACE/openvino && git submodule update --init
@@ -55,6 +55,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
+            python3 -m pip install -U pip
             python3 -m pip install -r openvino/src/bindings/python/wheel/requirements-dev.txt
             python3 -m pip install -r openvino/src/bindings/python/requirements.txt
             python3 -m pip install -r openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
