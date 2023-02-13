@@ -28,23 +28,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Clone OpenVINO with cache
+        if: runner.os == 'Linux'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git --reference-if-able $GITHUB_WORKSPACE/submodule_cache
-          cd $GITHUB_WORKSPACE/openvino && git submodule update --reference $GITHUB_WORKSPACE/submodule_cache
+          cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference $GITHUB_WORKSPACE/submodule_cache
+
+      - name: Clone OpenVINO
+        if: runner.os != 'Linux'
+        run: |
+          git clone https://github.com/openvinotoolkit/openvino.git
+          cd $GITHUB_WORKSPACE/openvino && git submodule update --init
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Setup scons
-        run: python3 -m pip install scons
-
-      - name: Install cross-compiler
+      - name: Install build dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y crossbuild-essential-arm64
+          "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
 
       - name: CMake configure
         id: cmake-configure
@@ -95,4 +98,3 @@ jobs:
           cd "$GITHUB_WORKSPACE/install"
           source setupvars.sh
           ./tests/ov_core_unit_tests
-
