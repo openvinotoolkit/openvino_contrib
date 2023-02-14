@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           rm -fr openvino
-          git clone --reference /Users/sandye51/actions-runner/openvino_cache https://github.com/openvinotoolkit/openvino.git
+          git clone --reference /Users/sandye51/actions-runner/openvino.reference/ https://github.com/openvinotoolkit/openvino.git
           cd $GITHUB_WORKSPACE/openvino && \
              git submodule init && \
              git submodule update --reference /Users/sandye51/actions-runner/submodules_cache
