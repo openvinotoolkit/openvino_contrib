@@ -83,7 +83,7 @@ jobs:
           # For running ONNX frontend unit tests
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/src/frontends/onnx/tests/requirements.txt"
           # For running TensorFlow frontend unit tests
-          python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/src/frontends/tensorflow/tests/requirements.txt"
+          # python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/src/frontends/tensorflow/tests/requirements.txt"
 
       - name: Install MO dependencies
         run: |
@@ -91,7 +91,7 @@ jobs:
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_caffe.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_kaldi.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_onnx.txt"
-          python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_tf2.txt"
+          # python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_tf2.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_dev.txt"
 
       - name: Install build dependencies
