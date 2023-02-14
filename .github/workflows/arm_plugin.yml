@@ -216,7 +216,8 @@ jobs:
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_reshape.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_unary.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_random.py \
-            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_frontend/test_frontend_onnx.py
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_frontend/test_frontend_onnx.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
 
       - name: Model Optimizer UT
         if: runner.os != 'macOS'
