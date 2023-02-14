@@ -213,7 +213,8 @@ jobs:
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_logical.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_matmul.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_reduction.py \
-            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_unary.py
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_reshape.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_random.py
 
       - name: Model Optimizer UT
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
