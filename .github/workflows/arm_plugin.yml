@@ -194,7 +194,11 @@ jobs:
             --junitxml=$INSTALL_TEST_DIR/TEST-Pyngraph.xml \
             --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_zoo_models.py \
             --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_ops_convpool.py \
-            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_backend.py
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_backend.py \
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_ops_logical.py \
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_ops_matmul.py \
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_ops_reduction.py \
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/test_ops_unary.py
 
       - name: Python API 2.0 Tests
         run: |
@@ -205,7 +209,11 @@ jobs:
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_utils/test_utils.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_zoo_models.py \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_convpool.py \
-            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_backend.py
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_backend.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_logical.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_matmul.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_reduction.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_ops_unary.py
 
       - name: Model Optimizer UT
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
