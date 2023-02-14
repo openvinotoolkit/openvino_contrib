@@ -80,7 +80,7 @@ jobs:
             openvino/src/bindings/python/wheel/requirements-dev.txt
             openvino/src/bindings/python/requirements.txt
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-            openvino/src/frontends/paddle/tests/requirements.txt
+            # openvino/src/frontends/paddle/tests/requirements.txt
             openvino/src/frontends/onnx/tests/requirements.txt
             openvino/src/frontends/tensorflow/tests/requirements.txt
 
