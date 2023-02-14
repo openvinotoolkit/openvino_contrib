@@ -227,59 +227,97 @@ jobs:
       #
 
       - name: OpenVINO Core unit tests
-        run: $INSTALL_TEST_DIR/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-NGraphUT.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_core_unit_tests" --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-NGraphUT.xml
 
       - name: OpenVINO Inference functional tests
-        run: $INSTALL_TEST_DIR/ov_inference_functional_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceFunc.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_inference_functional_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceFunc.xml
 
       - name: OpenVINO Inference unit tests
-        run: $INSTALL_TEST_DIR/ov_inference_unit_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceUnit.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_inference_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceUnit.xml
 
       - name: Low Precision Transformations Tests
-        run: $INSTALL_TEST_DIR/ov_lp_transformations_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-LpTransformations.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_lp_transformations_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-LpTransformations.xml
 
       - name: OpenVINO Conditional compilation tests
-        run: $INSTALL_TEST_DIR/ov_conditional_compilation_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ConditionalCompilation.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_conditional_compilation_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ConditionalCompilation.xml
 
       - name: IR frontend tests
-        run: $INSTALL_TEST_DIR/ov_ir_frontend_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-IRFrontend.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-IRFrontend.xml
 
       - name: PaddlePaddle frontend tests
         if: runner.os != 'macOS'
-        run: $INSTALL_TEST_DIR/paddle_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-PaddleTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/paddle_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-PaddleTests.xml
 
       - name: ONNX frontend tests
-        run: $INSTALL_TEST_DIR/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ONNXFrontend.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_onnx_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ONNXFrontend.xml
 
       - name: TensorFlow Common tests
-        run: $INSTALL_TEST_DIR/ov_tensorflow_common_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml
 
       - name: TensorFlow frontend tests
-        run: $INSTALL_TEST_DIR/ov_tensorflow_frontend_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
-        run: $INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml
 
       - name: Transformations Tests
-        run: $INSTALL_TEST_DIR/ov_transformations_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-Transformations.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_transformations_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-Transformations.xml
 
       - name: Common test utils tests
-        run: $INSTALL_TEST_DIR/commonUtilsTests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/commonUtilsTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml
 
       - name: CPU plugin unit tests
-        run: $INSTALL_TEST_DIR/ov_cpu_unit_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_cpu_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml
 
       - name: GNA plugin unit tests
-        run: $INSTALL_TEST_DIR/ov_gna_unit_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_gna_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml
 
       - name: MULTI / AUTO plugin unit tests
-        run: $INSTALL_TEST_DIR/ieMultiPluginUnitTests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-MultiAutoUnitTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ieMultiPluginUnitTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-MultiAutoUnitTests.xml
 
       - name: Template plugin tests
-        run: $INSTALL_TEST_DIR/ov_template_func_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
 
       - name: Inference Engine C API tests
-        run: $INSTALL_TEST_DIR/InferenceEngineCAPITests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
 
       - name: OpenVINO C API tests
-        run: $INSTALL_TEST_DIR/ov_capi_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml
+        run: |
+          "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_capi_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml
