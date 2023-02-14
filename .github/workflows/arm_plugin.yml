@@ -35,7 +35,7 @@ jobs:
           git clone --reference /Users/sandye51/actions-runner/openvino.reference/ https://github.com/openvinotoolkit/openvino.git
           cd $GITHUB_WORKSPACE/openvino && \
              git submodule init && \
-             git submodule update --reference /Users/sandye51/actions-runner/submodules_cache
+             git submodule update --reference /Users/sandye51/actions-runner/submodules.reference --jobs 4
 
       - name: Clone OpenVINO
         if: runner.os != 'macOS'
