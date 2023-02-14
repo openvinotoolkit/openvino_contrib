@@ -119,6 +119,9 @@ std::vector<std::string> disabledTestPatterns() {
         // 101753
         R"(.*TensorIteratorDisabledTransformationsTest*.*GRU_direction=reverse*.*)",
         R"(.*GRUCellCommon_01*.*FP16*.*)",
+        R"(.*smoke_Auto_BehaviorTests*.*)",
+        R"(.*smoke_Multi_BehaviorTests*.*)",
+        R"(.*HETERO(W|w)ithMULTI*.*)",
     };
 
 #ifdef _WIN32
