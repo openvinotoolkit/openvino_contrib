@@ -41,6 +41,7 @@ jobs:
       OPENVINO_REFERENCE: /Users/sandye51/actions-runner/openvino.reference/
       OPENVINO_CONTRIB_REFERENCE: /Users/sandye51/actions-runner/openvino_contrib.reference/
       SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
+      OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
 
     steps:
       - name: Clone OpenVINO with cache
