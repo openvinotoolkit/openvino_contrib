@@ -96,8 +96,7 @@ jobs:
 
       - name: Install build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
+        run: sudo "$GITHUB_WORKSPACE/openvino/install_build_dependencies.sh"
 
       #
       # Build
@@ -174,7 +173,7 @@ jobs:
         run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
 
       - name: nGraph and IE Python Bindings Tests
-      - run: |
+        run: |
           python3 -m pytest -s $INSTALL_TEST_DIR/pyngraph \
             --junitxml=$INSTALL_TEST_DIR/TEST-Pyngraph.xml \
             --ignore=$INSTALL_TEST_DIR/pyngraph/tests/test_onnx/test_zoo_models.py \
