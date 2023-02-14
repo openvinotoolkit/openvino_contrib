@@ -125,6 +125,9 @@ jobs:
       - name: 'Install Python wheels'
         run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
 
+      - name: 'Install tests'
+        run: cmake --install "$GITHUB_WORKSPACE/build" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" --component tests
+
       - name: Run core tests
         run: |
           cd "$GITHUB_WORKSPACE/install"
