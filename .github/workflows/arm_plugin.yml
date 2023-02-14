@@ -32,19 +32,20 @@ jobs:
       CCACHE_DIR: /Users/sandye51/actions-runner/build_cache
       CCACHE_MAXSIZE: 10G
       CMAKE_OSX_DEPLOYMENT_TARGET: 11.0
-      INSTALL_DIR: "$GITHUB_WORKSPACE/install"
-      INSTALL_TEST_DIR: "$INSTALL_DIR/tests"
-      SAMPLES_INSTALL_DIR: "$INSTALL_DIR/samples"
-      BUILD_DIR: "$GITHUB_WORKSPACE/build"
+      INSTALL_DIR: "${{ github.workspace }}/install"
+      INSTALL_TEST_DIR: "${{ github.workspace }}/install/tests"
+      SAMPLES_INSTALL_DIR: "${{ github.workspace }}/install/samples"
+      BUILD_DIR: "${{ github.workspace }}/build"
+      OPENVINO_REFERENCE: /Users/sandye51/actions-runner/openvino.reference/
+      SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
+
     steps:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
         run: |
           rm -fr openvino
-          git clone --reference /Users/sandye51/actions-runner/openvino.reference/ https://github.com/openvinotoolkit/openvino.git
-          cd $GITHUB_WORKSPACE/openvino && \
-             git submodule init && \
-             git submodule update --reference /Users/sandye51/actions-runner/submodules.reference --jobs 4
+          git clone --reference $OPENVINO_REFERENCE https://github.com/openvinotoolkit/openvino.git
+          cd $GITHUB_WORKSPACE/openvino && git submodule update --init --reference $SUBMODULES_REFERENCE --jobs 4
 
       - name: Clone OpenVINO
         if: runner.os != 'macOS'
@@ -151,9 +152,9 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$GITHUB_WORKSPACE/install"
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" --component python_wheels
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$GITHUB_WORKSPACE/install" --component tests
+          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR"
+          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component python_wheels
+          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component tests
           echo "::endgroup::"
 
       - name: Build cpp samples
@@ -170,7 +171,7 @@ jobs:
       #
 
       - name: 'Install Python wheels'
-        run: python3 -m pip install openvino-dev --find-links="$GITHUB_WORKSPACE/install/tools"
+        run: python3 -m pip install openvino-dev --find-links="$INSTALL_DIR/tools"
 
       - name: nGraph and IE Python Bindings Tests
         run: |
