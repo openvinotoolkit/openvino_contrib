@@ -87,7 +87,7 @@ jobs:
 
       - name: Install MO dependencies
         run: |
-          python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_mxnet.txt"
+          # python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_mxnet.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_caffe.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_kaldi.txt"
           python3 -m pip install -r "$GITHUB_WORKSPACE/openvino/tools/mo/requirements_onnx.txt"
