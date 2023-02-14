@@ -92,12 +92,12 @@ jobs:
           python3 -m pip install -r "$OPENVINO_REPO/src/bindings/python/requirements.txt"
           # For running Python API tests
           python3 -m pip install -r "$OPENVINO_REPO/src/bindings/python/src/compatibility/openvino/requirements-dev.txt"
-          # For running Paddle frontend unit tests
-          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
           # For running ONNX frontend unit tests
           python3 -m pip install -r "$OPENVINO_REPO/src/frontends/onnx/tests/requirements.txt"
           # For running TensorFlow frontend unit tests
           # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
+          # For running Paddle frontend unit tests
+          # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
 
       - name: Install MO dependencies
         run: |
@@ -138,8 +138,6 @@ jobs:
             -DENABLE_TESTS=ON \
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
-            -DENABLE_OV_ONNX_FRONTEND=OFF \
-            -DENABLE_OV_PADDLE_FRONTEND=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
@@ -194,8 +192,8 @@ jobs:
         run: |
           python3 -m pytest -s $INSTALL_TEST_DIR/pyngraph \
             --junitxml=$INSTALL_TEST_DIR/TEST-Pyngraph.xml \
-            --ignore=$INSTALL_TEST_DIR/pyngraph/tests_compatibility/test_onnx/ \
-            --ignore=$INSTALL_TEST_DIR/pyngraph/tests/test_onnx/
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests/test_onnx/test_zoo_models.py \
+            --ignore=$INSTALL_TEST_DIR/pyngraph/tests/test_onnx/test_backend.py
 
       - name: Python API 2.0 Tests
         run: |
@@ -204,7 +202,8 @@ jobs:
           python3 -m pytest -sv $INSTALL_TEST_DIR/pyopenvino \
             --junitxml=$INSTALL_TEST_DIR/TEST-Pyngraph.xml \
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_utils/test_utils.py \
-            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_zoo_models.py \
+            --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_onnx/test_backend.py
 
       - name: Model Optimizer UT
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
@@ -232,6 +231,7 @@ jobs:
         run: $INSTALL_TEST_DIR/ov_ir_frontend_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-IRFrontend.xml
 
       - name: PaddlePaddle frontend tests
+        if: runner.os != 'macOS'
         run: $INSTALL_TEST_DIR/paddle_tests --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-PaddleTests.xml
 
       - name: ONNX frontend tests
