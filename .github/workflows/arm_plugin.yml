@@ -173,9 +173,14 @@ jobs:
 
       - name: Build cpp samples
         run: $SAMPLES_INSTALL_DIR/cpp/build_samples.sh -i $INSTALL_DIR -b $BUILD_DIR/cpp_samples
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
       - name: Build c samples
         run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i $INSTALL_DIR -b $BUILD_DIR/c_samples
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_C_COMPILER_LAUNCHER: ccache
 
       - name: 'Clean build dir'
         run: rm -fr $BUILD_DIR
