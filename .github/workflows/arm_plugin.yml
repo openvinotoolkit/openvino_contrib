@@ -33,11 +33,6 @@ jobs:
           - runner: "macos-arm64"
             container:
               image: sandye64/openvino_manylinux_arm64:latest
-              options: -v /Users/sandye51/actions-runner/openvino.reference/:/opt/openvino.reference \
-                       -v /Users/sandye51/actions-runner/openvino_contrib.reference/:/opt/openvino_contrib.reference \
-                       -v /Users/sandye51/actions-runner/submodules.reference/:/opt/submodules.reference \
-                       -v /Users/sandye51/actions-runner/build_cache_aarch64/:/opt/build_cache_aarch64 \
-                       -v /Users/sandye51/actions-runner/openvino_temp/:/opt/openvino_temp
       fail-fast: false
     runs-on: ['self-hosted', 'macOS']
     container: ${{ matrix.container }}
