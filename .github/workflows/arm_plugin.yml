@@ -134,6 +134,8 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::Define cmake arguments"
+          export CCACHE_DIR=${{ env.CCACHE_DIR }}
+          export CCACHE_MAXSIZE=${{ env.CCACHE_MAXSIZE }}
           if [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
@@ -147,8 +149,6 @@ jobs:
             -DENABLE_TESTS=ON \
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
@@ -159,8 +159,6 @@ jobs:
         env:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
           CMAKE_C_COMPILER_LAUNCHER: ccache
-          CCACHE_DIR: ${{ env.CCACHE_DIR }}
-          CCACHE_MAXSIZE: ${{ env.CCACHE_MAXSIZE }}
 
       - name: CMake build & install
         run: |
