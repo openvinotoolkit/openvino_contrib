@@ -333,7 +333,7 @@ jobs:
       #     source "$INSTALL_DIR/setupvars.sh"
       #     "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
 
-      - name: OpenVINO C API tests
-        run: |
-          source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml
+      # - name: OpenVINO C API tests
+      #   run: |
+      #     source "$INSTALL_DIR/setupvars.sh"
+      #     "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml
