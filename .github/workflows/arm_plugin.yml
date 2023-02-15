@@ -156,6 +156,11 @@ jobs:
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CCACHE_DIR: ${{ env.CCACHE_DIR }}
+          CCACHE_MAXSIZE: ${{ env.CCACHE_MAXSIZE }}
 
       - name: CMake build & install
         run: |
