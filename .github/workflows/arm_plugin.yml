@@ -208,7 +208,7 @@ jobs:
 
       - name: Install Python wheels
         run: |
-          python3 -m pip install openvino-dev --force-reinstall --only-binary --find-links="$INSTALL_DIR/tools"
+          python3 -m pip install openvino-dev --force-reinstall --only-binary :all: --find-links="$INSTALL_DIR/tools"
 
       - name: nGraph and IE Python Bindings Tests
         run: |
