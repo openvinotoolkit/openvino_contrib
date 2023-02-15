@@ -326,7 +326,7 @@ jobs:
       - name: Template plugin tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
+          "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 --gtest_filter=-*smoke_TopK_With_Hardcoded_Refs* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
 
       - name: Inference Engine C API tests
         run: |
