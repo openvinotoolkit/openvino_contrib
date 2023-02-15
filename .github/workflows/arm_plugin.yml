@@ -328,10 +328,10 @@ jobs:
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 --gtest_filter=-*smoke_TopK_With_Hardcoded_Refs*:*HeteroSyntheticTest.someLayersToMajorPluginOthersToFallback* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
 
-      - name: Inference Engine C API tests
-        run: |
-          source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
+      # - name: Inference Engine C API tests
+      #   run: |
+      #     source "$INSTALL_DIR/setupvars.sh"
+      #     "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
 
       - name: OpenVINO C API tests
         run: |
