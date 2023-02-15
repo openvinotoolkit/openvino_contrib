@@ -21,21 +21,12 @@ jobs:
     defaults:
       run:
         shell: bash
-    # strategy:
-    #   matrix:
-    #     os: ['macos-arm64']
-    #     # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    # runs-on: ['self-hosted', 'macOS']
     strategy:
-      matrix:
-        include:
-          # - runner: "macos-arm64"
-          - runner: "macos-arm64"
-            container:
-              image: sandye64/openvino_manylinux_arm64:latest
       fail-fast: false
+      matrix:
+        os: ['macos-arm64']
+        # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'macOS']
-    container: ${{ matrix.container }}
     env:
       BUILD_TYPE: 'Release'
       CCACHE_MAXSIZE: '10G'
@@ -50,16 +41,11 @@ jobs:
       BUILD_DIR: "${{ github.workspace }}/build"
       DATA_PATH: "${{ github.workspace }}/testdata"
       MODELS_PATH: "${{ github.workspace }}/testdata"
-      # OV_TEMP: "/Users/sandye51/actions-runner/openvino_temp"
-      # CCACHE_DIR: "/Users/sandye51/actions-runner/build_cache"
-      # OPENVINO_REFERENCE: "/Users/sandye51/actions-runner/openvino.reference/"
-      # OPENVINO_CONTRIB_REFERENCE: "/Users/sandye51/actions-runner/openvino_contrib.reference/"
-      # SUBMODULES_REFERENCE: "/Users/sandye51/actions-runner/submodules.reference"
-      OV_TEMP: "/opt/openvino_temp"
-      CCACHE_DIR: "/opt/build_cache"
-      OPENVINO_REFERENCE: "/opt/openvino.reference/"
-      OPENVINO_CONTRIB_REFERENCE: "/opt/openvino_contrib.reference/"
-      SUBMODULES_REFERENCE: "/opt/submodules.reference"
+      OV_TEMP: "/Users/sandye51/actions-runner/openvino_temp"
+      CCACHE_DIR: "/Users/sandye51/actions-runner/build_cache"
+      OPENVINO_REFERENCE: "/Users/sandye51/actions-runner/openvino.reference/"
+      OPENVINO_CONTRIB_REFERENCE: "/Users/sandye51/actions-runner/openvino_contrib.reference/"
+      SUBMODULES_REFERENCE: "/Users/sandye51/actions-runner/submodules.reference"
 
     steps:
       - name: Clone OpenVINO with cache
