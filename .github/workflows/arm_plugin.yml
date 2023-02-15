@@ -200,6 +200,7 @@ jobs:
 
       - name: Samples tests
         run: |
+          source "$INSTALL_DIR/setupvars.sh"
           python3 -m pip install -r "$INSTALL_TEST_DIR/smoke_tests/requirements.txt"
           export LD_LIBRARY_PATH=$IE_APP_PATH:$LD_LIBRARY_PATH
           python3 -m pytest "$INSTALL_TEST_DIR/smoke_tests" \
