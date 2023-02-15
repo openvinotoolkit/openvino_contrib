@@ -290,6 +290,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 2 Layer Tests - TF FE
+        if: runner.os != 'macos' # tensorflow-macos issue
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -298,14 +299,14 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - Legacy FE
-        if: ${{ always() }}
+        if: ${{ failure() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
           python3 -m pytest $LAYER_TESTS_INSTALL_DIR/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=$INSTALL_TEST_DIR/TEST-tf_Roll.xmlTEST
 
       - name: TensorFlow 2 Layer Tests - Legacy FE
-        if: ${{ always() }}
+        if: ${{ failure() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -314,7 +315,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow Lite Layer Tests - TFL FE
-        if: ${{ always() }}
+        if: runner.os != 'macos' # not tensorflow.lite
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -323,7 +324,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Complex Python params
-        if: ${{ always() }}
+        if: ${{ failure() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -332,7 +333,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import TF model from memory
-        if: ${{ always() }}
+        if: ${{ failure() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -341,7 +342,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import PyTorch model from memory
-        if: ${{ always() }}
+        if: ${{ failure() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -350,7 +351,6 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: Python Frontend tests
-        if: ${{ always() }}
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           python3 -m pytest $LAYER_TESTS_INSTALL_DIR/py_frontend_tests --junitxml=$INSTALL_TEST_DIR/TEST-test_py_fontend.xml
