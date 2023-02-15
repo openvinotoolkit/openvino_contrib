@@ -52,7 +52,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           rm -fr "$OPENVINO_REPO"
-          git clone --reference "$OPENVINO_REFERENCE" https://github.com/openvinotoolkit/openvino.git
+          git clone --branch tensorflow-macos --reference "$OPENVINO_REFERENCE" https://github.com/ilya-lavrenov/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE" --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
@@ -94,7 +94,7 @@ jobs:
             openvino/src/bindings/python/requirements.txt
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
             openvino/src/frontends/onnx/tests/requirements.txt
-            # openvino/src/frontends/tensorflow/tests/requirements.txt
+            openvino/src/frontends/tensorflow/tests/requirements.txt
             # openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
@@ -108,7 +108,7 @@ jobs:
           # For running ONNX frontend unit tests
           python3 -m pip install -r "$OPENVINO_REPO/src/frontends/onnx/tests/requirements.txt"
           # For running TensorFlow frontend unit tests
-          # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
+          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
           # For running Paddle frontend unit tests
           # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
 
@@ -296,13 +296,11 @@ jobs:
           "$INSTALL_TEST_DIR/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml"
 
       - name: TensorFlow frontend tests
-        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml"
 
       - name: TensorFlow Lite frontend tests
-        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml"
