@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <ngraph/variant.hpp>
 #include "ngraph/coordinate_diff.hpp"
 #include "ngraph_opset.hpp"
 #include "utils.hpp"

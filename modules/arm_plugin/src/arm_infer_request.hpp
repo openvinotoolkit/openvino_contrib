@@ -29,7 +29,7 @@
 
 namespace ArmPlugin {
 
-class ExecutableNetwork;
+struct ExecutableNetwork;
 
 struct ArmInferRequest : public InferenceEngine::IInferRequestInternal {
     using Ptr = std::shared_ptr<ArmInferRequest>;

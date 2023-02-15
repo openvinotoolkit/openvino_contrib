@@ -16,10 +16,8 @@ target_include_directories(${TARGET_NAME} PRIVATE
 
 target_link_libraries(${TARGET_NAME} PRIVATE
         arm_compute::arm_compute
-        arm_compute::arm_compute_core
         arm_compute::half
         openvino::ngraph_reference
-        openvino::util
         openvino::itt
         openvino::runtime::dev)
 

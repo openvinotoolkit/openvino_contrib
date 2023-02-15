@@ -22,16 +22,6 @@ if(ARM_COMPUTE_INCLUDE_DIR OR ARM_COMPUTE_LIB_DIR)
         set_target_properties(arm_compute PROPERTIES
             IMPORTED_LOCATION ${ARM_COMPUTE_LIB}
             INTERFACE_INCLUDE_DIRECTORIES ${ARM_COMPUTE_INCLUDE_DIR})
-        find_library(
-            ARM_COMPUTE_CORE_LIB
-            arm_compute_core-static
-            PATHS ${ARM_COMPUTE_LIB_DIR}
-        )
-        message(STATUS "Found arm_compute_core-static: ${ARM_COMPUTE_CORE_LIB}")
-        add_library(arm_compute_core STATIC IMPORTED GLOBAL)
-        set_target_properties(arm_compute_core PROPERTIES
-            IMPORTED_LOCATION ${ARM_COMPUTE_CORE_LIB}
-            INTERFACE_INCLUDE_DIRECTORIES ${ARM_COMPUTE_INCLUDE_DIR})
     endif()
 
     add_library(half INTERFACE IMPORTED GLOBAL)
@@ -73,10 +63,14 @@ elseif(NOT TARGET arm_compute_static_libs)
         # TODO: use data_type_support to disable useless kernels
         # TODO: switch to NHWC layout later
         data_layout_support=nchw
-        build_dir=${CMAKE_CURRENT_BINARY_DIR}
-        install_dir=${CMAKE_CURRENT_BINARY_DIR}/install
         arch=${ARM_COMPUTE_TARGET_ARCH}
     )
+
+    if(NOT MSVC64)
+        list(APPEND ARM_COMPUTE_OPTIONS
+             build_dir=${CMAKE_CURRENT_BINARY_DIR}
+             install_dir=${CMAKE_CURRENT_BINARY_DIR}/install)
+    endif()
 
     if(ARM_COMPUTE_SCONS_JOBS)
         list(APPEND ARM_COMPUTE_OPTIONS --jobs=${ARM_COMPUTE_SCONS_JOBS})
@@ -95,6 +89,8 @@ elseif(NOT TARGET arm_compute_static_libs)
         list(APPEND ARM_COMPUTE_OPTIONS os=android)
     elseif(APPLE)
         list(APPEND ARM_COMPUTE_OPTIONS os=macos)
+    elseif(WIN32)
+        list(APPEND ARM_COMPUTE_OPTIONS os=windows)
     endif()
 
     if(CMAKE_CROSSCOMPILING)
@@ -185,6 +181,8 @@ elseif(NOT TARGET arm_compute_static_libs)
                 set(extra_cxx_flags "${extra_cxx_flags} -arch ${arch}")
             endforeach()
         endif()
+    elseif(MSVC64)
+        set(extra_cxx_flags "${extra_cxx_flags} /MD")
     endif()
 
     if(ENABLE_LTO)
@@ -192,6 +190,10 @@ elseif(NOT TARGET arm_compute_static_libs)
             set(extra_cxx_flags "${extra_cxx_flags} -flto=thin")
             set(extra_link_flags "${extra_link_flags} -flto=thin")
         endif()
+    endif()
+
+    if(SUGGEST_OVERRIDE_SUPPORTED)
+        set(extra_cxx_flags "${extra_cxx_flags} -Wno-suggest-override")
     endif()
 
     if(extra_link_flags)
@@ -205,17 +207,20 @@ elseif(NOT TARGET arm_compute_static_libs)
         list(APPEND ARM_COMPUTE_OPTIONS --silent)
     endif()
 
-    set(arm_compute ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a)
-    set(arm_compute_core ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute_core-static.a)
+    if(MSVC64)
+        set(arm_compute build/arm_compute-static.lib)
+        set(arm_compute_full "${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary/${arm_compute}")
+    else()
+        set(arm_compute ${CMAKE_CURRENT_BINARY_DIR}/libarm_compute-static.a)
+        set(arm_compute_full "${arm_compute}")
+    endif()
 
     add_custom_command(
         OUTPUT
-            ${arm_compute}
-            ${arm_compute_core}
+            ${arm_compute_full}
         COMMAND ${CMAKE_COMMAND} -E env ${cmake_build_env}
             ${SCONS} ${ARM_COMPUTE_OPTIONS}
                 ${arm_compute}
-                ${arm_compute_core}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary
         COMMENT "Build Arm Compute Library"
         DEPENDS ${SOURCES}
@@ -228,21 +233,14 @@ elseif(NOT TARGET arm_compute_static_libs)
 
     add_custom_target(arm_compute_static_libs
         DEPENDS
-            ${arm_compute}
-            ${arm_compute_core}
+            ${arm_compute_full}
     )
 
     add_library(arm_compute::arm_compute STATIC IMPORTED GLOBAL)
     set_target_properties(arm_compute::arm_compute PROPERTIES
-        IMPORTED_LOCATION ${arm_compute}
+        IMPORTED_LOCATION ${arm_compute_full}
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
     add_dependencies(arm_compute::arm_compute arm_compute_static_libs)
-
-    add_library(arm_compute::arm_compute_core STATIC IMPORTED GLOBAL)
-    set_target_properties(arm_compute::arm_compute_core PROPERTIES
-        IMPORTED_LOCATION ${arm_compute_core}
-        INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary)
-    add_dependencies(arm_compute::arm_compute_core arm_compute_static_libs)
 
     add_library(arm_compute::half INTERFACE IMPORTED GLOBAL)
     set_target_properties(arm_compute::half PROPERTIES

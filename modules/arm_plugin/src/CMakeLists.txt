@@ -45,7 +45,6 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         openvino_arm_cpu_transformations
         openvino_arm_cpu_opset
         arm_compute::arm_compute
-        arm_compute::arm_compute_core
         arm_compute::half
         openvino::ngraph_reference
         openvino::util)

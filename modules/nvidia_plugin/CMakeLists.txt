@@ -134,8 +134,6 @@ if(ENABLE_TESTS)
     include(CTest)
     enable_testing()
 
-    disable_deprecated_warnings()
-
     add_subdirectory(tests/unit)
     if(ENABLE_FUNCTIONAL_TESTS)
         add_subdirectory(tests/functional)

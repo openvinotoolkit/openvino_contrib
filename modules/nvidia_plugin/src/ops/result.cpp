@@ -9,7 +9,6 @@
 #include <cuda_operation_registry.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/gsl_assert>
-#include <ngraph/variant.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
 #include <transformer/cuda_rt_info.hpp>
 #include <utility>
