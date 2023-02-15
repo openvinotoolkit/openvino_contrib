@@ -31,6 +31,8 @@ jobs:
       BUILD_TYPE: 'Release'
       CCACHE_MAXSIZE: '10G'
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
       OPENVINO_REPO: "${{ github.workspace }}/openvino"
       OPENVINO_CONTRIB_REPO: "${{ github.workspace }}/openvino_contrib"
       INSTALL_DIR: "${{ github.workspace }}/install"
@@ -49,14 +51,14 @@ jobs:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
         run: |
-          rm -fr openvino
+          rm -fr "$OPENVINO_REPO"
           git clone --reference "$OPENVINO_REFERENCE" https://github.com/openvinotoolkit/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE" --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
         if: runner.os == 'macOS'
         run: |
-          rm -fr openvino_contrib
+          rm -fr "$OPENVINO_CONTRIB_REPO"
           git clone --reference "$OPENVINO_CONTRIB_REFERENCE" https://github.com/openvinotoolkit/openvino_contrib.git
           cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE"
 
@@ -71,6 +73,7 @@ jobs:
       - name: Clone OpenVINO & OpenVINO Contrib
         if: runner.os != 'macOS'
         run: |
+          rm -fr "$OPENVINO_REPO" "$OPENVINO_CONTRIB_REPO"
           git clone https://github.com/openvinotoolkit/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init
           git clone https://github.com/openvinotoolkit/openvino_contrib.git
@@ -134,8 +137,6 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::Define cmake arguments"
-          export CCACHE_DIR=${{ env.CCACHE_DIR }}
-          export CCACHE_MAXSIZE=${{ env.CCACHE_MAXSIZE }}
           if [[ "$RUNNER_OS" == "macOS" ]] ; then
             cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
@@ -150,17 +151,15 @@ jobs:
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
             -G Ninja \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
-        # env:
-        #   CMAKE_CXX_COMPILER_LAUNCHER: ccache
-        #   CMAKE_C_COMPILER_LAUNCHER: ccache
+        env:
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CMAKE_C_COMPILER_LAUNCHER: ccache
 
       - name: CMake build & install
         run: |
@@ -186,15 +185,10 @@ jobs:
           echo "::endgroup::"
 
       - name: Build cpp samples
-        run: $SAMPLES_INSTALL_DIR/cpp/build_samples.sh -i $INSTALL_DIR -b $BUILD_DIR/cpp_samples
-        env:
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: $SAMPLES_INSTALL_DIR/cpp/build_samples.sh -i "$BUILD_DIR/cpp_samples_install" -b "$BUILD_DIR/cpp_samples"
 
       - name: Build c samples
-        run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i $INSTALL_DIR -b $BUILD_DIR/c_samples
-        env:
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CMAKE_C_COMPILER_LAUNCHER: ccache
+        run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i "$BUILD_DIR/c_samples_install" -b "$BUILD_DIR/c_samples"
 
       - name: Upload openvino package
         uses: actions/upload-artifact@v3
@@ -208,8 +202,8 @@ jobs:
           name: openvino_tests
           path: "${{ env.BUILD_DIR }}/openvino_tests.tar.gz"
 
-      - name: 'Clean build dir'
-        run: rm -fr $BUILD_DIR
+      - name: Clean build dir
+        run: rm -fr "$BUILD_DIR" "$INSTALL_DIR"
 
       #
       # Python tests
