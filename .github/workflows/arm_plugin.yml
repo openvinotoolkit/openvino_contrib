@@ -173,13 +173,13 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          cmake -S "$OPENVINO_DIR/tests/layer_tests" -B "$BUILD_DIR/layer_tests" || exit 1
+          cmake -S "$OPENVINO_REPO/tests/layer_tests" -B "$BUILD_DIR/layer_tests" || exit 1
           cmake --build "$BUILD_DIR/layer_tests" --config Release || exit 1
           cmake --install "$BUILD_DIR/layer_tests" --config Release --prefix "$INSTALL_DIR" --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          cmake -S "$OPENVINO_DIR/tests/samples_tests" -B "$BUILD_DIR/samples_tests" || exit 1
+          cmake -S "$OPENVINO_REPO/tests/samples_tests" -B "$BUILD_DIR/samples_tests" || exit 1
           cmake --build "$BUILD_DIR/samples_tests" --config Release || exit 1
           cmake --install "$BUILD_DIR/samples_tests" --config Release --prefix "$INSTALL_DIR" --component tests
           echo "::endgroup::"
