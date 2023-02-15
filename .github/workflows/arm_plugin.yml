@@ -199,7 +199,7 @@ jobs:
         run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i "$BUILD_DIR/c_samples_install" -b "$BUILD_DIR/c_samples"
 
       - name: Samples tests
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' # TODO: enable back
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           python3 -m pip install -r "$INSTALL_TEST_DIR/smoke_tests/requirements.txt"
@@ -269,11 +269,11 @@ jobs:
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
 
       - name: Model Optimizer UT
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' # mxnet is not available on macOS, TODO: create ticket
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
-        if: runner.os != 'macos' # accuracy issues
+        if: runner.os != 'macos' # functional issues: accuracy or dynamic shapes
         run: |
           python3 -m pip install -r "$LAYER_TESTS_DIR/requirements.txt"
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR
@@ -383,7 +383,7 @@ jobs:
           "$INSTALL_TEST_DIR/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-IRFrontend.xml"
 
       - name: PaddlePaddle frontend tests
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' # PDPD cannot convert generate_deformable_conv.py, TODO: create bug and exclude
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/paddle_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-PaddleTests.xml"
@@ -419,13 +419,13 @@ jobs:
           "$INSTALL_TEST_DIR/commonUtilsTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml"
 
       - name: CPU plugin unit tests
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' # not available on macOS
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_cpu_unit_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml"
 
       - name: GNA plugin unit tests
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' # luckily, not available on macOS
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_gna_unit_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml"
