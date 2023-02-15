@@ -284,6 +284,7 @@ jobs:
       - name: TensorFlow 1 Layer Tests - TF FE
         run: |
           python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR
           python3 -m pytest $LAYER_TESTS_DIR/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=$INSTALL_TEST_DIR/TEST-tf_fe.xmlTEST
         env:
