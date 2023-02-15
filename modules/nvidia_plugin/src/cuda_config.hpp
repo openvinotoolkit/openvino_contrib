@@ -32,15 +32,27 @@ struct Configuration {
 
     InferenceEngine::Parameter Get(const std::string& name) const;
 
-    // Plugin configuration parameters
+    static std::vector<ov::PropertyName> get_supported_properties();
+    static std::vector<ov::PropertyName> get_ro_properties();
+    static std::vector<ov::PropertyName> get_rw_properties();
+    static std::vector<ov::PropertyName> get_caching_properties();
+    static bool is_rw_property(const std::string& name);
+    void update_device_id(const ConfigMap& config);
+    ov::element::Type get_inference_precision() const noexcept;
+    uint32_t get_optimal_number_of_streams() const noexcept;
 
+    // Plugin configuration parameters
+    static constexpr uint32_t reasonable_limit_of_streams = 10;
     int deviceId = 0;
-    bool perfCount = true;
-    bool operation_benchmark = false;
-    std::string cuda_throughput_streams_ = std::to_string(1);
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
-    // TODO: Should be added usage of this property (What to do with NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) ?)
+private:
+    bool is_profiling_enabled = false;
+    bool operation_benchmark = false;
+    uint32_t hint_num_requests = 0;
+    ov::streams::Num num_streams = 0;
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::UNDEFINED;
+    ov::hint::ExecutionMode execution_mode = ov::hint::ExecutionMode::UNDEFINED;
+    ov::element::Type inference_precision = ov::element::undefined;
 };
 
 }  // namespace nvidia_gpu

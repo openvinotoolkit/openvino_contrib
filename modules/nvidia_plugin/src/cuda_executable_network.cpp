@@ -116,12 +116,12 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     // Clone model
     function_ = ngraph::clone_function(*function);
     // Apply common transformations
-    transformer.common_transform(CUDA::Device{cfg_.deviceId}, function_, inputInfoMap, outputsInfoMap, cfg_);
+    transformer.common_transform(device, function_, inputInfoMap, outputsInfoMap, cfg_);
     // Clone model and additionally apply export specific transformations
     export_function_ =
-        transformer.clone_and_export_transform(CUDA::Device{cfg_.deviceId}, function_, inputInfoMap, outputsInfoMap, cfg_);
+        transformer.clone_and_export_transform(device, function_, inputInfoMap, outputsInfoMap, cfg_);
     //  CUDA-specific tranformations
-    transformer.cuda_transform(CUDA::Device{cfg_.deviceId}, function_, cfg_);
+    transformer.cuda_transform(device, function_, cfg_);
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : function_->get_results()) {
@@ -243,6 +243,7 @@ unsigned int ExecutableNetwork::RunBenchmarkFor(const int numInfers,
 void ExecutableNetwork::InitExecutor() {
     // Default multi-threaded configuration is balanced for throughtput and latency cases and takes into account
     // real hardware cores and NUMA nodes.
+    cfg_.streams_executor_config_.SetConfig(ov::num_streams.name(), std::to_string(memory_pool_->Size()));
     auto streamsExecutorConfig =
         InferenceEngine::IStreamsExecutor::Config::MakeDefaultMultiThreaded(cfg_.streams_executor_config_);
     streamsExecutorConfig._name = "CudaCPUPreprocessExecutor";
@@ -256,7 +257,6 @@ void ExecutableNetwork::InitExecutor() {
 
 std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t constBlobSize,
                                                          const std::size_t memoryBlobSize) const {
-    static constexpr std::size_t reasonable_limit_of_streams = 10;
     if (memoryBlobSize == 0) {
         return 0;
     }
@@ -270,14 +270,8 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
     if (0 == availableInferRequests) {
         throwIEException("Not enough memory even for single InferRequest !!");
     }
-
-    const auto throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)).as<std::string>();
-    if (throughputStreams == NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
-        return std::min({maxStreamsSupported, availableInferRequests, reasonable_limit_of_streams});
-    } else {
-        const std::size_t numStreams = std::stoi(throughputStreams);
-        return std::min({maxStreamsSupported, numStreams, availableInferRequests});
-    }
+    const std::size_t num_streams = cfg_.get_optimal_number_of_streams();
+    return std::min({maxStreamsSupported, availableInferRequests, num_streams});
 }
 
 std::shared_ptr<MemoryPool> ExecutableNetwork::CreateMemoryPool() {
@@ -342,8 +336,17 @@ InferenceEngine::IInferRequestInternal::Ptr ExecutableNetwork::CreateInferReques
 InferenceEngine::Parameter ExecutableNetwork::GetConfig(const std::string& name) const { return cfg_.Get(name); }
 
 InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name) const {
-    // TODO: return more supported values for metrics
-    if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
+    bool is_new_api = plugin_->IsNewAPI();
+    if (ov::supported_properties == name) {
+        std::vector<ov::PropertyName> supported_properties;
+        supported_properties.push_back(ov::PropertyName(ov::supported_properties.name(), PropertyMutability::RO));
+        supported_properties.push_back(ov::PropertyName(ov::model_name.name(), PropertyMutability::RO));
+        supported_properties.push_back(ov::PropertyName(ov::execution_devices.name(), PropertyMutability::RO));
+        supported_properties.push_back(ov::PropertyName(ov::optimal_number_of_infer_requests.name(), PropertyMutability::RO));
+        auto config_properties = cfg_.get_rw_properties();
+        supported_properties.insert(supported_properties.end(), config_properties.begin(), config_properties.end());
+        return decltype(ov::supported_properties)::value_type{supported_properties};
+    } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS,
                              std::vector<std::string>{METRIC_KEY(NETWORK_NAME),
                                                       METRIC_KEY(SUPPORTED_METRICS),
@@ -359,12 +362,19 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
             configKeys.emplace_back(configKey);
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
-    } else if (EXEC_NETWORK_METRIC_KEY(NETWORK_NAME) == name) {
+    } else if (ov::model_name == name || EXEC_NETWORK_METRIC_KEY(NETWORK_NAME) == name) {
         auto networkName = export_function_->get_friendly_name();
+        if (is_new_api)
+            return decltype(ov::model_name)::value_type{networkName};
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
-    } else if (EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
+    } else if (ov::optimal_number_of_infer_requests == name ||
+               EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
         const unsigned value = memory_pool_->Size();
+        if (is_new_api)
+            return decltype(ov::optimal_number_of_infer_requests)::value_type{value};
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
+    } else if (ov::execution_devices == name) {
+        return decltype(ov::execution_devices)::value_type{plugin_->GetName() + "." + std::to_string(cfg_.deviceId)};
     } else {
         throwIEException(fmt::format("Unsupported ExecutableNetwork metric: {}", name));
     }
