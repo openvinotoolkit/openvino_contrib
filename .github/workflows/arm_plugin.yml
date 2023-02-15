@@ -157,9 +157,6 @@ jobs:
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
-        env:
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CMAKE_C_COMPILER_LAUNCHER: ccache
 
       - name: CMake build & install
         run: |
@@ -203,15 +200,15 @@ jobs:
           path: "${{ env.BUILD_DIR }}/openvino_tests.tar.gz"
 
       - name: Clean build dir
-        run: rm -fr "$BUILD_DIR" "$INSTALL_DIR"
+        run: rm -fr "$BUILD_DIR"
 
       #
       # Python tests
       #
 
-      - name: 'Install Python wheels'
+      - name: Install Python wheels
         run: |
-          python3 -m pip install openvino-dev --force-reinstall --find-links="$INSTALL_DIR/tools"
+          python3 -m pip install openvino-dev --force-reinstall --only-binary --find-links="$INSTALL_DIR/tools"
 
       - name: nGraph and IE Python Bindings Tests
         run: |
@@ -354,6 +351,9 @@ jobs:
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml"
 
+      - name: Clean installation dir
+        run: rm -fr "$INSTALL_DIR"
+
   Tests:
     needs: Build
     defaults:
@@ -381,4 +381,4 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           source setupvars.sh
-          tests/armFuncTests --gtest_print_time=1 --gtest_output=xml:TEST-ARMCPUFuncTests.xml
+          "$GITHUB_WORKSPACE/tests/armFuncTests" --gtest_print_time=1 --gtest_output=xml:"TEST-ARMCPUFuncTests.xml"
