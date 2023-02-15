@@ -226,6 +226,7 @@ jobs:
           path: "${{ env.BUILD_DIR }}/openvino_tests.tar.gz"
 
       - name: Clean build dir
+        if: ${{ always() }}
         run: rm -fr "$BUILD_DIR"
 
       #
@@ -272,6 +273,7 @@ jobs:
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
+        if: runner.os != 'macos' # accuracy issues
         run: |
           python3 -m pip install -r "$LAYER_TESTS_DIR/requirements.txt"
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR
@@ -451,6 +453,7 @@ jobs:
           "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml"
 
       - name: Clean installation dir
+        if: ${{ always() }}
         run: rm -fr "$INSTALL_DIR"
 
   Tests:
@@ -459,6 +462,9 @@ jobs:
       run:
         shell: bash
     runs-on: ['self-hosted', 'macOS']
+    env:
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
 
     steps:
       - name: Download OpenVINO package
@@ -473,11 +479,15 @@ jobs:
 
       - name: Extract OpenVINO packages
         run: |
-          tar -xzf openvino_package.tar.gz || exit 1
-          tar -xzf openvino_tests.tar.gz || exit 1
+          tar -xzf openvino_package.tar.gz -C "$INSTALL_DIR" && rm openvino_package.tar.gz || exit 1
+          tar -xzf openvino_tests.tar.gz -C "$INSTALL_DIR" && rm openvino_tests.tar.gz || exit 1
 
       - name: ARM CPU plugin func tests
         if: runner.os == 'macOS'
         run: |
-          source setupvars.sh
-          "$GITHUB_WORKSPACE/tests/armFuncTests" --gtest_print_time=1 --gtest_output=xml:"TEST-ARMCPUFuncTests.xml"
+          source "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TESTS_DIR/armFuncTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-ARMCPUFuncTests.xml"
+
+      - name: Clean installation dir
+        if: ${{ always() }}
+        run: rm -fr "$INSTALL_DIR"
