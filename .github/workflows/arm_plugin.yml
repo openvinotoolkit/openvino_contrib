@@ -28,7 +28,7 @@ jobs:
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'macOS']
     env:
-      BUILD_TYPE: 'Release'
+      CMAKE_BUILD_TYPE: 'Release'
       CCACHE_MAXSIZE: '10G'
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -38,6 +38,7 @@ jobs:
       INSTALL_DIR: "${{ github.workspace }}/install"
       INSTALL_TEST_DIR: "${{ github.workspace }}/install/tests"
       SAMPLES_INSTALL_DIR: "${{ github.workspace }}/install/samples"
+      LAYER_TESTS_DIR: "${{ github.workspace }}/install/tests/layer_tests"
       BUILD_DIR: "${{ github.workspace }}/build"
       DATA_PATH: "${{ github.workspace }}/testdata"
       MODELS_PATH: "${{ github.workspace }}/testdata"
@@ -94,7 +95,7 @@ jobs:
             openvino/src/bindings/python/requirements.txt
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
             openvino/src/frontends/onnx/tests/requirements.txt
-            openvino/src/frontends/tensorflow/tests/requirements.txt
+            # openvino/src/frontends/tensorflow/tests/requirements.txt
             # openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
@@ -108,7 +109,7 @@ jobs:
           # For running ONNX frontend unit tests
           python3 -m pip install -r "$OPENVINO_REPO/src/frontends/onnx/tests/requirements.txt"
           # For running TensorFlow frontend unit tests
-          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
+          # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
           # For running Paddle frontend unit tests
           # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
 
@@ -151,7 +152,6 @@ jobs:
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
             -G Ninja \
             -S ${{ env.OPENVINO_REPO }} \
@@ -165,12 +165,23 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          cmake --build "$BUILD_DIR" --parallel ${{ steps.cpu-cores.outputs.count }} \
-            --config ${{ env.BUILD_TYPE }} || exit 1
+          cmake --build "$BUILD_DIR" --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
           echo "::endgroup::"
 
           echo "::group::Show ccache stats"
           ccache --show-stats
+          echo "::endgroup::"
+
+          echo "::group::Layer tests install"
+          cmake -S "$OPENVINO_DIR/tests/layer_tests" -B "$BUILD_DIR/layer_tests" || exit 1
+          cmake --build "$BUILD_DIR/layer_tests" --config Release || exit 1
+          cmake --install "$BUILD_DIR/layer_tests" --config Release --prefix "$INSTALL_DIR" --component tests
+          echo "::endgroup::"
+
+          echo "::group::Samples tests install"
+          cmake -S "$OPENVINO_DIR/tests/samples_tests" -B "$BUILD_DIR/samples_tests" || exit 1
+          cmake --build "$BUILD_DIR/samples_tests" --config Release || exit 1
+          cmake --install "$BUILD_DIR/samples_tests" --config Release --prefix "$INSTALL_DIR" --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
@@ -186,6 +197,19 @@ jobs:
 
       - name: Build c samples
         run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i "$BUILD_DIR/c_samples_install" -b "$BUILD_DIR/c_samples"
+
+      - name: Samples tests
+        run: |
+          python3 -m pip install -r "$INSTALL_TEST_DIR/smoke_tests/requirements.txt"
+          export LD_LIBRARY_PATH=$IE_APP_PATH:$LD_LIBRARY_PATH
+          python3 -m pytest "$INSTALL_TEST_DIR/smoke_tests" \
+            --env_conf "$INSTALL_TEST_DIR/smoke_tests/env_config.yml" \
+            -s --junitxml="$INSTALL_TEST_DIR/TEST-SamplesSmokeTests.xml"
+        env:
+          IE_APP_PATH: ${{ env.BUILD_DIR }}/cpp_samples_install
+          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
+          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: Upload openvino package
         uses: actions/upload-artifact@v3
@@ -244,6 +268,81 @@ jobs:
       - name: Model Optimizer UT
         if: runner.os != 'macOS'
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
+
+      - name: PyTorch Layer Tests
+        run: |
+          python3 -m pip install -r "$LAYER_TESTS_DIR/requirements.txt"
+          export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR
+          python3 -m pytest $LAYER_TESTS_DIR/pytorch_tests/ -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 1 Layer Tests - TF FE
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR
+          python3 -m pytest $LAYER_TESTS_DIR/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=$INSTALL_TEST_DIR/TEST-tf_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 2 Layer Tests - TF FE
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=$INSTALL_TEST_DIR/TEST-tf2_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 1 Layer Tests - Legacy FE
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=$INSTALL_TEST_DIR/TEST-tf_Roll.xmlTEST
+
+      - name: TensorFlow 2 Layer Tests - Legacy FE
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/tensorflow2_keras_tests/test_tf2_keras_activation.py --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-tf2_Activation.xmlTEST -k "sigmoid"
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow Lite Layer Tests - TFL FE
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/tensorflow_lite_tests/ --junitxml=$INSTALL_TEST_DIR/TEST-tfl_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: MO Python API Tests - Complex Python params
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/mo_python_api_tests/test_mo_convert_complex_params.py --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_complex_params.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: MO Python API Tests - Import TF model from memory
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/mo_python_api_tests/test_mo_convert_tf.py --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_tf.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: MO Python API Tests - Import PyTorch model from memory
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          export PYTHONPATH=$LAYER_TESTS_DIR:$PYTHONPATH
+          python3 -m pytest $LAYER_TESTS_DIR/mo_python_api_tests/test_mo_convert_pytorch.py --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: Python Frontend tests
+        run: |
+          python3 -m pip install -r $LAYER_TESTS_DIR/requirements.txt
+          python3 -m pytest $LAYER_TESTS_DIR/py_frontend_tests --junitxml=$INSTALL_TEST_DIR/TEST-test_py_fontend.xml
 
       #
       # C++ tests
