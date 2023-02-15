@@ -39,7 +39,7 @@ jobs:
                        -v /Users/sandye51/actions-runner/build_cache_aarch64/:/opt/build_cache_aarch64 \
                        -v /Users/sandye51/actions-runner/openvino_temp/:/opt/openvino_temp
       fail-fast: false
-    runs-on: ${{ matrix.runner }}
+    runs-on: ['self-hosted', 'macOS']
     container: ${{ matrix.container }}
     env:
       BUILD_TYPE: 'Release'
