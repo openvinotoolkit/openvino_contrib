@@ -29,7 +29,6 @@ jobs:
     runs-on: ['self-hosted', 'macOS']
     env:
       BUILD_TYPE: Release
-      CCACHE_DIR: /Users/sandye51/actions-runner/build_cache
       CCACHE_MAXSIZE: 10G
       CMAKE_OSX_DEPLOYMENT_TARGET: 11.0
       OPENVINO_REPO: "${{ github.workspace }}/openvino"
@@ -38,12 +37,13 @@ jobs:
       INSTALL_TEST_DIR: "${{ github.workspace }}/install/tests"
       SAMPLES_INSTALL_DIR: "${{ github.workspace }}/install/samples"
       BUILD_DIR: "${{ github.workspace }}/build"
+      TEST_DATA: "${{ github.workspace }}/testdata"
+      DATA_PATH: "${{ github.workspace }}/testdata"
+      OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
+      CCACHE_DIR: /Users/sandye51/actions-runner/build_cache
       OPENVINO_REFERENCE: /Users/sandye51/actions-runner/openvino.reference/
       OPENVINO_CONTRIB_REFERENCE: /Users/sandye51/actions-runner/openvino_contrib.reference/
       SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
-      OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
-      TEST_DATA: "${{ github.workspace }}/testdata"
-      DATA_PATH: "${{ github.workspace }}/testdata"
 
     steps:
       - name: Clone OpenVINO with cache
@@ -200,13 +200,13 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: "$BUILD_DIR/openvino_package.tar.gz"
+          path: "${{ env.BUILD_DIR }}/openvino_package.tar.gz"
 
       - name: Upload openvino tests package
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: "$BUILD_DIR/openvino_tests.tar.gz"
+          path: "${{ env.BUILD_DIR }}/openvino_tests.tar.gz"
 
       - name: 'Clean build dir'
         run: rm -fr $BUILD_DIR
@@ -366,6 +366,7 @@ jobs:
       run:
         shell: bash
     runs-on: ['self-hosted', 'macOS']
+
     steps:
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
@@ -375,7 +376,7 @@ jobs:
       - name: Download OpenVINO tests package
         uses: actions/download-artifact@v3
         with:
-          name: openvino_tests_package
+          name: openvino_tests
 
       - name: Extract OpenVINO packages
         run: |
