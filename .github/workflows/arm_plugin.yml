@@ -274,11 +274,13 @@ jobs:
           "$INSTALL_TEST_DIR/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml
 
       - name: TensorFlow frontend tests
+        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
+        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml
@@ -293,12 +295,20 @@ jobs:
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/commonUtilsTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml
 
+      - name: ARM CPU plugin func tests
+        if: runner.os == 'macOS'
+        run: |
+          source "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/armFuncTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ARMCPUFuncTests.xml
+
       - name: CPU plugin unit tests
+        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_cpu_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml
 
       - name: GNA plugin unit tests
+        if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_gna_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml
