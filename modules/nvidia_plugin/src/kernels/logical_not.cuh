@@ -6,8 +6,8 @@
 
 #include <cstddef>
 
-#include "eltwise.cuh"
-#include "error.hpp"
+#include "details/eltwise.cuh"
+#include "details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

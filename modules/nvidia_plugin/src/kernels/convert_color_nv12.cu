@@ -9,8 +9,8 @@
 #include <type_traits>
 
 #include "convert_color_nv12.hpp"
-#include "error.hpp"
-#include "tensor_helpers.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -5,7 +5,8 @@
 #include <fmt/format.h>
 
 #include "broadcast.hpp"
-#include "tensor_helpers.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

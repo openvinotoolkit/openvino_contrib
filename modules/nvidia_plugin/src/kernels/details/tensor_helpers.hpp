@@ -6,6 +6,7 @@
 
 #include <cuda_runtime_api.h>
 
+#include <cstdint>
 #include <cuda/float16.hpp>
 #include <limits>
 #include <type_traits>

@@ -5,7 +5,7 @@
 
 #include <cstddef>
 
-#include "eltwise.cuh"
+#include "details/eltwise.cuh"
 #include "ngraph/type/element_type.hpp"
 
 namespace ov {

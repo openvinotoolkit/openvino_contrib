@@ -6,10 +6,10 @@
 
 #include <vector>
 
-#include "cuda_type_traits.hpp"
-#include "error.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 #include "interpolate_base.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

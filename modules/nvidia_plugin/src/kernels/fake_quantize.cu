@@ -7,9 +7,9 @@
 #include <cuda/float16.hpp>
 #include <cuda/math.cuh>
 
-#include "error.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 #include "fake_quantize.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

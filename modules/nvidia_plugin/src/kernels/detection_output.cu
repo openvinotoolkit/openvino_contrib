@@ -14,8 +14,8 @@
 #include <cuda/stl/mdvector.cuh>
 #include <cuda/stl/span.cuh>
 
+#include "details/error.hpp"
 #include "detection_output.hpp"
-#include "error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

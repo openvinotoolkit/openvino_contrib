@@ -7,6 +7,7 @@
 #include <cuda/float16.hpp>
 
 #include "comparison.hpp"
+#include "details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

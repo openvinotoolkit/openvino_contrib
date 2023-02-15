@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include "error.hpp"
+#include "details/error.hpp"
 #include "pad.cuh"
 
 namespace ov {

@@ -7,9 +7,9 @@
 #include <cuda/float16.hpp>
 
 #include "cuda/stl/algorithms/sort.cuh"
-#include "error.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 #include "fmt/format.h"
-#include "tensor_helpers.hpp"
 #include "topk.hpp"
 
 namespace ov {

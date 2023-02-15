@@ -7,8 +7,8 @@
 #include <cuda/float16.hpp>
 #include <gsl/gsl_assert>
 
+#include "details/tensor_helpers.hpp"
 #include "insert.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

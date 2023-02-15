@@ -4,7 +4,7 @@
 
 #include <cuda/runtime.hpp>
 #include <gsl/gsl_util>
-#include <kernels/eltwise.cuh>
+#include <kernels/details/eltwise.cuh>
 #include <ngraph/shape.hpp>
 #include <string>
 

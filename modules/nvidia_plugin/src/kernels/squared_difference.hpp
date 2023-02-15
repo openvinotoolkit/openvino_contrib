@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "cuda_type_traits.hpp"
-#include "elementwise_binary.cuh"
+#include "details/cuda_type_traits.hpp"
+#include "details/elementwise_binary.cuh"
 
 namespace ov {
 namespace nvidia_gpu {

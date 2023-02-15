@@ -10,7 +10,7 @@
 #include <ngraph/type/element_type.hpp>
 #include <set>
 
-#include "error.hpp"
+#include "details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

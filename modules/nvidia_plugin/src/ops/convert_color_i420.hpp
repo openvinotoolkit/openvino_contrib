@@ -6,7 +6,7 @@
 
 #include <cuda_operation_base.hpp>
 #include <kernels/convert_color_i420.hpp>
-#include <kernels/cuda_type_traits.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
 
 #include "converters.hpp"
 #include "openvino/op/i420_to_bgr.hpp"

@@ -14,7 +14,7 @@
 #include <openvino/op/range.hpp>
 #include <ops/parameter.hpp>
 
-#include "kernels/cuda_type_traits.hpp"
+#include "kernels/details/cuda_type_traits.hpp"
 #include "ngraph_functions/builders.hpp"
 
 namespace {

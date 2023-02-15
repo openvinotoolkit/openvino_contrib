@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "tensor_helpers.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -4,8 +4,8 @@
 
 #include "convert.cuh"
 #include "convert.hpp"
-#include "error.hpp"
-#include "typed_functor.hpp"
+#include "details/error.hpp"
+#include "details/typed_functor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -6,7 +6,7 @@
 
 #include <cuda_runtime.h>
 
-#include "cuda_type_traits.hpp"
+#include "details/cuda_type_traits.hpp"
 #include "ngraph/type/element_type.hpp"
 
 namespace ov {

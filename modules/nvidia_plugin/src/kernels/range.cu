@@ -5,8 +5,8 @@
 #include <cuda/float16.hpp>
 
 #include "convert.cuh"
+#include "details/typed_functor.hpp"
 #include "kernels/range.hpp"
-#include "typed_functor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
