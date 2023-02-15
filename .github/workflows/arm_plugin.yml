@@ -42,6 +42,8 @@ jobs:
       OPENVINO_CONTRIB_REFERENCE: /Users/sandye51/actions-runner/openvino_contrib.reference/
       SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
       OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
+      TEST_DATA: "${{ github.workspace }}/testdata"
+      DATA_PATH: "${{ github.workspace }}/testdata"
 
     steps:
       - name: Clone OpenVINO with cache
@@ -57,6 +59,14 @@ jobs:
           rm -fr openvino_contrib
           git clone --reference "$OPENVINO_CONTRIB_REFERENCE" https://github.com/openvinotoolkit/openvino_contrib.git
           cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE"
+
+      - name: Clone testdata for C API tests
+        uses: actions/checkout@v3
+        with:
+          repository: openvinotoolkit/testdata
+          path: 'testdata'
+          ref: 'master'
+          lfs: 'true'
 
       - name: Clone OpenVINO & OpenVINO Contrib
         if: runner.os != 'macOS'
@@ -80,9 +90,9 @@ jobs:
             openvino/src/bindings/python/wheel/requirements-dev.txt
             openvino/src/bindings/python/requirements.txt
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-            # openvino/src/frontends/paddle/tests/requirements.txt
             openvino/src/frontends/onnx/tests/requirements.txt
-            openvino/src/frontends/tensorflow/tests/requirements.txt
+            # openvino/src/frontends/tensorflow/tests/requirements.txt
+            # openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
         run: |
@@ -125,8 +135,7 @@ jobs:
         run: |
           echo "::group::Define cmake arguments"
           if [[ "$RUNNER_OS" == "macOS" ]] ; then
-            cmake_args=(-DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.CMAKE_OSX_DEPLOYMENT_TARGET }})
-            cmake_args+=(-DARM_COMPUTE_SCONS_JOBS=4)
+            cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
           echo "::endgroup::"
 
@@ -151,8 +160,6 @@ jobs:
       - name: CMake build & install
         run: |
           echo "::group::Clean ccache stats"
-          export CCACHE_DIR=${{ env.CCACHE_DIR }}
-          export CCACHE_MAXSIZE=${{ env.CCACHE_MAXSIZE }}
           ccache --zero-stats --show-config
           echo "::endgroup::"
 
@@ -168,7 +175,9 @@ jobs:
           echo "::group::CMake install"
           cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR"
           cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component python_wheels
+          cd "$INSTALL_DIR" && tar -czvf "$BUILD_DIR/openvino_package.tar.gz" * && cd -
           cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component tests
+          cd "$INSTALL_DIR" && tar -czvf "$BUILD_DIR/openvino_tests.tar.gz" tests/ && cd -
           echo "::endgroup::"
 
       - name: Build cpp samples
@@ -181,6 +190,18 @@ jobs:
         env:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
           CMAKE_C_COMPILER_LAUNCHER: ccache
+
+      - name: Upload openvino package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_package
+          path: "$BUILD_DIR/openvino_package.tar.gz"
+
+      - name: Upload openvino tests package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_tests
+          path: "$BUILD_DIR/openvino_tests.tar.gz"
 
       - name: 'Clean build dir'
         run: rm -fr $BUILD_DIR
@@ -235,105 +256,128 @@ jobs:
       - name: OpenVINO Core unit tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_core_unit_tests" --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-NGraphUT.xml
+          "$INSTALL_TEST_DIR/ov_core_unit_tests" --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-NGraphUT.xml"
 
       - name: OpenVINO Inference functional tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_inference_functional_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceFunc.xml
+          "$INSTALL_TEST_DIR/ov_inference_functional_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-InferenceFunc.xml"
 
       - name: OpenVINO Inference unit tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_inference_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceUnit.xml
+          "$INSTALL_TEST_DIR/ov_inference_unit_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-InferenceUnit.xml"
 
       - name: Low Precision Transformations Tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_lp_transformations_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-LpTransformations.xml
+          "$INSTALL_TEST_DIR/ov_lp_transformations_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-LpTransformations.xml"
 
       - name: OpenVINO Conditional compilation tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_conditional_compilation_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ConditionalCompilation.xml
+          "$INSTALL_TEST_DIR/ov_conditional_compilation_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-ConditionalCompilation.xml"
 
       - name: IR frontend tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-IRFrontend.xml
+          "$INSTALL_TEST_DIR/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-IRFrontend.xml"
 
       - name: PaddlePaddle frontend tests
         if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/paddle_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-PaddleTests.xml
+          "$INSTALL_TEST_DIR/paddle_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-PaddleTests.xml"
 
       - name: ONNX frontend tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_onnx_frontend_tests" --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ONNXFrontend.xml
+          "$INSTALL_TEST_DIR/ov_onnx_frontend_tests" --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-ONNXFrontend.xml"
 
       - name: TensorFlow Common tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml
+          "$INSTALL_TEST_DIR/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowCommonFrontend.xml"
 
       - name: TensorFlow frontend tests
         if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml
+          "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml"
 
       - name: TensorFlow Lite frontend tests
         if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml
+          "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml"
 
       - name: Transformations Tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_transformations_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-Transformations.xml
+          "$INSTALL_TEST_DIR/ov_transformations_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-Transformations.xml"
 
       - name: Common test utils tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/commonUtilsTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml
-
-      - name: ARM CPU plugin func tests
-        if: runner.os == 'macOS'
-        run: |
-          source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/armFuncTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-ARMCPUFuncTests.xml
+          "$INSTALL_TEST_DIR/commonUtilsTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-commonUtilsTests.xml"
 
       - name: CPU plugin unit tests
         if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_cpu_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml
+          "$INSTALL_TEST_DIR/ov_cpu_unit_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-CPUUnitTests.xml"
 
       - name: GNA plugin unit tests
         if: runner.os != 'macOS'
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_gna_unit_tests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml
+          "$INSTALL_TEST_DIR/ov_gna_unit_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-GNAUnitTests.xml"
 
       - name: MULTI / AUTO plugin unit tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ieMultiPluginUnitTests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-MultiAutoUnitTests.xml
+          "$INSTALL_TEST_DIR/ieMultiPluginUnitTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-MultiAutoUnitTests.xml"
 
       - name: Template plugin tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 --gtest_filter=-*smoke_TopK_With_Hardcoded_Refs*:*HeteroSyntheticTest.someLayersToMajorPluginOthersToFallback* --gtest_output=xml:$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml
+          "$INSTALL_TEST_DIR/ov_template_func_tests" --gtest_print_time=1 \
+            --gtest_filter=-*smoke_TopK_With_Hardcoded_Refs*:*HeteroSyntheticTest.someLayersToMajorPluginOthersToFallback* \
+            --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TemplateFuncTests.xml"
 
-      # - name: Inference Engine C API tests
-      #   run: |
-      #     source "$INSTALL_DIR/setupvars.sh"
-      #     "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml
+      - name: Inference Engine C API tests
+        run: |
+          source "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/InferenceEngineCAPITests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-InferenceEngineCAPITests.xml"
 
-      # - name: OpenVINO C API tests
-      #   run: |
-      #     source "$INSTALL_DIR/setupvars.sh"
-      #     "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml
+      - name: OpenVINO C API tests
+        run: |
+          source "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TEST_DIR/ov_capi_test" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-OpenVINOCAPITests.xml"
+
+  Tests:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ['self-hosted', 'macOS']
+    steps:
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests_package
+
+      - name: Extract OpenVINO packages
+        run: |
+          tar -xzf openvino_package.tar.gz || exit 1
+          tar -xzf openvino_tests.tar.gz || exit 1
+
+      - name: ARM CPU plugin func tests
+        if: runner.os == 'macOS'
+        run: |
+          source setupvars.sh
+          tests/armFuncTests --gtest_print_time=1 --gtest_output=xml:TEST-ARMCPUFuncTests.xml
