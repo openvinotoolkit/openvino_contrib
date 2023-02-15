@@ -28,22 +28,22 @@ jobs:
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'macOS']
     env:
-      BUILD_TYPE: Release
-      CCACHE_MAXSIZE: 10G
-      CMAKE_OSX_DEPLOYMENT_TARGET: 11.0
+      BUILD_TYPE: 'Release'
+      CCACHE_MAXSIZE: '10G'
+      CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       OPENVINO_REPO: "${{ github.workspace }}/openvino"
       OPENVINO_CONTRIB_REPO: "${{ github.workspace }}/openvino_contrib"
       INSTALL_DIR: "${{ github.workspace }}/install"
       INSTALL_TEST_DIR: "${{ github.workspace }}/install/tests"
       SAMPLES_INSTALL_DIR: "${{ github.workspace }}/install/samples"
       BUILD_DIR: "${{ github.workspace }}/build"
-      TEST_DATA: "${{ github.workspace }}/testdata"
       DATA_PATH: "${{ github.workspace }}/testdata"
-      OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
-      CCACHE_DIR: /Users/sandye51/actions-runner/build_cache
-      OPENVINO_REFERENCE: /Users/sandye51/actions-runner/openvino.reference/
-      OPENVINO_CONTRIB_REFERENCE: /Users/sandye51/actions-runner/openvino_contrib.reference/
-      SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
+      MODELS_PATH: "${{ github.workspace }}/testdata"
+      OV_TEMP: "/Users/sandye51/actions-runner/openvino_temp"
+      CCACHE_DIR: "/Users/sandye51/actions-runner/build_cache"
+      OPENVINO_REFERENCE: "/Users/sandye51/actions-runner/openvino.reference/"
+      OPENVINO_CONTRIB_REFERENCE: "/Users/sandye51/actions-runner/openvino_contrib.reference/"
+      SUBMODULES_REFERENCE: "/Users/sandye51/actions-runner/submodules.reference"
 
     steps:
       - name: Clone OpenVINO with cache
