@@ -18,9 +18,9 @@ concurrency:
 
 jobs:
   Build:
-    # defaults:
-    #   run:
-    #     shell: bash
+    defaults:
+      run:
+        shell: cmd
     strategy:
       fail-fast: false
       matrix:
@@ -34,33 +34,33 @@ jobs:
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_C_COMPILER_LAUNCHER: ccache
-      OPENVINO_REPO: "${{ github.workspace }}/openvino"
-      OPENVINO_CONTRIB_REPO: "${{ github.workspace }}/openvino_contrib"
-      INSTALL_DIR: "${{ github.workspace }}/install"
-      INSTALL_TEST_DIR: "${{ github.workspace }}/install/tests"
-      SAMPLES_INSTALL_DIR: "${{ github.workspace }}/install/samples"
-      LAYER_TESTS_INSTALL_DIR: "${{ github.workspace }}/install/tests/layer_tests"
-      BUILD_DIR: "${{ github.workspace }}/build"
-      DATA_PATH: "${{ github.workspace }}/testdata"
-      MODELS_PATH: "${{ github.workspace }}/testdata"
-      OV_TEMP: "/C/caches/openvino_temp"
-      CCACHE_DIR: "/C/caches/build_cache"
-      OPENVINO_REFERENCE: "/C/caches/openvino.reference/"
-      OPENVINO_CONTRIB_REFERENCE: "/C/caches/openvino_contrib.reference/"
-      SUBMODULES_REFERENCE: "/C/caches/submodules.reference"
+      OPENVINO_REPO: ${{ github.workspace }}\openvino
+      OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib
+      INSTALL_DIR: ${{ github.workspace }}\install
+      INSTALL_TEST_DIR: ${{ github.workspace }}\install\tests
+      SAMPLES_INSTALL_DIR: ${{ github.workspace }}\install\samples
+      LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}\install\tests\layer_tests
+      BUILD_DIR: ${{ github.workspace }}\build
+      DATA_PATH: ${{ github.workspace }}\testdata
+      MODELS_PATH: ${{ github.workspace }}\testdata
+      OV_TEMP: C:\caches\openvino_temp
+      CCACHE_DIR: C:\caches\build_cache
+      OPENVINO_REFERENCE: C:\caches\openvino.reference\
+      OPENVINO_CONTRIB_REFERENCE: C:\caches\openvino_contrib.reference
+      SUBMODULES_REFERENCE: C:\caches\submodules.reference
 
     steps:
       - name: Clone OpenVINO with cache
         if: runner.os == 'windows'
         run: |
-          git clone --reference "$OPENVINO_REFERENCE" https://github.com/openvinotoolkit/openvino.git
-          cd "$OPENVINO_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE" --jobs 4
+          git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
+          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
         if: runner.os == 'windows'
         run: |
-          git clone --reference "$OPENVINO_CONTRIB_REFERENCE" https://github.com/openvinotoolkit/openvino_contrib.git
-          cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE"
+          git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
+          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
 
       - name: Clone testdata for C API tests
         uses: actions/checkout@v3
@@ -74,9 +74,9 @@ jobs:
         if: runner.os != 'windows'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git
-          cd "$OPENVINO_REPO" && git submodule update --init
+          cd ${{ env.OPENVINO_REPO }} && git submodule update --init
           git clone https://github.com/openvinotoolkit/openvino_contrib.git
-          cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init
+          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init
 
       - name: Get tools versions
         run: |
@@ -107,29 +107,29 @@ jobs:
         run: |
           # For Python API
           python3 -m pip install --upgrade pip
-          python3 -m pip install -r "$OPENVINO_REPO/src/bindings/python/wheel/requirements-dev.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/src/bindings/python/requirements.txt"
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/wheel/requirements-dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/requirements.txt
           # For running Python API tests
-          python3 -m pip install -r "$OPENVINO_REPO/src/bindings/python/src/compatibility/openvino/requirements-dev.txt"
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/src/compatibility/openvino/requirements-dev.txt
           # For running ONNX frontend unit tests
-          python3 -m pip install --force-reinstall -r "$OPENVINO_REPO/src/frontends/onnx/tests/requirements.txt"
+          python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }} /src/frontends/onnx/tests/requirements.txt
           # For running TensorFlow frontend unit tests
-          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/tensorflow/tests/requirements.txt
           # For running Paddle frontend unit tests
-          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/paddle/tests/requirements.txt
 
       - name: Install MO dependencies
         run: |
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_caffe.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_kaldi.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_onnx.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_dev.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_mxnet.txt"
-          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_tf2.txt"
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
         if: runner.os == 'Linux'
-        run: sudo "$OPENVINO_REPO/install_build_dependencies.sh"
+        run: sudo ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
       # Build
@@ -141,6 +141,7 @@ jobs:
 
       - name: CMake configure
         id: cmake-configure
+        shell: bash
         run: |
           echo "::group::Define cmake arguments"
           if [[ "$RUNNER_OS" == "macOS" ]] ; then
@@ -169,7 +170,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          cmake --build "$BUILD_DIR" --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
+          cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
           echo "::endgroup::"
 
           echo "::group::Show ccache stats"
@@ -177,33 +178,33 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          cmake -S "$OPENVINO_REPO/tests/layer_tests" -B "$BUILD_DIR/layer_tests" || exit 1
-          cmake --build "$BUILD_DIR/layer_tests" --config Release || exit 1
-          cmake --install "$BUILD_DIR/layer_tests" --config Release --prefix "$INSTALL_DIR" --component tests
+          cmake -S ${{ env.OPENVINO_REPO }} /tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
+          cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release || exit 1
+          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          cmake -S "$OPENVINO_REPO/tests/samples_tests" -B "$BUILD_DIR/samples_tests || exit 1
-          cmake --build "$BUILD_DIR/samples_tests" --config Release || exit 1
-          cmake --install "$BUILD_DIR/samples_tests" --config Release --prefix "$INSTALL_DIR" --component tests
+          cmake -S ${{ env.OPENVINO_REPO }} /tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
+          cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release || exit 1
+          cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR"
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component python_wheels
-          cd "$INSTALL_DIR" && tar -czvf "$BUILD_DIR/openvino_package.tar.gz" * && cd -
-          cmake --install "$BUILD_DIR" --strip --config Release --prefix "$INSTALL_DIR" --component tests
-          cd "$INSTALL_DIR" && tar -czvf "$BUILD_DIR/openvino_tests.tar.gz" tests/ && cd -
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz * && cd -
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/ && cd -
           echo "::endgroup::"
 
       - name: Build cpp samples
-        run: $SAMPLES_INSTALL_DIR/cpp/build_samples.sh -i "$BUILD_DIR/cpp_samples_install" -b "$BUILD_DIR/cpp_samples"
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.bat -i ${{ env.BUILD_DIR }}/cpp_samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
       - name: Build c samples
-        run: $SAMPLES_INSTALL_DIR/c/build_samples.sh -i "$BUILD_DIR/c_samples_install" -b "$BUILD_DIR/c_samples"
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.bat -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
       - name: Samples tests
-        if: runner.os != 'macOS' # TODO: enable back
+        if: success() && runner.os != 'macOS' # TODO: enable back
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           python3 -m pip install -r "$INSTALL_TEST_DIR/smoke_tests/requirements.txt"
@@ -231,7 +232,7 @@ jobs:
 
       - name: Clean build dir
         if: ${{ always() }}
-        run: rm -fr "$BUILD_DIR"
+        run: rm -fr ${{ env.BUILD_DIR }}
 
       #
       # Python tests
@@ -239,7 +240,7 @@ jobs:
 
       - name: Install Python wheels
         run: |
-          python3 -m pip install openvino-dev --force-reinstall --only-binary :all: --find-links="$INSTALL_DIR/tools"
+          python3 -m pip install openvino-dev --force-reinstall --only-binary :all: --find-links=${{ env.INSTALL_DIR }}/tools
 
       - name: nGraph and IE Python Bindings Tests
         run: |
@@ -273,20 +274,20 @@ jobs:
             --ignore=$INSTALL_TEST_DIR/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
 
       - name: Model Optimizer UT
-        if: runner.os != 'macOS' # mxnet is not available on macOS, TODO: create ticket
+        if: success() && runner.os != 'macOS' # mxnet is not available on macOS, TODO: create ticket
         run: python3 -m pytest -s $INSTALL_TEST_DIR/mo/unit_tests --junitxml=$INSTALL_TEST_DIR/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
-        if: runner.os != 'macos' # functional issues: accuracy or dynamic shapes
+        if: success() && runner.os != 'macos' # functional issues: accuracy or dynamic shapes
         run: |
-          python3 -m pip install -r "$LAYER_TESTS_INSTALL_DIR/requirements.txt"
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }} /requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_INSTALL_DIR
-          python3 -m pytest $LAYER_TESTS_INSTALL_DIR/pytorch_tests/ -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests/ -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
         env:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - TF FE
-        if: runner.os != 'macos' # functional issues on ARM CPU plugin
+        if: success() && runner.os != 'macos' # functional issues on ARM CPU plugin
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
@@ -297,7 +298,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 2 Layer Tests - TF FE
-        if: runner.os != 'macos' # tensorflow-macos issue
+        if: success() && runner.os != 'macos' # tensorflow-macos issue
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -306,14 +307,14 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - Legacy FE
-        if: ${{ failure() }}
+        if: success() && runner.os != 'macos'
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
           python3 -m pytest $LAYER_TESTS_INSTALL_DIR/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=$INSTALL_TEST_DIR/TEST-tf_Roll.xmlTEST
 
       - name: TensorFlow 2 Layer Tests - Legacy FE
-        if: ${{ failure() }}
+        if: success() && runner.os != 'macos'
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -322,7 +323,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow Lite Layer Tests - TFL FE
-        if: runner.os != 'macos' # not tensorflow.lite
+        if: success() && runner.os != 'macos' # not tensorflow.lite
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -331,7 +332,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Complex Python params
-        if: ${{ failure() }}
+        if: success() && runner.os != 'macos'
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -340,7 +341,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import TF model from memory
-        if: ${{ failure() }}
+        if: success() && runner.os != 'macos'
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
@@ -349,7 +350,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import PyTorch model from memory
-        if: ${{ failure() }}
+        if: success() && runner.os != 'macos'
         run: |
           python3 -m pip install -r $LAYER_TESTS_INSTALL_DIR/requirements.txt
           export PYTHONPATH=$LAYER_TESTS_INSTALL_DIR:$PYTHONPATH
