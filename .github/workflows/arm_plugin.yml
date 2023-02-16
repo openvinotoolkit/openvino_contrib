@@ -412,6 +412,7 @@ jobs:
           "$INSTALL_TEST_DIR/ov_tensorflow_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowFrontend.xml"
 
       - name: TensorFlow Lite frontend tests
+        if: runner.os != 'macOS' # Tensorflow is not installed on macos
         run: |
           source "$INSTALL_DIR/setupvars.sh"
           "$INSTALL_TEST_DIR/ov_tensorflow_lite_frontend_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-TensorFlowLiteFrontend.xml"
