@@ -16,6 +16,29 @@ concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: false
 
+env:
+  CMAKE_BUILD_TYPE: 'Release'
+  CCACHE_MAXSIZE: '10G'
+  CMAKE_GENERATOR: 'Ninja'
+  CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  OPENVINO_REPO: ${{ github.workspace }}\openvino
+  OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib
+  INSTALL_DIR: ${{ github.workspace }}\install
+  INSTALL_TEST_DIR: ${{ github.workspace }}\install\tests
+  SAMPLES_INSTALL_DIR: ${{ github.workspace }}\install\samples
+  LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}\install\tests\layer_tests
+  BUILD_DIR: ${{ github.workspace }}\build
+  DATA_PATH: ${{ github.workspace }}\testdata
+  MODELS_PATH: ${{ github.workspace }}\testdata
+  OV_TEMP: C:\caches\openvino_temp
+  CCACHE_DIR: C:\caches\build_cache
+  OPENVINO_REFERENCE: C:\caches\openvino.reference\
+  OPENVINO_CONTRIB_REFERENCE: C:\caches\openvino_contrib.reference
+  SUBMODULES_REFERENCE: C:\caches\submodules.reference
+  # PATH: C:\Users\ilavreno\Downloads\ccache-4.7.4-windows-x86_64\ccache-4.7.4-windows-x86_64;C:\Users\ilavreno\scoop\shims
+
 jobs:
   Build:
     defaults:
@@ -27,28 +50,6 @@ jobs:
         os: ['windows-ilya']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'Windows', 'X64']
-    env:
-      CMAKE_BUILD_TYPE: 'Release'
-      CCACHE_MAXSIZE: '10G'
-      CMAKE_GENERATOR: 'Ninja'
-      CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      OPENVINO_REPO: ${{ github.workspace }}\openvino
-      OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib
-      INSTALL_DIR: ${{ github.workspace }}\install
-      INSTALL_TEST_DIR: ${{ github.workspace }}\install\tests
-      SAMPLES_INSTALL_DIR: ${{ github.workspace }}\install\samples
-      LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}\install\tests\layer_tests
-      BUILD_DIR: ${{ github.workspace }}\build
-      DATA_PATH: ${{ github.workspace }}\testdata
-      MODELS_PATH: ${{ github.workspace }}\testdata
-      OV_TEMP: C:\caches\openvino_temp
-      CCACHE_DIR: C:\caches\build_cache
-      OPENVINO_REFERENCE: C:\caches\openvino.reference\
-      OPENVINO_CONTRIB_REFERENCE: C:\caches\openvino_contrib.reference
-      SUBMODULES_REFERENCE: C:\caches\submodules.reference
-
     steps:
       # - name: Clone OpenVINO with cache
       #   if: runner.os == 'windows'
@@ -80,52 +81,45 @@ jobs:
 
       - name: Get tools versions
         run: |
-          ccache --version || exit 1
-          cmake --version || exit 1
-          python --version || exit 1
-          ninja --version || exit 1
+          echo %USERNAME%
+          echo %PATH%
 
       #
       # Dependencies
       #
 
-      - uses: actions/setup-python@v4
-        if: runner.os != 'macOS'
-        id: cp310
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-          cache-dependency-path: |
-            openvino/src/bindings/python/wheel/requirements-dev.txt
-            openvino/src/bindings/python/requirements.txt
-            openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-            openvino/src/frontends/onnx/tests/requirements.txt
-            openvino/src/frontends/tensorflow/tests/requirements.txt
-            openvino/src/frontends/paddle/tests/requirements.txt
+      # - uses: actions/setup-python@v4
+      #   if: runner.os != 'macOS'
+      #   id: cp310
+      #   with:
+      #     python-version: '3.10'
+      #     cache: 'pip'
+      #     cache-dependency-path: |
+      #       openvino/src/bindings/python/wheel/requirements-dev.txt
+      #       openvino/src/bindings/python/requirements.txt
+      #       openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+      #       openvino/src/frontends/onnx/tests/requirements.txt
+      #       openvino/src/frontends/tensorflow/tests/requirements.txt
+      #       openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
         run: |
-          # For Python API
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/wheel/requirements-dev.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/requirements.txt
-          # For running Python API tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-          # For running ONNX frontend unit tests
-          python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }} /src/frontends/onnx/tests/requirements.txt
-          # For running TensorFlow frontend unit tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/tensorflow/tests/requirements.txt
-          # For running Paddle frontend unit tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/paddle/tests/requirements.txt
+          python -m pip install --upgrade pip
+          python -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/wheel/requirements-dev.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/requirements.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }} /src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+          python -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }} /src/frontends/onnx/tests/requirements.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/tensorflow/tests/requirements.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }} /src/frontends/paddle/tests/requirements.txt
 
       - name: Install MO dependencies
         run: |
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
         if: runner.os == 'Linux'
