@@ -18,18 +18,19 @@ concurrency:
 
 jobs:
   Build:
-    defaults:
-      run:
-        shell: bash
+    # defaults:
+    #   run:
+    #     shell: bash
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-arm64']
+        os: ['windows-ilya']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ['self-hosted', 'macOS']
+    runs-on: ['self-hosted', 'Windows', 'X64']
     env:
       CMAKE_BUILD_TYPE: 'Release'
       CCACHE_MAXSIZE: '10G'
+      CMAKE_GENERATOR: 'Ninja'
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -42,21 +43,21 @@ jobs:
       BUILD_DIR: "${{ github.workspace }}/build"
       DATA_PATH: "${{ github.workspace }}/testdata"
       MODELS_PATH: "${{ github.workspace }}/testdata"
-      OV_TEMP: "/Users/sandye51/actions-runner/openvino_temp"
-      CCACHE_DIR: "/Users/sandye51/actions-runner/build_cache"
-      OPENVINO_REFERENCE: "/Users/sandye51/actions-runner/openvino.reference/"
-      OPENVINO_CONTRIB_REFERENCE: "/Users/sandye51/actions-runner/openvino_contrib.reference/"
-      SUBMODULES_REFERENCE: "/Users/sandye51/actions-runner/submodules.reference"
+      OV_TEMP: "/C/caches/openvino_temp"
+      CCACHE_DIR: "/C/caches/build_cache"
+      OPENVINO_REFERENCE: "/C/caches/openvino.reference/"
+      OPENVINO_CONTRIB_REFERENCE: "/C/caches/openvino_contrib.reference/"
+      SUBMODULES_REFERENCE: "/C/caches/submodules.reference"
 
     steps:
       - name: Clone OpenVINO with cache
-        if: runner.os == 'macOS'
+        if: runner.os == 'windows'
         run: |
           git clone --reference "$OPENVINO_REFERENCE" https://github.com/openvinotoolkit/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE" --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
-        if: runner.os == 'macOS'
+        if: runner.os == 'windows'
         run: |
           git clone --reference "$OPENVINO_CONTRIB_REFERENCE" https://github.com/openvinotoolkit/openvino_contrib.git
           cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE"
@@ -70,12 +71,19 @@ jobs:
           lfs: 'true'
 
       - name: Clone OpenVINO & OpenVINO Contrib
-        if: runner.os != 'macOS'
+        if: runner.os != 'windows'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init
           git clone https://github.com/openvinotoolkit/openvino_contrib.git
           cd "$OPENVINO_CONTRIB_REPO" && git submodule update --init
+
+      - name: Get tools versions
+        run: |
+          cmake --version || exit 1
+          ccache --version || exit 1
+          python --version || exit 1
+          ninja --version || exit 1
 
       #
       # Dependencies
@@ -92,8 +100,8 @@ jobs:
             openvino/src/bindings/python/requirements.txt
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
             openvino/src/frontends/onnx/tests/requirements.txt
-            # openvino/src/frontends/tensorflow/tests/requirements.txt
-            # openvino/src/frontends/paddle/tests/requirements.txt
+            openvino/src/frontends/tensorflow/tests/requirements.txt
+            openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
         run: |
@@ -106,9 +114,9 @@ jobs:
           # For running ONNX frontend unit tests
           python3 -m pip install --force-reinstall -r "$OPENVINO_REPO/src/frontends/onnx/tests/requirements.txt"
           # For running TensorFlow frontend unit tests
-          # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
+          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/tensorflow/tests/requirements.txt"
           # For running Paddle frontend unit tests
-          # python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
+          python3 -m pip install -r "$OPENVINO_REPO/src/frontends/paddle/tests/requirements.txt"
 
       - name: Install MO dependencies
         run: |
@@ -116,8 +124,8 @@ jobs:
           python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_kaldi.txt"
           python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_onnx.txt"
           python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_dev.txt"
-          # python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_mxnet.txt"
-          # python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_tf2.txt"
+          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_mxnet.txt"
+          python3 -m pip install -r "$OPENVINO_REPO/tools/mo/requirements_tf2.txt"
 
       - name: Install build dependencies
         if: runner.os == 'Linux'
@@ -150,7 +158,6 @@ jobs:
             -DENABLE_WHEEL=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
-            -G Ninja \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
@@ -176,7 +183,7 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          cmake -S "$OPENVINO_REPO/tests/samples_tests" -B "$BUILD_DIR/samples_tests" || exit 1
+          cmake -S "$OPENVINO_REPO/tests/samples_tests" -B "$BUILD_DIR/samples_tests || exit 1
           cmake --build "$BUILD_DIR/samples_tests" --config Release || exit 1
           cmake --install "$BUILD_DIR/samples_tests" --config Release --prefix "$INSTALL_DIR" --component tests
           echo "::endgroup::"
@@ -465,12 +472,49 @@ jobs:
         if: ${{ always() }}
         run: rm -fr "$INSTALL_DIR" "$OPENVINO_REPO" "$OPENVINO_CONTRIB_REPO"
 
-  Tests:
+  # CPU_ARM_Tests:
+  #   needs: Build
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   runs-on: ['self-hosted', 'macOS']
+  #   env:
+  #     INSTALL_DIR: ${{ github.workspace }}/install
+  #     INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
+
+  #   steps:
+  #     - name: Download OpenVINO package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_package
+
+  #     - name: Download OpenVINO tests package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_tests
+
+  #     - name: Extract OpenVINO packages
+  #       run: |
+  #         mkdir -p "$INSTALL_DIR"
+  #         tar -xzf openvino_package.tar.gz -C "$INSTALL_DIR" && rm openvino_package.tar.gz || exit 1
+  #         tar -xzf openvino_tests.tar.gz -C "$INSTALL_DIR" && rm openvino_tests.tar.gz || exit 1
+
+  #     - name: ARM CPU plugin func tests
+  #       if: runner.os == 'macOS'
+  #       run: |
+  #         source "$INSTALL_DIR/setupvars.sh"
+  #         "$INSTALL_TESTS_DIR/armFuncTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-ARMCPUFuncTests.xml"
+
+  #     - name: Clean installation dir
+  #       if: ${{ always() }}
+  #       run: rm -fr "$INSTALL_DIR"
+
+  CPU_Tests:
     needs: Build
     defaults:
       run:
         shell: bash
-    runs-on: ['self-hosted', 'macOS']
+    runs-on: ['self-hosted', 'windows']
     env:
       INSTALL_DIR: ${{ github.workspace }}/install
       INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
@@ -492,11 +536,46 @@ jobs:
           tar -xzf openvino_package.tar.gz -C "$INSTALL_DIR" && rm openvino_package.tar.gz || exit 1
           tar -xzf openvino_tests.tar.gz -C "$INSTALL_DIR" && rm openvino_tests.tar.gz || exit 1
 
-      - name: ARM CPU plugin func tests
-        if: runner.os == 'macOS'
+      - name: Intel CPU plugin func tests
         run: |
           source "$INSTALL_DIR/setupvars.sh"
-          "$INSTALL_TESTS_DIR/armFuncTests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-ARMCPUFuncTests.xml"
+          "$INSTALL_TESTS_DIR/ov_cpu_func_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-CPUFuncTests.xml"
+
+      - name: Clean installation dir
+        if: ${{ always() }}
+        run: rm -fr "$INSTALL_DIR"
+
+  GPU_Tests:
+    needs: Build
+    defaults:
+      run:
+        shell: bash
+    runs-on: ['self-hosted', 'windows']
+    env:
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
+
+    steps:
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests
+
+      - name: Extract OpenVINO packages
+        run: |
+          mkdir -p "$INSTALL_DIR"
+          tar -xzf openvino_package.tar.gz -C "$INSTALL_DIR" && rm openvino_package.tar.gz || exit 1
+          tar -xzf openvino_tests.tar.gz -C "$INSTALL_DIR" && rm openvino_tests.tar.gz || exit 1
+
+      - name: Intel GPU plugin func tests
+        run: |
+          source "$INSTALL_DIR/setupvars.sh"
+          "$INSTALL_TESTS_DIR/ov_gpu_func_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-GPUFuncTests.xml"
 
       - name: Clean installation dir
         if: ${{ always() }}
