@@ -52,7 +52,7 @@ jobs:
       - name: Clone OpenVINO with cache
         if: runner.os == 'macOS'
         run: |
-          git clone --branch tensorflow-macos --reference "$OPENVINO_REFERENCE" https://github.com/ilya-lavrenov/openvino.git
+          git clone --reference "$OPENVINO_REFERENCE" https://github.com/openvinotoolkit/openvino.git
           cd "$OPENVINO_REPO" && git submodule update --init --reference "$SUBMODULES_REFERENCE" --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
