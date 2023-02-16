@@ -32,8 +32,8 @@ jobs:
       CCACHE_MAXSIZE: '10G'
       CMAKE_GENERATOR: 'Ninja'
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: C:\Users\ilavreno\Downloads\ccache-4.7.4-windows-x86_64\ccache-4.7.4-windows-x86_64\ccache.exe
+      CMAKE_C_COMPILER_LAUNCHER: C:\Users\ilavreno\Downloads\ccache-4.7.4-windows-x86_64\ccache-4.7.4-windows-x86_64\ccache.exe
       OPENVINO_REPO: ${{ github.workspace }}\openvino
       OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib
       INSTALL_DIR: ${{ github.workspace }}\install
@@ -81,7 +81,7 @@ jobs:
       - name: Get tools versions
         run: |
           cmake --version || exit 1
-          ccache --version || exit 1
+          C:\Users\ilavreno\Downloads\ccache-4.7.4-windows-x86_64\ccache-4.7.4-windows-x86_64\ccache.exe --version || exit 1
           python --version || exit 1
           ninja --version || exit 1
 
