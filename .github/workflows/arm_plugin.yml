@@ -20,7 +20,7 @@ jobs:
   Build:
     defaults:
       run:
-        shell: bash
+        shell: cmd
     strategy:
       fail-fast: false
       matrix:
@@ -50,25 +50,25 @@ jobs:
       SUBMODULES_REFERENCE: C:\caches\submodules.reference
 
     steps:
-      - name: Clone OpenVINO with cache
-        if: runner.os == 'windows'
-        run: |
-          git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
-          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
+      # - name: Clone OpenVINO with cache
+      #   if: runner.os == 'windows'
+      #   run: |
+      #     git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
+      #     cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
 
-      - name: Clone OpenVINO Contrib with cache
-        if: runner.os == 'windows'
-        run: |
-          git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
-          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
+      # - name: Clone OpenVINO Contrib with cache
+      #   if: runner.os == 'windows'
+      #   run: |
+      #     git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
+      #     cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
 
-      - name: Clone testdata for C API tests
-        uses: actions/checkout@v3
-        with:
-          repository: openvinotoolkit/testdata
-          path: 'testdata'
-          ref: 'master'
-          lfs: 'true'
+      # - name: Clone testdata for C API tests
+      #   uses: actions/checkout@v3
+      #   with:
+      #     repository: openvinotoolkit/testdata
+      #     path: 'testdata'
+      #     ref: 'master'
+      #     lfs: 'true'
 
       - name: Clone OpenVINO & OpenVINO Contrib
         if: runner.os != 'windows'
@@ -80,8 +80,8 @@ jobs:
 
       - name: Get tools versions
         run: |
-          cmake --version || exit 1
           ccache --version || exit 1
+          cmake --version || exit 1
           python --version || exit 1
           ninja --version || exit 1
 
@@ -144,13 +144,13 @@ jobs:
         shell: bash
         run: |
           echo "::group::Define cmake arguments"
-          if [[ "$RUNNER_OS" == "macOS" ]] ; then
-            cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
-          fi
+          # if [[ "$RUNNER_OS" == "macOS" ]] ; then
+          #   cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
+          # fi
           echo "::endgroup::"
 
           echo "::group::CMake configure"
-          cmake "${cmake_args[@]}" \
+          cmake \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_NCC_STYLE=OFF \
             -DENABLE_DATA=OFF \
@@ -178,13 +178,13 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          cmake -S ${{ env.OPENVINO_REPO }} /tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
           cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release || exit 1
           cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          cmake -S ${{ env.OPENVINO_REPO }} /tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
           cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release || exit 1
           cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
