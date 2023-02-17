@@ -32,11 +32,11 @@ env:
   BUILD_DIR: ${{ github.workspace }}/build
   DATA_PATH: ${{ github.workspace }}/testdata
   MODELS_PATH: ${{ github.workspace }}/testdata
-  OV_TEMP: /home/sandye51/openvino_temp
-  CCACHE_DIR: /home/sandye51/build_cache
-  OPENVINO_REFERENCE: /home/sandye51/openvino.reference
-  OPENVINO_CONTRIB_REFERENCE: /home/sandye51/openvino_contrib.reference
-  SUBMODULES_REFERENCE: /home/sandye51/submodules.reference
+  OV_TEMP: /home/sandye51/actions-runner/openvino_temp
+  CCACHE_DIR: /home/sandye51/actions-runner/build_cache
+  OPENVINO_REFERENCE: /home/sandye51/actions-runner/openvino.reference
+  OPENVINO_CONTRIB_REFERENCE: /home/sandye51/actions-runner/openvino_contrib.reference
+  SUBMODULES_REFERENCE: /home/sandye51/actions-runner/submodules.reference
 
 jobs:
   Build:
@@ -50,8 +50,8 @@ jobs:
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'arm64']
     # container:
-    #   image: 'ghcr.io/catthehacker/ubuntu:act-22.04'
-    #   options: -v /Users/sandye51/actions-runner:/Users/sandye51/actions-runner
+    #   image: sandye64/openvino_manylinux_arm64:latest
+    #   options: -v /home/sandye51:/home/sandye51
     steps:
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
@@ -60,7 +60,7 @@ jobs:
           cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
-        if: runner.os == 'linux'
+        if: ${{ runner.arch == 'ARM64' }}
         run: |
           git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
           cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
@@ -110,8 +110,6 @@ jobs:
         run: |
           # For Python API
           python3 -m pip install --upgrade pip
-          python3 -m venv ~/openvino_venv
-          source ~/openvino_venv/bin/activate
           python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
@@ -134,8 +132,8 @@ jobs:
           # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       # - name: Install build dependencies
-      #   if: runner.os == 'Linux'
-        # run: sudo ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+      #   if: runner.os == 'linux'
+      #   run: sudo ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
       # Build
@@ -149,7 +147,7 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::Define cmake arguments"
-          if [[ "$RUNNER_OS" == "linux" ]] ; then
+          if [[ "${{ runner.arch }}" == "ARM64" ]] ; then
             cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
           echo "::endgroup::"
@@ -284,7 +282,7 @@ jobs:
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
-        if: success() && runner.os != 'macos' # functional issues: accuracy or dynamic shapes
+        if: success() && runner.os != 'linux' # functional issues: accuracy or dynamic shapes
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
@@ -293,7 +291,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - TF FE
-        if: success() && runner.os != 'macos' # functional issues on ARM CPU plugin
+        if: success() && runner.os != 'linux' # functional issues on ARM CPU plugin
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
@@ -304,7 +302,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 2 Layer Tests - TF FE
-        if: success() && runner.os != 'macos' # tensorflow-macos issue
+        if: success() && runner.os != 'linux' # tensorflow-macos issue
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -313,14 +311,14 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - Legacy FE
-        if: success() && runner.os != 'macos'
+        if: success() && runner.os != 'linux'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=$INSTALL_TEST_DIR/TEST-tf_Roll.xmlTEST
 
       - name: TensorFlow 2 Layer Tests - Legacy FE
-        if: success() && runner.os != 'macos'
+        if: success() && runner.os != 'linux'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -330,7 +328,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: TensorFlow Lite Layer Tests - TFL FE
-        if: success() && runner.os != 'macos' # not tensorflow.lite
+        if: success() && runner.os != 'linux' # not tensorflow.lite
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -339,7 +337,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Complex Python params
-        if: success() && runner.os != 'macos'
+        if: success() && runner.os != 'linux'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -349,7 +347,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import TF model from memory
-        if: success() && runner.os != 'macos'
+        if: success() && runner.os != 'linux'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -359,7 +357,7 @@ jobs:
           TEST_DEVICE: CPU
 
       - name: MO Python API Tests - Import PyTorch model from memory
-        if: success() && runner.os != 'macos'
+        if: success() && runner.os != 'linux'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -381,7 +379,9 @@ jobs:
         run: ${{ env.INSTALL_DIR }}/setupvars.sh
 
       - name: OpenVINO Core unit tests
-        run: ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
+        run: |
+          echo "$LD_LIBRARY_PATH"
+          ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
 
       - name: OpenVINO Inference functional tests
@@ -462,9 +462,9 @@ jobs:
         run: ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
 
-      - name: Clean install & source dir
-        if: ${{ always() }}
-        run: rm -fr ${{ env.INSTALL_DIR }} ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }}
+      # - name: Clean install & source dir
+      #   if: ${{ always() }}
+      #   run: rm -fr ${{ env.INSTALL_DIR }} ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }}
 
   CPU_ARM_Tests:
     needs: Build
