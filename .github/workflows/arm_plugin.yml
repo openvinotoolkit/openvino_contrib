@@ -32,11 +32,11 @@ env:
   BUILD_DIR: ${{ github.workspace }}/build
   DATA_PATH: ${{ github.workspace }}/testdata
   MODELS_PATH: ${{ github.workspace }}/testdata
-  OV_TEMP: /Users/sandye51/actions-runner/openvino_temp
-  CCACHE_DIR: /Users/sandye51/actions-runner/build_cache
-  OPENVINO_REFERENCE: /Users/sandye51/actions-runner/openvino.reference
-  OPENVINO_CONTRIB_REFERENCE: /Users/sandye51/actions-runner/openvino_contrib.reference
-  SUBMODULES_REFERENCE: /Users/sandye51/actions-runner/submodules.reference
+  OV_TEMP: /home/sandye51/openvino_temp
+  CCACHE_DIR: /home/sandye51/build_cache
+  OPENVINO_REFERENCE: /home/sandye51/openvino.reference
+  OPENVINO_CONTRIB_REFERENCE: /home/sandye51/openvino_contrib.reference
+  SUBMODULES_REFERENCE: /home/sandye51/submodules.reference
 
 jobs:
   Build:
@@ -46,21 +46,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-arm64']
+        os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ['self-hosted', 'macOS', 'arm64']
+    runs-on: ['self-hosted', 'linux', 'arm64']
     # container:
     #   image: 'ghcr.io/catthehacker/ubuntu:act-22.04'
     #   options: -v /Users/sandye51/actions-runner:/Users/sandye51/actions-runner
     steps:
       - name: Clone OpenVINO with cache
-        if: runner.os == 'macOS'
+        if: runner.os == 'linux'
         run: |
           git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
           cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
 
       - name: Clone OpenVINO Contrib with cache
-        if: runner.os == 'macOS'
+        if: runner.os == 'linux'
         run: |
           git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
           cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
@@ -74,7 +74,7 @@ jobs:
           lfs: 'true'
 
       - name: Clone OpenVINO & OpenVINO Contrib
-        if: runner.os != 'macOS'
+        if: runner.os != 'linux'
         run: |
           git clone https://github.com/openvinotoolkit/openvino.git
           cd ${{ env.OPENVINO_REPO }} && git submodule update --init
@@ -93,7 +93,7 @@ jobs:
       #
 
       - uses: actions/setup-python@v4
-        if: runner.os != 'macOS'
+        if: runner.os != 'linux'
         id: cp310
         with:
           python-version: '3.10'
@@ -104,12 +104,15 @@ jobs:
             openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
             openvino/src/frontends/onnx/tests/requirements.txt
             openvino/src/frontends/tensorflow/tests/requirements.txt
-            openvino/src/frontends/paddle/tests/requirements.txt
+            # openvino/src/frontends/paddle/tests/requirements.txt
 
       - name: Install python dependencies
         run: |
           # For Python API
           python3 -m pip install --upgrade pip
+          python3 -m venv ~/openvino_venv
+          source ~/openvino_venv/bin/activate
+          python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
           # For running Python API tests
@@ -117,7 +120,7 @@ jobs:
           # For running ONNX frontend unit tests
           python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
           # For running TensorFlow frontend unit tests
-          # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
           # For running Paddle frontend unit tests
           # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
 
@@ -130,9 +133,9 @@ jobs:
           # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
-      - name: Install build dependencies
-        if: runner.os == 'Linux'
-        run: sudo ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+      # - name: Install build dependencies
+      #   if: runner.os == 'Linux'
+        # run: sudo ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
       # Build
@@ -144,10 +147,9 @@ jobs:
 
       - name: CMake configure
         id: cmake-configure
-        shell: bash
         run: |
           echo "::group::Define cmake arguments"
-          if [[ "$RUNNER_OS" == "macOS" ]] ; then
+          if [[ "$RUNNER_OS" == "linux" ]] ; then
             cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
           fi
           echo "::endgroup::"
@@ -207,7 +209,7 @@ jobs:
         run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
       - name: Samples tests
-        if: success() && runner.os != 'macOS' # TODO: enable back
+        if: success() && runner.os != 'linux' # TODO: enable back
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           python3 -m pip install -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
@@ -243,7 +245,7 @@ jobs:
 
       - name: Install Python wheels
         run: |
-          python3 -m pip install openvino-dev --force-reinstall --only-binary :all: --find-links=${{ env.INSTALL_DIR }}/tools
+          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}/tools
 
       - name: nGraph and IE Python Bindings Tests
         run: |
@@ -277,16 +279,16 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
 
       - name: Model Optimizer UT
-        if: success() && runner.os != 'macOS' # mxnet is not available on macOS, TODO: create ticket
+        if: success() && runner.os != 'linux' # mxnet is not available on macOS, TODO: create ticket
         run: python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
         if: success() && runner.os != 'macos' # functional issues: accuracy or dynamic shapes
         run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }} /requirements.txt
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
-          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests/ -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
         env:
           TEST_DEVICE: CPU
 
@@ -469,7 +471,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: ['self-hosted', 'macOS']
+    runs-on: ['self-hosted', 'linux', 'arm64']
     env:
       INSTALL_DIR: ${{ github.workspace }}/install
       INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
