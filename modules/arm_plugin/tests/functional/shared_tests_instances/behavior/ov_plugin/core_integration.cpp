@@ -81,13 +81,13 @@ INSTANTIATE_TEST_SUITE_P(
 // IE Class Query network
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassQueryNetworkTest, OVClassQueryNetworkTest,
+        smoke_OVClassQueryModelTest, OVClassQueryModelTest,
         ::testing::Values("CPU"));
 
 // IE Class Load network
 
 INSTANTIATE_TEST_SUITE_P(
-        smoke_OVClassLoadNetworkTest, OVClassLoadNetworkTest,
+        smoke_OVClassCompileModelTest, OVClassCompileModelTest,
         ::testing::Values("CPU"));
 } // namespace
 

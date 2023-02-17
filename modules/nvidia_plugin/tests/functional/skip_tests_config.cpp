@@ -21,19 +21,23 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestPreprocessDynamicallyInSetBlobTest.*oPRC=0.*oLT=1.*)",
         // Not Implemented
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*)",
+        R"(.*Behavior.*OVCompiledModelBaseTest.*(canSetConfigToCompiledModel|canSetConfigToCompiledModelGetConfigAndCheck).*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution|CheckExecGraphInfoSerialization).*)",
+        R"(.*Behavior.*OVCompiledModelBaseTest.*(checkExecGraphInfoBeforeExecution|checkExecGraphInfoAfterExecution|CheckExecGraphInfoSerialization).*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*canExport.*)",
+        R"(.*Behavior.*OVCompiledModelBaseTest.*canExportModel.*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(CanCreateTwoExeNetworksAndCheckFunction).*)",
+        R"(.*Behavior.*OVCompiledModelBaseTest.*(canCreateTwoCompiledModelAndCheckTheir).*)",
         R"(.*Behavior.*ExecutableNetworkBaseTest.*(checkGetExecGraphInfoIsNotNullptr).*)",
+        R"(.*Behavior.*OVCompiledModelBaseTest.*(checkGetExecGraphInfoIsNotNullptr).*)",
         R"(.*LoadNetworkCreateDefaultExecGraphResult.*)",
+        R"(.*CompileModelCreateDefaultExecGraphResult.*)",
 
         // TODO: Round with f16 is not supported
-        R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.*readFromV10IR.*)",
+        R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.*readModelFromMemoryIRv10.*)",
         // TODO: support import / export of precisions in template plugin
         R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.ieImportExportedFunction.*)",
         R"(.*smoke_BehaviorTests.*OVExecGraphImportExportTest.ieImportExportedFunction.*)",
-        // TODO: Round with f16 is not supported
-        R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.*readFromV10IR.*)",
 
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i8|u8).*)",
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i16|u16).*)",

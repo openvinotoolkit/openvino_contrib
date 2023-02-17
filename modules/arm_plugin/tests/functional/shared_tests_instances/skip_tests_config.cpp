@@ -29,11 +29,17 @@ std::vector<std::string> disabledTestPatterns() {
         ".*(Hetero|Multi).*InferRequestCallbackTests.*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*",
         // Not implemented
         ".*Behavior.*ExecutableNetworkBaseTest.*(canSetConfigToExecNet|canSetConfigToExecNetAndCheckConfigAndCheck).*",
+        ".*Behavior.*OVCompiledModelBaseTest.*(canSetConfigToCompiledModel|canSetConfigToCompiledModelGetConfigAndCheck).*",
         ".*Behavior.*ExecutableNetworkBaseTest.*CanCreateTwoExeNetworksAndCheckFunction.*",
+        ".*Behavior.*OVCompiledModelBaseTest.*canCreateTwoCompiledModelAndCheckTheir.*",
         ".*Behavior.*ExecutableNetworkBaseTest.*(CheckExecGraphInfoBeforeExecution|CheckExecGraphInfoAfterExecution).*",
+        ".*Behavior.*OVCompiledModelBaseTest.*(checkExecGraphInfoBeforeExecution|checkExecGraphInfoAfterExecution).*",
         ".*Behavior.*ExecutableNetworkBaseTest.*canExport.*",
+        ".*Behavior.*OVCompiledModelBaseTest.*canExportModel.*",
         ".*Behavior.*ExecutableNetworkBaseTest.*canSetConfigToExecNetWithIncorrectConfig.*",
+        ".*Behavior.*OVCompiledModelBaseTest.*canSetConfigToCompiledModelWithIncorrectConfig.*",
         ".*Multi.*BehaviorTests.*ExecutableNetworkBaseTest.*checkGetExecGraphInfoIsNotNullptr.*",
+        ".*Multi.*BehaviorTests.*OVCompiledModelBaseTest.*checkGetExecGraphInfoIsNotNullptr.*",
         ".*(Auto|Multi).*Behavior.*ExecutableNetworkBaseTest.*CheckExecGraphInfoSerialization.*",
         ".*ExclusiveAsyncRequest.*", // Unsupported config test
         // Failed according to accuracy
@@ -44,11 +50,11 @@ std::vector<std::string> disabledTestPatterns() {
         ".*ReturnResultNotReadyFromWaitInAsyncModeForTooSmallTimeout.*", // Unsupported topology
         ".*NmsLayerTest.*CompareWithRefs.*numBatches=3.*numBoxes=100.*numClasses=5.*paramsPrec=FP32.*maxBoxPrec=I32.*thrPrec=FP32.*",
         ".*OVClassNetworkTestP.*QueryNetworkMultiThrows.*",
-        ".*OVClassNetworkTestP.*LoadNetworkMultiWithoutSettingDevicePrioritiesThrows.*",
-        R"(.*OVClassQueryNetworkTest.*DeviceID.*)",
-        R"(.*OVClassLoadNetworkTest.*DeviceID.*)",
-        R"(.*OVClassLoadNetworkTest.*(MULTIwithHETERO|HETEROwithMULTI|MULTIwithAUTO)NoThrow.*)",
-        R"(.*OVClassLoadNetworkTest.*QueryNetwork(MULTIWithHETERO|HETEROWithMULTI)NoThrow_V10.*)",
+        ".*OVClassNetworkTestP.*CompileModelMultiWithoutSettingDevicePrioritiesThrows.*",
+        R"(.*OVClassQueryModelTest.*DeviceID.*)",
+        R"(.*OVClassCompileModelTest.*DeviceID.*)",
+        R"(.*OVClassCompileModelTest.*(MULTIwithHETERO|HETEROwithMULTI|MULTIwithAUTO)NoThrow.*)",
+        R"(.*OVClassCompileModelTest.*QueryNetwork(MULTIWithHETERO|HETEROWithMULTI)NoThrowMultinputNetwork.*)",
         // Problem with interface
 #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
         ".*ConversionLayerTest.*inputPRC=FP16_targetPRC=I8.*",

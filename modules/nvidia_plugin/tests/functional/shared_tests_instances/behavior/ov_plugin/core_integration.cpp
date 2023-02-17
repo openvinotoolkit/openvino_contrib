@@ -103,13 +103,13 @@ TEST(OVClassBasicTest, smoke_CUDAGetSetConfigNoThrow) {
 
 // OV Class Query network
 
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassQueryNetworkTest,
-                         OVClassQueryNetworkTest,
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassQueryModelTest,
+                         OVClassQueryModelTest,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
 // OV Class Load network
 
-INSTANTIATE_TEST_SUITE_P(smoke_OVClassLoadNetworkTest,
-                         OVClassLoadNetworkTest,
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassCompileModelTest,
+                         OVClassCompileModelTest,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 }  // namespace
