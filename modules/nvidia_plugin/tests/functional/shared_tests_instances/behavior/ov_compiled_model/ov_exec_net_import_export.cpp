@@ -4,7 +4,7 @@
 #include <common_test_utils/test_constants.hpp>
 #include <cuda_test_constants.hpp>
 
-#include "behavior/ov_executable_network/exec_graph_info.hpp"
+#include "behavior/ov_compiled_model/import_export.hpp"
 #include "ie_plugin_config.hpp"
 
 using namespace ov::test::behavior;
