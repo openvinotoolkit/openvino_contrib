@@ -13,7 +13,7 @@ namespace v1 {
 
 class ArmMaxPool : public ov::op::v1::MaxPool {
 public:
-    OPENVINO_OP("ArmMaxPool", "arm_opset", ov::op::v1::MaxPool);
+    OPENVINO_OP("ArmMaxPool", "arm_opset1", ov::op::v1::MaxPool);
 
     ArmMaxPool(const ov::Output<Node>& arg,
                const ov::Strides& strides,
@@ -33,7 +33,7 @@ private:
 
 class ArmAvgPool : public ov::op::v1::AvgPool {
 public:
-    OPENVINO_OP("ArmAvgPool", "arm_opset", ov::op::v1::AvgPool);
+    OPENVINO_OP("ArmAvgPool", "arm_opset1", ov::op::v1::AvgPool);
 
     ArmAvgPool(const ov::Output<Node>& arg,
                const ov::Strides& strides,
@@ -56,7 +56,7 @@ private:
 namespace v8 {
 class ArmMaxPool : public ov::op::v8::MaxPool {
 public:
-    OPENVINO_OP("ArmMaxPool", "arm_opset", ov::op::v8::MaxPool);
+    OPENVINO_OP("ArmMaxPool", "arm_opset8", ov::op::v8::MaxPool);
 
     ArmMaxPool(const ov::Output<Node>& arg,
                const ov::Strides& strides,
