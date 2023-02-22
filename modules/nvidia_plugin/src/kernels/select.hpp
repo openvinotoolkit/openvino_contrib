@@ -6,8 +6,8 @@
 
 #include <cuda_runtime.h>
 
+#include "details/cuda_type_traits.hpp"
 #include "details/error.hpp"
-#include "ngraph/type/element_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -21,7 +21,7 @@ public:
     SelectKernelOp(const size_t max_size,
                    const unsigned blocks_number,
                    const unsigned threads_per_block,
-                   const ov::element::Type_t operation_type);
+                   const Type_t operation_type);
 
     void operator()(const cudaStream_t stream,
                     const bool* condition,
@@ -49,7 +49,7 @@ private:
     size_t max_size_;
     unsigned blocks_number_;
     unsigned threads_per_block_;
-    ov::element::Type_t operation_type_;
+    Type_t operation_type_;
 };
 
 }  // namespace kernel

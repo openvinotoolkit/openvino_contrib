@@ -9,6 +9,7 @@
 
 #include "details/error.hpp"
 #include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 #include "fake_quantize.hpp"
 
 namespace ov {
@@ -53,6 +54,7 @@ static __global__ void fake_quantize(size_t max_size,
 
 FakeQuantize::FakeQuantize(Type_t element_type, std::size_t max_size, std::size_t threads_per_block, std::size_t levels)
     : element_type_{element_type}, max_size_{max_size}, threads_per_block_{threads_per_block}, levels_{levels} {
+    TypeValidator<FloatElementTypesSwitch>::check(element_type_);
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(max_size_, threads_per_block_);
 }
 

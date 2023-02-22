@@ -8,6 +8,7 @@
 
 #include "comparison.hpp"
 #include "details/error.hpp"
+#include "details/type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -62,7 +63,9 @@ Comparison::Comparison(Op_t op_type, Type_t element_type, size_t max_size, size_
       element_type_{element_type},
       max_size_{max_size},
       num_blocks_{num_blocks},
-      threads_per_block_{threads_per_block} {}
+      threads_per_block_{threads_per_block} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
+}
 
 void Comparison::operator()(const cudaStream_t stream,
                             const void* left_src,

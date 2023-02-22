@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "details/error.hpp"
+#include "details/type_validator.hpp"
 #include "pad.cuh"
 
 namespace ov {
@@ -102,7 +103,7 @@ static inline __global__ void nchw_pad_const_mode(const T* src,
 }
 
 ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
-                           ov::element::Type_t dtype,
+                           kernel::Type_t dtype,
                            std::size_t outputRank,
                            int maxElementsPerThread,
                            size_t elementsNumber,
@@ -113,6 +114,17 @@ ConstModePad::ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
       max_elements_per_thread_{maxElementsPerThread},
       elements_number_{elementsNumber},
       nchw_conv_padding_{nchw_conv_padding} {
+    using PadElementTypesSwitch = ElementTypesSwitch<Type_t::f32,
+                                                     Type_t::i32,
+                                                     Type_t::u32,
+                                                     Type_t::f16,
+                                                     Type_t::i16,
+                                                     Type_t::u16,
+                                                     Type_t::u8,
+                                                     Type_t::i8,
+                                                     Type_t::boolean>;
+    TypeValidator<PadElementTypesSwitch>::check(dtype);
+
     const auto elements = static_cast<int>(elements_number_);
     blocks_number_ = 1 + elements / max_elements_per_thread_;
     threads_per_block_ = (blocks_number_ == 1) ? elements : max_elements_per_thread_;
@@ -131,7 +143,6 @@ void ConstModePad::operator()(cudaStream_t stream,
      * In sake of reducing code duplication and binary size, types of the same width are processed
      * by unsigned integer template instantiation version of appropriate width.
      * */
-    using Type_t = ov::element::Type_t;
     switch (dtype_) {
         case Type_t::f32:
         case Type_t::i32:

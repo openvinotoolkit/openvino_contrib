@@ -5,8 +5,8 @@
 
 #include <cstddef>
 
+#include "details/cuda_type_traits.hpp"
 #include "details/eltwise.cuh"
-#include "ngraph/type/element_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -15,7 +15,7 @@ namespace kernel {
 class ConstModePad {
 public:
     explicit ConstModePad(eltwise::KernelExecAttrs&& kernelExecAttrs,
-                          ov::element::Type_t dtype,
+                          kernel::Type_t dtype,
                           std::size_t outputRank,
                           int elementsPerThread,
                           size_t elementsNumber,
@@ -60,7 +60,7 @@ public:
 
 private:
     eltwise::KernelExecAttrs kernel_exec_attrs_;
-    ov::element::Type_t dtype_;
+    kernel::Type_t dtype_;
     std::size_t output_rank_;
 
     int max_elements_per_thread_;
