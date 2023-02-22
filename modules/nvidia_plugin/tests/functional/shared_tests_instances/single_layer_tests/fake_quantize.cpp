@@ -39,7 +39,7 @@ const auto fqParams = ::testing::Combine(::testing::ValuesIn(levels),
                                          ::testing::ValuesIn(constShapes),
                                          ::testing::Values(fqArgs),
                                          ::testing::Values(inputParams),
-                                         ::testing::Values(ngraph::op::AutoBroadcastSpec()));
+                                         ::testing::Values(ov::op::AutoBroadcastSpec()));
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantize,
                         FakeQuantizeLayerTest,
@@ -60,7 +60,7 @@ const auto fqParamsBr = ::testing::Combine(::testing::ValuesIn(levels),
                                            ::testing::ValuesIn(constShapesBr),
                                            ::testing::Values(fqArgs),
                                            ::testing::Values(inputParams),
-                                           ::testing::Values(ngraph::op::AutoBroadcastSpec()));
+                                           ::testing::Values(ov::op::AutoBroadcastSpec()));
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantizeBr,
                         FakeQuantizeLayerTest,

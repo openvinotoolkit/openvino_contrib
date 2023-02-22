@@ -124,7 +124,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     dest_index_ = 1;
     if (has_0_broadcasts || has_1_broadcasts) {
         auto broadcast_spec = node->get_autob();
-        if (!(broadcast_spec == ov::op::AutoBroadcastSpec::NUMPY)) {
+        if (!(broadcast_spec == ov::op::AutoBroadcastType::NUMPY)) {
             throwIEException(
                 fmt::format("Unsupported broadcast type for CuDnnTensorOpBase operation: {}", broadcast_spec.m_type));
         }
