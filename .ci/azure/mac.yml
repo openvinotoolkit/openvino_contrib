@@ -20,8 +20,9 @@ resources:
   repositories:
   - repository: openvino
     type: github
-    endpoint: openvinotoolkit
+    endpoint: ilya-lavrenov
     name: openvinotoolkit/openvino
+    ref: setupvars
 
   - repository: testdata
     type: github
