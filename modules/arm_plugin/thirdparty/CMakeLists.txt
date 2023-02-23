@@ -43,7 +43,14 @@ elseif(NOT TARGET arm_compute_static_libs)
         ${ARM_COMPURE_SOURCE_DIR}/*.h
     )
 
-    set(extra_cxx_flags "-fPIC ${CMAKE_CXX_FLAGS} -Wno-undef")
+    set(extra_cxx_flags "${CMAKE_CXX_FLAGS} -Wno-undef")
+    if(MSVC64)
+        # clang-cl does not recognize /MP option
+        string(REPLACE "/MP " "" extra_cxx_flags "${extra_cxx_flags}")
+    else()
+        # -fPIC is not applicable for clang-cl
+        set(extra_cxx_flags "${extra_cxx_flags} -fPIC")
+    endif()
 
     set(ARM_COMPUTE_OPTIONS
         neon=1
@@ -245,6 +252,12 @@ elseif(NOT TARGET arm_compute_static_libs)
     add_library(arm_compute::half INTERFACE IMPORTED GLOBAL)
     set_target_properties(arm_compute::half PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary/include)
+
+    # Compute Library uses cppthreads=1
+    # if one day will rely on TBB only, we can omit this dependency
+    find_package(Threads REQUIRED)
+    set_target_properties(arm_compute::arm_compute PROPERTIES
+        INTERFACE_LINK_LIBRARIES Threads::Threads)
 endif()
 
 add_subdirectory(external_kernels)
