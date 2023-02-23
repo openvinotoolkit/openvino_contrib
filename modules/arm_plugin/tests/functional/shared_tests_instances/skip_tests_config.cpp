@@ -63,8 +63,8 @@ std::vector<std::string> disabledTestPatterns() {
         ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=U32.*",
         ".*ConversionLayerTest.*inputPRC=FP32_targetPRC=I8.*",
 #ifdef __arm__
-        // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140
-        ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*AUTO.*",
+        // Sporadic hanges on linux-debian_9_arm runner (armv7l) 72140 103481
+        ".*canStartSeveralAsyncInsideCompletionCallbackWithSafeDtor.*(AUTO|MULTI).*",
 #endif
     };
 }

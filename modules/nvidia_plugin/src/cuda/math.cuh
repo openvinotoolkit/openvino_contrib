@@ -171,6 +171,11 @@ inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
     return ::round(static_cast<float>(x));
 }
 
+template <>
+inline __device__ __nv_bfloat16 pow<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
+    return powf(static_cast<float>(x), static_cast<float>(y));
+}
+
 #if defined(CUDA_HAS_BF16_MATH)
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return ::hfloor(x); }
 
@@ -179,6 +184,11 @@ inline __device__ __nv_bfloat16 trunc(__nv_bfloat16 x) { return ::htrunc(x); }
 template <>
 inline __device__ __nv_bfloat16 exp<__nv_bfloat16>(__nv_bfloat16 x) {
     return ::hexp(x);
+}
+
+template <>
+inline __device__ __nv_bfloat16 sqrt<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::hsqrt(x);
 }
 
 template <>
@@ -205,6 +215,11 @@ inline __device__ __nv_bfloat16 max<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat1
 template <>
 inline __device__ __nv_bfloat16 exp<__nv_bfloat16>(__nv_bfloat16 x) {
     return exp<float>(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __nv_bfloat16 sqrt<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::sqrt(static_cast<float>(x));
 }
 
 template <>
