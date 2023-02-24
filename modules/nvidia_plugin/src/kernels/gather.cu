@@ -27,6 +27,9 @@ static inline __device__ void gather(unsigned data_length,
                                      const IndexType* src_index,
                                      DataType* dst_data) {
     auto dict_index = src_index[indices_index];
+    if (dict_index < 0) {
+        dict_index += index_range;
+    }
     if (dict_index >= index_range) {
         if (IsBenchmarkMode) {
             dict_index = 0;

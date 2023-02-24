@@ -32,9 +32,10 @@ GatherOp::GatherOp(const CreationContext& context,
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     Expects(node.get_input_size() == 3);
     Expects(node.get_output_size() == 1);
+    const auto gather_v8 = dynamic_cast<const ov::op::v8::Gather*>(&node);
     const auto gather_v7 = dynamic_cast<const ov::op::v7::Gather*>(&node);
     const auto gather_v1 = dynamic_cast<const ov::op::v1::Gather*>(&node);
-    Expects(gather_v7 || gather_v1);
+    Expects(gather_v8 || gather_v7 || gather_v1);
 
     const auto gather_base = dynamic_cast<const ov::op::util::GatherBase*>(&node);
     Expects(gather_base);
@@ -68,8 +69,8 @@ GatherOp::GatherOp(const CreationContext& context,
     Expects(axis >= 0 && axis < dict_shape_size);
 
     int64_t batch_dims = 0;
-    if (gather_v7) {
-        batch_dims = gather_v7->get_batch_dims();
+    if (gather_v8 || gather_v7) {
+        batch_dims = gather_v8 ? gather_v8->get_batch_dims() : gather_v7->get_batch_dims();
         Expects(batch_dims >= 0 && batch_dims < dict_shape_size && batch_dims < indices_shape.size() &&
                 batch_dims <= axis);
 
