@@ -39,41 +39,11 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
                                                                             const ConfigMap& config) {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::LoadExeNetworkImpl");
 
+    using InferenceEngine::Precision;
+
     auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
     InferenceEngine::OutputsDataMap networkOutputs = network.getOutputsInfo();
-
-    // TODO: check with precisions supported by Cuda device
-
-    for (auto networkOutput : networkOutputs) {
-        auto output_precision = networkOutput.second->getPrecision();
-
-        if (output_precision != InferenceEngine::Precision::FP32 &&
-            output_precision != InferenceEngine::Precision::FP16 &&
-            output_precision != InferenceEngine::Precision::I32 &&
-            output_precision != InferenceEngine::Precision::I16 && output_precision != InferenceEngine::Precision::U8 &&
-            output_precision != InferenceEngine::Precision::I8 &&
-            output_precision != InferenceEngine::Precision::BOOL) {
-            throwIEException(
-                fmt::format("Output format {} is not supported yet. Supported "
-                            "formats are: FP32, FP16, I32, I16, I8, U8 and BOOL.",
-                            output_precision));
-        }
-    }
-
-    for (auto networkInput : networkInputs) {
-        auto input_precision = networkInput.second->getTensorDesc().getPrecision();
-
-        if (input_precision != InferenceEngine::Precision::FP32 &&
-            input_precision != InferenceEngine::Precision::FP16 && input_precision != InferenceEngine::Precision::I32 &&
-            input_precision != InferenceEngine::Precision::I16 && input_precision != InferenceEngine::Precision::U8 &&
-            input_precision != InferenceEngine::Precision::I8 && input_precision != InferenceEngine::Precision::BOOL) {
-            throwIEException(
-                fmt::format("Input format {} is not supported yet. Supported "
-                            "formats are: FP32, FP16, I32, I16, I8, U8 and BOOL.",
-                            input_precision));
-        }
-    }
 
     // Create stream executor for given device
     auto waitExecutor = GetStreamExecutor(cfg);

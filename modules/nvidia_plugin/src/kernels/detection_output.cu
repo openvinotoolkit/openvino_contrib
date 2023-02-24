@@ -14,8 +14,9 @@
 #include <cuda/stl/mdvector.cuh>
 #include <cuda/stl/span.cuh>
 
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
 #include "detection_output.hpp"
-#include "error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -982,7 +983,9 @@ DetectionOutput::DetectionOutput(const Type_t element_type,
       priors_size_{priors_size},
       arm_confidence_size_{arm_confidence_size},
       arm_location_size_{arm_location_size},
-      result_size_{result_size} {}
+      result_size_{result_size} {
+    TypeValidator<FloatElementTypesSwitch>::check(element_type_);
+}
 
 template <typename TDataType>
 std::vector<size_t> DetectionOutput::getMutableWorkbufferSizes() const {

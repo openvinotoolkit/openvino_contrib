@@ -9,6 +9,7 @@
 #include <cuda_operation_registry.hpp>
 #include <openvino/op/constant.hpp>
 
+#include "converters.hpp"
 #include "ngraph/axis_set.hpp"
 #include "strided_slice.hpp"
 
@@ -51,7 +52,7 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
     for (size_t i = 1; i < stridedSliceOp.inputs().size(); i++) {
         if (stridedSliceOp.input(i).get_element_type() != ov::element::Type_t::i64) {
             throwIEException(fmt::format("Input precision {} is not supported by StridedSliceOp!",
-                stridedSliceOp.input(i).get_element_type().get_type_name()));
+                                         stridedSliceOp.input(i).get_element_type().get_type_name()));
         }
     }
 
@@ -83,7 +84,7 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
                                                                   max_threads_per_block_,
                                                                   blocks_number_,
                                                                   threads_per_block_,
-                                                                  element_type_);
+                                                                  convertDataType<kernel::Type_t>(element_type_));
 }
 
 void StridedSliceOp::Execute(const InferenceRequestContext& context,

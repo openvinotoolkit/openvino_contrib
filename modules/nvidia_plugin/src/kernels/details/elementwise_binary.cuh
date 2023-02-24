@@ -11,10 +11,10 @@
 #include <utility>
 
 #include "cuda_type_traits.hpp"
-#include "elementtypeswitch.hpp"
-#include "error.hpp"
+#include "element_types_switch.hpp"
 #include "numpy_broadcast_mapper.cuh"
 #include "tensor_helpers.hpp"
+#include "type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -53,6 +53,7 @@ class ElementwiseBinary {
 public:
     ElementwiseBinary(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block)
         : num_blocks_{}, threads_per_block_{}, element_type_{element_type}, out_num_elements_{out_num_elements} {
+        TypeValidator<ElementTypes>::check(element_type);
         std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(out_num_elements, max_threads_per_block);
     }
 
@@ -113,12 +114,12 @@ private:
                   const NumpyBroadcastMapper&,
                   void*,
                   Args...) const noexcept {
-        throwIEException(fmt::format("Element type = {} is not supported.", t));
+        throwTypeNotSupported(t);
     }
 
     template <typename T, typename... Args>
-    constexpr void case_(
-        cudaStream_t stream, const void* in0, const void* in1, void* out, Args&&... args) const noexcept {
+    constexpr void case_(cudaStream_t stream, const void* in0, const void* in1, void* out, Args&&... args) const
+        noexcept {
 #ifdef __CUDACC__
         elementwise_binary<T, OP<T>><<<num_blocks_, threads_per_block_, 0, stream>>>(static_cast<const T*>(in0),
                                                                                      static_cast<const T*>(in1),
@@ -130,7 +131,7 @@ private:
 
     template <typename T, typename... Args>
     void default_(T t, cudaStream_t, const void*, const void*, void*, Args...) const noexcept {
-        throwIEException(fmt::format("Element type = {} is not supported.", t));
+        throwTypeNotSupported(t);
     }
 
 private:

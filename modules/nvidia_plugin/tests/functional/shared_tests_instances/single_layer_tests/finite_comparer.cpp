@@ -208,6 +208,14 @@ void FiniteLayerComparer::Compare(const std::pair<ngraph::element::Type, std::ve
                                  to_check_nans,
                                  infinity_value);
             break;
+        case InferenceEngine::Precision::U32:
+            callCompare<uint32_t>(expected,
+                                  reinterpret_cast<const uint32_t *>(actualBuffer),
+                                  size,
+                                  threshold,
+                                  to_check_nans,
+                                  infinity_value);
+            break;
         case InferenceEngine::Precision::I64:
             callCompare<int64_t>(expected,
                                  reinterpret_cast<const int64_t *>(actualBuffer),

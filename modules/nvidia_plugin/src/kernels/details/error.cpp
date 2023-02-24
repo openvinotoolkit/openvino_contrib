@@ -5,8 +5,8 @@
 #include <fmt/format.h>
 
 #include <details/ie_exception.hpp>
+#include <error.hpp>
 #include <exception>
-#include <kernels/error.hpp>
 
 namespace ov {
 namespace nvidia_gpu {

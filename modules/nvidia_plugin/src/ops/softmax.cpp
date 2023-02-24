@@ -147,12 +147,30 @@ void SoftmaxOp::mapRankAxis(const ov::Shape& shape, int axis) {
     }
 }
 
+inline bool isTypeSupported(cudnnDataType_t type) {
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+        case CUDNN_DATA_DOUBLE:
+        case CUDNN_DATA_HALF:
+#if defined CUDA_HAS_BF16_TYPE
+        case CUDNN_DATA_BFLOAT16:
+#endif
+        case CUDNN_DATA_INT8:
+            return true;
+        default:
+            return false;
+    }
+}
+
 SoftmaxOp::SoftmaxOp(const CreationContext& context,
                      const NodeOp& node,
                      IndexCollection&& inputIds,
                      IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
       type_{convertDataType<cudnnDataType_t>(node.input(0).get_element_type())} {
+    if (!isTypeSupported(type_)) {
+        throwIEException(fmt::format("SoftmaxOp: unsupported argument type: {}", toString(type_)));
+    }
     const int axis = node.get_axis();
     mapRankAxis(node.input(0).get_shape(), axis);
     tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());

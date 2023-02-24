@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "cuda_type_traits.hpp"
+#include "details/cuda_type_traits.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

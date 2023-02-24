@@ -61,6 +61,38 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(OperationMode::NORMAL)),
     CudaEltwiseLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_CASE_P(
+    smoke_Add_U32,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
+    CudaEltwiseLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_Add_I64,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::ADD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
+    CudaEltwiseLayerTest::getTestCaseName);
+
 const std::vector<ov::test::ElementType> mul_precisions = {
     ov::test::ElementType::f16, ov::test::ElementType::f32, ov::test::ElementType::i32};
 
@@ -118,6 +150,38 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
     CudaEltwiseLayerTest::getTestCaseName);
 
+INSTANTIATE_TEST_CASE_P(
+    smoke_Divide_U32,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
+    CudaEltwiseLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_Divide_I64,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::DIVIDE),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::ValuesIn({OperationMode::NORMAL, OperationMode::PYTHON_DIVIDE})),
+    CudaEltwiseLayerTest::getTestCaseName);
+
 const std::vector<ov::test::ElementType> sq_diff_precisions = {ov::test::ElementType::f16,
                                                                ov::test::ElementType::f32,
                                                                ov::test::ElementType::i32,
@@ -154,6 +218,38 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::ValuesIn(floor_mod_precisions),
                            ::testing::Values(ov::test::ElementType::undefined),
                            ::testing::Values(ov::test::ElementType::undefined),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
+    CudaEltwiseLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_FloorMod_U32,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(ov::test::ElementType::u32),
+                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                           ::testing::Values(additional_config)),
+        ::testing::Values(OperationMode::NORMAL)),
+    CudaEltwiseLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(
+    smoke_FloorMod_I64,
+    CudaEltwiseLayerTest,
+    ::testing::Combine(
+        ::testing::Combine(::testing::ValuesIn(ov::test::static_shapes_to_test_representation(smoke_shapes)),
+                           ::testing::Values(ngraph::helpers::EltwiseTypes::FLOOR_MOD),
+                           ::testing::ValuesIn(input_layer_types),
+                           ::testing::ValuesIn(smoke_op_types),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
+                           ::testing::Values(ov::test::ElementType::i64),
                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
                            ::testing::Values(additional_config)),
         ::testing::Values(OperationMode::NORMAL)),

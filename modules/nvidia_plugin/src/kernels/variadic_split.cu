@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda.h>
-#if CUDA_VERSION >= 11000
-#include <cuda_bf16.h>
-#endif
 #include <cooperative_groups.h>
-#include <cuda_fp16.h>
 #include <fmt/format.h>
 
+#include <cuda/float16.hpp>
 #include <gsl/gsl_assert>
 
+#include "details/type_validator.hpp"
 #include "variadic_split.hpp"
 
 namespace ov {
@@ -54,7 +51,9 @@ VariadicSplit::VariadicSplit(Type_t element_type,
       axis_split_step_size_{axis_split_step_size},
       orig_axis_size_{orig_axis_size},
       num_blocks_{num_blocks},
-      threads_per_block_{threads_per_block} {}
+      threads_per_block_{threads_per_block} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
+}
 
 void VariadicSplit::operator()(cudaStream_t stream,
                                const void *src,
@@ -65,7 +64,7 @@ void VariadicSplit::operator()(cudaStream_t stream,
     switch (element_type_) {
         case Type_t::boolean:
             return call<bool>(stream, src, dst, splitIdxs, axisSizes, axisOffsetSizes);
-#if CUDA_VERSION >= 11000
+#ifdef CUDA_HAS_BF16_TYPE
         case Type_t::bf16:
             return call<__nv_bfloat16>(stream, src, dst, splitIdxs, axisSizes, axisOffsetSizes);
 #endif

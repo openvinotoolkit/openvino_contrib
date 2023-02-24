@@ -5,7 +5,7 @@
 #pragma once
 #include <string>
 
-#include "kernels/error.hpp"
+#include "kernels/details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
