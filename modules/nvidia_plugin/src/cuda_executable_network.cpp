@@ -384,7 +384,7 @@ void ExecutableNetwork::Export(std::ostream& modelStream) {
     }
 
     ov::pass::Serialize serializer(xmlFile, binFile, static_cast<ov::pass::Serialize::Version>(version));
-    serializer.run_on_function(ngraph::clone_function(*export_function_));
+    serializer.run_on_model(ngraph::clone_function(*export_function_));
 
     auto m_constants = binFile.str();
     auto m_model = xmlFile.str();
