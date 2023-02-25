@@ -30,7 +30,7 @@ TEST(TransformationTests, DISABLED_TemplateTest) {
         f = std::make_shared<ngraph::Function>(ov::NodeVector{divide}, ov::ParameterVector{data});
 
         // This transformation init runtime info attributes
-        ov::pass::InitNodeInfo().run_on_function(f);
+        ov::pass::InitNodeInfo().run_on_model(f);
 
         // Run transformation
         // ov::pass::MyTransformation().run_on_function(f);
