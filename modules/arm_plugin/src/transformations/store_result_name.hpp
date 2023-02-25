@@ -8,7 +8,7 @@
 namespace ArmPlugin {
 namespace pass {
 
-class StoreResultName : public ngraph::pass::FunctionPass {
+class StoreResultName : public ov::pass::ModelPass {
 public:
     NGRAPH_RTTI_DECLARATION;
     bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
