@@ -7,7 +7,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGather, "ConvertGather", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGather, "ConvertGather");
 ArmPlugin::pass::ConvertGather::ConvertGather() {
     auto gather = ngraph::pattern::wrap_type<opset::Gather>();
 

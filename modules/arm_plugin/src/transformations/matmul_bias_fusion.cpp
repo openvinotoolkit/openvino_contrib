@@ -11,7 +11,7 @@
 
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::MatMulBiasFusion, "MatMulBiasFusion", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::MatMulBiasFusion, "MatMulBiasFusion");
 ArmPlugin::pass::MatMulBiasFusion::MatMulBiasFusion() {
     auto matmul = std::make_shared<opset::MatMul>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
     auto add    = std::make_shared<opset::Add>(matmul, ngraph::pattern::any_input());

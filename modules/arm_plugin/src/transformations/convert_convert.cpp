@@ -10,7 +10,7 @@
 
 using type = ngraph::element::Type_t;
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvertBase, "ConvertArmConvertBase", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvertBase, "ConvertArmConvertBase");
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertArmConvertBase::convert_to_arm_convert() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -38,7 +38,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertArmConvertBase::convert_to
     };
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvert, "ConvertArmConvert", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvert, "ConvertArmConvert");
 ArmPlugin::pass::ConvertArmConvert::ConvertArmConvert() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Convert>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())}),
@@ -46,7 +46,7 @@ ArmPlugin::pass::ConvertArmConvert::ConvertArmConvert() {
     register_matcher(m, convert_to_arm_convert<opset::Convert>());
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvertLike, "ConvertArmConvertLike", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmConvertLike, "ConvertArmConvertLike");
 ArmPlugin::pass::ConvertArmConvertLike::ConvertArmConvertLike() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::ConvertLike>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

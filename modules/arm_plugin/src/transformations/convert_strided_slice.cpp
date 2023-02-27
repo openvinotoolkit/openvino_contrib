@@ -12,7 +12,7 @@
 
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertStridedSlice, "ConvertStridedSlice", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertStridedSlice, "ConvertStridedSlice");
 ArmPlugin::pass::ConvertStridedSlice::ConvertStridedSlice() {
     auto slice  = ngraph::pattern::wrap_type<opset::ArmStridedSlice>();
 

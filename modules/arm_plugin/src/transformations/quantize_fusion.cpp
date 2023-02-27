@@ -81,7 +81,7 @@ std::shared_ptr<ngraph::Node> makeTypeRelaxed(const ngraph::Node* node,
 }
 }  // namespace
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertQuantize, "ConvertQuantize", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertQuantize, "ConvertQuantize");
 ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
     auto fakeQuantize = ngraph::pattern::wrap_type<opset::FakeQuantize>({
         ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -145,7 +145,7 @@ ArmPlugin::pass::ConvertQuantize::ConvertQuantize() {
         });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvolutionQuantizeFusion, "ConvolutionQuantizeFusion", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvolutionQuantizeFusion, "ConvolutionQuantizeFusion");
 ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
     auto node_pattern = ngraph::pattern::wrap_type<
         opset::ArmConvolution,
@@ -314,7 +314,7 @@ ArmPlugin::pass::ConvolutionQuantizeFusion::ConvolutionQuantizeFusion() {
         });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::MeanQuantizeFusion, "MeanQuantizeFusion", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::MeanQuantizeFusion, "MeanQuantizeFusion");
 ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
     auto node_pattern = ngraph::pattern::wrap_type<
         opset::v1::ArmAvgPool,
@@ -365,7 +365,7 @@ ArmPlugin::pass::MeanQuantizeFusion::MeanQuantizeFusion() {
         });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DequantizeInputFusion, "DequantizeInputFusion", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DequantizeInputFusion, "DequantizeInputFusion");
 ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
     auto scale_pattern = ngraph::pattern::wrap_type<opset::Constant>();
     auto mul_pattern = ngraph::pattern::wrap_type<opset::Multiply>(
@@ -500,7 +500,7 @@ ArmPlugin::pass::DequantizeInputFusion::DequantizeInputFusion() {
         });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::AddDequantizeOnInputs, "AddDequantizeOnInputs", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::AddDequantizeOnInputs, "AddDequantizeOnInputs");
 ArmPlugin::pass::AddDequantizeOnInputs::AddDequantizeOnInputs() {
     auto node_pattern = ngraph::pattern::wrap_type<
         opset::ArmConvolution,
@@ -550,7 +550,7 @@ ArmPlugin::pass::AddDequantizeOnInputs::AddDequantizeOnInputs() {
         });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertBiasToI32, "ConvertBiasToI32", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertBiasToI32, "ConvertBiasToI32");
 ArmPlugin::pass::ConvertBiasToI32::ConvertBiasToI32() {
     auto conv = ngraph::pattern::wrap_type<
         opset::ArmConvolution,

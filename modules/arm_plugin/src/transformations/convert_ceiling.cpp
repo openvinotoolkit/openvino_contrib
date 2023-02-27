@@ -10,7 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertCeiling, "ConvertCeiling", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertCeiling, "ConvertCeiling");
 
 ArmPlugin::pass::ConvertCeiling::ConvertCeiling() {
     auto ceil = ngraph::pattern::wrap_type<opset::Ceiling>();

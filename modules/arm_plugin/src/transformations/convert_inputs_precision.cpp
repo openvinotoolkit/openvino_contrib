@@ -11,7 +11,7 @@
 
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertPrecisionBase, "ConvertPrecisionBase", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertPrecisionBase, "ConvertPrecisionBase");
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertPrecisionBase::convert_precision(const std::vector<int>& indices) {
     return [=](ngraph::pattern::Matcher& m) {
@@ -36,7 +36,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertPrecisionBase::convert_pre
     };
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertPReluPrecision, "ConvertPReluPrecision", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertPReluPrecision, "ConvertPReluPrecision");
 ArmPlugin::pass::ConvertPReluPrecision::ConvertPReluPrecision() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::PRelu>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -45,7 +45,7 @@ ArmPlugin::pass::ConvertPReluPrecision::ConvertPReluPrecision() {
     register_matcher(m, convert_precision<opset::PRelu>({1}));
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertProposalPrecision, "ConvertProposalPrecision", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertProposalPrecision, "ConvertProposalPrecision");
 ArmPlugin::pass::ConvertProposalPrecision::ConvertProposalPrecision() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Proposal>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -55,7 +55,7 @@ ArmPlugin::pass::ConvertProposalPrecision::ConvertProposalPrecision() {
     register_matcher(m, convert_precision<opset::Proposal>({1, 2}));
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertInterpolatePrecision, "ConvertInterpolatePrecision", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertInterpolatePrecision, "ConvertInterpolatePrecision");
 ArmPlugin::pass::ConvertInterpolatePrecision::ConvertInterpolatePrecision() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::Interpolate>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

@@ -13,7 +13,7 @@
 
 enum RNNInput {InputData, HiddenState, Weights, RecurrenceWeights, Bias};
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertRNNCell, "ConvertRNNCell", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertRNNCell, "ConvertRNNCell");
 ArmPlugin::pass::ConvertRNNCell::ConvertRNNCell() {
     auto rnn_cell = ngraph::pattern::wrap_type<opset::RNNCell>();
     ngraph::matcher_pass_callback callback = [this](ngraph::pattern::Matcher& m) {

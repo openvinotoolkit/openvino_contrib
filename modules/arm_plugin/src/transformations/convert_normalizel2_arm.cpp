@@ -7,7 +7,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertNormalizeL2ToArm, "ConvertNormalizeL2ToArm", 0);
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertNormalizeL2ToArm, "ConvertNormalizeL2ToArm");
 ArmPlugin::pass::ConvertNormalizeL2ToArm::ConvertNormalizeL2ToArm() {
     auto norml2 = ngraph::pattern::wrap_type<opset::NormalizeL2>();
 
