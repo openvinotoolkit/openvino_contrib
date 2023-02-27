@@ -137,7 +137,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     }
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
-    const std::string opBenchOptionString = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK));
+    const auto opBenchOptionString = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)).as<std::string>();
     const bool opBenchOption = opBenchOptionString == NVIDIA_CONFIG_VALUE(YES);
     const auto creationContext = CreationContext{device, opBenchOption};
 
@@ -147,7 +147,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
 }
 
 void ExecutableNetwork::BenchmarkOptimalNumberOfRequests() {
-    const std::string throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    const auto throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)).as<std::string>();
     if (throughputStreams != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
         return;
     }
@@ -271,7 +271,7 @@ std::size_t ExecutableNetwork::GetOptimalNumberOfStreams(const std::size_t const
         throwIEException("Not enough memory even for single InferRequest !!");
     }
 
-    const std::string throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS));
+    const auto throughputStreams = cfg_.Get(NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)).as<std::string>();
     if (throughputStreams == NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
         return std::min({maxStreamsSupported, availableInferRequests, reasonable_limit_of_streams});
     } else {
@@ -291,7 +291,7 @@ std::shared_ptr<MemoryPool> ExecutableNetwork::CreateMemoryPool() {
 }
 
 int ExecutableNetwork::GetCudaDeviceId() const noexcept {
-    const std::string deviceId = cfg_.Get(CONFIG_KEY(DEVICE_ID));
+    const auto deviceId = cfg_.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
     return std::stoi(deviceId);
 }
 
