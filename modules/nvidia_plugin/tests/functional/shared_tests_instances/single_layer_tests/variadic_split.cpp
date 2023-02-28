@@ -27,13 +27,41 @@ const std::vector<std::vector<size_t>> smoke_numSplits = {
     {4, 11, 6, 9},
 };
 
+const std::vector<int64_t> smoke_axis = {-3, -2, -1, 0, 1, 2, 3};
+
 INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck,
                         VariadicSplitLayerTest,
                         ::testing::Combine(::testing::ValuesIn(smoke_numSplits),
-                                           ::testing::Values(-3, -2, -1, 0, 1, 2, 3),
+                                           ::testing::ValuesIn(smoke_axis),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        VariadicSplitLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_U32,
+                        VariadicSplitLayerTest,
+                        ::testing::Combine(::testing::ValuesIn(smoke_numSplits),
+                                           ::testing::ValuesIn(smoke_axis),
+                                           ::testing::Values(InferenceEngine::Precision::U32),
+                                           ::testing::Values(InferenceEngine::Precision::U32),
+                                           ::testing::Values(InferenceEngine::Precision::U32),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(InferenceEngine::Layout::ANY),
+                                           ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
+                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                        VariadicSplitLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_I64,
+                        VariadicSplitLayerTest,
+                        ::testing::Combine(::testing::ValuesIn(smoke_numSplits),
+                                           ::testing::ValuesIn(smoke_axis),
+                                           ::testing::Values(InferenceEngine::Precision::I64),
+                                           ::testing::Values(InferenceEngine::Precision::I64),
+                                           ::testing::Values(InferenceEngine::Precision::I64),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),

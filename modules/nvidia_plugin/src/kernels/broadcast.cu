@@ -5,7 +5,9 @@
 #include <fmt/format.h>
 
 #include "broadcast.hpp"
-#include "tensor_helpers.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -23,6 +25,7 @@ static __global__ void broadcast(const T* src, NumpyBroadcastMapper src_mapper, 
 
 Broadcast::Broadcast(ov::nvidia_gpu::kernel::Type_t element_type, size_t dst_num_elements, size_t max_threads_per_block)
     : element_type_{element_type}, dst_num_elements_{dst_num_elements} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type);
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(dst_num_elements_, max_threads_per_block);
 }
 

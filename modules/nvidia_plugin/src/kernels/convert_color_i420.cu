@@ -9,8 +9,9 @@
 #include <type_traits>
 
 #include "convert_color_i420.hpp"
-#include "error.hpp"
-#include "tensor_helpers.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -74,6 +75,7 @@ I420ColorConvert<Conversion>::I420ColorConvert(const Type_t element_type,
       image_w_{image_w},
       stride_y_{stride_y},
       stride_uv_{stride_uv} {
+    TypeValidator<Switcher>::check(element_type_);
     std::tie(num_blocks_, threads_per_block_) =
         calculateElementwiseGrid(batch_size * image_h * image_w, max_threads_per_block);
 }

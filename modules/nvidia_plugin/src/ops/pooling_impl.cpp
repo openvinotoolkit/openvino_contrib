@@ -30,6 +30,27 @@ static int pooling_extend_dimension(size_t shape_size) {
     return static_cast<int>(ret);
 }
 
+inline bool isTypeSupported(cudnnDataType_t type) {
+#if CUDNN_MAJOR > 8 || (CUDNN_MAJOR == 8 && CUDNN_MINOR >= 4) || \
+    (CUDNN_MAJOR == 8 && CUDNN_MINOR == 3 && CUDNN_PATCHLEVEL >= 2)
+#define CUDNN_POOL_BF16
+#endif
+
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+        case CUDNN_DATA_DOUBLE:
+        case CUDNN_DATA_HALF:
+        case CUDNN_DATA_INT8:
+#if defined CUDA_HAS_BF16_TYPE && defined CUDNN_POOL_BF16
+        case CUDNN_DATA_BFLOAT16:
+#endif
+            return true;
+        default:
+            return false;
+    }
+#undef CUDNN_POOL_BF16
+}
+
 PoolingImpl::PoolingImpl(const ov::op::v1::MaxPool& node)
     : dims_{pooling_extend_dimension(node.get_input_shape(input_index).size())},
       mode_{CUDNN_POOLING_MAX},
@@ -43,12 +64,16 @@ PoolingImpl::PoolingImpl(const ov::op::v1::MaxPool& node)
                             paddings_from_ngraph(node.get_pads_begin(), node.get_pads_end(), mode_).data(),
                             spatial_shape_from_ngraph(node.get_strides()).data());
 
-    input_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+    const auto type = convertDataType<cudnnDataType_t>(node.get_element_type());
+    if (!isTypeSupported(type)) {
+        throwIEException(fmt::format("PoolingImpl: unsupported argument type: {}", toString(type)));
+    }
+    input_tensor_descriptor_.set(type,
                                  dims_,
                                  tensor_shape_from_ngraph(node.get_input_shape(input_index)).data(),
                                  tensor_strides_from_ngraph(node.get_input_shape(input_index)).data());
 
-    output_tensor_descriptor_.set(convertDataType<cudnnDataType_t>(node.get_element_type()),
+    output_tensor_descriptor_.set(type,
                                   dims_,
                                   tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
                                   tensor_strides_from_ngraph(node.get_output_shape(output_index)).data());

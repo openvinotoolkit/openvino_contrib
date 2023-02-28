@@ -10,8 +10,8 @@
 #include <map>
 #include <vector>
 
-#include "cuda_type_traits.hpp"
-#include "tensor_helpers.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

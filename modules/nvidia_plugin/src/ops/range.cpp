@@ -11,7 +11,7 @@
 #include <openvino/op/range.hpp>
 
 #include "converters.hpp"
-#include "kernels/cuda_type_traits.hpp"
+#include "kernels/details/cuda_type_traits.hpp"
 #include "kernels/range.hpp"
 
 namespace ov {

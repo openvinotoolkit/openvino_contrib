@@ -6,8 +6,8 @@
 
 #include <cuda_runtime.h>
 
-#include "cuda_type_traits.hpp"
-#include "numpy_broadcast_mapper.cuh"
+#include "details/cuda_type_traits.hpp"
+#include "details/numpy_broadcast_mapper.cuh"
 
 namespace ov {
 namespace nvidia_gpu {

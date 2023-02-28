@@ -7,6 +7,7 @@
 
 #include <cuda/float16.hpp>
 
+#include "details/type_validator.hpp"
 #include "gather.hpp"
 
 namespace ov {
@@ -26,6 +27,9 @@ static inline __device__ void gather(unsigned data_length,
                                      const IndexType* src_index,
                                      DataType* dst_data) {
     auto dict_index = src_index[indices_index];
+    if (dict_index < 0) {
+        dict_index += index_range;
+    }
     if (dict_index >= index_range) {
         if (IsBenchmarkMode) {
             dict_index = 0;
@@ -134,7 +138,10 @@ Gather::Gather(Type_t element_type,
       indices_batch_stride_(indices_batch_stride),
       out_batch_stride_(out_batch_stride),
       els_per_thread_chunks_(els_per_thread_chunks),
-      els_per_thread_dicts_(els_per_thread_dicts) {}
+      els_per_thread_dicts_(els_per_thread_dicts) {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
+    TypeValidator<ElementTypesSwitch<Type_t::i64, Type_t::i32>>::check(indices_type_);
+}
 
 void Gather::operator()(const cudaStream_t stream,
                         bool is_benchmark_mode,

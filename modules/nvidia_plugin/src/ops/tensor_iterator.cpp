@@ -9,10 +9,10 @@
 #include <cstdint>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_profiler.hpp>
-#include <kernels/cuda_type_traits.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
+#include <kernels/details/tensor_helpers.hpp>
 #include <kernels/insert.hpp>
 #include <kernels/slice.hpp>
-#include <kernels/tensor_helpers.hpp>
 
 #include "converters.hpp"
 #include "cuda_operation_registry.hpp"

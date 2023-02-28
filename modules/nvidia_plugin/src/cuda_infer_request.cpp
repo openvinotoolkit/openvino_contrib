@@ -128,7 +128,8 @@ void CudaInferRequest::allocateBlobs() {
         true);
     for (auto&& [inputName, userInputInfo] : _networkInputs) {
         const auto& inputDescr = userInputInfo->getTensorDesc();
-        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
+        const auto networkPrecision =
+            InferenceEngine::details::convertPrecision(_executableNetwork->parameter(inputName).get_element_type());
         const auto& deviceInputDescr = _deviceInputs[inputName]->getTensorDesc();
         if (deviceInputDescr.getPrecision() != networkPrecision) {
             Blob::Ptr networkBlob;
@@ -177,7 +178,8 @@ void CudaInferRequest::inferPreprocess() {
     //       after InferRequestInternal::execDataPreprocessing(...)
     for (auto&& netInput : _networkInputs) {
         const auto& inputName = netInput.first;
-        const auto networkPrecision = convertType(_executableNetwork->parameter(inputName).get_element_type());
+        const auto networkPrecision =
+            InferenceEngine::details::convertPrecision(_executableNetwork->parameter(inputName).get_element_type());
         if (_deviceInputs[inputName]->getTensorDesc().getPrecision() == networkPrecision) {
             network_input_blobs_[inputName] = _deviceInputs[inputName];
         }
@@ -361,7 +363,8 @@ InferenceEngine::Blob::Ptr CudaInferRequest::GetBlob(const std::string& name) {
                     true);
                 const auto& userInputInfo = _networkInputs[name];
                 const auto& inputDescr = userInputInfo->getTensorDesc();
-                const auto networkPrecision = convertType(_executableNetwork->parameter(name).get_element_type());
+                const auto networkPrecision =
+                    InferenceEngine::details::convertPrecision(_executableNetwork->parameter(name).get_element_type());
                 const auto& deviceInputDescr = _deviceInputs[name]->getTensorDesc();
                 if (deviceInputDescr.getPrecision() != networkPrecision) {
                     Blob::Ptr networkBlob;
@@ -564,27 +567,6 @@ InferenceEngine::Blob::Ptr CudaInferRequest::allocateBlob(const std::vector<std:
     }
     blob->allocate();
     return blob;
-}
-
-InferenceEngine::Precision::ePrecision CudaInferRequest::convertType(ov::element::Type_t type) {
-    using InferenceEngine::Precision;
-    using ov::element::Type_t;
-    switch (type) {
-        case Type_t::f16:
-            return Precision::FP16;
-        case Type_t::f32:
-            return Precision::FP32;
-        case Type_t::u8:
-            return Precision::U8;
-        case Type_t::i16:
-            return Precision::I16;
-        case Type_t::i32:
-            return Precision::I32;
-        case Type_t::boolean:
-            return Precision::BOOL;
-        default:
-            throwIEException(fmt::format("Cuda Plugin: Unsupported Input/Output type {}", type));
-    }
 }
 
 template <typename SrcT, typename DstT>

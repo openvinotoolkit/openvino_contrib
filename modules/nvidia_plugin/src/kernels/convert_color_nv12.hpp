@@ -7,8 +7,8 @@
 #include <cuda_runtime.h>
 
 #include "convert_color.hpp"
-#include "cuda_type_traits.hpp"
-#include "elementtypeswitch.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/element_types_switch.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
