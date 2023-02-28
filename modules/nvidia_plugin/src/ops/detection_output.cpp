@@ -27,7 +27,7 @@ DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
     kernel_attrs.offset = ngraph_attrs.normalized ? 0 : 1;
     kernel_attrs.prior_size = ngraph_attrs.normalized ? 4 : 5;
     kernel_attrs.num_priors = priorsShape[2] / kernel_attrs.prior_size;
-    OPENVINO_ASSERT(locShape[0] == priorsShape[0]);
+    OPENVINO_ASSERT(locShape[0] == priorsShape[0], "Node name: ", GetName());
     kernel_attrs.num_results = outShape[2];
     kernel_attrs.out_total_size = shape_size(outShape);
     kernel_attrs.num_loc_classes = ngraph_attrs.share_location ? 1 : static_cast<size_t>(ngraph_attrs.num_classes);

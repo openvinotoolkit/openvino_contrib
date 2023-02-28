@@ -22,8 +22,8 @@ void AvgPoolOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,
                         Outputs outputs,
                         const Workbuffers&) const {
-    OPENVINO_ASSERT(inputs.size() == 1);
-    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
     impl_.Execute(context.getThreadContext().dnnHandle(),
                   inputs[PoolingImpl::input_index].get(),

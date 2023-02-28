@@ -36,11 +36,11 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should
     // already be turned into 2D at this point.
     const int arrayLength = static_cast<int>(params.input_shape_.size()) - NON_SPATIAL_DIMS_NUMBER;
-    OPENVINO_ASSERT((arrayLength == 2) || (arrayLength == 3));
-    OPENVINO_ASSERT(arrayLength == params.strides_.size());
-    OPENVINO_ASSERT(arrayLength == params.dilations_.size());
-    OPENVINO_ASSERT(arrayLength == params.padding_before_.size());
-    OPENVINO_ASSERT(arrayLength == params.padding_after_.size());
+    OPENVINO_ASSERT((arrayLength == 2) || (arrayLength == 3), "Node name: ", GetName());
+    OPENVINO_ASSERT(arrayLength == params.strides_.size(), "Node name: ", GetName());
+    OPENVINO_ASSERT(arrayLength == params.dilations_.size(), "Node name: ", GetName());
+    OPENVINO_ASSERT(arrayLength == params.padding_before_.size(), "Node name: ", GetName());
+    OPENVINO_ASSERT(arrayLength == params.padding_after_.size(), "Node name: ", GetName());
 
     auto input_desc = MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, params.input_shape_);
     auto filter_desc = MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, params.filter_shape_);
@@ -110,7 +110,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
 }
 
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
-    OPENVINO_ASSERT(engine_config_);
+    OPENVINO_ASSERT(engine_config_, "Node name: ", GetName());
     if (workspace_size_ < 0) {
         ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
@@ -126,8 +126,8 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
                                  Outputs outputs,
                                  const Workbuffers& workbuffers) const {
-    OPENVINO_ASSERT(inputs.size() == 2);
-    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
     auto dnnHandle = context.getThreadContext().dnnHandle();
     auto workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();

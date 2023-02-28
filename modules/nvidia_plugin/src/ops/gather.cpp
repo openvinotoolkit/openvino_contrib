@@ -30,19 +30,22 @@ GatherOp::GatherOp(const CreationContext& context,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    OPENVINO_ASSERT(node.get_input_size() == 3);
-    OPENVINO_ASSERT(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
     const auto gather_v8 = dynamic_cast<const ov::op::v8::Gather*>(&node);
     const auto gather_v7 = dynamic_cast<const ov::op::v7::Gather*>(&node);
     const auto gather_v1 = dynamic_cast<const ov::op::v1::Gather*>(&node);
-    OPENVINO_ASSERT(gather_v8 || gather_v7 || gather_v1);
+    OPENVINO_ASSERT(gather_v8 || gather_v7 || gather_v1, "Node name: ", GetName());
 
     const auto gather_base = dynamic_cast<const ov::op::util::GatherBase*>(&node);
-    OPENVINO_ASSERT(gather_base);
+    OPENVINO_ASSERT(gather_base, "Node name: ", GetName());
 
     // For now CUDA operators support only static shapes
-    OPENVINO_ASSERT(node.get_input_partial_shape(0).rank().is_static() && node.get_input_partial_shape(1).rank().is_static() &&
-            node.get_input_partial_shape(2).rank().is_static());
+    OPENVINO_ASSERT(node.get_input_partial_shape(0).rank().is_static() &&
+                        node.get_input_partial_shape(1).rank().is_static() &&
+                        node.get_input_partial_shape(2).rank().is_static(),
+                    "Node name: ",
+                    GetName());
 
     const ov::element::Type_t element_type = node.get_input_element_type(0);
     switch (element_type) {
@@ -52,7 +55,7 @@ GatherOp::GatherOp(const CreationContext& context,
             throwIEException(fmt::format("Params element type = {} is not supported by Gather operation!",
                                          static_cast<ov::element::Type_t>(element_type)));
     }
-    OPENVINO_ASSERT(node.get_output_element_type(0) == element_type);
+    OPENVINO_ASSERT(node.get_output_element_type(0) == element_type, "Node name: ", GetName());
 
     const auto& dict_shape = node.get_input_shape(0);
     const auto& dict_shape_size = dict_shape.size();
@@ -66,13 +69,15 @@ GatherOp::GatherOp(const CreationContext& context,
     }
 
     const auto axis = gather_base->get_axis();
-    OPENVINO_ASSERT(axis >= 0 && axis < dict_shape_size);
+    OPENVINO_ASSERT(axis >= 0 && axis < dict_shape_size, "Node name: ", GetName());
 
     int64_t batch_dims = 0;
     if (gather_v8 || gather_v7) {
         batch_dims = gather_v8 ? gather_v8->get_batch_dims() : gather_v7->get_batch_dims();
-        OPENVINO_ASSERT(batch_dims >= 0 && batch_dims < dict_shape_size && batch_dims < indices_shape.size() &&
-                batch_dims <= axis);
+        OPENVINO_ASSERT(
+            batch_dims >= 0 && batch_dims < dict_shape_size && batch_dims < indices_shape.size() && batch_dims <= axis,
+            "Node name: ",
+            GetName());
 
         bool batch_check_ok = true;
         for (int i = 0; i < batch_dims; ++i) {
@@ -81,7 +86,7 @@ GatherOp::GatherOp(const CreationContext& context,
                 break;
             }
         }
-        OPENVINO_ASSERT(batch_check_ok);
+        OPENVINO_ASSERT(batch_check_ok, "Node name: ", GetName());
     }
 
     const unsigned num_dicts =
@@ -113,7 +118,7 @@ GatherOp::GatherOp(const CreationContext& context,
 
     const bool boundary_ok =
         data_length <= out_size - (data_length * (max_indices_index + max_dict_index * indices_size));
-    OPENVINO_ASSERT(boundary_ok);
+    OPENVINO_ASSERT(boundary_ok, "Node name: ", GetName());
 
     const unsigned num_chunks = data_length % ELS_PER_THREAD_CHUNKS == 0 ? data_length / ELS_PER_THREAD_CHUNKS
                                                                          : data_length / ELS_PER_THREAD_CHUNKS + 1;
@@ -142,9 +147,9 @@ GatherOp::GatherOp(const CreationContext& context,
         grid_dim_y = data_length;
     }
 
-    OPENVINO_ASSERT(grid_dim_x <= max_grid_size[0]);
-    OPENVINO_ASSERT(grid_dim_y <= max_grid_size[1]);
-    OPENVINO_ASSERT(blocks_per_grid <= max_grid_size[2]);
+    OPENVINO_ASSERT(grid_dim_x <= max_grid_size[0], "Node name: ", GetName());
+    OPENVINO_ASSERT(grid_dim_y <= max_grid_size[1], "Node name: ", GetName());
+    OPENVINO_ASSERT(blocks_per_grid <= max_grid_size[2], "Node name: ", GetName());
 
     gather_kernel_ = kernel::Gather{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type),
                                     convertDataType<ov::nvidia_gpu::kernel::Type_t>(indices_type),
@@ -168,8 +173,8 @@ void GatherOp::Execute(const InferenceRequestContext& context,
                        Inputs inputs,
                        Outputs outputs,
                        const Workbuffers&) const {
-    OPENVINO_ASSERT(inputs.size() == 3);
-    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
     (*gather_kernel_)(context.getThreadContext().stream().get(),
                       context.isBenchmarkMode(),

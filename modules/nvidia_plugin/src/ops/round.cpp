@@ -18,8 +18,8 @@ RoundOp::RoundOp(const CreationContext& context,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase{context, node, move(inputIds), move(outputIds)} {
-    OPENVINO_ASSERT(node.get_input_size() == 1);
-    OPENVINO_ASSERT(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
     const auto& element_type = node.get_input_element_type(0);
     const auto& out_element_type = node.get_output_element_type(0);
@@ -30,7 +30,7 @@ RoundOp::RoundOp(const CreationContext& context,
                         out_element_type.get_type_name()));
     }
     const size_t num_elements = ov::shape_size(node.get_input_shape(0));
-    OPENVINO_ASSERT(ov::shape_size(node.get_output_shape(0)) == num_elements);
+    OPENVINO_ASSERT(ov::shape_size(node.get_output_shape(0)) == num_elements, "Node name: ", GetName());
 
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_ =
@@ -41,9 +41,9 @@ void RoundOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
                       const Workbuffers& workbuffers) const {
-    OPENVINO_ASSERT(kernel_);
-    OPENVINO_ASSERT(inputTensors.size() == 1);
-    OPENVINO_ASSERT(outputTensors.size() == 1);
+    OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+    OPENVINO_ASSERT(inputTensors.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
 
     (*kernel_)(context.getThreadContext().stream().get(), inputTensors[0].get(), outputTensors[0].get());
 }

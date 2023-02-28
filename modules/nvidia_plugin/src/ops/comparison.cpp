@@ -6,6 +6,7 @@
 
 #include <cuda_operation_registry.hpp>
 #include <ngraph/type/element_type.hpp>
+#include <openvino/core/except.hpp>
 
 #include "converters.hpp"
 
@@ -64,11 +65,11 @@ Comparison::Comparison(const CreationContext& context,
         output_sizes_.push_back(output_offset_[idx] > 0 ? output_offset_[idx] : output_offset_[idx - 1]);
     }
 
-    OPENVINO_ASSERT(output_element_type == ov::element::Type_t::boolean);
-    OPENVINO_ASSERT(node.get_output_size() == 1);
-    OPENVINO_ASSERT(node.get_input_size() == 2);
-    OPENVINO_ASSERT(GetOutputIds().size() == 1);
-    OPENVINO_ASSERT(GetInputIds().size() == 2);
+    OPENVINO_ASSERT(output_element_type == ov::element::Type_t::boolean, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_input_size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(GetOutputIds().size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(GetInputIds().size() == 2, "Node name: ", GetName());
 
     const size_t output_size = ov::shape_size(output_shape_);
     const auto max_block_size = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
@@ -88,9 +89,9 @@ void Comparison::Execute(const InferenceRequestContext& context,
                          Inputs inputs,
                          Outputs outputs,
                          const Workbuffers& workbuffers) const {
-    OPENVINO_ASSERT(kernel_);
-    OPENVINO_ASSERT(inputs.size() == 2);
-    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+    OPENVINO_ASSERT(inputs.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
 
@@ -120,13 +121,13 @@ void Comparison::calculateOffsets() {
               std::end(output_shape_),
               std::begin(result_dims) + (kNumOfDim - output_shape_.size()));
     calcOutOffset(output_offset_, result_dims);
-    OPENVINO_ASSERT(output_offset_.size() == kNumOfDim);
+    OPENVINO_ASSERT(output_offset_.size() == kNumOfDim, "Node name: ", GetName());
 
     for (const auto& shape : input_shapes_) {
         std::vector<size_t> result_shape(kNumOfDim, 1);
         std::copy(std::begin(shape), std::end(shape), std::begin(result_shape) + (kNumOfDim - shape.size()));
         calcInOffset(input_offsets_.emplace_back(), result_shape, result_dims);
-        OPENVINO_ASSERT(input_offsets_.back().size() == kNumOfDim);
+        OPENVINO_ASSERT(input_offsets_.back().size() == kNumOfDim, "Node name: ", GetName());
     }
 }
 

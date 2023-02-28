@@ -44,8 +44,8 @@ public:
             image_h = image_h * 2 / 3;
         }
 
-        OPENVINO_ASSERT(node.get_input_size() == 1 || node.get_input_size() == 2);
-        OPENVINO_ASSERT(node.get_output_size() == 1);
+        OPENVINO_ASSERT(node.get_input_size() == 1 || node.get_input_size() == 2, "Node name: ", GetName());
+        OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
         const auto element_type = node.get_output_element_type(0);
 
@@ -73,9 +73,9 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override {
-        OPENVINO_ASSERT(kernel_);
-        OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2);
-        OPENVINO_ASSERT(outputTensors.size() == 1);
+        OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+        OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2, "Node name: ", GetName());
+        OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
         auto& stream = context.getThreadContext().stream();
 
         if (inputTensors.size() == 1) {

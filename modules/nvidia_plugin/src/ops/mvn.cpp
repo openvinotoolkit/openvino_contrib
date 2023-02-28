@@ -201,7 +201,7 @@ ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
             return {};
         } else {
             for (auto& reductionAxisIndex : mvn_op_v1_->get_reduction_axes()) {
-                OPENVINO_ASSERT(reductionAxisIndex < reducedShape.size());
+                OPENVINO_ASSERT(reductionAxisIndex < reducedShape.size(), "Node name: ", GetName());
                 reducedShape[reductionAxisIndex] = 1;
             }
         }

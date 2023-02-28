@@ -71,15 +71,15 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
                                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     auto variadic_split_node = dynamic_cast<const ov::op::v1::VariadicSplit*>(&node);
-    OPENVINO_ASSERT(variadic_split_node);
+    OPENVINO_ASSERT(variadic_split_node, "Node name: ", GetName());
     auto input_element_type = variadic_split_node->get_input_element_type(0);
     auto axis_node = dynamic_cast<ov::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(1));
     auto split_lengths_node = dynamic_cast<ov::op::v0::Constant*>(variadic_split_node->get_input_node_ptr(2));
-    OPENVINO_ASSERT(axis_node);
-    OPENVINO_ASSERT(split_lengths_node);
+    OPENVINO_ASSERT(axis_node, "Node name: ", GetName());
+    OPENVINO_ASSERT(split_lengths_node, "Node name: ", GetName());
     auto output_element_type = variadic_split_node->get_output_element_type(0);
-    OPENVINO_ASSERT(variadic_split_node->get_input_size() == 3);
-    OPENVINO_ASSERT(input_element_type == output_element_type);
+    OPENVINO_ASSERT(variadic_split_node->get_input_size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(input_element_type == output_element_type, "Node name: ", GetName());
     switch (input_element_type) {
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
@@ -96,7 +96,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
     if (axis < 0) {
         axis += static_cast<int64_t>(variadic_split_node->get_input_partial_shape(0).rank().get_length());
     }
-    OPENVINO_ASSERT(axis >= 0 && axis < data_shape.size());
+    OPENVINO_ASSERT(axis >= 0 && axis < data_shape.size(), "Node name: ", GetName());
     const size_t orig_axis_size = data_shape[axis];
 
     const std::vector<int64_t> split_lengths = getSplitLengths(split_lengths_node);
@@ -106,11 +106,11 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
 
     const size_t axis_split_step_size =
         std::accumulate(data_shape.begin() + axis + 1, data_shape.end(), 1, std::multiplies<size_t>());
-    OPENVINO_ASSERT(axis_split_step_size != 0);
+    OPENVINO_ASSERT(axis_split_step_size != 0, "Node name: ", GetName());
     const size_t num_split_elements =
         std::accumulate(data_shape.begin(), data_shape.end(), 1, std::multiplies<size_t>());
     const size_t num_all_chunks = num_split_elements / axis_split_step_size;
-    OPENVINO_ASSERT(num_all_chunks != 0);
+    OPENVINO_ASSERT(num_all_chunks != 0, "Node name: ", GetName());
     const unsigned max_block_size = context.device().props().maxThreadsPerBlock;
     const unsigned num_blocks = (num_split_elements % max_block_size == 0) ? (num_split_elements / max_block_size)
                                                                            : (num_split_elements / max_block_size + 1);
@@ -126,7 +126,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
 
 void VariadicSplitOp::buildAxisHelpers(const std::vector<int64_t>& split_lengths, const size_t orig_axis_size) {
     const auto num_of_remain_parts = std::count(split_lengths.begin(), split_lengths.end(), -1);
-    OPENVINO_ASSERT(num_of_remain_parts <= 1);
+    OPENVINO_ASSERT(num_of_remain_parts <= 1, "Node name: ", GetName());
     const size_t total_split_size =
         std::accumulate(split_lengths.begin(), split_lengths.end(), 0) + num_of_remain_parts;
 
@@ -165,7 +165,7 @@ WorkbufferRequest VariadicSplitOp::GetWorkBufferRequest() const {
 }
 
 void VariadicSplitOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
-    OPENVINO_ASSERT(buffers.size() == 3);
+    OPENVINO_ASSERT(buffers.size() == 3, "Node name: ", GetName());
     CUDA::DefaultStream::stream().upload(
         buffers.at(kSplitIdxIWBIdx), split_idx_.data(), sizeof(*split_idx_.data()) * split_idx_.size());
     CUDA::DefaultStream::stream().upload(
@@ -179,11 +179,11 @@ void VariadicSplitOp::Execute(const InferenceRequestContext& context,
                               Inputs inputs,
                               Outputs outputs,
                               const Workbuffers& buffers) const {
-    OPENVINO_ASSERT(variadic_split_kernel_);
-    OPENVINO_ASSERT(inputs.size() == 3);
-    OPENVINO_ASSERT(outputs.size() == axis_sizes_.size());
-    OPENVINO_ASSERT(buffers.mutable_buffers.size() == 1);
-    OPENVINO_ASSERT(buffers.immutable_buffers.size() == 3);
+    OPENVINO_ASSERT(variadic_split_kernel_, "Node name: ", GetName());
+    OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == axis_sizes_.size(), "Node name: ", GetName());
+    OPENVINO_ASSERT(buffers.mutable_buffers.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(buffers.immutable_buffers.size() == 3, "Node name: ", GetName());
     auto& stream = context.getThreadContext().stream();
     auto output_ptrs = buffers.mutable_buffers.at(kOutputPtrsMWBIdx);
     auto all_split_idxs = buffers.immutable_buffers.at(kSplitIdxIWBIdx);

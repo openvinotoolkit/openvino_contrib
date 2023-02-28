@@ -40,8 +40,8 @@ PadOp::PadOp(const CreationContext& context,
               isNCHWConvolutionPadding(node)},
       src_shape_{node.get_input_shape(0)},
       dst_shape_{node.get_output_shape(0)} {
-    OPENVINO_ASSERT(node.get_input_element_type(0) == node.get_output_element_type(0));
-    OPENVINO_ASSERT(ov::op::PadMode::CONSTANT == node.get_pad_mode());
+    OPENVINO_ASSERT(node.get_input_element_type(0) == node.get_output_element_type(0), "Node name: ", GetName());
+    OPENVINO_ASSERT(ov::op::PadMode::CONSTANT == node.get_pad_mode(), "Node name: ", GetName());
 }
 
 void PadOp::Execute(const InferenceRequestContext& context,

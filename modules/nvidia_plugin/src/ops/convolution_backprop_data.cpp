@@ -24,8 +24,8 @@ void ConvBackpropDataOp<T>::Execute(const InferenceRequestContext& context,
                                     Inputs inputs,
                                     Outputs outputs,
                                     const Workbuffers& workbuffers) const {
-    OPENVINO_ASSERT(inputs.size() == 2 || inputs.size() == 3);
-    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2 || inputs.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     throwIfError(::cudnnConvolutionBackwardData(context.getThreadContext().dnnHandle().get(),
                                                 &CUDA::NumericConst<CUDA::constants::one>(descs_.ElementType()),

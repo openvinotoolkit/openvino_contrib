@@ -78,8 +78,8 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                           Inputs inputTensors,
                           Outputs outputTensors,
                           const Workbuffers&) const {
-    OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2);
-    OPENVINO_ASSERT(outputTensors.size() == 1);
+    OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
 
     cutensorTensorDescriptor_t inputDesc{}, outputDesc{};
     const std::vector<int> outputMode = permutation(context, inputTensors);
@@ -188,7 +188,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
     if (outputMode_.has_value()) {
         return outputMode_.value();
     } else {  // Copies permutation vector from device memory. cuTENSOR API requires it in host memory
-        OPENVINO_ASSERT(inputTensors.size() == 2);
+        OPENVINO_ASSERT(inputTensors.size() == 2, "Node name: ", GetName());
         using ov::element::Type_t;
         switch (permutationElementsType_) {
             case Type_t::i8:
@@ -214,7 +214,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
 }
 
 ov::element::Type_t TransposeOp::extractPermutationElementsType(const ov::Node& node) {
-    OPENVINO_ASSERT(node.get_input_size() > 0 && node.get_input_size() <= 2);
+    OPENVINO_ASSERT(node.get_input_size() > 0 && node.get_input_size() <= 2, "Node name: ", GetName());
     if (node.get_input_size() == 1)
         return ov::element::Type_t::i32;
     else

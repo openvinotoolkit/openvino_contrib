@@ -24,13 +24,13 @@ void LSTMCellOp::Execute(const InferenceRequestContext& context,
                          Inputs inputs,
                          Outputs outputs,
                          const Workbuffers& workbuffers) const {
-    OPENVINO_ASSERT(inputs.size() == 6);
-    OPENVINO_ASSERT(outputs.size() == 2);
+    OPENVINO_ASSERT(inputs.size() == 6, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 2, "Node name: ", GetName());
 
     const auto& ib = workbuffers.immutable_buffers;
     const auto& mb = workbuffers.mutable_buffers;
-    OPENVINO_ASSERT(ib.size() == 1 || ib.size() == 2);
-    OPENVINO_ASSERT(mb.size() == 1 || mb.size() == 2);
+    OPENVINO_ASSERT(ib.size() == 1 || ib.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(mb.size() == 1 || mb.size() == 2, "Node name: ", GetName());
 
     const auto weight_space = ib.size() > 1 ? ib[1].get() : nullptr;
     auto y_output = mb[0].get();
@@ -58,7 +58,7 @@ void LSTMCellOp::Execute(const InferenceRequestContext& context,
 }
 
 void LSTMCellOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
-    OPENVINO_ASSERT(buffers.size() == 1 || buffers.size() == 2);
+    OPENVINO_ASSERT(buffers.size() == 1 || buffers.size() == 2, "Node name: ", GetName());
 
     descs_.initDevSeqLengthArray(buffers[0]);
 
