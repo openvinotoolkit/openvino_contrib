@@ -7,7 +7,7 @@
 #include <cudnn.h>
 
 #include <details/ie_exception.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 
 #include "cuda/constant_factory.hpp"
 
@@ -25,8 +25,8 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                Inputs inputs,
                                Outputs outputs,
                                const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 2);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2);
+    OPENVINO_ASSERT(outputs.size() == 1);
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
     cudnnStatus_t status = ::cudnnConvolutionForward(context.getThreadContext().dnnHandle().get(),
                                                      &CUDA::NumericConst<CUDA::constants::one>(descs_.ElementType()),

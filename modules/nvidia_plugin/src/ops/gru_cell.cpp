@@ -5,7 +5,7 @@
 #include "gru_cell.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -27,13 +27,13 @@ void GRUCellOp::Execute(const InferenceRequestContext& context,
                         const Workbuffers& workbuffers) const {
     using ov::nvidia_gpu::RNN::Details::GRUCellArgIndices;
 
-    Expects(inputs.size() == 5);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 5);
+    OPENVINO_ASSERT(outputs.size() == 1);
 
     const auto& ib = workbuffers.immutable_buffers;
     const auto& mb = workbuffers.mutable_buffers;
-    Expects(ib.size() == 1 || ib.size() == 2);
-    Expects(mb.size() == 1 || mb.size() == 2);
+    OPENVINO_ASSERT(ib.size() == 1 || ib.size() == 2);
+    OPENVINO_ASSERT(mb.size() == 1 || mb.size() == 2);
 
     const auto dev_seq_lenghts = static_cast<const int32_t*>(ib[0].get());
     const auto weight_space = ib.size() > 1 ? ib[1].get() : nullptr;
@@ -62,7 +62,7 @@ void GRUCellOp::Execute(const InferenceRequestContext& context,
 }
 
 void GRUCellOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
-    Expects(buffers.size() == 1 || buffers.size() == 2);
+    OPENVINO_ASSERT(buffers.size() == 1 || buffers.size() == 2);
 
     descs_.initDevSeqLengthArray(buffers[0]);
 

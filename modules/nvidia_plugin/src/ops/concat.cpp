@@ -7,7 +7,7 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <utility>
 #include <vector>
 
@@ -24,22 +24,22 @@ ConcatOp::ConcatOp(const CreationContext& context,
       num_inputs_{concatOp.get_input_size()} {
     const ov::element::Type element_type{concatOp.get_input_element_type(0)};
     auto output_element_type = concatOp.get_output_element_type(0);
-    Expects(concatOp.get_output_size() == 1);
-    Expects(element_type == output_element_type);
-    Expects(num_inputs_ == GetInputIds().size());
-    Expects(GetOutputIds().size() == 1);
+    OPENVINO_ASSERT(concatOp.get_output_size() == 1);
+    OPENVINO_ASSERT(element_type == output_element_type);
+    OPENVINO_ASSERT(num_inputs_ == GetInputIds().size());
+    OPENVINO_ASSERT(GetOutputIds().size() == 1);
     const auto& outputShape = concatOp.get_output_shape(0);
     int64_t axis = concatOp.get_axis();
     if (axis < 0) {
         axis += static_cast<int64_t>(concatOp.get_input_partial_shape(0).rank().get_length());
     }
-    Expects(axis >= 0 && axis < outputShape.size());
+    OPENVINO_ASSERT(axis >= 0 && axis < outputShape.size());
     auto num_chunks =
         std::accumulate(outputShape.begin(), outputShape.begin() + axis + 1, 1, std::multiplies<size_t>());
-    Expects(num_chunks != 0);
+    OPENVINO_ASSERT(num_chunks != 0);
     const std::size_t chunk_size =
         std::accumulate(outputShape.begin() + axis + 1, outputShape.end(), 1, std::multiplies<size_t>());
-    Ensures(chunk_size != 0);
+    OPENVINO_ASSERT(chunk_size != 0);
     std::vector<kernel::Concat::Chunk> chunks;
     chunks.reserve(num_chunks);
     const size_t sizeAboveAxis = num_chunks / outputShape[axis];
@@ -71,7 +71,7 @@ ConcatOp::ConcatOp(const CreationContext& context,
 WorkbufferRequest ConcatOp::GetWorkBufferRequest() const { return {{immutableWbSize()}, {mutableWbSize()}}; }
 
 void ConcatOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
-    Expects(buffers.size() == 1);
+    OPENVINO_ASSERT(buffers.size() == 1);
     CUDA::DefaultStream::stream().upload(buffers[0], concat_kernel_.value().immutableWbData(), immutableWbSize());
 }
 
@@ -79,14 +79,14 @@ void ConcatOp::Execute(const InferenceRequestContext& context,
                        Inputs inputs,
                        Outputs outputs,
                        const Workbuffers& workbuffers) const {
-    Expects(concat_kernel_);
-    Expects(inputs.size() == num_inputs_);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(concat_kernel_);
+    OPENVINO_ASSERT(inputs.size() == num_inputs_);
+    OPENVINO_ASSERT(outputs.size() == 1);
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
 
-    Expects(workbuffers.immutable_buffers.size() == 1);
-    Expects(workbuffers.mutable_buffers.size() == 1);
+    OPENVINO_ASSERT(workbuffers.immutable_buffers.size() == 1);
+    OPENVINO_ASSERT(workbuffers.mutable_buffers.size() == 1);
 
     stream.upload(workbuffers.mutable_buffers[0], inputs.data(), mutableWbSize());
     (*concat_kernel_)(stream.get(),

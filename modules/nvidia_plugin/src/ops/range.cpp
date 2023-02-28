@@ -54,9 +54,9 @@ void RangeOp::Execute(const InferenceRequestContext& context,
                       Inputs inputs,
                       Outputs outputs,
                       const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 3);
-    Expects(outputs.size() == 1);
-    Expects(kernel_op_);
+    OPENVINO_ASSERT(inputs.size() == 3);
+    OPENVINO_ASSERT(outputs.size() == 1);
+    OPENVINO_ASSERT(kernel_op_);
     (*kernel_op_)(context.getThreadContext().stream().get(),
                   inputs[START_INDX].get(),
                   inputs[STEP_INDX].get(),

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
 #include "noop_broadcast_transformation.hpp"
 
-#include <gsl/gsl_assert>
-#include "openvino/pass/pattern/op/wrap_type.hpp"
+#include <openvino/core/except.hpp>
 #include <openvino/op/broadcast.hpp>
+
+#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 
 using namespace ov::pass::pattern;
 
@@ -16,7 +17,7 @@ namespace {
 
 bool eliminate_noop_broadcast(Matcher &m) {
     auto node = std::dynamic_pointer_cast<ov::op::v3::Broadcast>(m.get_match_root());
-    Expects(node);
+    OPENVINO_ASSERT(node);
 
     auto in_shape = node->get_input_shape(0);
     auto out_shape = node->get_output_shape(0);

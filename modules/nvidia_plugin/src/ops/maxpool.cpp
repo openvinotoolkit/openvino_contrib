@@ -5,7 +5,7 @@
 #include "maxpool.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <openvino/op/max_pool.hpp>
 
 namespace ov {
@@ -22,8 +22,8 @@ void MaxPoolOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,
                         Outputs outputs,
                         const Workbuffers&) const {
-    Expects(inputs.size() == 1);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 1);
+    OPENVINO_ASSERT(outputs.size() == 1);
 
     impl_.Execute(context.getThreadContext().dnnHandle(),
                   inputs[PoolingImpl::input_index].get(),

@@ -15,7 +15,7 @@ static OperationBase::Ptr divideFactory(const CreationContext& context,
                                         OperationBase::IndexCollection&& inputIds,
                                         OperationBase::IndexCollection&& outputIds) {
     auto node = std::dynamic_pointer_cast<ov::op::v1::Divide>(in_node);
-    Expects(node);
+    OPENVINO_ASSERT(node);
 
     const OperationBase::IndexCollection inputs{inputIds};
     const OperationBase::IndexCollection outputs{outputIds};

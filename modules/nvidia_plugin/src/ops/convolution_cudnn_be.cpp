@@ -8,7 +8,7 @@
 
 #include <algorithm>
 #include <details/ie_exception.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
@@ -36,11 +36,11 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
     // Convolution dimension according to op spec (1D, 2D or 3D). 1D should
     // already be turned into 2D at this point.
     const int arrayLength = static_cast<int>(params.input_shape_.size()) - NON_SPATIAL_DIMS_NUMBER;
-    Expects((arrayLength == 2) || (arrayLength == 3));
-    Expects(arrayLength == params.strides_.size());
-    Expects(arrayLength == params.dilations_.size());
-    Expects(arrayLength == params.padding_before_.size());
-    Expects(arrayLength == params.padding_after_.size());
+    OPENVINO_ASSERT((arrayLength == 2) || (arrayLength == 3));
+    OPENVINO_ASSERT(arrayLength == params.strides_.size());
+    OPENVINO_ASSERT(arrayLength == params.dilations_.size());
+    OPENVINO_ASSERT(arrayLength == params.padding_before_.size());
+    OPENVINO_ASSERT(arrayLength == params.padding_after_.size());
 
     auto input_desc = MakeTensorDescriptor(DnnTensorID::input, tensor_element_type, params.input_shape_);
     auto filter_desc = MakeTensorDescriptor(DnnTensorID::filter, tensor_element_type, params.filter_shape_);
@@ -110,7 +110,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
 }
 
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
-    Expects(engine_config_);
+    OPENVINO_ASSERT(engine_config_);
     if (workspace_size_ < 0) {
         ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
@@ -126,8 +126,8 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
                                  Inputs inputs,
                                  Outputs outputs,
                                  const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 2);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2);
+    OPENVINO_ASSERT(outputs.size() == 1);
 
     auto dnnHandle = context.getThreadContext().dnnHandle();
     auto workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();

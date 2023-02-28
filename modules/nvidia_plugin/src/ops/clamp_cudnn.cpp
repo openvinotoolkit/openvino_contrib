@@ -33,11 +33,11 @@ ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
       max_min_desc_{CUDA::makeDnnTensorDescr(node.get_input_element_type(0), {1})},
       max_{node.get_max()},
       min_{node.get_min()} {
-    Expects(node.get_input_size() == 1);
-    Expects(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 1);
+    OPENVINO_ASSERT(node.get_output_size() == 1);
 
     const auto& shape = node.get_input_shape(0);
-    Expects(node.get_output_shape(0) == shape);
+    OPENVINO_ASSERT(node.get_output_shape(0) == shape);
 
     const auto in_shape_size = node.get_input_shape(0).size();
     if (in_shape_size > max_shape_size) {
@@ -47,7 +47,7 @@ ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
                         max_shape_size));
     }
 
-    Expects(node.get_output_element_type(0) == node.get_input_element_type(0));
+    OPENVINO_ASSERT(node.get_output_element_type(0) == node.get_input_element_type(0));
 
     if (min_ > max_) {
         throwIEException(fmt::format("ov::nvidia_gpu::ClampCuDnnOp: Clamp min_ > max_: min_ = {}, max_ = {}", min_, max_));
@@ -58,11 +58,11 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
                            Inputs inputTensors,
                            Outputs outputTensors,
                            const Workbuffers& workbuffers) const {
-    Expects(inputTensors.size() == 1);
-    Expects(outputTensors.size() == 1);
+    OPENVINO_ASSERT(inputTensors.size() == 1);
+    OPENVINO_ASSERT(outputTensors.size() == 1);
 
     const auto& ib = workbuffers.immutable_buffers;
-    Expects(ib.size() == 2);
+    OPENVINO_ASSERT(ib.size() == 2);
 
     const void* alpha = &CUDA::NumericConst<CUDA::constants::one>(data_type_);
     const void* beta = &CUDA::NumericConst<CUDA::constants::zero>(data_type_);
@@ -137,7 +137,7 @@ void ClampCuDnnOp::initBuffers(const Buffers& buffers) const {
         min = static_cast<T>(min_);
     }
     const auto el_size = elementSize(data_type_);
-    Ensures(el_size == sizeof(T));
+    OPENVINO_ASSERT(el_size == sizeof(T));
 
     const auto& stream = CUDA::DefaultStream::stream();
     stream.upload(buffers[max_index], &max, el_size);

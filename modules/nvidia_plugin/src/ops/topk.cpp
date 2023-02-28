@@ -84,9 +84,9 @@ TopKOp::TopKOp(const CreationContext& context,
     const ngraph::element::Type index_element_type{topKOp.get_index_element_type()};
     auto output_element_type = topKOp.get_output_element_type(0);
 
-    Expects(topKOp.get_input_size() == 2);
-    Expects(topKOp.get_output_size() == 2);
-    Expects(element_type == output_element_type);
+    OPENVINO_ASSERT(topKOp.get_input_size() == 2);
+    OPENVINO_ASSERT(topKOp.get_output_size() == 2);
+    OPENVINO_ASSERT(element_type == output_element_type);
     const auto& input_shape = topKOp.get_input_shape(0);
     const auto& output_shape = topKOp.get_output_shape(0);
     const uint64_t axis = topKOp.get_axis();
@@ -94,8 +94,8 @@ TopKOp::TopKOp(const CreationContext& context,
     const size_t num_output_element = ngraph::shape_size(output_shape);
     workspace_size_ = num_input_element * (element_type.size() + index_element_type.size());
 
-    Expects(axis >= 0 && axis < input_shape.size());
-    Expects(axis >= 0 && axis < output_shape.size());
+    OPENVINO_ASSERT(axis >= 0 && axis < input_shape.size());
+    OPENVINO_ASSERT(axis >= 0 && axis < output_shape.size());
     const std::size_t workspace_chunk_size = input_shape[axis];
     const auto& input_shape_axis = shapeByAxis(input_shape, axis);
     const auto& output_shape_axis = shapeByAxis(output_shape, axis);
@@ -128,7 +128,7 @@ TopKOp::TopKOp(const CreationContext& context,
     };
 
     const auto k_constant = dynamic_cast<ov::op::v0::Constant*>(topKOp.get_input_node_ptr(1));
-    Expects(k_constant);
+    OPENVINO_ASSERT(k_constant);
     const size_t k = getK(k_constant);
 
     const auto& prop = context.device().props();
@@ -148,10 +148,10 @@ void TopKOp::Execute(const InferenceRequestContext& context,
                      Inputs inputs,
                      Outputs outputs,
                      const Workbuffers& buffers) const {
-    Expects(inputs.size() == 2);
-    Expects(outputs.size() == 2);
-    Expects(buffers.mutable_buffers.size() == 1);
-    Expects(buffers.immutable_buffers.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2);
+    OPENVINO_ASSERT(outputs.size() == 2);
+    OPENVINO_ASSERT(buffers.mutable_buffers.size() == 1);
+    OPENVINO_ASSERT(buffers.immutable_buffers.size() == 1);
     auto& threadContext = context.getThreadContext();
     auto& stream = threadContext.stream();
     auto kernel_param = buffers.immutable_buffers[0];
@@ -168,7 +168,7 @@ void TopKOp::Execute(const InferenceRequestContext& context,
 }
 
 void TopKOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
-    Expects(buffers.size() == 1);
+    OPENVINO_ASSERT(buffers.size() == 1);
     size_t buffer_offset = 0;
     CUDA::DefaultStream::stream().upload(
         buffers[0] + buffer_offset, kernel_param_.input_shape_axis, sizeof(kernel_param_.input_shape_axis));

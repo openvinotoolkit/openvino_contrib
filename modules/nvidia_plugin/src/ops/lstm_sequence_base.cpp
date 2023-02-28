@@ -4,7 +4,7 @@
 
 #include "lstm_sequence_base.hpp"
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <utility>
 #include <vector>
 
@@ -31,8 +31,8 @@ void LSTMSequenceOpBase::Execute(const InferenceRequestContext& context,
                                  Outputs outputs,
                                  const Workbuffers& workbuffers) const {
     using ArgIndices = ov::nvidia_gpu::RNN::Details::LSTMSequenceArgIndices;
-    Expects(inputs.size() == 7);
-    Expects(outputs.size() == 3);
+    OPENVINO_ASSERT(inputs.size() == 7);
+    OPENVINO_ASSERT(outputs.size() == 3);
 
     const auto& ib = workbuffers.immutable_buffers;
     const auto& mb = workbuffers.mutable_buffers;

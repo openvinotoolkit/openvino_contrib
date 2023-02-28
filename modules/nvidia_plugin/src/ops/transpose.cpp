@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cuda/tensor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
@@ -78,8 +78,8 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                           Inputs inputTensors,
                           Outputs outputTensors,
                           const Workbuffers&) const {
-    Expects(inputTensors.size() == 1 || inputTensors.size() == 2);
-    Expects(outputTensors.size() == 1);
+    OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2);
+    OPENVINO_ASSERT(outputTensors.size() == 1);
 
     cutensorTensorDescriptor_t inputDesc{}, outputDesc{};
     const std::vector<int> outputMode = permutation(context, inputTensors);
@@ -162,7 +162,7 @@ std::vector<std::int64_t> TransposeOp::extractOutputStrides(const ov::Node& node
 
 bool TransposeOp::isPermutationTensorSpecified(const ov::Node& node) {
     const auto numInputs = node.get_input_size();
-    Expects(numInputs == 1 || numInputs == 2);
+    OPENVINO_ASSERT(numInputs == 1 || numInputs == 2);
     return numInputs == 2;
 }
 
@@ -188,7 +188,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
     if (outputMode_.has_value()) {
         return outputMode_.value();
     } else {  // Copies permutation vector from device memory. cuTENSOR API requires it in host memory
-        Expects(inputTensors.size() == 2);
+        OPENVINO_ASSERT(inputTensors.size() == 2);
         using ov::element::Type_t;
         switch (permutationElementsType_) {
             case Type_t::i8:
@@ -214,7 +214,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
 }
 
 ov::element::Type_t TransposeOp::extractPermutationElementsType(const ov::Node& node) {
-    Expects(node.get_input_size() > 0 && node.get_input_size() <= 2);
+    OPENVINO_ASSERT(node.get_input_size() > 0 && node.get_input_size() <= 2);
     if (node.get_input_size() == 1)
         return ov::element::Type_t::i32;
     else

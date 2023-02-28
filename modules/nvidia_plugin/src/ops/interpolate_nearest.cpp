@@ -117,7 +117,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
       in_shape_{node.get_input_shape(0)},
       out_shape_{node.get_output_shape(0)},
       can_use_upscale_optimizing_{canApplyUpscaleOptimizing(node, scales_)} {
-    Expects(node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::nearest);
+    OPENVINO_ASSERT(node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::nearest);
     checkLimitations(node);
 
     const auto& prop = context.device().props();

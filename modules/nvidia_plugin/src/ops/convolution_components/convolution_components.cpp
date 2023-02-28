@@ -4,7 +4,7 @@
 
 #include "convolution_components.hpp"
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <gsl/span_ext>
 #include <ngraph/validation_util.hpp>
 #include <openvino/op/group_conv.hpp>
@@ -24,17 +24,17 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
       padding_before_{node.get_pads_begin()},
       padding_after_{node.get_pads_end()},
       groups_{1U} {
-    Expects(input_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
-    Expects(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
-    Expects(element_type_ == node.get_output_element_type(ConvArgIndices::output));
+    OPENVINO_ASSERT(input_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
+    OPENVINO_ASSERT(element_type_ == node.get_input_element_type(ConvArgIndices::filter));
+    OPENVINO_ASSERT(element_type_ == node.get_output_element_type(ConvArgIndices::output));
 
     if constexpr (std::is_same_v<TConvNode, ov::op::v1::GroupConvolution> ||
                   std::is_same_v<TConvNode, nodes::FusedGroupConvolution>) {
         groups_ = node.get_input_shape(1)[0];
-        Expects(input_shape_[1] % groups_ == 0);
+        OPENVINO_ASSERT(input_shape_[1] % groups_ == 0);
         filter_shape_.erase(filter_shape_.begin());
     }
-    Expects(groups_ >= 1U);
+    OPENVINO_ASSERT(groups_ >= 1U);
     filter_shape_[0] *= groups_;
 
     InferPadding(node);
@@ -42,18 +42,18 @@ ConvolutionParams::ConvolutionParams(const TConvNode& node)
     if (input_shape_.size() == CONV_1D_DIMS_NUMBER) ConvertConv1DToConv2D();
 
     const size_t dims_number = NumberOfDims();
-    Ensures(input_shape_.size() == dims_number);
-    Ensures(filter_shape_.size() == dims_number);
-    Ensures(output_shape_.size() == dims_number);
+    OPENVINO_ASSERT(input_shape_.size() == dims_number);
+    OPENVINO_ASSERT(filter_shape_.size() == dims_number);
+    OPENVINO_ASSERT(output_shape_.size() == dims_number);
 
     const size_t spatial_dims_number = NumberOfSpatialDims();
     // Convolution dimension according to op spec is 1D, 2D or 3D.
     // 1D is already turned into 2D at this point.
-    Ensures((spatial_dims_number == 2) || (spatial_dims_number == 3));
-    Ensures(strides_.size() == spatial_dims_number);
-    Ensures(dilations_.size() == spatial_dims_number);
-    Ensures(padding_before_.size() == spatial_dims_number);
-    Ensures(padding_after_.size() == spatial_dims_number);
+    OPENVINO_ASSERT((spatial_dims_number == 2) || (spatial_dims_number == 3));
+    OPENVINO_ASSERT(strides_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(dilations_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(padding_before_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(padding_after_.size() == spatial_dims_number);
 }
 template ConvolutionParams::ConvolutionParams(const ov::op::v1::GroupConvolution& node);
 template ConvolutionParams::ConvolutionParams(const ov::op::v1::Convolution& node);
@@ -81,18 +81,18 @@ void ConvolutionParams::InferPadding(const TConvNode& node) {
             padding_after_ = ov::CoordinateDiff(spatial_dims_number, 0);
         } break;
         default:
-            Expects(false);
+            OPENVINO_ASSERT(false);
     }
 }
 
 void ConvolutionParams::ConvertConv1DToConv2D() {
     if (input_shape_.size() != CONV_1D_DIMS_NUMBER) return;
 
-    Expects(input_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(input_shape_.size() == CONV_1D_DIMS_NUMBER);
     input_shape_.insert(input_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
-    Expects(filter_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(filter_shape_.size() == CONV_1D_DIMS_NUMBER);
     filter_shape_.insert(filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
-    Expects(output_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(output_shape_.size() == CONV_1D_DIMS_NUMBER);
     output_shape_.insert(output_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     strides_.insert(strides_.begin(), 1);
     dilations_.insert(dilations_.begin(), 1);
@@ -113,14 +113,14 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
       auto_pad_{node.get_auto_pad()},
       output_padding_{node.get_output_padding()},
       groups_{1U} {
-    Expects(doutput_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
-    Expects(element_type_ == node.get_input_element_type(ConvBackArgIndices::filter));
-    Expects(element_type_ == node.get_output_element_type(ConvBackArgIndices::dinput));
+    OPENVINO_ASSERT(doutput_shape_.size() > NON_SPATIAL_DIMS_NUMBER);
+    OPENVINO_ASSERT(element_type_ == node.get_input_element_type(ConvBackArgIndices::filter));
+    OPENVINO_ASSERT(element_type_ == node.get_output_element_type(ConvBackArgIndices::dinput));
 
     if constexpr (std::is_same_v<TConvNode, ov::op::v1::GroupConvolutionBackpropData>) {
         groups_ = node.get_input_shape(1)[0];
-        Expects(groups_ >= 1U);
-        Expects(dinput_shape_[1] % groups_ == 0);
+        OPENVINO_ASSERT(groups_ >= 1U);
+        OPENVINO_ASSERT(dinput_shape_[1] % groups_ == 0);
         filter_shape_.erase(filter_shape_.begin());
         filter_shape_[0] *= groups_;
     }
@@ -130,18 +130,18 @@ ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const TConvNode& no
     }
 
     const size_t dims_number = NumberOfDims();
-    Ensures(doutput_shape_.size() == dims_number);
-    Ensures(filter_shape_.size() == dims_number);
-    Ensures(dinput_shape_.size() == dims_number);
+    OPENVINO_ASSERT(doutput_shape_.size() == dims_number);
+    OPENVINO_ASSERT(filter_shape_.size() == dims_number);
+    OPENVINO_ASSERT(dinput_shape_.size() == dims_number);
 
     const size_t spatial_dims_number = NumberOfSpatialDims();
     // Convolution dimension according to op spec is 1D, 2D or 3D.
     // 1D is already turned into 2D at this point.
-    Ensures((spatial_dims_number == 2) || (spatial_dims_number == 3));
-    Ensures(strides_.size() == spatial_dims_number);
-    Ensures(dilations_.size() == spatial_dims_number);
-    Ensures(pads_begin_.size() == spatial_dims_number);
-    Ensures(pads_end_.size() == spatial_dims_number);
+    OPENVINO_ASSERT((spatial_dims_number == 2) || (spatial_dims_number == 3));
+    OPENVINO_ASSERT(strides_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(dilations_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(pads_begin_.size() == spatial_dims_number);
+    OPENVINO_ASSERT(pads_end_.size() == spatial_dims_number);
 }
 template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(
     const ov::op::v1::GroupConvolutionBackpropData& node);
@@ -151,11 +151,11 @@ template ConvolutionBackwardDataParams::ConvolutionBackwardDataParams(const node
 void ConvolutionBackwardDataParams::ConvertConv1DToConv2D() {
     if (doutput_shape_.size() != CONV_1D_DIMS_NUMBER) return;
 
-    Expects(doutput_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(doutput_shape_.size() == CONV_1D_DIMS_NUMBER);
     doutput_shape_.insert(doutput_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
-    Expects(filter_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(filter_shape_.size() == CONV_1D_DIMS_NUMBER);
     filter_shape_.insert(filter_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
-    Expects(dinput_shape_.size() == CONV_1D_DIMS_NUMBER);
+    OPENVINO_ASSERT(dinput_shape_.size() == CONV_1D_DIMS_NUMBER);
     dinput_shape_.insert(dinput_shape_.begin() + NON_SPATIAL_DIMS_NUMBER, 1);
     strides_.insert(strides_.begin(), 1);
     dilations_.insert(dilations_.begin(), 1);
@@ -168,8 +168,8 @@ FusedConvolutionParams::FusedConvolutionParams(const TConvNode& node)
     : conv_{node},
       bias_shape_{node.get_input_shape(FusedConvolutionIndices::bias)},
       activation_{node.get_activation()} {
-    Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
-    Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionIndices::bias));
+    OPENVINO_ASSERT(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
+    OPENVINO_ASSERT(conv_.element_type_ == node.get_input_element_type(FusedConvolutionIndices::bias));
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionIndices::add);
     }
@@ -188,13 +188,13 @@ template FusedConvolutionParams::FusedConvolutionParams(const nodes::FusedGroupC
 FusedConvolutionBackwardDataParams::FusedConvolutionBackwardDataParams(
     const ov::nvidia_gpu::nodes::FusedConvBackpropData& node)
     : conv_{node} {
-    Expects(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
+    OPENVINO_ASSERT(conv_.NumberOfSpatialDims() == 2 || conv_.NumberOfSpatialDims() == 3);
     if (node.inputs().size() == 4) {
         add_shape_ = node.get_input_shape(FusedConvolutionBackwardDataIndices<4>::add);
-        Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionBackwardDataIndices<4>::add));
+        OPENVINO_ASSERT(conv_.element_type_ == node.get_input_element_type(FusedConvolutionBackwardDataIndices<4>::add));
     } else {
         add_shape_ = node.get_input_shape(FusedConvolutionBackwardDataIndices<3>::add);
-        Expects(conv_.element_type_ == node.get_input_element_type(FusedConvolutionBackwardDataIndices<3>::add));
+        OPENVINO_ASSERT(conv_.element_type_ == node.get_input_element_type(FusedConvolutionBackwardDataIndices<3>::add));
     }
 }
 

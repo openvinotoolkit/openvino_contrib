@@ -20,8 +20,8 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
                                      IndexCollection&& inputIds,
                                      IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    Expects(node.get_input_size() == 3);
-    Expects(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 3);
+    OPENVINO_ASSERT(node.get_output_size() == 1);
 
     const ov::element::Type_t input_type = node.get_input_element_type(0);
     switch (input_type) {
@@ -33,9 +33,9 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
     }
 
     // update type must be the same as the input type
-    Expects(node.get_input_element_type(2) == input_type);
+    OPENVINO_ASSERT(node.get_input_element_type(2) == input_type);
     // output type must be the same as the input type
-    Expects(node.get_output_element_type(0) == input_type);
+    OPENVINO_ASSERT(node.get_output_element_type(0) == input_type);
 
     const ov::element::Type_t indices_type = node.get_input_element_type(1);
     if (indices_type != ov::element::Type_t::i64 && indices_type != ov::element::Type_t::i32) {
@@ -45,7 +45,7 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
 
     const auto& input_shape = node.get_input_shape(0);
     const auto& output_shape = node.get_output_shape(0);
-    Expects(input_shape == output_shape);
+    OPENVINO_ASSERT(input_shape == output_shape);
 
     const auto& indices_shape = node.get_input_shape(1);
     const auto& indices_last_dim = indices_shape.back();
@@ -91,8 +91,8 @@ void ScatterNDUpdateOp::Execute(const InferenceRequestContext& context,
                                 Inputs inputs,
                                 Outputs outputs,
                                 const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 3);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 3);
+    OPENVINO_ASSERT(outputs.size() == 1);
 
     (*kernel_)(context.getThreadContext().stream().get(),
                inputs[0].get(),

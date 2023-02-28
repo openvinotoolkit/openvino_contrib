@@ -7,8 +7,8 @@
 #include <cudnn.h>
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
 #include <gsl/span_ext>
+#include <openvino/core/except.hpp>
 #include <openvino/op/constant.hpp>
 
 #include "cuda/constant_factory.hpp"
@@ -27,7 +27,7 @@ FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CreationCon
     const auto size = ov::element::Type(params_.conv_.element_type_).size();
     conv_in_bytes_ = size * ov::shape_size(params_.conv_.dinput_shape_);
     add_in_bytes_ = size * ov::shape_size(params_.add_shape_);
-    Expects(conv_in_bytes_ >= add_in_bytes_);
+    OPENVINO_ASSERT(conv_in_bytes_ >= add_in_bytes_);
 
     ov::Output<ov::Node> addNode;
     if (node.get_input_size() == 4) {
@@ -40,7 +40,7 @@ FusedConvolutionBackpropDataOp::FusedConvolutionBackpropDataOp(const CreationCon
     add_node_ = addConstant->shared_from_this();
     const uint8_t* ptr = reinterpret_cast<const uint8_t*>(addConstant->get_data_ptr());
     add_constant_ = gsl::make_span(ptr, GetBufferSize(addNode.get_node()->output(0)));
-    Expects(add_constant_.size_bytes() == add_in_bytes_);
+    OPENVINO_ASSERT(add_constant_.size_bytes() == add_in_bytes_);
 }
 
 void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& context,
@@ -50,7 +50,7 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
     using ArgIndices3Ins = Convolution::Details::FusedConvolutionBackwardDataIndices<3>;
     using ArgIndices4Ins = Convolution::Details::FusedConvolutionBackwardDataIndices<4>;
 
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(outputs.size() == 1);
 
     void* workbuffer = workbuffers.mutable_buffers.empty() ? nullptr : workbuffers.mutable_buffers[0].get();
 
@@ -78,7 +78,7 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
 }
 
 void FusedConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
-    Expects(buffers.size() == 1);
+    OPENVINO_ASSERT(buffers.size() == 1);
     const size_t repeat = conv_in_bytes_ / add_in_bytes_;
     for (size_t i = 0; i < repeat; ++i) {
         CUDA::DefaultStream::stream().upload(buffers[0] + i * add_in_bytes_, add_constant_.data(), add_in_bytes_);

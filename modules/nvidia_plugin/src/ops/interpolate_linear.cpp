@@ -39,7 +39,7 @@ InterpolateLinearOp::InterpolateLinearOp(const CreationContext& context,
                                          IndexCollection&& inputIds,
                                          IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    Expects(node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::linear);
+    OPENVINO_ASSERT(node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::linear);
     checkLimitations(node);
 
     std::vector<size_t> axes;
