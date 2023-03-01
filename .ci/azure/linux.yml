@@ -5,7 +5,6 @@ trigger:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 pr:
@@ -15,7 +14,6 @@ pr:
     - releases/*
   paths:
     exclude:
-    - modules/optimum
     - modules/nvidia_plugin
 
 resources:
@@ -51,6 +49,7 @@ jobs:
     BIN_DIR: $(OPENVINO_REPO_DIR)/bin/intel64/$(BUILD_TYPE)
     INSTALL_DIR: $(WORK_DIR)/install_pkg
     SETUPVARS: $(INSTALL_DIR)/setupvars.sh
+    CUSTOM_OP_LIB: $(BIN_DIR)/libuser_ov_extensions.so
     GRADLE_VER: 7.1.1
 
   steps:
@@ -95,7 +94,7 @@ jobs:
       set -e
       sudo -E $(OPENVINO_REPO_DIR)/install_build_dependencies.sh
       # Move jdk into contrib install_build_dependencies.sh
-      sudo apt --assume-yes install default-jdk
+      sudo apt --assume-yes install default-jdk libopencv-dev
       # Install gradle for Java
       sudo apt -y --no-install-recommends install unzip
       wget https://services.gradle.org/distributions/gradle-$(GRADLE_VER)-bin.zip
@@ -122,9 +121,14 @@ jobs:
       cmakeArgs: >
         -GNinja
         -DVERBOSE_BUILD=ON
-        -DENABLE_INTEL_MYRIAD_COMMON=OFF
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DBUILD_nvidia_plugin=OFF
+        -DENABLE_INTEL_GNA=OFF
+        -DENABLE_INTEL_GPU=OFF
+        -DENABLE_OV_TF_FRONTEND=OFF
+        -DENABLE_OV_PADDLE_FRONTEND=OFF
+        -DENABLE_OV_TF_LITE_FRONTEND=OFF
+        -DENABLE_OV_PYTORCH_FRONTEND=OFF
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules
         -DENABLE_PYTHON=ON
         -DENABLE_WHEEL=ON
@@ -158,21 +162,20 @@ jobs:
     workingDirectory: $(REPO_DIR)/modules/java_api
     displayName: 'Java tests'
 
-# Temporarily disable failing tests
-#
-#
-#   - script: |
-#       python3 -m pip install $(INSTALL_DIR)/tools/*.whl
-#       python3 -m pip install -U setuptools==51.0.0
-#       python3 -m pip install -r requirements.txt
-#       python3 -m pip install -r $(OPENVINO_REPO_DIR)/model-optimizer/requirements_onnx.txt
-#       git clone https://github.com/CBICA/BrainMaGe && cd BrainMaGe && git checkout f188d94d8a44e23927b40ad11b311c97f26457a0 && python3 -m pip install . && cd ..
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'Install PyTorch tests dependencies'
-#
-#     # tests should be installed and PYTHONPATH must be set by tests
-#   - script: |
-#       export PYTHONPATH=$(REPO_DIR)/modules/mo_pytorch
-#       . $(SETUPVARS) -pyver 3.8 && env && python3 run_tests.py
-#     workingDirectory: $(REPO_DIR)/modules/mo_pytorch/test
-#     displayName: 'PyTorch conversion tests'
+  - script: |
+      python3 -m pip install --user virtualenv
+      python3 -m virtualenv -p /usr/bin/python3.8 .env3
+      source .env3/bin/activate
+      python -m pip install --upgrade pip
+      python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
+      cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
+    workingDirectory: $(WORK_DIR)
+    displayName: 'Create custom ops env'
+
+  - script: |
+      . $(SETUPVARS)
+      source  $(WORK_DIR)/.env3/bin/activate
+      # need to enable sparse_conv tests with new Open3D release
+      python -m pytest -k "not sparse_conv" tests/run_tests.py
+    workingDirectory: $(REPO_DIR)/modules/custom_operations
+    displayName: 'Custom ops tests'

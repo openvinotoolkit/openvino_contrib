@@ -9,6 +9,7 @@
 #include <cuda/float16.hpp>
 #include <numeric>
 
+#include "details/type_validator.hpp"
 #include "scatter_nd_update.hpp"
 
 namespace ov {
@@ -94,7 +95,10 @@ ScatterNDUpdate::ScatterNDUpdate(Type_t data_type,
       num_of_update_chunks_(num_of_update_chunks),
       num_of_blocks_(num_of_blocks),
       num_of_threads_(num_of_threads),
-      thread_per_element_(thread_per_element) {}
+      thread_per_element_(thread_per_element) {
+    TypeValidator<AllElementTypesSwitch>::check(data_type_);
+    TypeValidator<ElementTypesSwitch<Type_t::i64, Type_t::i32>>::check(indices_type_);
+}
 
 void ScatterNDUpdate::operator()(const cudaStream_t stream,
                                  const void* input,

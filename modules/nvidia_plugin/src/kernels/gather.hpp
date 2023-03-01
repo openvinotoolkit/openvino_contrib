@@ -6,8 +6,8 @@
 
 #include <driver_types.h>
 
-#include "cuda_type_traits.hpp"
-#include "error.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "kernels/typed_functor.hpp"
+#include "kernels/details/typed_functor.hpp"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

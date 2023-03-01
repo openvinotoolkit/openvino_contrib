@@ -7,10 +7,11 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
-#include <ngraph/type/element_type.hpp>
 #include <set>
+#include <vector>
 
-#include "error.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -23,7 +24,7 @@ public:
                          const unsigned max_threads_per_block,
                          const unsigned blocks_number,
                          const unsigned threads_per_block,
-                         const ov::element::Type_t element_type);
+                         const Type_t element_type);
 
     void operator()(const cudaStream_t stream,
                     const int64_t* src_matrix_sizes,
@@ -63,7 +64,7 @@ private:
     unsigned max_threads_per_block_;
     unsigned blocks_number_;
     unsigned threads_per_block_;
-    ov::element::Type_t element_type_;
+    Type_t element_type_;
 };
 
 }  // namespace kernel

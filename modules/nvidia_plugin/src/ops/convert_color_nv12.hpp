@@ -6,7 +6,7 @@
 
 #include <cuda_operation_base.hpp>
 #include <kernels/convert_color_nv12.hpp>
-#include <kernels/cuda_type_traits.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
 
 #include "converters.hpp"
 #include "openvino/op/nv12_to_bgr.hpp"

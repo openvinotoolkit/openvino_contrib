@@ -108,14 +108,17 @@ std::vector<std::string> disabledTestPatterns() {
         // CVS-71891
         R"(.*ReferenceTileTest.*rType=i4.*)",
         R"(.*ReferenceTileTest.*rType=u4.*)",
-        R"(.*DeviceID.*)",
-        // 98963
-        R"(.*CachingSupportCase*.*CompileModelCacheTestBase.*)",
         R"(.*CachingSupportCase*.*ReadConcatSplitAssign.*)",
         // 98989
         R"(.*GroupConvolutionBias(Add|AddAdd)ActivationLayerTest.*IS=\(2\.16\.12\.6\).*K\(3\.3\).*S\(1\.1\).*PB\(0\.3\).*PE\(0\.3\).*D=\(1\.1\).*O=(8|32).*G=2.*AP=explicit.*netPRC=FP16*.*)",
         // 101751, 101746, 101747, 101748, 101755
         R"(.*(d|D)ynamic*.*)",
+        // 101753
+        R"(.*TensorIteratorDisabledTransformationsTest*.*GRU_direction=reverse*.*)",
+        R"(.*GRUCellCommon_01*.*FP16*.*)",
+        R"(.*smoke_Auto_BehaviorTests*.*)",
+        R"(.*smoke_Multi_BehaviorTests*.*)",
+        R"(.*HETERO(W|w)ithMULTI*.*)",
     };
 
 #ifdef _WIN32

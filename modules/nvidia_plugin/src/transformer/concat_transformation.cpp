@@ -8,7 +8,6 @@
 #include <exec_graph_info.hpp>
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
-#include <ngraph/variant.hpp>
 #include <openvino/op/concat.hpp>
 
 #include "nodes/concat_optimized.hpp"

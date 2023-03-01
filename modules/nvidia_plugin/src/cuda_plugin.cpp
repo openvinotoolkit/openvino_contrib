@@ -24,6 +24,8 @@
 #include "cuda_plugin.hpp"
 #include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
+#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
+
 using namespace ov::nvidia_gpu;
 
 Plugin::Plugin() { _pluginName = "NVIDIA"; }
@@ -39,41 +41,11 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
                                                                             const ConfigMap& config) {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::LoadExeNetworkImpl");
 
+    using InferenceEngine::Precision;
+
     auto cfg = Configuration{config, _cfg};
     InferenceEngine::InputsDataMap networkInputs = network.getInputsInfo();
     InferenceEngine::OutputsDataMap networkOutputs = network.getOutputsInfo();
-
-    // TODO: check with precisions supported by Cuda device
-
-    for (auto networkOutput : networkOutputs) {
-        auto output_precision = networkOutput.second->getPrecision();
-
-        if (output_precision != InferenceEngine::Precision::FP32 &&
-            output_precision != InferenceEngine::Precision::FP16 &&
-            output_precision != InferenceEngine::Precision::I32 &&
-            output_precision != InferenceEngine::Precision::I16 && output_precision != InferenceEngine::Precision::U8 &&
-            output_precision != InferenceEngine::Precision::I8 &&
-            output_precision != InferenceEngine::Precision::BOOL) {
-            throwIEException(
-                fmt::format("Output format {} is not supported yet. Supported "
-                            "formats are: FP32, FP16, I32, I16, I8, U8 and BOOL.",
-                            output_precision));
-        }
-    }
-
-    for (auto networkInput : networkInputs) {
-        auto input_precision = networkInput.second->getTensorDesc().getPrecision();
-
-        if (input_precision != InferenceEngine::Precision::FP32 &&
-            input_precision != InferenceEngine::Precision::FP16 && input_precision != InferenceEngine::Precision::I32 &&
-            input_precision != InferenceEngine::Precision::I16 && input_precision != InferenceEngine::Precision::U8 &&
-            input_precision != InferenceEngine::Precision::I8 && input_precision != InferenceEngine::Precision::BOOL) {
-            throwIEException(
-                fmt::format("Input format {} is not supported yet. Supported "
-                            "formats are: FP32, FP16, I32, I16, I8, U8 and BOOL.",
-                            input_precision));
-        }
-    }
 
     // Create stream executor for given device
     auto waitExecutor = GetStreamExecutor(cfg);
@@ -156,7 +128,13 @@ InferenceEngine::Parameter Plugin::GetConfig(
 InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
                                              const std::map<std::string, InferenceEngine::Parameter>& options) const {
     using namespace InferenceEngine::CUDAMetrics;
-    if (METRIC_KEY(SUPPORTED_METRICS) == name) {
+    bool is_new_api = IsNewAPI();
+
+    if (ov::supported_properties == name) {
+        return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};
+    } else if (ov::caching_properties == name) {
+        return decltype(ov::caching_properties)::value_type{Configuration::get_caching_properties()};
+    } else if (METRIC_KEY(SUPPORTED_METRICS) == name) {
         std::vector<std::string> supportedMetrics = {METRIC_KEY(AVAILABLE_DEVICES),
                                                      METRIC_KEY(SUPPORTED_METRICS),
                                                      METRIC_KEY(SUPPORTED_CONFIG_KEYS),
@@ -177,41 +155,14 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
             }
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
-        // TODO: Uncomment when will be required 'SUPPORTED_PROPERTIES' and check all tests
-        //    } else if (ov::supported_properties == name) {
-        //        using properties_type = decltype(ov::supported_properties)::value_type;
-        //        properties_type supportedMetrics = {
-        //            ov::supported_properties.name(),
-        //            METRIC_KEY(AVAILABLE_DEVICES),
-        //            METRIC_KEY(SUPPORTED_METRICS),
-        //            METRIC_KEY(SUPPORTED_CONFIG_KEYS),
-        //            METRIC_KEY(FULL_DEVICE_NAME),
-        //            METRIC_KEY(IMPORT_EXPORT_SUPPORT),
-        //            METRIC_KEY(DEVICE_ARCHITECTURE),
-        //            METRIC_KEY(OPTIMIZATION_CAPABILITIES),
-        //            METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS)
-        //        };
-        //        properties_type configKeys = {
-        //            CONFIG_KEY(DEVICE_ID),
-        //            CONFIG_KEY(PERF_COUNT),
-        //            NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)
-        //        };
-        //        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
-        //        for (auto&& configKey : streamExecutorConfigKeys) {
-        //            if (configKey != InferenceEngine::PluginConfigParams::KEY_CPU_THROUGHPUT_STREAMS) {
-        //                configKeys.emplace_back(configKey);
-        //            }
-        //        }
-        //        properties_type all_properties;
-        //        all_properties.insert(all_properties.end(), supportedMetrics.begin(), supportedMetrics.end());
-        //        all_properties.insert(all_properties.end(), configKeys.begin(), configKeys.end());
-        //        return all_properties;
-    } else if (ov::available_devices == name) {
+    } else if (ov::available_devices == name || METRIC_KEY(AVAILABLE_DEVICES) == name) {
         std::vector<std::string> availableDevices = {};
         for (size_t i = 0; i < CUDA::Device::count(); ++i) {
             availableDevices.push_back(fmt::format("{}.{}", _pluginName, i));
         }
-        return decltype(ov::available_devices)::value_type{availableDevices};
+        if (is_new_api)
+            return decltype(ov::available_devices)::value_type{availableDevices};
+        IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
     } else if (ov::device::uuid == name) {
         const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
         CUDA::Device device{std::stoi(deviceId)};
@@ -219,26 +170,44 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         ov::device::UUID uuid = {};
         std::copy(std::begin(props.uuid.bytes), std::end(props.uuid.bytes), std::begin(uuid.uuid));
         return decltype(ov::device::uuid)::value_type{uuid};
-    } else if (METRIC_KEY(FULL_DEVICE_NAME) == name) {
+    } else if (ov::device::full_name == name || METRIC_KEY(FULL_DEVICE_NAME) == name) {
         const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         const std::string name = props.name;
+        if (is_new_api)
+            return decltype(ov::device::full_name)::value_type{name};
         IE_SET_METRIC_RETURN(FULL_DEVICE_NAME, name);
     } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
         IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
-    } else if (METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
-        // TODO: return device architecture for device specified by DEVICE_ID config
-        std::string arch = "CUDA";
-        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, arch);
+    } else if (ov::device::architecture == name || METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
+        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        CUDA::Device device{std::stoi(deviceId)};
+        const auto& props = device.props();
+        std::stringstream ss;
+        ss << "NVIDIA: ";
+        ss << "v" << props.major;
+        ss << "." << props.minor;
+        if (is_new_api)
+            return decltype(ov::device::architecture)::value_type{ss.str()};
+        IE_SET_METRIC_RETURN(DEVICE_ARCHITECTURE, ss.str());
+    } else if (ov::device::capabilities == name) {
+        return decltype(ov::device::capabilities)::value_type{{
+            ov::device::capability::EXPORT_IMPORT,
+            ov::device::capability::FP32,
+            ov::device::capability::FP16}};
     } else if (METRIC_KEY(OPTIMIZATION_CAPABILITIES) == name) {
-        // TODO: fill actual list of supported capabilities: e.g. Cuda device supports only FP32
-        std::vector<std::string> capabilities = {METRIC_VALUE(FP32) /*, TEMPLATE_METRIC_VALUE(HARDWARE_CONVOLUTION)*/};
+        std::vector<std::string> capabilities = {METRIC_VALUE(FP32)};
         IE_SET_METRIC_RETURN(OPTIMIZATION_CAPABILITIES, capabilities);
-    } else if (METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) == name) {
-        // TODO: fill with actual values
+     } else if (ov::range_for_streams == name) {
+        return decltype(ov::range_for_streams)::value_type{1, Configuration::reasonable_limit_of_streams};
+    } else if (ov::range_for_async_infer_requests == name || METRIC_KEY(RANGE_FOR_ASYNC_INFER_REQUESTS) == name) {
+        if (is_new_api)
+            return decltype(ov::range_for_async_infer_requests)::value_type{1, 1, 1};
         using uint = unsigned int;
         IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(uint{1}, uint{1}, uint{1}));
+    } else if (Configuration::is_rw_property(name)) {
+        return _cfg.Get(name);
     } else {
         IE_THROW(NotFound) << "Unsupported device metric: " << name;
     }

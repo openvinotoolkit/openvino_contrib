@@ -27,8 +27,6 @@ if(ENABLE_TESTS)
     include(CTest)
     enable_testing()
 
-    disable_deprecated_warnings()
-
     if(ENABLE_FUNCTIONAL_TESTS)
         add_subdirectory(tests/functional)
     endif()

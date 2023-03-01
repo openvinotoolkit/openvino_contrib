@@ -20,6 +20,35 @@ using namespace std::string_literals;
 namespace ov {
 namespace nvidia_gpu {
 
+inline bool isInputElementsTypeSupported(cudaDataType_t type) {
+    switch (type) {
+        case CUDA_R_16F:
+        case CUDA_R_32F:
+        case CUDA_R_16BF:
+        case CUDA_R_64F:
+            return true;
+        default:
+            return false;
+    }
+}
+
+inline bool isPermutationElementsTypeSupported(ov::element::Type_t type) {
+    using ov::element::Type_t;
+    switch (type) {
+        case Type_t::i8:
+        case Type_t::i16:
+        case Type_t::i32:
+        case Type_t::i64:
+        case Type_t::u8:
+        case Type_t::u16:
+        case Type_t::u32:
+        case Type_t::u64:
+            return true;
+        default:
+            return false;
+    }
+}
+
 TransposeOp::TransposeOp(const CreationContext& context,
                          const std::shared_ptr<ov::Node>& node,
                          IndexCollection&& inputIds,
@@ -35,6 +64,13 @@ TransposeOp::TransposeOp(const CreationContext& context,
       extents_{extractExtents(inputExtents_)},
       inputElementsType_{convertDataType<cudaDataType_t>(node->input(0).get_element_type())},
       permutationElementsType_{extractPermutationElementsType(*node)} {
+    if (!isInputElementsTypeSupported(inputElementsType_)) {
+        throwIEException(fmt::format("TransposeOp: unsupported inputElementsType_: {}", toString(inputElementsType_)));
+    }
+    if (!isPermutationElementsTypeSupported(permutationElementsType_)) {
+        throwIEException(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
+                                     ov::element::Type{permutationElementsType_}.get_type_name()));
+    }
     inputExtents_.size();
 }
 

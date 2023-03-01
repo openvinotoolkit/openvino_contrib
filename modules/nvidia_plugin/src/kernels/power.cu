@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "convert.cuh"
+#include <cuda/math.cuh>
+
 #include "power.hpp"
 
 namespace ov {
@@ -11,14 +12,7 @@ namespace kernel {
 
 template <typename T>
 struct PowerOpImpl {
-    __device__ static inline T op(T in0, T in1) { return pow(in0, in1); }
-};
-
-template <>
-struct PowerOpImpl<__half> {
-    __device__ static inline __half op(__half in0, __half in1) {
-        return cast<__half>(powf(cast<float>(in0), cast<float>(in1)));
-    }
+    __device__ static inline T op(T in0, T in1) { return CUDA::math::pow(in0, in1); }
 };
 
 Power::Power(Type_t element_type, size_t out_num_elements, size_t max_threads_per_block)

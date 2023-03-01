@@ -5,6 +5,7 @@
 #include <cuda_fp16.h>
 #include <fmt/format.h>
 
+#include "details/type_validator.hpp"
 #include "select.hpp"
 
 namespace ov {
@@ -46,11 +47,14 @@ static __global__ void select(const bool* condition,
 SelectKernelOp::SelectKernelOp(const size_t max_size,
                                const unsigned blocks_number,
                                const unsigned threads_per_block,
-                               const ov::element::Type_t operation_type)
+                               const Type_t operation_type)
     : max_size_{max_size},
       blocks_number_{blocks_number},
       threads_per_block_{threads_per_block},
-      operation_type_{operation_type} {}
+      operation_type_{operation_type} {
+    using SelectElementTypeSwitch = ElementTypesSwitch<Type_t::u8, Type_t::i16, Type_t::f16, Type_t::f32>;
+    TypeValidator<SelectElementTypeSwitch>::check(operation_type_);
+}
 
 void SelectKernelOp::operator()(const cudaStream_t stream,
                                 const bool* condition,
@@ -62,7 +66,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                 const BrcstOffsetType* output_sizes,
                                 void* buffer) const {
     switch (operation_type_) {
-        case ov::element::u8:
+        case Type_t::u8:
             return callKernel<uint8_t>(stream,
                                        condition,
                                        then_node,
@@ -72,7 +76,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                        else_brcst_offsets,
                                        output_sizes,
                                        buffer);
-        case ov::element::i16:
+        case Type_t::i16:
             return callKernel<int16_t>(stream,
                                        condition,
                                        then_node,
@@ -82,7 +86,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                        else_brcst_offsets,
                                        output_sizes,
                                        buffer);
-        case ov::element::f16:
+        case Type_t::f16:
             return callKernel<__half>(stream,
                                       condition,
                                       then_node,
@@ -92,7 +96,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                       else_brcst_offsets,
                                       output_sizes,
                                       buffer);
-        case ov::element::f32:
+        case Type_t::f32:
             return callKernel<float>(stream,
                                      condition,
                                      then_node,

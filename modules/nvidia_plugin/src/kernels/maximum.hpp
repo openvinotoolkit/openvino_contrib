@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "elementwise_binary.cuh"
+#include "details/elementwise_binary.cuh"
 
 namespace ov {
 namespace nvidia_gpu {

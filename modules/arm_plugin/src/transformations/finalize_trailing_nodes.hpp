@@ -9,10 +9,10 @@
 namespace ArmPlugin {
 namespace pass {
 
-class  FinalizeTrailingNodes: public ngraph::pass::FunctionPass {
+class  FinalizeTrailingNodes: public ov::pass::ModelPass {
 public:
     NGRAPH_RTTI_DECLARATION;
-    bool run_on_function(std::shared_ptr<ov::Model> m) override;
+    bool run_on_model(const std::shared_ptr<ov::Model>& m) override;
 };
 }  // namespace pass
 }  // namespace ArmPlugin

@@ -5,7 +5,6 @@
 #pragma once
 
 #include <ngraph/pass/graph_rewrite.hpp>
-#include <ngraph/variant.hpp>
 
 namespace ArmPlugin {
 namespace pass {

@@ -11,7 +11,7 @@
 #include <cuda/float16.hpp>
 #include <error.hpp>
 #include <gsl/gsl_assert>
-#include <kernels/cuda_type_traits.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <string_view>
 #include <type_traits>

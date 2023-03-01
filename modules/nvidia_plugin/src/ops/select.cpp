@@ -10,6 +10,8 @@
 #include <openvino/op/constant.hpp>
 #include <openvino/op/select.hpp>
 
+#include "converters.hpp"
+
 namespace ov {
 namespace nvidia_gpu {
 
@@ -68,7 +70,7 @@ SelectOp::SelectOp(const CreationContext& context,
     threads_per_block_ = (blocks_number_ == 1) ? max_size_ : max_threads_per_block_;
 
     kernel_op_ =
-        std::make_optional<kernel::SelectKernelOp>(max_size_, blocks_number_, threads_per_block_, operation_type_);
+        std::make_optional<kernel::SelectKernelOp>(max_size_, blocks_number_, threads_per_block_, convertDataType<kernel::Type_t>(operation_type_));
 }
 
 void SelectOp::Execute(const InferenceRequestContext& context,
