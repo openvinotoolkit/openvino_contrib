@@ -9,7 +9,7 @@ OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platfo
 
 OS                     | GPU
 ---------------------- | ----------------------
-Ubuntu* 20.04 (64-bit) | Geforce 1080 Ti, NVIDIA T4
+Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
