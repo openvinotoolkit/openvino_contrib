@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/node.hpp>
 
 namespace ov {
@@ -25,9 +25,9 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
                           Inputs inputs,
                           Outputs outputs,
                           const Workbuffers&) const {
-    Expects(inputs.size() == 0);
-    Expects(outputs.size() == 1);
-    Expects(context.HasInputBlob(input_tensor_name_));
+    OPENVINO_ASSERT(inputs.size() == 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(context.HasInputBlob(input_tensor_name_), "Node name: ", GetName());
     auto blob = context.GetInputBlob(input_tensor_name_);
     auto memory_ptr = std::static_pointer_cast<ngraph::HostTensor>(blob)->get_data_ptr();
     context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->get_size_in_bytes());

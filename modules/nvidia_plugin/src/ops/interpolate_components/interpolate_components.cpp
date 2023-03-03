@@ -5,7 +5,7 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 
 #include "error.hpp"
 #include "ngraph/validation_util.hpp"
@@ -26,7 +26,7 @@ void getAxesAndScales(const ov::op::v4::Interpolate& node, std::vector<size_t>& 
         } break;
         case ov::op::v4::Interpolate::ShapeCalcMode::scales:
             scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
-            Expects(axes.size() == scales.size());
+            OPENVINO_ASSERT(axes.size() == scales.size());
             break;
         default:
             throwIEException(fmt::format("Interpolate operation: unsupported shape calculation mode {}.",

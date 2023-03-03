@@ -5,7 +5,7 @@
 #include "lstm_sequence_cudnn_components.hpp"
 
 #include <error.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
 namespace ov::nvidia_gpu::RNN::Details {
@@ -74,7 +74,7 @@ LSTMSequenceDescriptorsCuDnn::LSTMSequenceDescriptorsCuDnn(const CreationContext
     CUDA::DnnHandle dnn_handle{};
     weight_space_size_ = 0;
     throwIfError(cudnnGetRNNWeightSpaceSize(dnn_handle.get(), rnn_desc_.get(), &weight_space_size_));
-    Ensures(weight_space_size_ >= params_.w_host_buffers_.size_bytes() + params_.r_host_buffers_.size_bytes() +
+    OPENVINO_ASSERT(weight_space_size_ >= params_.w_host_buffers_.size_bytes() + params_.r_host_buffers_.size_bytes() +
                                       params_.b_host_buffers_.size_bytes());
 
     work_space_size_ = 0;
@@ -82,7 +82,7 @@ LSTMSequenceDescriptorsCuDnn::LSTMSequenceDescriptorsCuDnn(const CreationContext
     throwIfError(cudnnGetRNNTempSpaceSizes(
         dnn_handle.get(), rnn_desc_.get(), dnnForwardMode(), x_desc_.get(), &work_space_size_, &reserve_space_size));
     // the returned size of the reserve space buffer will be zero when the fMode argument is CUDNN_FWD_MODE_INFERENCE
-    Ensures(reserve_space_size == 0);
+    OPENVINO_ASSERT(reserve_space_size == 0);
 }
 
 void LSTMSequenceDescriptorsCuDnn::createRNNDescriptor(const CreationContext& context) {
@@ -190,15 +190,15 @@ void LSTMSequenceDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
         j = (j == 0) ? 1 : ((j == 1) ? 0 : j);
         j = (j == 4) ? 5 : ((j == 5) ? 4 : j);
 
-        Expects(w_host_buffer_size == w_dev_buffers_[j].size_bytes());
+        OPENVINO_ASSERT(w_host_buffer_size == w_dev_buffers_[j].size_bytes());
         stream.upload(DevPtr{w_dev_buffers_[j].data()}, w_host_addr, w_host_buffer_size);
         w_host_addr += w_host_buffer_size;
 
-        Expects(b1_host_buffer_size == b1_dev_buffers_[j].size_bytes());
+        OPENVINO_ASSERT(b1_host_buffer_size == b1_dev_buffers_[j].size_bytes());
         stream.upload(DevPtr{b1_dev_buffers_[j].data()}, b1_host_addr, b1_host_buffer_size);
         b1_host_addr += b1_host_buffer_size;
 
-        Expects(r_host_buffer_size == r_dev_buffers_[j].size_bytes());
+        OPENVINO_ASSERT(r_host_buffer_size == r_dev_buffers_[j].size_bytes());
         stream.upload(DevPtr{r_dev_buffers_[j].data()}, r_host_addr, r_host_buffer_size);
         r_host_addr += r_host_buffer_size;
 
@@ -211,7 +211,7 @@ void LSTMSequenceDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
 bool LSTMSequenceDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     DevBuffers all_weights;
     all_weights.reserve(w_dev_buffers_.size() + r_dev_buffers_.size() + b1_dev_buffers_.size() +
@@ -264,7 +264,7 @@ bool LSTMSequenceDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
 
 void LSTMSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     const auto data_type = params_.element_type_;
     const auto input_size = params_.input_size_;
@@ -308,25 +308,26 @@ void LSTMSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                                  &w_addr,
                                                  b1_desc.get(),
                                                  &b1_addr));
-            Ensures(w_addr);
+            OPENVINO_ASSERT(w_addr);
             w_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-            Ensures(wb_nb_dims == wb_nb_dims_requested);
-            Ensures(wb_data_type == data_type);
-            Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
-            Ensures(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size && wb_stride_a[2] == 1);
+            OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+            OPENVINO_ASSERT(wb_data_type == data_type);
+            OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
+            OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size &&
+                            wb_stride_a[2] == 1);
             tensor_size_bytes = w_desc.getTensorSizeInBytes();
-            Ensures(tensor_size_bytes >= hidden_size * input_size * element_size);
+            OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * input_size * element_size);
             w_dev_buffers_.emplace_back(static_cast<uint8_t*>(w_addr), tensor_size_bytes);
             w_total_bytes += tensor_size_bytes;
 
-            Ensures(b1_addr);
+            OPENVINO_ASSERT(b1_addr);
             b1_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-            Ensures(wb_nb_dims == wb_nb_dims_requested);
-            Ensures(wb_data_type == data_type);
-            Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
-            Ensures(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
+            OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+            OPENVINO_ASSERT(wb_data_type == data_type);
+            OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
+            OPENVINO_ASSERT(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
             tensor_size_bytes = b1_desc.getTensorSizeInBytes();
-            Ensures(tensor_size_bytes >= hidden_size * element_size);
+            OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * element_size);
             b1_dev_buffers_.emplace_back(static_cast<uint8_t*>(b1_addr), tensor_size_bytes);
             b1_total_bytes += tensor_size_bytes;
 
@@ -345,15 +346,15 @@ void LSTMSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                                  &r_addr,
                                                  b2_desc.get(),
                                                  &b2_addr));
-            Ensures(r_addr);
+            OPENVINO_ASSERT(r_addr);
             r_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-            Ensures(wb_nb_dims == wb_nb_dims_requested);
-            Ensures(wb_data_type == data_type);
-            Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
-            Ensures(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size &&
-                    wb_stride_a[2] == 1);
+            OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+            OPENVINO_ASSERT(wb_data_type == data_type);
+            OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
+            OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size &&
+                            wb_stride_a[2] == 1);
             tensor_size_bytes = r_desc.getTensorSizeInBytes();
-            Ensures(tensor_size_bytes >= hidden_size * hidden_size * element_size);
+            OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * hidden_size * element_size);
             r_dev_buffers_.emplace_back(static_cast<uint8_t*>(r_addr), tensor_size_bytes);
             r_total_bytes += tensor_size_bytes;
 
@@ -366,11 +367,11 @@ void LSTMSequenceDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
         }
     }
 
-    Ensures(weightBuffersFit(buffer));
-    Ensures(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
-    Ensures(w_total_bytes >= params_.w_host_buffers_.size_bytes() &&
-            r_total_bytes >= params_.r_host_buffers_.size_bytes() &&
-            b1_total_bytes >= params_.b_host_buffers_.size_bytes());
+    OPENVINO_ASSERT(weightBuffersFit(buffer));
+    OPENVINO_ASSERT(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
+    OPENVINO_ASSERT(w_total_bytes >= params_.w_host_buffers_.size_bytes() &&
+                    r_total_bytes >= params_.r_host_buffers_.size_bytes() &&
+                    b1_total_bytes >= params_.b_host_buffers_.size_bytes());
 }
 
 }  // namespace ov::nvidia_gpu::RNN::Details

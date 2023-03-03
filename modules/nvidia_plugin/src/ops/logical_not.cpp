@@ -23,8 +23,8 @@ LogicalNotOp::LogicalNotOp(const CreationContext& context,
                   kernel::LogicalNot::kElementsPerThread},
               1,  // since workload interpreted as 1D array in sake of performance
               ov::shape_size(node->get_output_shape(0))} {
-    Expects(node->get_input_element_type(0) == ov::element::Type_t::boolean);
-    Expects(node->get_output_element_type(0) == ov::element::Type_t::boolean);
+    OPENVINO_ASSERT(node->get_input_element_type(0) == ov::element::Type_t::boolean, "Node name: ", GetName());
+    OPENVINO_ASSERT(node->get_output_element_type(0) == ov::element::Type_t::boolean, "Node name: ", GetName());
 }
 
 void LogicalNotOp::Execute(const InferenceRequestContext& context,

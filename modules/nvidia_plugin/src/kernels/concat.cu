@@ -5,10 +5,10 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
-#include "details/type_validator.hpp"
 #include "concat.hpp"
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

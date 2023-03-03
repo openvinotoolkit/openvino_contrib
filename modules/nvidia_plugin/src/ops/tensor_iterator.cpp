@@ -214,7 +214,7 @@ WorkbufferRequest TensorIteratorOp::GetWorkBufferRequest() const {
 }
 
 void TensorIteratorOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
-    Expects(buffers.size() == kernelmap_inputs_.size() + kernelmap_outputs_.size());
+    OPENVINO_ASSERT(buffers.size() == kernelmap_inputs_.size() + kernelmap_outputs_.size(), "Node name: ", GetName());
     unsigned nextBufferIdx = 0;
     for (auto& kernel_map : kernelmap_inputs_) {
         auto& slice = kernel_map.second;
@@ -239,7 +239,7 @@ void TensorIteratorOp::copyParam(const CUDA::Stream& stream,
         auto& input = inputTensors[inputIdx];
         const auto& param = params_[paramIdx];
         auto outputTensors = memoryManager.outputTensorPointers(*param, mutableBuffer);
-        Expects(inputSize == paramSize);
+        OPENVINO_ASSERT(inputSize == paramSize, "Node name: ", GetName());
         stream.transfer(outputTensors[0], input, inputSize);
     } else {
         const auto& portMap = portmap_inputs_.at(inputIdx);
@@ -271,7 +271,7 @@ void TensorIteratorOp::copyBackEdge(const CUDA::Stream& stream,
     auto resultTensors = memoryManager.inputTensorPointers(*result, mutableBuffer);
     const std::size_t paramSize = params_info_[paramIdx].size_;
     const std::size_t resultSize = results_info_[resultIdx].size_;
-    Expects(paramSize == resultSize);
+    OPENVINO_ASSERT(paramSize == resultSize, "Node name: ", GetName());
     stream.transfer(paramTensors[0], resultTensors[0], paramSize);
 }
 
@@ -288,7 +288,7 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
         const auto result = results_[resultIdx];
         auto inTensors = memoryManager.inputTensorPointers(*result, mutableBuffer);
         const auto output = outputTensors[outputIdx];
-        Expects(resultSize == outputSize);
+        OPENVINO_ASSERT(resultSize == outputSize, "Node name: ", GetName());
         stream.transfer(output, inTensors[0], outputSize);
     } else {
         auto output = outputTensors[outputIdx];

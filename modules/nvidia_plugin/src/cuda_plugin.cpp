@@ -55,7 +55,7 @@ InferenceEngine::IExecutableNetworkInternal::Ptr Plugin::LoadExeNetworkImpl(cons
 
 InferenceEngine::ITaskExecutor::Ptr Plugin::GetStreamExecutor(const Configuration& cfg) {
     // TODO: get available integer value instead of chain of conversions
-    std::string deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID));
+    auto deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
     CUDA::Device device{std::stoi(deviceId)};
     const size_t numConcurrentStreams = maxConcurrentStreams(device);
     {
@@ -164,14 +164,14 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
             return decltype(ov::available_devices)::value_type{availableDevices};
         IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
     } else if (ov::device::uuid == name) {
-        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         ov::device::UUID uuid = {};
         std::copy(std::begin(props.uuid.bytes), std::end(props.uuid.bytes), std::begin(uuid.uuid));
         return decltype(ov::device::uuid)::value_type{uuid};
     } else if (ov::device::full_name == name || METRIC_KEY(FULL_DEVICE_NAME) == name) {
-        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         const std::string name = props.name;
@@ -181,7 +181,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
     } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
         IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
     } else if (ov::device::architecture == name || METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
-        const std::string deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID));
+        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         std::stringstream ss;

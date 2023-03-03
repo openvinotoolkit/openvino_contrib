@@ -7,7 +7,7 @@
 #include <cuda/blas.hpp>
 #include <cuda/float16.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/node.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/matmul.hpp>
@@ -26,17 +26,19 @@ MatMulOp::MatMulOp(const CreationContext& context,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
     : OperationCuBlas(context, op, std::move(inputIds), std::move(outputIds)) {
-    Expects(op.get_input_size() >= 2);
-    Expects(op.get_output_size() == 1);
-    Expects(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) ==
-            convertDataType<cudaDataType_t>(op.get_input_element_type(1)));
+    OPENVINO_ASSERT(op.get_input_size() >= 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(op.get_output_size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(convertDataType<cudaDataType_t>(op.get_input_element_type(0)) ==
+                        convertDataType<cudaDataType_t>(op.get_input_element_type(1)),
+                    "Node name: ",
+                    GetName());
     data_type_ = convertDataType<cudaDataType_t>(op.get_input_element_type(0));
     compute_type_ = GetComputeType(data_type_, convertDataType<cudaDataType_t>(op.get_output_element_type(0)));
     auto inputAShape = op.get_input_shape(0);
     auto inputBShape = op.get_input_shape(1);
     auto outputCShape = op.get_output_shape(0);
-    Expects(inputAShape.size() > 0);
-    Expects(inputBShape.size() > 0);
+    OPENVINO_ASSERT(inputAShape.size() > 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(inputBShape.size() > 0, "Node name: ", GetName());
     bool transposeA = op.get_transpose_a();
     bool transposeB = op.get_transpose_b();
     const int batchACount = GetMatrixNumBatches(inputAShape);
@@ -47,7 +49,7 @@ MatMulOp::MatMulOp(const CreationContext& context,
     const size_t colsA = *(inputAShape.end() - transposeA - 1);
     const size_t rowsB = *(inputBShape.end() - !transposeB - 1);
     const size_t colsB = *(inputBShape.end() - transposeB - 1);
-    Expects(colsA == rowsB);
+    OPENVINO_ASSERT(colsA == rowsB, "Node name: ", GetName());
     m_ = rowsA;
     k_ = colsA;
     n_ = colsB;
@@ -64,13 +66,13 @@ MatMulOp::MatMulOp(const CreationContext& context,
     } else {
         beta_ = &CUDA::NumericConst<CUDA::constants::zero>(compute_type_);
     }
-    Ensures(m_ != 0);
-    Ensures(k_ != 0);
-    Ensures(n_ != 0);
-    Ensures(ld_a_ != 0);
-    Ensures(ld_b_ != 0);
-    Ensures(ld_c_ != 0);
-    Ensures(batch_count_ != 0);
+    OPENVINO_ASSERT(m_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(k_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(n_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(ld_a_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(ld_b_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(ld_c_ != 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(batch_count_ != 0, "Node name: ", GetName());
 }
 template MatMulOp::MatMulOp(const CreationContext& context,
                             const ov::op::v0::MatMul&,
@@ -147,7 +149,7 @@ void MatMulOp::BroadcastShapes(
     } else if (matrixAShape.size() > 1 && matrixBShape.size() > 1) {
         // ND x ND: [B, ..., X, Y] x [B, ..., Y, Z] => [B, ..., X, Z]
         auto broadcastNdToMd = [](const auto& shapeToBroadcast, auto& broadcastShape) {
-            Expects(shapeToBroadcast.size() >= broadcastShape.size());
+            OPENVINO_ASSERT(shapeToBroadcast.size() >= broadcastShape.size());
             std::vector<size_t> newAxies;
             newAxies.reserve(shapeToBroadcast.size());
             newAxies.insert(newAxies.end(), shapeToBroadcast.begin(), shapeToBroadcast.end() - 2);
@@ -161,9 +163,9 @@ void MatMulOp::BroadcastShapes(
         } else if (batchA < batchB) {
             broadcastNdToMd(matrixBShape, matrixAShape);
         }
-        Expects(GetMatrixNumBatches(matrixAShape) == GetMatrixNumBatches(matrixBShape));
+        OPENVINO_ASSERT(GetMatrixNumBatches(matrixAShape) == GetMatrixNumBatches(matrixBShape));
     }
-    Expects(*(matrixAShape.end() - transposeA - 1) == *(matrixBShape.end() - !transposeB - 1));
+    OPENVINO_ASSERT(*(matrixAShape.end() - transposeA - 1) == *(matrixBShape.end() - !transposeB - 1));
     if (matrixAShape.size() > matrixBShape.size()) {
         matrixCShape = matrixAShape;
     } else {
@@ -185,8 +187,8 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
                        Inputs inputs,
                        Outputs outputs,
                        const Workbuffers&) const {
-    Expects(inputs.size() == 2);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
     auto& cuBlasHandle = context.getThreadContext().cuBlasHandle();
     auto matrixA = inputs[0];
     auto matrixB = inputs[1];

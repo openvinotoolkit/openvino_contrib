@@ -8,7 +8,7 @@
 #include <fmt/ostream.h>
 
 #include <cuda_config.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/util.hpp>
 #include <nvidia/nvidia_config.hpp>
 #include <ops/converters.hpp>
@@ -27,15 +27,15 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::Convo
                         params.padding_after_));
     }
 
-    Expects(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
-    Ensures(params.input_shape_.size() == number_of_dims_);
-    Ensures(params.filter_shape_.size() == number_of_dims_);
-    Ensures(params.output_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
+    OPENVINO_ASSERT(params.input_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(params.filter_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(params.output_shape_.size() == number_of_dims_);
 
     const size_t number_of_spatial_dims = NumberOfSpatialDims();
-    Ensures(params.strides_.size() == number_of_spatial_dims);
-    Ensures(params.dilations_.size() == number_of_spatial_dims);
-    Ensures(params.padding_before_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.strides_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.dilations_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.padding_before_.size() == number_of_spatial_dims);
 
     std::copy(params.input_shape_.begin(), params.input_shape_.end(), input_shape_.begin());
     std::copy(params.filter_shape_.begin(), params.filter_shape_.end(), filter_shape_.begin());
@@ -257,15 +257,15 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
                         params.pads_end_));
     }
 
-    Expects(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
-    Ensures(params.doutput_shape_.size() == number_of_dims_);
-    Ensures(params.filter_shape_.size() == number_of_dims_);
-    Ensures(params.dinput_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(number_of_dims_ > NON_SPATIAL_DIMS_NUMBER);
+    OPENVINO_ASSERT(params.doutput_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(params.filter_shape_.size() == number_of_dims_);
+    OPENVINO_ASSERT(params.dinput_shape_.size() == number_of_dims_);
 
     const size_t number_of_spatial_dims = NumberOfSpatialDims();
-    Ensures(params.strides_.size() == number_of_spatial_dims);
-    Ensures(params.dilations_.size() == number_of_spatial_dims);
-    Ensures(params.pads_begin_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.strides_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.dilations_.size() == number_of_spatial_dims);
+    OPENVINO_ASSERT(params.pads_begin_.size() == number_of_spatial_dims);
 
     std::copy(params.doutput_shape_.begin(), params.doutput_shape_.end(), doutput_shape_.begin());
     std::copy(params.filter_shape_.begin(), params.filter_shape_.end(), filter_shape_.begin());

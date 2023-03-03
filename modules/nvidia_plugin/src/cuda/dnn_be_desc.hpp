@@ -67,7 +67,7 @@ protected:
         int64_t num_values = 0;
         ValueType<Name> value{};
         throwIfError(::cudnnBackendGetAttribute(get(), Name, GetDnnBEAttrTypeId<Name>(), 1, &num_values, &value));
-        Ensures(1 == num_values);
+        OPENVINO_ASSERT(1 == num_values);
         return value;
     }
 
@@ -84,7 +84,7 @@ private:
                 io_values.resize(num_values);
             }
         }
-        Ensures(io_values.size() == num_values);
+        OPENVINO_ASSERT(io_values.size() == num_values);
     }
 };
 

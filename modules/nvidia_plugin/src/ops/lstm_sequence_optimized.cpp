@@ -5,7 +5,7 @@
 #include "lstm_sequence_optimized.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <utility>
 #include <vector>
 
@@ -45,7 +45,7 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
                 "model.");
             break;
         default:
-            Expects(false);
+            OPENVINO_ASSERT(false, "Node name: ", GetName());
     };
     calcAdapterWorkbuffers();
 }
@@ -60,7 +60,7 @@ LSTMSequenceOpBase::Config LSTMSequenceOptimizedOp::config(const NodeOp& node) {
             config.rnn_data_layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED;
             break;
         default:
-            Expects(false);
+            OPENVINO_ASSERT(false);
     };
 
     return config;
@@ -75,41 +75,41 @@ void LSTMSequenceOptimizedOp::validateBatchMajorArgShapes(const NodeOp& node) {
     const int64_t max_seq_length = params_.max_seq_length_;
 
     const auto& x_shape = node.get_input_shape(LSTMSequenceArgIndices::x);
-    Expects(x_shape.size() == 3);
-    Expects(x_shape[0] == batch_size);
-    Expects(x_shape[1] == max_seq_length);
-    Expects(x_shape[2] == input_size);
+    OPENVINO_ASSERT(x_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[1] == max_seq_length, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[2] == input_size, "Node name: ", GetName());
 
     const auto& hx_shape = node.get_input_shape(LSTMSequenceArgIndices::hidden_input);
-    Expects(hx_shape.size() == 3);
-    Expects(hx_shape[0] == batch_size);
-    Expects(hx_shape[1] == num_directions);
-    Expects(hx_shape[2] == hidden_size);
+    OPENVINO_ASSERT(hx_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[1] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& cx_shape = node.get_input_shape(LSTMSequenceArgIndices::cell_input);
-    Expects(cx_shape.size() == 3);
-    Expects(cx_shape[0] == batch_size);
-    Expects(cx_shape[1] == num_directions);
-    Expects(cx_shape[2] == hidden_size);
+    OPENVINO_ASSERT(cx_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[1] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& y_shape = node.get_output_shape(LSTMSequenceArgIndices::y);
-    Expects(y_shape.size() == 4);
-    Expects(y_shape[0] == batch_size);
-    Expects(y_shape[1] == max_seq_length);
-    Expects(y_shape[2] == num_directions);
-    Expects(y_shape[3] == hidden_size);
+    OPENVINO_ASSERT(y_shape.size() == 4, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[1] == max_seq_length, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[2] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[3] == hidden_size, "Node name: ", GetName());
 
     const auto& hy_shape = node.get_output_shape(LSTMSequenceArgIndices::hidden_output);
-    Expects(hy_shape.size() == 3);
-    Expects(hy_shape[0] == num_directions);
-    Expects(hy_shape[1] == batch_size);
-    Expects(hy_shape[2] == hidden_size);
+    OPENVINO_ASSERT(hy_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[0] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& cy_shape = node.get_output_shape(LSTMSequenceArgIndices::cell_output);
-    Expects(cy_shape.size() == 3);
-    Expects(cy_shape[0] == num_directions);
-    Expects(cy_shape[1] == batch_size);
-    Expects(cy_shape[2] == hidden_size);
+    OPENVINO_ASSERT(cy_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[0] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[2] == hidden_size, "Node name: ", GetName());
 }
 
 void LSTMSequenceOptimizedOp::setupBatchMajorLayoutAdapters() {
@@ -146,41 +146,41 @@ void LSTMSequenceOptimizedOp::validateSequenceMajorArgShapes(const NodeOp& node)
     const int64_t max_seq_length = params_.max_seq_length_;
 
     const auto& x_shape = node.get_input_shape(LSTMSequenceArgIndices::x);
-    Expects(x_shape.size() == 3);
-    Expects(x_shape[0] == max_seq_length);
-    Expects(x_shape[1] == batch_size);
-    Expects(x_shape[2] == input_size);
+    OPENVINO_ASSERT(x_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[0] == max_seq_length, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(x_shape[2] == input_size, "Node name: ", GetName());
 
     const auto& hx_shape = node.get_input_shape(LSTMSequenceArgIndices::hidden_input);
-    Expects(hx_shape.size() == 3);
-    Expects(hx_shape[0] == batch_size);
-    Expects(hx_shape[1] == num_directions);
-    Expects(hx_shape[2] == hidden_size);
+    OPENVINO_ASSERT(hx_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[1] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(hx_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& cx_shape = node.get_input_shape(LSTMSequenceArgIndices::cell_input);
-    Expects(cx_shape.size() == 3);
-    Expects(cx_shape[0] == batch_size);
-    Expects(cx_shape[1] == num_directions);
-    Expects(cx_shape[2] == hidden_size);
+    OPENVINO_ASSERT(cx_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[0] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[1] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(cx_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& y_shape = node.get_output_shape(LSTMSequenceArgIndices::y);
-    Expects(y_shape.size() == 4);
-    Expects(y_shape[0] == max_seq_length);
-    Expects(y_shape[1] == batch_size);
-    Expects(y_shape[2] == num_directions);
-    Expects(y_shape[3] == hidden_size);
+    OPENVINO_ASSERT(y_shape.size() == 4, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[0] == max_seq_length, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[2] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(y_shape[3] == hidden_size, "Node name: ", GetName());
 
     const auto& hy_shape = node.get_output_shape(LSTMSequenceArgIndices::hidden_output);
-    Expects(hy_shape.size() == 3);
-    Expects(hy_shape[0] == num_directions);
-    Expects(hy_shape[1] == batch_size);
-    Expects(hy_shape[2] == hidden_size);
+    OPENVINO_ASSERT(hy_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[0] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(hy_shape[2] == hidden_size, "Node name: ", GetName());
 
     const auto& cy_shape = node.get_output_shape(LSTMSequenceArgIndices::cell_output);
-    Expects(cy_shape.size() == 3);
-    Expects(cy_shape[0] == num_directions);
-    Expects(cy_shape[1] == batch_size);
-    Expects(cy_shape[2] == hidden_size);
+    OPENVINO_ASSERT(cy_shape.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[0] == num_directions, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[1] == batch_size, "Node name: ", GetName());
+    OPENVINO_ASSERT(cy_shape[2] == hidden_size, "Node name: ", GetName());
 }
 
 void LSTMSequenceOptimizedOp::setupSequenceMajorLayoutAdapters() {

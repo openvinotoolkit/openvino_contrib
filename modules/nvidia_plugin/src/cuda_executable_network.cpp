@@ -53,6 +53,8 @@ ExecutableNetwork::ExecutableNetwork(const InferenceEngine::CNNNetwork& cnnNetwo
         CompileNetwork(cnnNetwork.getFunction(), cnnNetwork.getInputsInfo(), cnnNetwork.getOutputsInfo());
         InitExecutor();  // creates thread-based executor using for async requests
         BenchmarkOptimalNumberOfRequests();
+    } catch (const ov::Exception&) {
+        throw;
     } catch (const InferenceEngine::Exception&) {
         throw;
     } catch (const std::exception& e) {

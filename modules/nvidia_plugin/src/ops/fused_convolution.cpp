@@ -6,7 +6,7 @@
 
 #include <error.hpp>
 #include <exception>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <memory>
 
 #include "convolution_components/convolution_cudnn_components.hpp"
@@ -28,17 +28,17 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
     using ArgIndices = Convolution::Details::FusedConvolutionIndices;
     using IndexCollection = OperationBase::IndexCollection;
     const auto element_type = node->get_input_element_type(ArgIndices::input);
-    Expects(element_type == node->get_input_element_type(ArgIndices::filter));
-    Expects(element_type == node->get_input_element_type(ArgIndices::bias));
-    Expects(element_type == node->get_output_element_type(ArgIndices::output));
+    OPENVINO_ASSERT(element_type == node->get_input_element_type(ArgIndices::filter));
+    OPENVINO_ASSERT(element_type == node->get_input_element_type(ArgIndices::bias));
+    OPENVINO_ASSERT(element_type == node->get_output_element_type(ArgIndices::output));
     const bool includesOnlyBiasAdd = node->inputs().size() == 3;
     const bool includesSecondAddition = node->inputs().size() == 4;
-    Expects(includesOnlyBiasAdd || includesSecondAddition);  // Conv input, filters, Bias and optional Add
+    OPENVINO_ASSERT(includesOnlyBiasAdd || includesSecondAddition);  // Conv input, filters, Bias and optional Add
 
     std::stringstream exception_msg;
     const auto fused_conv = std::dynamic_pointer_cast<nodes::FusedConvolution>(node);
     const auto fused_group_conv = std::dynamic_pointer_cast<nodes::FusedGroupConvolution>(node);
-    Expects(fused_conv || fused_group_conv);
+    OPENVINO_ASSERT(fused_conv || fused_group_conv);
 
     const auto params = fused_conv ? Convolution::Details::FusedConvolutionParams{*fused_conv}
                                    : Convolution::Details::FusedConvolutionParams{*fused_group_conv};

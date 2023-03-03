@@ -2691,8 +2691,9 @@ struct ClampBenchmark : testing::Test {
         ov::nvidia_gpu::Workbuffers workbuffers{};
         ov::nvidia_gpu::WorkbufferRequest wbRequest{operation->GetWorkBufferRequest()};
         if (!wbRequest.immutable_sizes.empty()) {
-            Ensures(wbRequest.immutable_sizes.size() == 2);
-            Ensures(wbRequest.immutable_sizes[0] == minMaxSizeBytes && wbRequest.immutable_sizes[1] == minMaxSizeBytes);
+            OPENVINO_ASSERT(wbRequest.immutable_sizes.size() == 2);
+            OPENVINO_ASSERT(wbRequest.immutable_sizes[0] == minMaxSizeBytes &&
+                            wbRequest.immutable_sizes[1] == minMaxSizeBytes);
 
             ov::nvidia_gpu::IOperationExec::Buffers initBuffers{static_cast<DevPtr>(maxAlloc),
                                                             static_cast<DevPtr>(minAlloc)};
