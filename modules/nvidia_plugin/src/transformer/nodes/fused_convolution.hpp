@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/node.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
@@ -114,13 +114,13 @@ public:
         const size_t nchw_channel_dim_offset = num_spatial_dims + 1;
         constexpr size_t conv_output_rank_max{5};
         constexpr size_t conv_bias_rank_min{3};
-        Expects(conv_out_shape.size() <= conv_output_rank_max);
-        Expects(bias_shape_.size() >= conv_bias_rank_min);
+        OPENVINO_ASSERT(conv_out_shape.size() <= conv_output_rank_max);
+        OPENVINO_ASSERT(bias_shape_.size() >= conv_bias_rank_min);
         const size_t conv_channel_dim_size = conv_out_shape.at(conv_out_shape.size() - nchw_channel_dim_offset);
         const size_t bias_channel_dim_size = bias_shape_.at(bias_shape_.size() - nchw_channel_dim_offset);
 
-        Expects(conv_channel_dim_size == bias_channel_dim_size);
-        Expects(bias_type_ == element_type);
+        OPENVINO_ASSERT(conv_channel_dim_size == bias_channel_dim_size);
+        OPENVINO_ASSERT(bias_type_ == element_type);
 
         TBaseConvolution::set_output_type(0, element_type, conv_out_shape);
     }

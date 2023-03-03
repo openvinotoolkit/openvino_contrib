@@ -102,12 +102,12 @@ void Profiler::ProcessEvents() {
 }
 
 Profiler::ProfilerSequence Profiler::CreateExecSequence(const SubGraph* subGraphPtr) {
-    Expects(active_stream_);
+    OPENVINO_ASSERT(active_stream_);
     ++infer_count_;
     auto foundPerfStepsIter = std::find_if(subgraph_perf_steps_map_.begin(),
                                            subgraph_perf_steps_map_.end(),
                                            [subGraphPtr](const auto& ps) { return ps.first == subGraphPtr; });
-    Expects(foundPerfStepsIter != subgraph_perf_steps_map_.end());
+    OPENVINO_ASSERT(foundPerfStepsIter != subgraph_perf_steps_map_.end());
     return ProfilerSequence{*this,
                             static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
 }

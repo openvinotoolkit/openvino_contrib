@@ -32,20 +32,20 @@ std::unique_ptr<NumpyBroadcastParams> NumpyBroadcastParams::create(const ngraph:
 NumpyBroadcastParamsImpl::NumpyBroadcastParamsImpl(const ngraph::Shape& in_shape, const ngraph::Shape& out_shape)
     : shape_rank_{out_shape.size()}, dst_strides_{ngraph::row_major_strides(out_shape)} {
     ngraph::Shape broadcasted_shape{in_shape};
-    Expects(broadcasted_shape.size() <= shape_rank_);
+    OPENVINO_ASSERT(broadcasted_shape.size() <= shape_rank_);
     while (broadcasted_shape.size() < shape_rank_) {
         broadcasted_shape.insert(broadcasted_shape.begin(), 1);
     }
-    Expects(broadcasted_shape.size() == shape_rank_);
+    OPENVINO_ASSERT(broadcasted_shape.size() == shape_rank_);
 
     src_strides_ = ngraph::row_major_strides(broadcasted_shape);
 
     for (size_t i = 0; i < shape_rank_; ++i) {
         auto in_dim = broadcasted_shape.at(i);
         broadcasted_dims_.emplace_back(in_dim == 1 ? 0 : 1);
-        Expects((in_dim == 1) || (in_dim == out_shape.at(i)));
+        OPENVINO_ASSERT((in_dim == 1) || (in_dim == out_shape.at(i)));
     }
-    Expects(broadcasted_dims_.size() == shape_rank_);
+    OPENVINO_ASSERT(broadcasted_dims_.size() == shape_rank_);
 }
 
 void NumpyBroadcastParamsImpl::addWorkbufferRequests(

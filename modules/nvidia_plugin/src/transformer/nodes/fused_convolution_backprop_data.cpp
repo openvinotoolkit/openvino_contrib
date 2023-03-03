@@ -4,7 +4,7 @@
 
 #include "fused_convolution_backprop_data.hpp"
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/validation_util.hpp>
 
 namespace ov::nvidia_gpu::nodes {
@@ -260,8 +260,8 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::
 void FusedConvBackpropData::validate_and_infer_types() {
     conv_validate_and_infer_types();
     const auto& element_type = get_output_element_type(0);
-    //  Expects(conv_out_shape == add_shape_);
-    Expects(element_type == add_type_);
+    //  OPENVINO_ASSERT(conv_out_shape == add_shape_);
+    OPENVINO_ASSERT(element_type == add_type_);
 }
 
 }  // namespace ov::nvidia_gpu::nodes

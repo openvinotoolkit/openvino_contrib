@@ -5,7 +5,7 @@
 #include "swish.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <openvino/op/constant.hpp>
 #include <utility>
 #include <vector>
@@ -24,7 +24,7 @@ double beta_from_constant(const ov::Node& swish_node) {
     }
     const ov::Node* constant_node = swish_node.get_input_node_ptr(tensor_index);
     const ov::op::v0::Constant* constant = dynamic_cast<const ov::op::v0::Constant*>(constant_node);
-    Expects(constant);
+    OPENVINO_ASSERT(constant);
     switch (constant->get_output_element_type(0)) {
         case ov::element::Type_t::f16:
             return *constant->get_data_ptr<ov::float16>();
@@ -33,7 +33,7 @@ double beta_from_constant(const ov::Node& swish_node) {
         case ov::element::Type_t::f64:
             return *constant->get_data_ptr<double>();
         default:
-            Expects(false);
+            OPENVINO_ASSERT(false);
     }
 }
 }  // namespace
@@ -43,14 +43,14 @@ SwishOp::SwishOp(const CreationContext& context,
                  IndexCollection&& inputIds,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
-    Expects(node.get_input_size() == 1 || node.get_input_size() == 2);
-    Expects(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 1 || node.get_input_size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
     const auto input_element_type = node.get_input_element_type(0);
     const auto output_element_type = node.get_output_element_type(0);
-    Expects(input_element_type == output_element_type);
+    OPENVINO_ASSERT(input_element_type == output_element_type, "Node name: ", GetName());
     const auto input_shape = node.get_input_shape(0);
     const auto output_shape = node.get_output_shape(0);
-    Expects(input_shape == output_shape);
+    OPENVINO_ASSERT(input_shape == output_shape, "Node name: ", GetName());
     size_t num_elements = ov::shape_size(input_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     const double beta = beta_from_constant(node);
@@ -62,9 +62,9 @@ void SwishOp::Execute(const InferenceRequestContext& context,
                       Inputs inputTensors,
                       Outputs outputTensors,
                       const Workbuffers& workbuffers) const {
-    Expects(kernel_);
-    Expects(inputTensors.size() >= 1);
-    Expects(outputTensors.size() == 1);
+    OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+    OPENVINO_ASSERT(inputTensors.size() >= 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
     const auto& stream = context.getThreadContext().stream();
     (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
 }

@@ -4,7 +4,7 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <sstream>
 
 #include "convolution_cudnn.hpp"

@@ -4,7 +4,7 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <openvino/op/constant.hpp>
 #include <sstream>
 
@@ -23,7 +23,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
     auto node = std::dynamic_pointer_cast<ov::op::v4::Interpolate>(in_node);
-    Expects(node);
+    OPENVINO_ASSERT(node);
 
     using InterpolateMode = ov::op::v4::Interpolate::InterpolateMode;
     using IndexCollection = OperationBase::IndexCollection;

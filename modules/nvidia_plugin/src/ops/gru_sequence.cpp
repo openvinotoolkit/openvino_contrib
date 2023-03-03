@@ -5,7 +5,7 @@
 #include "gru_sequence.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <utility>
 #include <vector>
 
@@ -36,8 +36,8 @@ void GRUSequenceOp::Execute(const InferenceRequestContext& context,
                             Outputs outputs,
                             const Workbuffers& workbuffers) const {
     using ArgIndices = ov::nvidia_gpu::RNN::Details::GRUSequenceArgIndices;
-    Expects(inputs.size() == 6);
-    Expects(outputs.size() == 2);
+    OPENVINO_ASSERT(inputs.size() == 6, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 2, "Node name: ", GetName());
 
     const auto& ib = workbuffers.immutable_buffers;
     const auto& mb = workbuffers.mutable_buffers;

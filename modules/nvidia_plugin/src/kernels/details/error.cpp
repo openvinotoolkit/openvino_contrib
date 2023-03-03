@@ -34,6 +34,12 @@ private:
     throw Error(msg, location);
 }
 
+void assertThrow(bool condition, const std::string& msg, const std::experimental::source_location& location) {
+    if (!condition) {
+        throw Error(msg, location);
+    }
+}
+
 }  // namespace kernel
 }  // namespace nvidia_gpu
 }  // namespace ov

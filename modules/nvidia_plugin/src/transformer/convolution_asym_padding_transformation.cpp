@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
-
 #include "convolution_asym_padding_transformation.hpp"
 
-#include <gsl/gsl_assert>
 #include <ngraph/node.hpp>
 #include <ngraph/opsets/opset1.hpp>
-#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
+#include <openvino/core/except.hpp>
 #include <openvino/op/convolution.hpp>
 #include <openvino/op/pad.hpp>
 #include <transformer/nodes/fused_convolution_backprop_data.hpp>
+
+#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 
 using namespace ov::pass::pattern;
 
@@ -44,7 +44,7 @@ bool convolution_with_padding(Matcher &m) {
     if (pads_begin == pads_end) {
         return false;
     }
-    Expects(pads_begin.size() == pads_end.size());
+    OPENVINO_ASSERT(pads_begin.size() == pads_end.size());
 
     const ov::Output<ov::Node> &data = convolution->input(0).get_source_output();
     const ov::Output<ov::Node> &filters = convolution->input(1).get_source_output();
@@ -93,7 +93,7 @@ bool convolution_backprop_data_with_padding(Matcher &m) {
     if (pads_begin == pads_end) {
         return false;
     }
-    Expects(pads_begin.size() == pads_end.size());
+    OPENVINO_ASSERT(pads_begin.size() == pads_end.size());
 
     const auto &output_padding = convolution->get_output_padding();
     const auto &strides = convolution->get_strides();
@@ -173,7 +173,7 @@ bool convolution_backprop_data_with_padding(Matcher &m) {
 
     [[maybe_unused]] const auto &old_conv_shape = convolution->output(0).get_shape();
     [[maybe_unused]] const auto &new_conv_shape = new_convolution->output(0).get_shape();
-    Expects(old_conv_shape != new_conv_shape);
+    OPENVINO_ASSERT(old_conv_shape != new_conv_shape);
 
     std::vector<int64_t> begins(num_non_spatial_dims, 0);
     for (int i = 0; i < pads_begin.size(); ++i) {
@@ -210,7 +210,7 @@ bool convolution_backprop_data_with_padding(Matcher &m) {
     ov::replace_node(convolution, slice);
 
     [[maybe_unused]] const auto &strided_slice_shape = slice->output(0).get_shape();
-    Expects(old_conv_shape == strided_slice_shape);
+    OPENVINO_ASSERT(old_conv_shape == strided_slice_shape);
 
     return true;
 }
@@ -221,9 +221,7 @@ ConvolutionAsymPaddingTransformation::ConvolutionAsymPaddingTransformation() {
     MATCHER_SCOPE(ConvolutionAsymPaddingTransformation);
     const auto conv = wrap_type<ov::op::v1::Convolution>();
 
-    matcher_pass_callback callback = [](Matcher &m) {
-        return convolution_with_padding<ov::op::v1::Convolution>(m);
-    };
+    matcher_pass_callback callback = [](Matcher &m) { return convolution_with_padding<ov::op::v1::Convolution>(m); };
 
     const auto m = std::make_shared<Matcher>(conv, matcher_name);
     register_matcher(m, callback);
