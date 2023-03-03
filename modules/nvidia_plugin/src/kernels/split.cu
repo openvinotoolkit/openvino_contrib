@@ -5,8 +5,8 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
+#include "details/error.hpp"
 #include "details/type_validator.hpp"
 #include "split.hpp"
 

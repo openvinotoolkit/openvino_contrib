@@ -6,7 +6,6 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
 #include <tuple>
 #include <utility>
 

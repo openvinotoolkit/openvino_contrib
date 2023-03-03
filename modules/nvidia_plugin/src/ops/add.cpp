@@ -4,7 +4,7 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <sstream>
 
 #include "add_cuda.hpp"
@@ -19,7 +19,7 @@ static OperationBase::Ptr addFactory(const CreationContext& context,
                                      OperationBase::IndexCollection&& inputIds,
                                      OperationBase::IndexCollection&& outputIds) {
     auto node = std::dynamic_pointer_cast<ov::op::v1::Add>(in_node);
-    Expects(node);
+    OPENVINO_ASSERT(node);
 
     const OperationBase::IndexCollection inputs{inputIds};
     const OperationBase::IndexCollection outputs{outputIds};

@@ -35,7 +35,7 @@ public:
     }
     template <typename T>
     T* requiredPtr(const std::vector<CUDA::DevicePointer<T*>>& buffers) const {
-        Expects((index_ >= 0) && (index_ < buffers.size()));
+        OPENVINO_ASSERT((index_ >= 0) && (index_ < buffers.size()));
         return buffers[index_].get();
     }
     operator bool() const { return index_ >= 0; }

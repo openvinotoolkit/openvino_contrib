@@ -25,8 +25,8 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
       x_desc_{CUDA::makeInputDnnTensorDescr(node, 0)},
       y_desc_{CUDA::makeOutputDnnTensorDescr(node, 0)},
       data_type_{convertDataType<cudnnDataType_t>(node.get_input_element_type(0))} {
-    Expects(node.get_input_size() == 1);
-    Expects(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_input_size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
     if (std::find(supported_types.begin(), supported_types.end(), data_type_) == supported_types.end()) {
         throwIEException(
@@ -34,7 +34,7 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
     }
 
     const auto& shape = node.get_input_shape(0);
-    Expects(node.get_output_shape(0) == shape);
+    OPENVINO_ASSERT(node.get_output_shape(0) == shape, "Node name: ", GetName());
 
     const auto in_shape_size = node.get_input_shape(0).size();
     if (in_shape_size > max_shape_size) {

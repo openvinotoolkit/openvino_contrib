@@ -7,7 +7,7 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/type/element_type.hpp>
 
 #include "converters.hpp"
@@ -78,7 +78,7 @@ PoolingImpl::PoolingImpl(const ov::op::v1::MaxPool& node)
                                   tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
                                   tensor_strides_from_ngraph(node.get_output_shape(output_index)).data());
 
-    Expects(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
+    OPENVINO_ASSERT(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
 }
 
 PoolingImpl::PoolingImpl(const ov::op::v1::AvgPool& node)
@@ -102,7 +102,7 @@ PoolingImpl::PoolingImpl(const ov::op::v1::AvgPool& node)
                                   dims_,
                                   tensor_shape_from_ngraph(node.get_output_shape(output_index)).data(),
                                   tensor_strides_from_ngraph(node.get_output_shape(output_index)).data());
-    Expects(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
+    OPENVINO_ASSERT(node.get_input_shape(input_index).size() == node.get_output_shape(output_index).size());
 }
 
 void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
@@ -119,7 +119,7 @@ void PoolingImpl::Execute(const CUDA::DnnHandle& cudnn_context_handle,
 }
 
 std::vector<int> PoolingImpl::tensor_shape_from_ngraph(const ov::Shape& ngraph_shape) const {
-    Expects(pooling_extend_dimension(ngraph_shape.size()) >= min_total_dims_ &&
+    OPENVINO_ASSERT(pooling_extend_dimension(ngraph_shape.size()) >= min_total_dims_ &&
             pooling_extend_dimension(ngraph_shape.size()) <= max_total_dims_);
     std::vector<int> shape(dims_, 1);
     std::copy(ngraph_shape.rbegin(), ngraph_shape.rend(), shape.rbegin());
@@ -127,8 +127,8 @@ std::vector<int> PoolingImpl::tensor_shape_from_ngraph(const ov::Shape& ngraph_s
 }
 
 std::vector<int> PoolingImpl::spatial_shape_from_ngraph(const ov::Shape& ngraph_shape) const {
-    Expects(ngraph_shape.size() <= max_spatial_dims_);
-    Expects(spatial_dims() >= min_spatial_dims_ && spatial_dims() <= max_spatial_dims_);
+    OPENVINO_ASSERT(ngraph_shape.size() <= max_spatial_dims_);
+    OPENVINO_ASSERT(spatial_dims() >= min_spatial_dims_ && spatial_dims() <= max_spatial_dims_);
     std::vector<int> shape(spatial_dims(), 1);
     std::copy(ngraph_shape.rbegin(), ngraph_shape.rend(), shape.rbegin());
     return shape;
@@ -146,8 +146,8 @@ std::vector<int> PoolingImpl::paddings_from_ngraph(const ov::Shape& pads_begin,
                                                    cudnnPoolingMode_t pooling_mode) const {
     // Input tensor rank means:
     // 3 dims == 1D pooling, 4 dims == 2D pooling, 5 dims == 3D pooling
-    Expects(pads_begin.size() == pads_end.size());
-    Expects(pads_begin.size() <= max_spatial_dims_);
+    OPENVINO_ASSERT(pads_begin.size() == pads_end.size());
+    OPENVINO_ASSERT(pads_begin.size() <= max_spatial_dims_);
 
     auto validate_padding_symmetry = [](size_t axis, size_t begin, size_t end) {
         if (begin == end) {

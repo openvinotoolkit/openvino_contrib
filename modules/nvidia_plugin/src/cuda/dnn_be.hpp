@@ -40,7 +40,7 @@ public:
     }
     template <typename T>
     auto& setShape(const std::vector<T>& shape) {
-        Expects(shape.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(shape.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> dimensions;
         std::copy(shape.begin(), shape.end(), dimensions.begin());
         setAttributeValues<CUDNN_ATTR_TENSOR_DIMENSIONS>(gsl::span<int64_t>(dimensions.data(), shape.size()));
@@ -48,7 +48,7 @@ public:
     }
     template <typename T>
     auto& setStrides(const std::vector<T>& strides) {
-        Expects(strides.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(strides.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> values;
         std::copy(strides.begin(), strides.end(), values.begin());
         setAttributeValues<CUDNN_ATTR_TENSOR_STRIDES>(gsl::span<int64_t>(values.data(), strides.size()));
@@ -97,7 +97,7 @@ public:
     }
     template <typename T>
     auto& setPrePaddings(const std::vector<T>& prePaddings) {
-        Expects(prePaddings.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(prePaddings.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> values;
         std::copy(prePaddings.begin(), prePaddings.end(), values.begin());
         setAttributeValues<CUDNN_ATTR_CONVOLUTION_PRE_PADDINGS>(gsl::span<int64_t>(values.data(), prePaddings.size()));
@@ -105,7 +105,7 @@ public:
     }
     template <typename T>
     auto& setPostPaddings(const std::vector<T>& postPaddings) {
-        Expects(postPaddings.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(postPaddings.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> values;
         std::copy(postPaddings.begin(), postPaddings.end(), values.begin());
         setAttributeValues<CUDNN_ATTR_CONVOLUTION_POST_PADDINGS>(
@@ -114,7 +114,7 @@ public:
     }
     template <typename T>
     auto& setDilations(const std::vector<T>& dilations) {
-        Expects(dilations.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(dilations.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> values;
         std::copy(dilations.begin(), dilations.end(), values.begin());
         setAttributeValues<CUDNN_ATTR_CONVOLUTION_DILATIONS>(gsl::span<int64_t>(values.data(), dilations.size()));
@@ -122,7 +122,7 @@ public:
     }
     template <typename T>
     auto& setFilterStrides(const std::vector<T>& strides) {
-        Expects(strides.size() <= CUDNN_DIM_MAX);
+        OPENVINO_ASSERT(strides.size() <= CUDNN_DIM_MAX);
         std::array<int64_t, CUDNN_DIM_MAX> values;
         std::copy(strides.begin(), strides.end(), values.begin());
         setAttributeValues<CUDNN_ATTR_CONVOLUTION_FILTER_STRIDES>(gsl::span<int64_t>(values.data(), strides.size()));

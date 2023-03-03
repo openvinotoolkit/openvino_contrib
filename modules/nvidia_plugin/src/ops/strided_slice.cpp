@@ -91,7 +91,7 @@ void StridedSliceOp::Execute(const InferenceRequestContext& context,
                              Inputs inputs,
                              Outputs outputs,
                              const Workbuffers& workbuffers) const {
-    Expects(kernel_op_);
+    OPENVINO_ASSERT(kernel_op_, "Node name: ", GetName());
     (*kernel_op_)(context.getThreadContext().stream().get(),
                   static_cast<const int64_t*>(workbuffers.immutable_buffers[0].get()),
                   inputs[0].get(),
@@ -127,8 +127,8 @@ void StridedSliceOp::uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, c
 
 std::vector<int64_t> StridedSliceOp::getNodeConstantValues(const ov::Node* node) const {
     auto constant = dynamic_cast<const ov::op::v0::Constant*>(node);
-    Expects(constant);
-    Expects(ov::element::Type_t::i64 == node->get_element_type());
+    OPENVINO_ASSERT(constant, "Node name: ", GetName());
+    OPENVINO_ASSERT(ov::element::Type_t::i64 == node->get_element_type(), "Node name: ", GetName());
     const int64_t* begin = constant->get_data_ptr<int64_t>();
     return std::vector<int64_t>(begin, begin + shape_size(constant->get_shape()));
 }
