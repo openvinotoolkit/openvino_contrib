@@ -5,6 +5,7 @@
 #include <openvino/core/extension.hpp>
 #include <openvino/core/op_extension.hpp>
 #include <openvino/frontend/extension.hpp>
+#include <openvino/frontend/node_context.hpp>
 
 #ifdef calculate_grid
 #    include "calculate_grid.hpp"
@@ -53,9 +54,11 @@
 
 #ifdef sentence_piece
 #    include "sentence_piece/sentence_piece.hpp"
-#    define SENTENSE_PIECE_EXT                                                                         \
-            std::make_shared<ov::OpExtension<TemplateExtension::ComplexMultiplication>>(),            \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::ComplexMultiplication>>(),
+#    define SENTENSE_PIECE_EXT                                                                                              \
+            std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
+            std::make_shared<ov::frontend::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                       \
+            std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
+            std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
 #else
 #    define SENTENSE_PIECE_EXT
 #endif

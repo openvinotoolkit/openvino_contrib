@@ -6,6 +6,8 @@ if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
 
+include(CheckCXXCompilerFlag)
+
 # to build only sentencepiece-static target
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
              PROPERTY EXCLUDE_FROM_ALL ON)
