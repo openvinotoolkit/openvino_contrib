@@ -56,7 +56,6 @@
 #    include "sentence_piece/sentence_piece.hpp"
 #    define SENTENSE_PIECE_EXT                                                                                              \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                       \
             std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
             std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
 #else
