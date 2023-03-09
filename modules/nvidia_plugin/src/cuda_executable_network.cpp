@@ -139,8 +139,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     }
 
     // Perform any other steps like allocation and filling backend specific memory handles and so on
-    const auto opBenchOptionString = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)).as<std::string>();
-    const bool opBenchOption = opBenchOptionString == NVIDIA_CONFIG_VALUE(YES);
+    const bool opBenchOption = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)).as<bool>();
     const auto creationContext = CreationContext{device, opBenchOption};
 
     graph_ = std::make_unique<CudaGraph>(creationContext, function_);
