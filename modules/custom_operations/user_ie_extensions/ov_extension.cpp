@@ -5,6 +5,7 @@
 #include <openvino/core/extension.hpp>
 #include <openvino/core/op_extension.hpp>
 #include <openvino/frontend/extension.hpp>
+#include <openvino/frontend/node_context.hpp>
 
 #ifdef calculate_grid
 #    include "calculate_grid.hpp"
@@ -28,7 +29,7 @@
 #    include "fft.hpp"
 #    define FFT_EXT                                                                                    \
             std::make_shared<ov::OpExtension<TemplateExtension::FFT>>(),                               \
-            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(), 
+            std::make_shared<ov::frontend::OpExtension<TemplateExtension::FFT>>(),
 #else
 #    define FFT_EXT
 #endif
@@ -51,8 +52,22 @@
 #    define S_CONV_EXT
 #endif
 
+#ifdef sentence_piece
+#    include "sentence_piece/sentence_piece.hpp"
+#    define SENTENSE_PIECE_EXT                                                                                              \
+            std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
+            std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
+            std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
+#else
+#    define SENTENSE_PIECE_EXT
+#endif
 
 OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
     {
-        CALCULATE_GRID_EXT FFT_EXT S_CONV_TRANSPOSE_EXT S_CONV_EXT COMPLEX_MUL_EXT 
+        CALCULATE_GRID_EXT
+        FFT_EXT
+        S_CONV_TRANSPOSE_EXT
+        S_CONV_EXT
+        COMPLEX_MUL_EXT
+        SENTENSE_PIECE_EXT
     }));
