@@ -33,22 +33,14 @@ namespace {
         std::vector<int32_t>& sparse_indices,
         std::vector<int32_t>& sparse_values,
         std::vector<int32_t>& sparse_dense_shape) {
-        // inputs should have at least 3 tensors for input strings
-        // [0] i32 tensor of begin indices, indices are offsets in [2]
-        // [1] i32 tensor of end indices, indices are offsets in [2]
-        // [2] 1D u8 tensor of bytes where all strings are concatenated
-
         // the operation has the following inputs:
         // 0. spm_model
-        // data inputs
-        // 1. [0] i32 tensor of begin indices, indices are offsets in [2]
-        // 2. [1] i32 tensor of end indices, indices are offsets in [2]
-        // 3. [2] 1D u8 tensor of bytes where all strings are concatenated
-        // 4. nbest_size
-        // 5. alpha
-        // 6. add_bos
-        // 7. add_eos
-        // 8. reverse
+        // 1. data input
+        // 2. nbest_size
+        // 3. alpha
+        // 4. add_bos
+        // 5. add_eos
+        // 6. reverse
         auto spm_model = static_cast<char*>(inputs[0].data());
         auto spm_model_size = inputs[0].get_byte_size();
 
