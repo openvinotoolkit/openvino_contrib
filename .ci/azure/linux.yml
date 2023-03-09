@@ -170,7 +170,7 @@ jobs:
       python -m pip install -r $(REPO_DIR)/modules/custom_operations/tests/requirements.txt
       cd ${OPENVINO_REPO_DIR}/tools && python -m pip install mo/
     workingDirectory: $(WORK_DIR)
-    displayName: 'Create custom ops env'
+    displayName: 'Create user custom operations env'
 
   - script: |
       . $(SETUPVARS)
@@ -178,4 +178,4 @@ jobs:
       # need to enable sparse_conv tests with new Open3D release
       python -m pytest -k "not sparse_conv" tests/run_tests.py
     workingDirectory: $(REPO_DIR)/modules/custom_operations
-    displayName: 'Custom ops tests'
+    displayName: 'Custom user operation tests'
