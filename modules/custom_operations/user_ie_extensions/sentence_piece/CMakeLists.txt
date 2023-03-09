@@ -21,7 +21,11 @@ FetchContent_Declare(
 )
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
-  set(cxx_flags "-Wno-undef")
+    set(cxx_flags "-Wno-undef")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
+    # C4267: 'var' : conversion from 'size_t' to 'type', possible loss of data
+    set(cxx_flags "/wd4244 /wd4267")
 endif()
 
 check_cxx_compiler_flag("-Wsuggest-override" SUGGEST_OVERRIDE_SUPPORTED)
@@ -41,6 +45,12 @@ target_include_directories(${TARGET_NAME} PRIVATE
   "${sentencepiece_SOURCE_DIR}"
   "${sentencepiece_SOURCE_DIR}"
   "${sentencepiece_BINARY_DIR}")
+
+# sentencepiece for some reason uses /MT on Windows, while default flag is /MD
+if(CMAKE_CL_64)
+    target_compile_options(sentencepiece-static PRIVATE "$<IF:$<CONFIG:Release>,/MD,/MDd>")
+    target_compile_definitions(sentencepiece-static PRIVATE _CRT_SECURE_NO_WARNINGS _SCL_SECURE_NO_WARNINGS)
+endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE sentencepiece-static)
 

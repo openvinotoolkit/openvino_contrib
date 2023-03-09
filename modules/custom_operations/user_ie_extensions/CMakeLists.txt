@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(CMAKE_CXX_STANDARD 11)
-
-cmake_minimum_required(VERSION 3.13)
-
 set(TARGET_NAME "user_ov_extensions")
+
+set(CMAKE_CXX_STANDARD 11)
 
 find_package(OpenVINO REQUIRED COMPONENTS Runtime)
 find_package(TBB COMPONENTS tbb tbbmalloc)
