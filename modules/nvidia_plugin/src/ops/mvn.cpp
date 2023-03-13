@@ -15,6 +15,18 @@
 namespace ov {
 namespace nvidia_gpu {
 
+inline bool isTypeSupported(cudnnDataType_t type) {
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+        case CUDNN_DATA_DOUBLE:
+        case CUDNN_DATA_HALF:
+        case CUDNN_DATA_INT8:
+            return true;
+        default:
+            return false;
+    }
+}
+
 MvnOp::MvnOp(const CreationContext& context,
              const ov::Node& node,
              IndexCollection&& inputIds,
@@ -39,6 +51,9 @@ MvnOp::MvnOp(const CreationContext& context,
       reduced_shape_{makeReducedShape(node)},
       reduced_tensor_desc_{makeReducedTensorDescriptor(node)},
       reduce_workspace_size_{reduceWorkSpaceSizeCompute(context)} {
+    if (!isTypeSupported(op_desc_type_)) {
+        throwIEException(fmt::format("MvnOp: unsupported argument type: {}", toString(op_desc_type_)));
+    }
     if (!reduced_shape_.empty()) {
         size_t size = shape_size(reduced_shape_);
         unsigned max_threads_per_block = context.device().props().maxThreadsPerBlock;
@@ -120,7 +135,7 @@ void MvnOp::Context::multiply(ConstTensor lhs, ConstTensor rhs, Tensor output) {
 }
 
 void MvnOp::Context::computeVarianceNormalizationFactor(Tensor in_out) {
-    Expects(op.variance_normalization_factor_kernel_);
+    OPENVINO_ASSERT(op.variance_normalization_factor_kernel_);
     (*op.variance_normalization_factor_kernel_)(context.getThreadContext().stream().get(), in_out.data.get());
 }
 
@@ -128,10 +143,10 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
     auto mvnOp_v1 = dynamic_cast<const ov::op::v0::MVN*>(&node);
     auto mvnOp_v6 = dynamic_cast<const ov::op::v6::MVN*>(&node);
     MvnVersion version;
-    Expects(mvnOp_v1 || mvnOp_v6);
+    OPENVINO_ASSERT(mvnOp_v1 || mvnOp_v6);
     if (mvnOp_v1) {
         version = MvnV1;
-        Expects(node.get_input_size() == 1);
+        OPENVINO_ASSERT(node.get_input_size() == 1);
         if (mvnOp_v1->get_eps() <= 0) {
             throwIEException(
                 fmt::format("The eps attribute of the MVN-1 operation must be positive number, but value is {}.",
@@ -139,7 +154,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
         }
     } else {
         version = MvnV6;
-        Expects(node.get_input_size() == 2);
+        OPENVINO_ASSERT(node.get_input_size() == 2);
         if (mvnOp_v6->get_eps() <= 0) {
             throwIEException(
                 fmt::format("The eps attribute of the MVN-6 operation must be positive number, but value is {}.",
@@ -152,16 +167,16 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
     if (!node.get_input_partial_shape(0).rank().is_static()) {
         throwIEException("For not static input shape the MVN-1 operation was not implemented.");
     }
-    Expects(node.get_output_size() == 1);
+    OPENVINO_ASSERT(node.get_output_size() == 1);
     auto inputShape = node.get_input_shape(0);
     auto outputShape = node.get_output_shape(0);
-    Expects(inputShape == outputShape);
+    OPENVINO_ASSERT(inputShape == outputShape);
     if (version == MvnV6) {
         auto inputAxesShape = node.get_input_shape(1);
-        Expects(inputAxesShape.size() == 1);
-        Expects(inputAxesShape[0] <= inputShape.size());
+        OPENVINO_ASSERT(inputAxesShape.size() == 1);
+        OPENVINO_ASSERT(inputAxesShape[0] <= inputShape.size());
     }
-    Expects(node.get_input_element_type(0) == node.get_output_element_type(0));
+    OPENVINO_ASSERT(node.get_input_element_type(0) == node.get_output_element_type(0));
     const size_t max_shape_size = 5;  // cudnnOpTensor operation limit. See note here
                                       // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor
     if (outputShape.size() > max_shape_size) {
@@ -186,7 +201,7 @@ ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
             return {};
         } else {
             for (auto& reductionAxisIndex : mvn_op_v1_->get_reduction_axes()) {
-                Expects(reductionAxisIndex < reducedShape.size());
+                OPENVINO_ASSERT(reductionAxisIndex < reducedShape.size(), "Node name: ", GetName());
                 reducedShape[reductionAxisIndex] = 1;
             }
         }

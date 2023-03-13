@@ -5,8 +5,8 @@
 #include <fmt/format.h>
 
 #include <details/ie_exception.hpp>
+#include <error.hpp>
 #include <exception>
-#include <kernels/error.hpp>
 
 namespace ov {
 namespace nvidia_gpu {
@@ -32,6 +32,12 @@ private:
 [[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
                                               const std::experimental::source_location& location) {
     throw Error(msg, location);
+}
+
+void assertThrow(bool condition, const std::string& msg, const std::experimental::source_location& location) {
+    if (!condition) {
+        throw Error(msg, location);
+    }
 }
 
 }  // namespace kernel

@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include "details/type_validator.hpp"
 #include "strided_slice.hpp"
 
 namespace ov {
@@ -132,14 +133,18 @@ StridedSliceKernelOp::StridedSliceKernelOp(const std::vector<int64_t> src_matrix
                                            const unsigned max_threads_per_block,
                                            const unsigned blocks_number,
                                            const unsigned threads_per_block,
-                                           const ov::element::Type_t element_type)
+                                           const Type_t element_type)
     : src_matrix_sizes_{src_matrix_sizes},
       dst_matrix_sizes_{dst_matrix_sizes},
       reverse_axes_{reverse_axes},
       max_threads_per_block_{max_threads_per_block},
       blocks_number_{blocks_number},
       threads_per_block_{threads_per_block},
-      element_type_{element_type} {}
+      element_type_{element_type} {
+    using StridedSliceElementTypesSwitch =
+        ElementTypesSwitch<Type_t::f32, Type_t::i32, Type_t::f16, Type_t::i16, Type_t::i8, Type_t::u8>;
+    TypeValidator<StridedSliceElementTypesSwitch>::check(element_type_);
+}
 
 void StridedSliceKernelOp::operator()(const cudaStream_t stream,
                                       const int64_t* src_matrix_sizes,
@@ -150,21 +155,21 @@ void StridedSliceKernelOp::operator()(const cudaStream_t stream,
                                       const int64_t* dst_matrix_sizes,
                                       void* dst) const {
     switch (element_type_) {
-        case ov::element::Type_t::f32:
+        case Type_t::f32:
             return callKernels<float>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ov::element::Type_t::i32:
+        case Type_t::i32:
             return callKernels<int32_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ov::element::Type_t::f16:
+        case Type_t::f16:
             return callKernels<__half>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ov::element::Type_t::i16:
+        case Type_t::i16:
             return callKernels<int16_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ov::element::Type_t::i8:
+        case Type_t::i8:
             return callKernels<int8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
-        case ov::element::Type_t::u8:
+        case Type_t::u8:
             return callKernels<uint8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         default:
             throwIEException(fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
-                                         ov::element::Type(element_type_).get_type_name()));
+                                         element_type_));
     }
 }
 

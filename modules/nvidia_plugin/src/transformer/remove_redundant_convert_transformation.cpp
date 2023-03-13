@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 
-#include <gsl/gsl_assert>
-#include "openvino/pass/pattern/op/wrap_type.hpp"
+#include <openvino/core/except.hpp>
 #include <openvino/op/convert.hpp>
+
+#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 
 using namespace ov::pass::pattern;
 
@@ -16,7 +17,7 @@ namespace {
 
 bool remove_redundant_convert(Matcher& m) {
     auto node = std::dynamic_pointer_cast<ov::op::v0::Convert>(m.get_match_root());
-    Expects(node);
+    OPENVINO_ASSERT(node);
 
     auto in_element_type = node->get_input_element_type(0);
     auto out_element_type = node->get_output_element_type(0);

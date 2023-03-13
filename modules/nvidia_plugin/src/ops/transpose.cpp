@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cuda/tensor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
@@ -19,6 +19,35 @@ using namespace std::string_literals;
 
 namespace ov {
 namespace nvidia_gpu {
+
+inline bool isInputElementsTypeSupported(cudaDataType_t type) {
+    switch (type) {
+        case CUDA_R_16F:
+        case CUDA_R_32F:
+        case CUDA_R_16BF:
+        case CUDA_R_64F:
+            return true;
+        default:
+            return false;
+    }
+}
+
+inline bool isPermutationElementsTypeSupported(ov::element::Type_t type) {
+    using ov::element::Type_t;
+    switch (type) {
+        case Type_t::i8:
+        case Type_t::i16:
+        case Type_t::i32:
+        case Type_t::i64:
+        case Type_t::u8:
+        case Type_t::u16:
+        case Type_t::u32:
+        case Type_t::u64:
+            return true;
+        default:
+            return false;
+    }
+}
 
 TransposeOp::TransposeOp(const CreationContext& context,
                          const std::shared_ptr<ov::Node>& node,
@@ -35,6 +64,13 @@ TransposeOp::TransposeOp(const CreationContext& context,
       extents_{extractExtents(inputExtents_)},
       inputElementsType_{convertDataType<cudaDataType_t>(node->input(0).get_element_type())},
       permutationElementsType_{extractPermutationElementsType(*node)} {
+    if (!isInputElementsTypeSupported(inputElementsType_)) {
+        throwIEException(fmt::format("TransposeOp: unsupported inputElementsType_: {}", toString(inputElementsType_)));
+    }
+    if (!isPermutationElementsTypeSupported(permutationElementsType_)) {
+        throwIEException(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
+                                     ov::element::Type{permutationElementsType_}.get_type_name()));
+    }
     inputExtents_.size();
 }
 
@@ -42,8 +78,8 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                           Inputs inputTensors,
                           Outputs outputTensors,
                           const Workbuffers&) const {
-    Expects(inputTensors.size() == 1 || inputTensors.size() == 2);
-    Expects(outputTensors.size() == 1);
+    OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
 
     cutensorTensorDescriptor_t inputDesc{}, outputDesc{};
     const std::vector<int> outputMode = permutation(context, inputTensors);
@@ -126,7 +162,7 @@ std::vector<std::int64_t> TransposeOp::extractOutputStrides(const ov::Node& node
 
 bool TransposeOp::isPermutationTensorSpecified(const ov::Node& node) {
     const auto numInputs = node.get_input_size();
-    Expects(numInputs == 1 || numInputs == 2);
+    OPENVINO_ASSERT(numInputs == 1 || numInputs == 2);
     return numInputs == 2;
 }
 
@@ -152,7 +188,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
     if (outputMode_.has_value()) {
         return outputMode_.value();
     } else {  // Copies permutation vector from device memory. cuTENSOR API requires it in host memory
-        Expects(inputTensors.size() == 2);
+        OPENVINO_ASSERT(inputTensors.size() == 2, "Node name: ", GetName());
         using ov::element::Type_t;
         switch (permutationElementsType_) {
             case Type_t::i8:
@@ -178,7 +214,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
 }
 
 ov::element::Type_t TransposeOp::extractPermutationElementsType(const ov::Node& node) {
-    Expects(node.get_input_size() > 0 && node.get_input_size() <= 2);
+    OPENVINO_ASSERT(node.get_input_size() > 0 && node.get_input_size() <= 2, "Node name: ", GetName());
     if (node.get_input_size() == 1)
         return ov::element::Type_t::i32;
     else

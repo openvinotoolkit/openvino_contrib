@@ -51,6 +51,12 @@ using AllElementTypesSwitch = ElementTypesSwitch<Type_t::boolean,
                                                  Type_t::u32,
                                                  Type_t::u64>;
 
+using FloatElementTypesSwitch = ElementTypesSwitch<Type_t::f32,
+#ifdef CUDA_HAS_BF16_TYPE
+                                                   Type_t::bf16,
+#endif
+                                                   Type_t::f16,
+                                                   Type_t::f64>;
 }  // namespace kernel
 }  // namespace nvidia_gpu
 }  // namespace ov

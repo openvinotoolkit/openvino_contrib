@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "tensor_helpers.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -24,11 +25,14 @@ public:
     using UIntShape = Shape<unsigned, MAX_SHAPE_RANK>;
     using FloatShape = Shape<float, MAX_SHAPE_RANK>;
     using IntShape = Shape<int, MAX_SHAPE_RANK>;
+
     struct Index {
         IntShape v{};
     };
 
     class details;
+
+    explicit InterpolateBase(Type_t elemenent_type);
 };
 
 }  // namespace kernel

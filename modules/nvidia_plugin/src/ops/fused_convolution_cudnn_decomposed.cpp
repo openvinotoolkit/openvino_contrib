@@ -7,7 +7,7 @@
 #include <cudnn.h>
 
 #include <details/ie_exception.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
@@ -40,8 +40,10 @@ void FusedConvolutionCuDnnDecomposed::Execute(const InferenceRequestContext& con
 
     const bool includesOnlyBiasAdd = inputs.size() == 3;
     const bool includesSecondAddition = inputs.size() == 4;
-    Expects((includesOnlyBiasAdd && add_desc_ == nullptr) || (includesSecondAddition && add_desc_));
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT((includesOnlyBiasAdd && add_desc_ == nullptr) || (includesSecondAddition && add_desc_),
+                    "Node name: ",
+                    GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
     const auto& dnnHandle = context.getThreadContext().dnnHandle();
     const void* onePtr = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->ElementType());

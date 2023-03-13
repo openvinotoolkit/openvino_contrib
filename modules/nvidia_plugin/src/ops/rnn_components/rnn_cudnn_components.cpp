@@ -5,7 +5,7 @@
 #include "rnn_cudnn_components.hpp"
 
 #include <error.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ops/converters.hpp>
 
 #define CUDNN_VERSION_MIN(major, minor, patch) (CUDNN_VERSION >= ((major)*1000 + (minor)*100 + (patch)))
@@ -45,8 +45,8 @@ LSTMCellParamsCuDnn::LSTMCellParamsCuDnn(const CreationContext& context, const L
             "alphas = {1.0f, 1.0f, 1.0f} and betas = {0.0f, 0.0f, 0.0f}");
     }
 
-    Expects(lstm_cell_params_.element_type_.size() == elementSize());
-    Expects(sizeof(int32_t) == sizeof(int));
+    OPENVINO_ASSERT(lstm_cell_params_.element_type_.size() == elementSize());
+    OPENVINO_ASSERT(sizeof(int32_t) == sizeof(int));
     seq_length_array_.resize(batchSize(), maxSeqLength());
 }
 
@@ -142,7 +142,7 @@ LSTMCellDescriptorsCuDnn::LSTMCellDescriptorsCuDnn(const LSTMCellParamsCuDnn& pa
     CUDA::DnnHandle dnn_handle{};
     weight_space_size_ = 0;
     throwIfError(cudnnGetRNNWeightSpaceSize(dnn_handle.get(), rnn_desc_.get(), &weight_space_size_));
-    Ensures(weight_space_size_ >= params_.wHostBuffers().size_bytes() + params_.rHostBuffers().size_bytes() +
+    OPENVINO_ASSERT(weight_space_size_ >= params_.wHostBuffers().size_bytes() + params_.rHostBuffers().size_bytes() +
                                       params_.bHostBuffers().size_bytes());
 
     work_space_size_ = 0;
@@ -150,7 +150,7 @@ LSTMCellDescriptorsCuDnn::LSTMCellDescriptorsCuDnn(const LSTMCellParamsCuDnn& pa
     throwIfError(cudnnGetRNNTempSpaceSizes(
         dnn_handle.get(), rnn_desc_.get(), dnnForwardMode(), x_desc_.get(), &work_space_size_, &reserve_space_size));
     // the returned size of the reserve space buffer will be zero when the fMode argument is CUDNN_FWD_MODE_INFERENCE
-    Ensures(reserve_space_size == 0);
+    OPENVINO_ASSERT(reserve_space_size == 0);
 }
 
 void LSTMCellDescriptorsCuDnn::initDevSeqLengthArray(DevPtr buffer) {
@@ -201,7 +201,7 @@ void LSTMCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
 bool LSTMCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     DevBuffers all_weights;
     all_weights.reserve(w_dev_buffers_.size() + r_dev_buffers_.size() + b1_dev_buffers_.size() +
@@ -255,7 +255,7 @@ void LSTMCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
     constexpr int32_t pseudo_layer = 0;
 
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     const auto data_type = params_.dataType();
     const auto input_size = params_.inputSize();
@@ -297,25 +297,26 @@ void LSTMCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                              &w_addr,
                                              b1_desc.get(),
                                              &b1_addr));
-        Ensures(w_addr);
+        OPENVINO_ASSERT(w_addr);
         w_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
-        Ensures(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size &&
+                        wb_stride_a[2] == 1);
         tensor_size_bytes = w_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * input_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * input_size * element_size);
         w_dev_buffers_.emplace_back(static_cast<uint8_t*>(w_addr), tensor_size_bytes);
         w_total_bytes += tensor_size_bytes;
 
-        Ensures(b1_addr);
+        OPENVINO_ASSERT(b1_addr);
         b1_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
-        Ensures(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
         tensor_size_bytes = b1_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * element_size);
         b1_dev_buffers_.emplace_back(static_cast<uint8_t*>(b1_addr), tensor_size_bytes);
         b1_total_bytes += tensor_size_bytes;
 
@@ -334,14 +335,15 @@ void LSTMCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                              &r_addr,
                                              b2_desc.get(),
                                              &b2_addr));
-        Ensures(r_addr);
+        OPENVINO_ASSERT(r_addr);
         r_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
-        Ensures(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size &&
+                        wb_stride_a[2] == 1);
         tensor_size_bytes = r_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * hidden_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * hidden_size * element_size);
         r_dev_buffers_.emplace_back(static_cast<uint8_t*>(r_addr), tensor_size_bytes);
         r_total_bytes += tensor_size_bytes;
 
@@ -353,11 +355,11 @@ void LSTMCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
         }
     }
 
-    Ensures(weightBuffersFit(buffer));
-    Ensures(w_total_bytes >= params_.wHostBuffers().size_bytes() &&
-            r_total_bytes >= params_.rHostBuffers().size_bytes() &&
-            b1_total_bytes >= params_.bHostBuffers().size_bytes());
-    Ensures(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
+    OPENVINO_ASSERT(weightBuffersFit(buffer));
+    OPENVINO_ASSERT(w_total_bytes >= params_.wHostBuffers().size_bytes() &&
+                    r_total_bytes >= params_.rHostBuffers().size_bytes() &&
+                    b1_total_bytes >= params_.bHostBuffers().size_bytes());
+    OPENVINO_ASSERT(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
 }
 
 GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRUCellParams& params)
@@ -386,8 +388,8 @@ GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRU
             "alphas = {1.0f, 1.0f} and betas = {0.0f, 0.0f}");
     }
 
-    Expects(gru_cell_params_.element_type_.size() == elementSize());
-    Expects(sizeof(int32_t) == sizeof(int));
+    OPENVINO_ASSERT(gru_cell_params_.element_type_.size() == elementSize());
+    OPENVINO_ASSERT(sizeof(int32_t) == sizeof(int));
     seq_length_array_.resize(batchSize(), maxSeqLength());
 }
 
@@ -483,7 +485,7 @@ GRUCellDescriptorsCuDnn::GRUCellDescriptorsCuDnn(const GRUCellParamsCuDnn& param
     CUDA::DnnHandle dnn_handle{};
     weight_space_size_ = 0;
     throwIfError(cudnnGetRNNWeightSpaceSize(dnn_handle.get(), rnn_desc_.get(), &weight_space_size_));
-    Ensures(weight_space_size_ >= params_.wHostBuffers().size_bytes() + params_.rHostBuffers().size_bytes() +
+    OPENVINO_ASSERT(weight_space_size_ >= params_.wHostBuffers().size_bytes() + params_.rHostBuffers().size_bytes() +
                                       params_.bHostBuffers().size_bytes());
 
     work_space_size_ = 0;
@@ -491,7 +493,7 @@ GRUCellDescriptorsCuDnn::GRUCellDescriptorsCuDnn(const GRUCellParamsCuDnn& param
     throwIfError(cudnnGetRNNTempSpaceSizes(
         dnn_handle.get(), rnn_desc_.get(), dnnForwardMode(), x_desc_.get(), &work_space_size_, &reserve_space_size));
     // the returned size of the reserve space buffer will be zero when the fMode argument is CUDNN_FWD_MODE_INFERENCE
-    Ensures(reserve_space_size == 0);
+    OPENVINO_ASSERT(reserve_space_size == 0);
 }
 
 void GRUCellDescriptorsCuDnn::initDevSeqLengthArray(DevPtr buffer) {
@@ -534,7 +536,7 @@ void GRUCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
             if (params_.linearBeforeReset() && i == 2) {
                 // the tensor shape is [4 * hidden_size], get the fourth element from an array
                 const size_t idx = b1_host_layer_size * (i + 1);
-                Ensures(idx + b1_host_layer_size <= params_.bHostBuffers().size_bytes());
+                OPENVINO_ASSERT(idx + b1_host_layer_size <= params_.bHostBuffers().size_bytes());
                 const uint8_t* b2_host_addr = params_.bHostBuffers().data() + idx;
                 stream.upload(DevPtr{b2_dev_buffers_[j].data()}, b2_host_addr, b1_host_layer_size);
             } else {
@@ -546,7 +548,7 @@ void GRUCellDescriptorsCuDnn::initWeightSpace(DevPtr buffer) {
 
 bool GRUCellDescriptorsCuDnn::weightBuffersFit(DevPtr buffer) const {
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     DevBuffers all_weights;
     all_weights.reserve(w_dev_buffers_.size() + r_dev_buffers_.size() + b1_dev_buffers_.size() +
@@ -600,7 +602,7 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
     constexpr int32_t pseudo_layer = 0;
 
     auto weight_space = buffer.get();
-    Expects(weight_space);
+    OPENVINO_ASSERT(weight_space);
 
     const auto data_type = params_.dataType();
     const auto input_size = params_.inputSize();
@@ -642,25 +644,26 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                              &w_addr,
                                              b1_desc.get(),
                                              &b1_addr));
-        Ensures(w_addr);
+        OPENVINO_ASSERT(w_addr);
         w_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
-        Ensures(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == input_size);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * input_size && wb_stride_a[1] == input_size &&
+                        wb_stride_a[2] == 1);
         tensor_size_bytes = w_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * input_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * input_size * element_size);
         w_dev_buffers_.emplace_back(static_cast<uint8_t*>(w_addr), tensor_size_bytes);
         w_total_bytes += tensor_size_bytes;
 
-        Ensures(b1_addr);
+        OPENVINO_ASSERT(b1_addr);
         b1_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
-        Ensures(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == 1);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size && wb_stride_a[1] == 1 && wb_stride_a[2] == 1);
         tensor_size_bytes = b1_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * element_size);
         b1_dev_buffers_.emplace_back(static_cast<uint8_t*>(b1_addr), tensor_size_bytes);
         b1_total_bytes += tensor_size_bytes;
 
@@ -679,14 +682,15 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
                                              &r_addr,
                                              b2_desc.get(),
                                              &b2_addr));
-        Ensures(r_addr);
+        OPENVINO_ASSERT(r_addr);
         r_desc.getTensorNdDescriptor(wb_nb_dims_requested, wb_data_type, wb_nb_dims, wb_dim_a, wb_stride_a);
-        Ensures(wb_nb_dims == wb_nb_dims_requested);
-        Ensures(wb_data_type == data_type);
-        Ensures(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
-        Ensures(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size && wb_stride_a[2] == 1);
+        OPENVINO_ASSERT(wb_nb_dims == wb_nb_dims_requested);
+        OPENVINO_ASSERT(wb_data_type == data_type);
+        OPENVINO_ASSERT(wb_dim_a[0] == 1 && wb_dim_a[1] == hidden_size && wb_dim_a[2] == hidden_size);
+        OPENVINO_ASSERT(wb_stride_a[0] == hidden_size * hidden_size && wb_stride_a[1] == hidden_size &&
+                        wb_stride_a[2] == 1);
         tensor_size_bytes = r_desc.getTensorSizeInBytes();
-        Ensures(tensor_size_bytes >= hidden_size * hidden_size * element_size);
+        OPENVINO_ASSERT(tensor_size_bytes >= hidden_size * hidden_size * element_size);
         r_dev_buffers_.emplace_back(static_cast<uint8_t*>(r_addr), tensor_size_bytes);
         r_total_bytes += tensor_size_bytes;
 
@@ -698,10 +702,10 @@ void GRUCellDescriptorsCuDnn::calculateWeightBuffers(DevPtr buffer) {
         }
     }
 
-    Ensures(weightBuffersFit(buffer));
-    Ensures(w_total_bytes >= params_.wHostBuffers().size_bytes() &&
-            r_total_bytes >= params_.rHostBuffers().size_bytes());
-    Ensures(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
+    OPENVINO_ASSERT(weightBuffersFit(buffer));
+    OPENVINO_ASSERT(w_total_bytes >= params_.wHostBuffers().size_bytes() &&
+                    r_total_bytes >= params_.rHostBuffers().size_bytes());
+    OPENVINO_ASSERT(weight_space_size_ >= w_total_bytes + r_total_bytes + b1_total_bytes + b2_total_bytes);
 }
 
 }  // namespace ov::nvidia_gpu::RNN::Details

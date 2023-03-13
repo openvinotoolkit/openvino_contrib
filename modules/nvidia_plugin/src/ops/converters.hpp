@@ -10,8 +10,8 @@
 #include <cstdint>
 #include <cuda/float16.hpp>
 #include <error.hpp>
-#include <gsl/gsl_assert>
-#include <kernels/cuda_type_traits.hpp>
+#include <openvino/core/except.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
 #include <ngraph/type/element_type.hpp>
 #include <string_view>
 #include <type_traits>
@@ -331,8 +331,8 @@ inline constexpr typename SwitchCaseTrait<E>::type switchCase(E first, E second)
     const I firstI = static_cast<I>(first);
     const I secondI = static_cast<I>(second);
     const I result = (firstI << shift) + secondI;
-    Ensures(static_cast<E>(secondI) == second);
-    Ensures(static_cast<E>((result - secondI) >> shift) == first);
+    OPENVINO_ASSERT(static_cast<E>(secondI) == second);
+    OPENVINO_ASSERT(static_cast<E>((result - secondI) >> shift) == first);
     return result;
 }
 

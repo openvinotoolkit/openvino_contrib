@@ -6,6 +6,7 @@
 
 #include <cassert>
 
+#include "details/type_validator.hpp"
 #include "logical_not.cuh"
 
 namespace ov {
@@ -38,8 +39,13 @@ static inline __global__ void logical_not(const bool* input, bool* output, std::
     }
 }
 
-LogicalNot::LogicalNot(const eltwise::KernelExecAttrs& kernelExecAttrs, std::size_t payloadRank, std::size_t len)
-    : kernel_exec_attrs_{kernelExecAttrs}, payload_rank_{payloadRank}, len_{len} {}
+LogicalNot::LogicalNot(Type_t element_type,
+                       const eltwise::KernelExecAttrs& kernelExecAttrs,
+                       std::size_t payloadRank,
+                       std::size_t len)
+    : kernel_exec_attrs_{kernelExecAttrs}, payload_rank_{payloadRank}, len_{len} {
+    TypeValidator<ElementTypesSwitch<Type_t::boolean>>::check(element_type);
+}
 
 void LogicalNot::operator()(cudaStream_t stream, const bool* src, bool* dst) const {
     switch (payload_rank_) {

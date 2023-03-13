@@ -3,7 +3,7 @@
 //
 
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <utility>
 #include <vector>
 
@@ -26,8 +26,8 @@ SigmoidOp::SigmoidOp(const CreationContext& context,
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     auto input_element_type = node->get_input_element_type(0);
     auto output_element_type = node->get_output_element_type(0);
-    Expects(input_element_type.is_real());
-    Expects(output_element_type.is_real());
+    OPENVINO_ASSERT(input_element_type.is_real());
+    OPENVINO_ASSERT(output_element_type.is_real());
     auto input_shape = node->get_input_shape(0);
     auto output_shape = node->get_output_shape(0);
     input_size_ = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
@@ -41,8 +41,8 @@ void SigmoidOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,
                         Outputs outputs,
                         const Workbuffers& workbuffers) {
-    Expects(inputs.size() == 1);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 1);
+    OPENVINO_ASSERT(outputs.size() == 1);
     stream.run(num_blocks_,
                threads_per_block_,
                sigmoid,

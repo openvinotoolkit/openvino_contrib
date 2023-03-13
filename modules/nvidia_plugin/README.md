@@ -9,7 +9,7 @@ OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platfo
 
 OS                     | GPU
 ---------------------- | ----------------------
-Ubuntu* 18.04 (64-bit) | Geforce 1080 Ti, NVIDIA T4
+Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
@@ -173,9 +173,13 @@ Parameter name  | Parameter values  | Default  | Description
 `NVIDIA_THROUGHPUT_STREAMS`   | `NVIDIA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
 `NVIDIA_OPERATION_BENCHMARK`   | `NVIDIA_YES`, `NVIDIA_NO`  | `NVIDIA_NO`  | Specifies if operation level benchmark should be run for increasing performance of network
 
-During compilation of the openvino_nvidia_gpu_plugin, user could specify two options:
+During compilation of the openvino_nvidia_gpu_plugin, user could specify the following options:
 1) `-DCUDA_KERNEL_PRINT_LOG=ON` enables print logs from kernels (WARNING, be careful with this options, could print to many logs)
 2) `-DENABLE_CUDNN_BACKEND_API` enables cuDNN backend support that could increase performance of convolutions by 20%
+3) `-DCMAKE_CUDA_ARCHITECTURES=<arch_set>` e.g. `-DCMAKE_CUDA_ARCHITECTURES=75`, ([CMake documentation](https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html)). This option overrides the default architectures (CUDA Compute Capabitities) listed in `openvino_contrib/modules/nvidia_plugin/CMakeLists.txt`. This option allows to build the plugin for specific architecture or architecture set. Building for the lesser amount of architectures can significally decrease the size of `libopenvino_nvidia_gpu_plugin.so`. To find out the compute capabitity of nVidia devices in your system, you may use the following command:
+```bash
+nvidia-smi --query-gpu=compute_cap --format=csv
+```
 
 ## Supported Layers and Limitations
 The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [cuda_opset.md](docs/cuda_opset.md).

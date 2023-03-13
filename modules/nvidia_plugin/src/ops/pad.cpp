@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cuda/runtime.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <memory>
 #include <ngraph/validation_util.hpp>
 
@@ -33,14 +33,15 @@ PadOp::PadOp(const CreationContext& context,
                   node.get_output_shape(0),
                   kernel::ConstModePad::kWarpsPerBlock * static_cast<unsigned>(context.device().props().warpSize),
                   kernel::ConstModePad::kElementsPerThread},
-              node.get_output_element_type(0),
+              convertDataType<kernel::Type_t>(node.get_output_element_type(0)),
               node.get_output_shape(0).size(),
               context.device().props().maxThreadsPerBlock,
               ov::shape_size(node.get_output_shape(0)),
               isNCHWConvolutionPadding(node)},
       src_shape_{node.get_input_shape(0)},
       dst_shape_{node.get_output_shape(0)} {
-    Expects(ov::op::PadMode::CONSTANT == node.get_pad_mode());
+    OPENVINO_ASSERT(node.get_input_element_type(0) == node.get_output_element_type(0), "Node name: ", GetName());
+    OPENVINO_ASSERT(ov::op::PadMode::CONSTANT == node.get_pad_mode(), "Node name: ", GetName());
 }
 
 void PadOp::Execute(const InferenceRequestContext& context,

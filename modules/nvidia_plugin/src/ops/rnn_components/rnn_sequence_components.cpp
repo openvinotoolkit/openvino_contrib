@@ -5,10 +5,23 @@
 #include "rnn_sequence_components.hpp"
 
 #include <cuda/constant_factory.hpp>
+#include <ops/converters.hpp>
 
 #include "ngraph/shape.hpp"
 
 namespace ov::nvidia_gpu::RNN::Details {
+
+inline bool isTypeSupported(cudaDataType_t type) {
+    switch (type) {
+        case CUDA_R_16F:
+        case CUDA_R_32F:
+        case CUDA_R_16BF:
+        case CUDA_R_64F:
+            return true;
+        default:
+            return false;
+    }
+}
 
 TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_type,
                                                        size_t element_size,
@@ -23,11 +36,15 @@ TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_ty
       dst_mode_{mode} {
     std::iota(src_mode_.begin(), src_mode_.end(), 0);
     const auto num_elements = ov::shape_size(src_shape_);
-    Expects(num_elements > 0);
-    Expects(num_elements == ov::shape_size(dst_shape_));
-    Expects(src_shape_.size() == dst_shape_.size());
-    Expects(src_shape_.size() == src_mode_.size());
-    Expects(src_mode_.size() == dst_mode_.size());
+    OPENVINO_ASSERT(num_elements > 0);
+    OPENVINO_ASSERT(num_elements == ov::shape_size(dst_shape_));
+    OPENVINO_ASSERT(src_shape_.size() == dst_shape_.size());
+    OPENVINO_ASSERT(src_shape_.size() == src_mode_.size());
+    OPENVINO_ASSERT(src_mode_.size() == dst_mode_.size());
+    if (!isTypeSupported(element_type_)) {
+        throwIEException(
+            fmt::format("TransposeTensorAdapterBase: unsupported argument type: {}", toString(element_type_)));
+    }
 }
 
 void TransposeTensorAdapterBase::requestWorkbuffer(std::vector<size_t>& workbuffers_sizes) {

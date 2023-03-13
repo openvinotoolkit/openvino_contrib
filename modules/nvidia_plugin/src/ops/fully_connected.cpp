@@ -6,7 +6,7 @@
 
 #include <cuda/blas.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/node.hpp>
 #include <openvino/op/matmul.hpp>
 #include <utility>
@@ -28,14 +28,14 @@ FullyConnectedOp::FullyConnectedOp(const CreationContext& context,
     bias_size_ = node.get_input_tensor(2).size();
     auto biasShape = node.get_input_shape(2);
     auto matrixShape = node.get_output_shape(0);
-    Expects(biasShape.size() > 0);
+    OPENVINO_ASSERT(biasShape.size() > 0, "Node name: ", GetName());
     MatMulOp::BroadcastToMatrix(biasShape);
     const auto biasShapeSize = ov::shape_size(biasShape);
     const auto matrixShapeSize = ov::shape_size(matrixShape);
-    Expects(matrixShapeSize >= biasShapeSize);
+    OPENVINO_ASSERT(matrixShapeSize >= biasShapeSize, "Node name: ", GetName());
     auto batchBiasCount = MatMulOp::GetMatrixNumBatches(biasShape);
     auto matMulBatchCount = matmul_op_.GetBatchCount();
-    Expects(matMulBatchCount >= batchBiasCount);
+    OPENVINO_ASSERT(matMulBatchCount >= batchBiasCount, "Node name: ", GetName());
     batch_bias_count_ = matrixShapeSize / biasShapeSize;
 }
 
@@ -43,8 +43,8 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context,
                                Inputs inputs,
                                Outputs outputs,
                                const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 3);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
     auto& stream = context.getThreadContext().stream();
 
     auto bias = inputs[2];

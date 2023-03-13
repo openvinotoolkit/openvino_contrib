@@ -31,8 +31,8 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
     const ngraph::element::Type element_type{node.get_input_element_type(0)};
     const std::size_t levels = node.get_levels();
 
-    Expects(levels > 1U);
-    Expects(node.get_input_shape(0).size() == node.get_output_shape(0).size());
+    OPENVINO_ASSERT(levels > 1U, "Node name: ", GetName());
+    OPENVINO_ASSERT(node.get_input_shape(0).size() == node.get_output_shape(0).size(), "Node name: ", GetName());
 
     in_low_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
     in_high_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
@@ -50,7 +50,7 @@ void FakeQuantizeOp::Execute(const InferenceRequestContext &context,
                              Inputs inputTensors,
                              Outputs outputTensors,
                              const Workbuffers &workbuffers) const {
-    Expects(kernel_);
+    OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
     auto &stream = context.getThreadContext().stream();
 
     (*kernel_)(stream.get(),

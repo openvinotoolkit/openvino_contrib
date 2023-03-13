@@ -342,6 +342,23 @@ INSTANTIATE_TEST_CASE_P(smoke_Gather_v7_11,
                                            ::testing::Values(smoke_11_ov_params_v7.device_)),
                         Gather7LayerTest::getTestCaseName);
 
+const GatherTestParams smoke_12_ov_params_v8 = {{2, 5}, {2, 3}, 1, -1};
+
+INSTANTIATE_TEST_CASE_P(smoke_Gather_v8_12,
+                        Gather8LayerTest,
+                        ::testing::Combine(::testing::Values(smoke_12_ov_params_v8.params_shape_),
+                                           ::testing::Values(smoke_12_ov_params_v8.indices_shape_),
+                                           ::testing::Values(std::make_tuple(smoke_12_ov_params_v8.axis_,
+                                                                             smoke_12_ov_params_v8.batch_dims_)),
+                                           ::testing::ValuesIn(smoke_12_ov_params_v8.net_precisions_),
+                                           ::testing::Values(smoke_12_ov_params_v8.input_precision_),
+                                           ::testing::Values(smoke_12_ov_params_v8.output_precision_),
+                                           ::testing::Values(smoke_12_ov_params_v8.input_layout_),
+                                           ::testing::Values(smoke_12_ov_params_v8.output_layout_),
+                                           ::testing::Values(smoke_12_ov_params_v8.device_)),
+                        Gather8LayerTest::getTestCaseName);
+
+
 // ------------- Tacotron2 shapes -------------
 const GatherTestParams tacotron2_enc_params_v1_v7 = {{148, 512}, {1, 1000}};
 

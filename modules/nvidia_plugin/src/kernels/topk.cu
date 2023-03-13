@@ -7,9 +7,10 @@
 #include <cuda/float16.hpp>
 
 #include "cuda/stl/algorithms/sort.cuh"
-#include "error.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 #include "fmt/format.h"
-#include "tensor_helpers.hpp"
 #include "topk.hpp"
 
 namespace ov {
@@ -127,6 +128,22 @@ TopK::TopK(const Type_t element_type,
       k_{k},
       workspace_chunks_{num_input_element / workspace_chunk_size},
       workspace_chunk_size_{workspace_chunk_size} {
+    using TopKElementTypesSwitch = ElementTypesSwitch<Type_t::f16,
+#ifdef CUDA_HAS_BF16_TYPE
+                                                      Type_t::bf16,
+#endif
+                                                      Type_t::f32,
+                                                      Type_t::i8,
+                                                      Type_t::i16,
+                                                      Type_t::i32,
+                                                      Type_t::i64,
+                                                      Type_t::u8,
+                                                      Type_t::u16,
+                                                      Type_t::u32,
+                                                      Type_t::u64>;
+    TypeValidator<TopKElementTypesSwitch>::check(element_type_);
+    TypeValidator<ElementTypesSwitch<Type_t::i32, Type_t::i64>>::check(index_element_type_);
+
     preprocess_.num_blocks_ = (num_input_element + max_threads_per_block - 1) / max_threads_per_block;
     preprocess_.threads_per_block_ = (preprocess_.num_blocks_ == 1) ? num_input_element : max_threads_per_block;
 

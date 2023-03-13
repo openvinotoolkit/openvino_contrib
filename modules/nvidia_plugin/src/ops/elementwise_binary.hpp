@@ -23,8 +23,8 @@ public:
         : OperationBase{context, node, move(inputIds), move(outputIds)},
           in0_broadcast_params_{NumpyBroadcastParams::create(node.get_input_shape(0), node.get_output_shape(0))},
           in1_broadcast_params_{NumpyBroadcastParams::create(node.get_input_shape(1), node.get_output_shape(0))} {
-        Expects(node.get_input_size() == 2);
-        Expects(node.get_output_size() == 1);
+        OPENVINO_ASSERT(node.get_input_size() == 2, "Node name: ", GetName());
+        OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
         const auto element_type = node.get_output_element_type(0);
         const bool types_are_expected =
@@ -46,9 +46,9 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override {
-        Expects(kernel_);
-        Expects(inputTensors.size() == 2);
-        Expects(outputTensors.size() == 1);
+        OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+        OPENVINO_ASSERT(inputTensors.size() == 2, "Node name: ", GetName());
+        OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
         auto& stream = context.getThreadContext().stream();
 
         (*kernel_)(stream.get(),

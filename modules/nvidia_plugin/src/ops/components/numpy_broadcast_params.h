@@ -7,7 +7,7 @@
 #include <ngraph/shape.hpp>
 #include <vector>
 
-#include "kernels/numpy_broadcast_mapper.cuh"
+#include "kernels/details/numpy_broadcast_mapper.cuh"
 #include "workbuffer_desc.hpp"
 
 namespace ov {

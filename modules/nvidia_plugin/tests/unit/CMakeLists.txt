@@ -42,11 +42,9 @@ addIeTargetTest(
             CUDA
 )
 set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
-if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
-	set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
-else()
-	set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
-endif()
+
+set_property(TARGET ${TARGET_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
+
 # unitTestUtils brings in USE_STATIC_IE element in INTERFACE_COMPILE_DEFINITIONS, which breaks
 # INFERENCE_ENGINE_API_CLASS() and friends since we really link to ie dlls.
 # there's no easy way to override it(something like "remove from definitions" property on client)

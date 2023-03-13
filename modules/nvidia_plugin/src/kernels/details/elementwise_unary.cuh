@@ -6,14 +6,13 @@
 
 #include <fmt/format.h>
 
-#include <gsl/gsl_assert>
 #include <tuple>
 #include <utility>
 
 #include "cuda_type_traits.hpp"
-#include "elementtypeswitch.hpp"
-#include "error.hpp"
+#include "element_types_switch.hpp"
 #include "tensor_helpers.hpp"
+#include "type_validator.hpp"
 #ifdef __CUDACC__
 #include "cuda/math.cuh"
 #endif  // __CUDACC__
@@ -39,6 +38,7 @@ class ElementwiseUnary {
 public:
     ElementwiseUnary(Type_t element_type, size_t max_threads_per_block, size_t num_elements)
         : element_type_{element_type}, num_elements_{num_elements} {
+        TypeValidator<ElementTypes>::check(element_type);
         std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(num_elements_, max_threads_per_block);
     }
 
@@ -65,7 +65,7 @@ public:
 
     template <typename T, typename... Args>
     void default_(T t, cudaStream_t, const void*, void*, Args...) const noexcept {
-        throwIEException(fmt::format("Element type = {} is not supported.", t));
+        throwTypeNotSupported(t);
     }
 
 private:

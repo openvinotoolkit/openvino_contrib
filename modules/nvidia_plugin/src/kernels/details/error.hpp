@@ -33,6 +33,10 @@ namespace kernel {
     const std::string& msg,
     const std::experimental::source_location& location = std::experimental::source_location::current());
 
+void assertThrow(bool condition,
+                 const std::string& msg = "Assertion failed",
+                 const std::experimental::source_location& location = std::experimental::source_location::current());
+
 }  // namespace kernel
 }  // namespace nvidia_gpu
 }  // namespace ov

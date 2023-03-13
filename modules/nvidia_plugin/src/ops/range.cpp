@@ -11,7 +11,7 @@
 #include <openvino/op/range.hpp>
 
 #include "converters.hpp"
-#include "kernels/cuda_type_traits.hpp"
+#include "kernels/details/cuda_type_traits.hpp"
 #include "kernels/range.hpp"
 
 namespace ov {
@@ -54,9 +54,9 @@ void RangeOp::Execute(const InferenceRequestContext& context,
                       Inputs inputs,
                       Outputs outputs,
                       const Workbuffers& workbuffers) const {
-    Expects(inputs.size() == 3);
-    Expects(outputs.size() == 1);
-    Expects(kernel_op_);
+    OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(kernel_op_, "Node name: ", GetName());
     (*kernel_op_)(context.getThreadContext().stream().get(),
                   inputs[START_INDX].get(),
                   inputs[STEP_INDX].get(),

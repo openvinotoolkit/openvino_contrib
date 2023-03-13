@@ -8,7 +8,7 @@
 
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
-#include <gsl/gsl_assert>
+#include <openvino/core/except.hpp>
 #include <ngraph/node.hpp>
 
 #include "converters.hpp"
@@ -76,8 +76,8 @@ static constexpr long long prod(int a, int b) noexcept { return static_cast<long
 void SoftmaxOp::mapRankAxis(const ov::Shape& shape, int axis) {
     constexpr long long maxint = std::numeric_limits<int>::max();
     const auto rank = shape.size();
-    Expects(rank <= 5 && rank > 0);
-    Expects(axis < rank);
+    OPENVINO_ASSERT(rank <= 5 && rank > 0);
+    OPENVINO_ASSERT(axis < rank);
 
     const int d0 = shape[0];
     const int d1 = take(shape, 1);
@@ -104,46 +104,61 @@ void SoftmaxOp::mapRankAxis(const ov::Shape& shape, int axis) {
             break;
         case 0x32:
             shape_ = {d0 * d1, d2, 1, 1};
-            Ensures(prod(d0, d1) < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) < maxint);
             break;
         case 0x40:
             shape_ = {1, d0, d1 * d2, d3};
-            Ensures(prod(d1, d2) < maxint);
+            OPENVINO_ASSERT(prod(d1, d2) < maxint);
             break;
         case 0x41:
             shape_ = {d0, d1, d2, d3};
             break;
         case 0x42:
             shape_ = {d0 * d1, d2, d3, 1};
-            Ensures(prod(d0, d1) < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) < maxint);
             break;
         case 0x43:
             shape_ = {d0 * d1 * d2, d3, 1, 1};
-            Ensures(prod(d0, d1) * d2 < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) * d2 < maxint);
             break;
         case 0x50:
             shape_ = {1, d0, d1 * d2, d3 * d4};
-            Ensures((prod(d1, d2) < maxint) && (prod(d3, d4) < maxint));
+            OPENVINO_ASSERT((prod(d1, d2) < maxint) && (prod(d3, d4) < maxint));
             break;
         case 0x51:
             shape_ = {d0, d1, d2, d3 * d4};
-            Ensures(prod(d3, d4) < maxint);
+            OPENVINO_ASSERT(prod(d3, d4) < maxint);
             break;
         case 0x52:
             shape_ = {d0 * d1, d2, d3, d4};
-            Ensures(prod(d0, d1) < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) < maxint);
             break;
         case 0x53:
             shape_ = {d0 * d1 * d2, d3, d4, 1};
-            Ensures(prod(d0, d1) * d2 < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) * d2 < maxint);
             break;
         case 0x54:
             shape_ = {d0 * d1 * d2 * d3, d4, 1, 1};
-            Ensures(prod(d0, d1) * d2 * d3 < maxint);
+            OPENVINO_ASSERT(prod(d0, d1) * d2 * d3 < maxint);
             break;
         default:
             throwIEException(
                 fmt::format("Unsupported combination of tensor rank ({}) and axis attribute ({})", rank, axis));
+    }
+}
+
+inline bool isTypeSupported(cudnnDataType_t type) {
+    switch (type) {
+        case CUDNN_DATA_FLOAT:
+        case CUDNN_DATA_DOUBLE:
+        case CUDNN_DATA_HALF:
+#if defined CUDA_HAS_BF16_TYPE
+        case CUDNN_DATA_BFLOAT16:
+#endif
+        case CUDNN_DATA_INT8:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -153,6 +168,9 @@ SoftmaxOp::SoftmaxOp(const CreationContext& context,
                      IndexCollection&& outputIds)
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
       type_{convertDataType<cudnnDataType_t>(node.input(0).get_element_type())} {
+    if (!isTypeSupported(type_)) {
+        throwIEException(fmt::format("SoftmaxOp: unsupported argument type: {}", toString(type_)));
+    }
     const int axis = node.get_axis();
     mapRankAxis(node.input(0).get_shape(), axis);
     tensor_descriptor_.set(cudnnTensorFormat_t::CUDNN_TENSOR_NCHW, type_, 4, shape_.data());
@@ -162,8 +180,8 @@ void SoftmaxOp::Execute(const InferenceRequestContext& context,
                         Inputs inputs,
                         Outputs outputs,
                         const Workbuffers&) const {
-    Expects(inputs.size() == 1);
-    Expects(outputs.size() == 1);
+    OPENVINO_ASSERT(inputs.size() == 1);
+    OPENVINO_ASSERT(outputs.size() == 1);
     throwIfError(cudnnSoftmaxForward(context.getThreadContext().dnnHandle().get(),
                                      cudnnSoftmaxAlgorithm_t::CUDNN_SOFTMAX_ACCURATE,
                                      cudnnSoftmaxMode_t::CUDNN_SOFTMAX_MODE_CHANNEL,

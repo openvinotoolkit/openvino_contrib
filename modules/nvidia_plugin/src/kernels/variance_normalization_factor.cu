@@ -5,8 +5,8 @@
 #include <cuda/math.cuh>
 
 #include "convert.cuh"
+#include "details/typed_functor.hpp"
 #include "kernels/variance_normalization_factor.hpp"
-#include "typed_functor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -59,7 +59,8 @@ VarianceNormalizationFactor::VarianceNormalizationFactor(unsigned blocks_number,
         CASE(f32)
         CASE(f64)
         default:
-            throwIEException(fmt::format("ov::nvidia_gpu::MvnOp: unsupported data type, must be any float point type."));
+            throwIEException(
+                fmt::format("ov::nvidia_gpu::MvnOp: unsupported data type, must be any float point type."));
     }
 #undef CASE
 }

@@ -75,8 +75,8 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
       // double which is not supported by CudaPlugin
       op_desc_{makeDnnOpTensorDescriptor(opType, cudnnDataType_t::CUDNN_DATA_FLOAT, nanPropogationType)},
       op_type_(opType) {
-    Expects(node->get_input_size() == 2);
-    Expects(node->get_output_size() == 1);
+    OPENVINO_ASSERT(node->get_input_size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(node->get_output_size() == 1, "Node name: ", GetName());
     if (!argTypesSupported(in0.type_, in1.type_, out.type_)) {
         // See https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor for
         // supported argument types.
@@ -104,8 +104,8 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
                         out_partial_shape));
     }
     const auto size = in0.array_.size();
-    Expects(in1.array_.size() == size);
-    Expects(out.array_.size() == size);
+    OPENVINO_ASSERT(in1.array_.size() == size, "Node name: ", GetName());
+    OPENVINO_ASSERT(out.array_.size() == size, "Node name: ", GetName());
     bool has_0_broadcasts = false;
     bool has_1_broadcasts = false;
     for (int i = 0; i < size; ++i) {
@@ -124,7 +124,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     dest_index_ = 1;
     if (has_0_broadcasts || has_1_broadcasts) {
         auto broadcast_spec = node->get_autob();
-        if (!(broadcast_spec == ov::op::AutoBroadcastSpec::NUMPY)) {
+        if (!(broadcast_spec == ov::op::AutoBroadcastType::NUMPY)) {
             throwIEException(
                 fmt::format("Unsupported broadcast type for CuDnnTensorOpBase operation: {}", broadcast_spec.m_type));
         }
@@ -145,8 +145,8 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
                                 Inputs inputTensors,
                                 Outputs outputTensors,
                                 const Workbuffers&) const {
-    Expects(inputTensors.size() == 2);
-    Expects(outputTensors.size() == 1);
+    OPENVINO_ASSERT(inputTensors.size() == 2, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
     const auto& bias_input = bias_index_ == 0 ? in0 : in1;
     const auto& dest_input = bias_index_ == 0 ? in1 : in0;
 

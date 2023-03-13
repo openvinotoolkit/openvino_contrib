@@ -6,7 +6,7 @@
 
 #include <cuda_operation_base.hpp>
 #include <kernels/convert_color_i420.hpp>
-#include <kernels/cuda_type_traits.hpp>
+#include <kernels/details/cuda_type_traits.hpp>
 
 #include "converters.hpp"
 #include "openvino/op/i420_to_bgr.hpp"
@@ -44,8 +44,8 @@ public:
             image_h = image_h * 2 / 3;
         }
 
-        Expects(node.get_input_size() == 1 || node.get_input_size() == 3);
-        Expects(node.get_output_size() == 1);
+        OPENVINO_ASSERT(node.get_input_size() == 1 || node.get_input_size() == 3, "Node name: ", GetName());
+        OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
         const auto element_type = node.get_output_element_type(0);
 
@@ -73,9 +73,9 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override {
-        Expects(kernel_);
-        Expects(inputTensors.size() == 1 || inputTensors.size() == 3);
-        Expects(outputTensors.size() == 1);
+        OPENVINO_ASSERT(kernel_, "Node name: ", GetName());
+        OPENVINO_ASSERT(inputTensors.size() == 1 || inputTensors.size() == 3, "Node name: ", GetName());
+        OPENVINO_ASSERT(outputTensors.size() == 1, "Node name: ", GetName());
         auto& stream = context.getThreadContext().stream();
 
         if (inputTensors.size() == 1) {
