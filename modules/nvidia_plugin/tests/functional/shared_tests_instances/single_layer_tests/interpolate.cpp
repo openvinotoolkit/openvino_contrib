@@ -98,7 +98,7 @@ const std::vector<std::vector<float>> smokeTest2DScales = {{2.f, 2.f}};
 
 std::map<std::string, std::string> additional_config = {};
 
-const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
+const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::NEAREST),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
@@ -109,7 +109,7 @@ const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(Inter
                                                          ::testing::ValuesIn(smokeTest4DAxes),
                                                          ::testing::ValuesIn(smokeTest4DScales));
 
-const auto interpolate2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
+const auto interpolate2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::NEAREST),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
@@ -272,7 +272,7 @@ const std::vector<bool> linearAntialias = {true, false};
 const std::vector<std::vector<int64_t>> linearTest2DAxes = {{2, 3}};
 const std::vector<std::vector<float>> linearTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
 const std::vector<std::vector<size_t>> linearTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
-const auto linear2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+const auto linear2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::LINEAR),
                                                     ::testing::ValuesIn(linearShapeCalculationMode),
                                                     ::testing::ValuesIn(linearCoordinateTransformModes),
                                                     ::testing::ValuesIn(linearNearestModes),
@@ -300,7 +300,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_2D_Scale_Test,
 const std::vector<std::vector<int64_t>> linearTest3DAxes = {{2, 3, 4}};
 const std::vector<std::vector<float>> linearTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
 const std::vector<std::vector<size_t>> linearTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
-const auto linear3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+const auto linear3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::LINEAR),
                                                     ::testing::ValuesIn(linearShapeCalculationMode),
                                                     ::testing::ValuesIn(linearCoordinateTransformModes),
                                                     ::testing::ValuesIn(linearNearestModes),
@@ -346,7 +346,7 @@ const std::vector<bool> cubicAntialias = {false};  // Cubic interpolation algo d
 const std::vector<std::vector<int64_t>> cubicTest2DAxes = {{2, 3}};
 const std::vector<std::vector<float>> cubicTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
 const std::vector<std::vector<size_t>> cubicTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
-const auto cubic2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+const auto cubic2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::CUBIC),
                                                    ::testing::ValuesIn(cubicShapeCalculationMode),
                                                    ::testing::ValuesIn(cubicCoordinateTransformModes),
                                                    ::testing::ValuesIn(cubicNearestModes),
@@ -374,7 +374,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_2D_Scale_Test,
 const std::vector<std::vector<int64_t>> cubicTest3DAxes = {{2, 3, 4}};
 const std::vector<std::vector<float>> cubicTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
 const std::vector<std::vector<size_t>> cubicTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
-const auto cubic3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+const auto cubic3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::CUBIC),
                                                    ::testing::ValuesIn(cubicShapeCalculationMode),
                                                    ::testing::ValuesIn(cubicCoordinateTransformModes),
                                                    ::testing::ValuesIn(cubicNearestModes),
