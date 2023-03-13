@@ -35,7 +35,7 @@ std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::N
     for (size_t i = 0; i < axis.size(); ++i) {
         using ShapeCalcMode = ov::op::v4::Interpolate::ShapeCalcMode;
         const auto idx = axis[i];
-        if (node.get_attrs().shape_calculation_mode == ShapeCalcMode::scales) {
+        if (node.get_attrs().shape_calculation_mode == ShapeCalcMode::SCALES) {
             result_scales[idx] = scales[i];
         } else {
             float scale = output_shape[idx] == input_shape[idx]
@@ -50,8 +50,8 @@ std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::N
 bool canApplyUpscaleOptimizing(const InterpolateNearestOp::NodeOp& node, const std::vector<float>& scales) {
     using CoordinateTransformMode = ov::op::v4::Interpolate::CoordinateTransformMode;
     switch (node.get_attrs().coordinate_transformation_mode) {
-        case CoordinateTransformMode::asymmetric:
-        case CoordinateTransformMode::tf_half_pixel_for_nn:
+        case CoordinateTransformMode::ASYMMETRIC:
+        case CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN:
             break;
         default:
             return false;
@@ -59,8 +59,8 @@ bool canApplyUpscaleOptimizing(const InterpolateNearestOp::NodeOp& node, const s
 
     using NearestMode = ov::op::v4::Interpolate::NearestMode;
     switch (node.get_attrs().nearest_mode) {
-        case NearestMode::simple:
-        case NearestMode::floor:
+        case NearestMode::SIMPLE:
+        case NearestMode::FLOOR:
             break;
         default:
             return false;
@@ -118,7 +118,7 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
       out_shape_{node.get_output_shape(0)},
       can_use_upscale_optimizing_{canApplyUpscaleOptimizing(node, scales_)} {
     OPENVINO_ASSERT(
-        node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::nearest, "Node name: ", GetName());
+        node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::NEAREST, "Node name: ", GetName());
     checkLimitations(node);
 
     const auto& prop = context.device().props();

@@ -57,23 +57,23 @@ const std::vector<std::vector<size_t>> yolov5From40To80Shape = {
     {1, 128, 80, 80},
 };
 
-const std::vector<CoordinateTransformMode> coordinateTransformModes = {CoordinateTransformMode::half_pixel,
-                                                                       CoordinateTransformMode::pytorch_half_pixel,
-                                                                       CoordinateTransformMode::asymmetric,
-                                                                       CoordinateTransformMode::tf_half_pixel_for_nn,
-                                                                       CoordinateTransformMode::align_corners};
+const std::vector<CoordinateTransformMode> coordinateTransformModes = {CoordinateTransformMode::HALF_PIXEL,
+                                                                       CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+                                                                       CoordinateTransformMode::ASYMMETRIC,
+                                                                       CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+                                                                       CoordinateTransformMode::ALIGN_CORNERS};
 
 const std::vector<ShapeCalcMode> shapeCalculationMode = {
-    ShapeCalcMode::sizes,
-    ShapeCalcMode::scales,
+    ShapeCalcMode::SIZES,
+    ShapeCalcMode::SCALES,
 };
 
 const std::vector<NearestMode> nearestModes = {
-    NearestMode::round_prefer_floor,
-    NearestMode::round_prefer_ceil,
-    NearestMode::floor,
-    NearestMode::ceil,
-    NearestMode::simple,
+    NearestMode::ROUND_PREFER_FLOOR,
+    NearestMode::ROUND_PREFER_CEIL,
+    NearestMode::FLOOR,
+    NearestMode::CEIL,
+    NearestMode::SIMPLE,
 };
 
 const std::vector<std::vector<size_t>> pads = {
@@ -258,15 +258,15 @@ const std::vector<InferenceEngine::Precision> linearNetPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
 };
-const std::vector<ShapeCalcMode> linearShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<ShapeCalcMode> linearShapeCalculationMode = {ShapeCalcMode::SIZES, ShapeCalcMode::SCALES};
 const std::vector<CoordinateTransformMode> linearCoordinateTransformModes = {
-    CoordinateTransformMode::half_pixel,
-    CoordinateTransformMode::pytorch_half_pixel,
-    CoordinateTransformMode::asymmetric,
-    CoordinateTransformMode::tf_half_pixel_for_nn,
-    CoordinateTransformMode::align_corners,
+    CoordinateTransformMode::HALF_PIXEL,
+    CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+    CoordinateTransformMode::ASYMMETRIC,
+    CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+    CoordinateTransformMode::ALIGN_CORNERS,
 };
-const std::vector<NearestMode> linearNearestModes = {NearestMode::simple};
+const std::vector<NearestMode> linearNearestModes = {NearestMode::SIMPLE};
 const std::vector<bool> linearAntialias = {true, false};
 
 const std::vector<std::vector<int64_t>> linearTest2DAxes = {{2, 3}};
@@ -330,16 +330,16 @@ const std::vector<InferenceEngine::Precision> cubicNetPrecisions = {
     InferenceEngine::Precision::FP32,
 };
 const std::vector<double> cubeCoeffs = {-0.75f, -0.6f};
-const std::vector<ShapeCalcMode> cubicShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<ShapeCalcMode> cubicShapeCalculationMode = {ShapeCalcMode::SIZES, ShapeCalcMode::SCALES};
 const std::vector<CoordinateTransformMode> cubicCoordinateTransformModes = {
-    CoordinateTransformMode::half_pixel,
-    CoordinateTransformMode::pytorch_half_pixel,
-    CoordinateTransformMode::asymmetric,
-    CoordinateTransformMode::tf_half_pixel_for_nn,
-    CoordinateTransformMode::align_corners,
+    CoordinateTransformMode::HALF_PIXEL,
+    CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+    CoordinateTransformMode::ASYMMETRIC,
+    CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+    CoordinateTransformMode::ALIGN_CORNERS,
 };
 const std::vector<NearestMode> cubicNearestModes = {
-    NearestMode::simple  // Cubic interpolation algo doesn't use it.
+    NearestMode::SIMPLE  // Cubic interpolation algo doesn't use it.
 };
 const std::vector<bool> cubicAntialias = {false};  // Cubic interpolation algo doesn't use it.
 
@@ -425,7 +425,7 @@ INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Nearest_Benchmark,
                         nearestBenchmarkParams,
                         InterpolateLayerTest::getTestCaseName);
 
-const std::vector<InterpolateMode> benchmarkInterpolateModes = {InterpolateMode::linear, InterpolateMode::cubic};
+const std::vector<InterpolateMode> benchmarkInterpolateModes = {InterpolateMode::LINEAR, InterpolateMode::CUBIC};
 const std::vector<InferenceEngine::Precision> benchmarkPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
@@ -433,9 +433,9 @@ const std::vector<InferenceEngine::Precision> benchmarkPrecisions = {
 const std::vector<std::vector<float>> benchmarkScales = {{0.5f, 0.5f, 0.5f}, {1.5f, 1.5f, 1.5f}};
 const auto benchmarkParams =
     ::testing::Combine(::testing::Combine(::testing::ValuesIn(benchmarkInterpolateModes),
-                                          ::testing::Values(ShapeCalcMode::scales),
-                                          ::testing::Values(CoordinateTransformMode::half_pixel),
-                                          ::testing::Values(NearestMode::simple),
+                                          ::testing::Values(ShapeCalcMode::SCALES),
+                                          ::testing::Values(CoordinateTransformMode::HALF_PIXEL),
+                                          ::testing::Values(NearestMode::SIMPLE),
                                           ::testing::Values(true),  // antialias
                                           ::testing::ValuesIn(pads),
                                           ::testing::ValuesIn(pads),

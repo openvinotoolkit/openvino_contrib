@@ -30,7 +30,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
     std::stringstream exception_msg;
 
     switch (node->get_attrs().mode) {
-        case InterpolateMode::nearest:
+        case InterpolateMode::NEAREST:
             try {
                 return std::make_shared<InterpolateNearestOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
@@ -38,7 +38,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                 exception_msg << "failed to create InterpolateNearestOp: " << e.what() << "\n";
             }
             break;
-        case InterpolateMode::linear:
+        case InterpolateMode::LINEAR:
             try {
                 return std::make_shared<InterpolateLinearOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
@@ -46,7 +46,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                 exception_msg << "failed to create InterpolateLinearOp: " << e.what() << "\n";
             }
             break;
-        case InterpolateMode::cubic:
+        case InterpolateMode::CUBIC:
             try {
                 return std::make_shared<InterpolateCubicOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
