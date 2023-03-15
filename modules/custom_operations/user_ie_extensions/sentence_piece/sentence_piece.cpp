@@ -65,6 +65,7 @@ SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args, con
     */
     // example of extra_options, if "bos:eos:reverse"
     CHECK_OK(m_sp->SetEncodeExtraOptions(extra_options));
+    constructor_validate_and_infer_types();
 }
 
 void SentencepieceTokenizer::validate_and_infer_types() {
