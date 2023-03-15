@@ -44,12 +44,22 @@ void GraphTransformer::common_transform(const CUDA::Device& device,
                                         const InferenceEngine::InputsDataMap& inputInfoMap,
                                         const InferenceEngine::OutputsDataMap& outputsInfoMap,
                                         const Configuration& config) const {
+    auto inference_precision = config.get_inference_precision();
+    if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
+        throwIEException("Inference precision f16 is not supported by device!");
+    }
+    auto upscale_precision = [&]() -> bool {
+        return !isHalfSupported(device) || inference_precision == ov::element::f32;
+    };
+    auto downscale_precision = [&]() -> bool {
+        return isHalfSupported(device) && inference_precision == ov::element::f16;
+    };
     auto passConfig = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager manager{passConfig};
 
     passConfig->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     passConfig->disable<ov::pass::MVN6Decomposition>();
-    if (!isHalfSupported(device)) {
+    if (upscale_precision()) {
         // Allow FP16 Converts to be folded and FP16 constants to be upgraded to FP32 data type
         passConfig->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
         passConfig->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
@@ -73,12 +83,12 @@ void GraphTransformer::common_transform(const CUDA::Device& device,
     manager.register_pass<ov::pass::CommonOptimizations>();
     manager.register_pass<ov::pass::ReshapePRelu>();
     manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
-    if (!isHalfSupported(device)) {
+    if (upscale_precision()) {
         manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);
-    }
-    if (!isInt8Supported(device)) {
-        manager.register_pass<ov::pass::ConvertPrecision>(
-            ov::element::i8, isHalfSupported(device) ? ov::element::f16 : ov::element::f32);
+    } else {
+        if (downscale_precision()) {
+            manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f32, ov::element::f16);
+        }
     }
     manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(passConfig);
@@ -143,7 +153,7 @@ std::shared_ptr<ov::Model> GraphTransformer::clone_and_export_transform(
     }
     if (needF16toF32) {
         manager.register_pass<ov::pass::ConvertPrecision>(
-            precisions_array{{ov::element::f16, ov::element::f32}});
+            precisions_map{{ov::element::f16, ov::element::f32}});
 
     }
     manager.run_passes(transformed_model);

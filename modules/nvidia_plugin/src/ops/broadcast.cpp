@@ -17,7 +17,7 @@ namespace nvidia_gpu {
 namespace {
 ov::Shape shape_from_constant_value(const ov::Node* constant_node) {
     const ov::op::v0::Constant* constant = dynamic_cast<const ov::op::v0::Constant*>(constant_node);
-    Expects(constant);
+    OPENVINO_ASSERT(constant);
     return constant->cast_vector<ov::Shape::value_type>();
 }
 }  // namespace
@@ -29,7 +29,7 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     const auto out_shape = node.get_output_shape(0);
     ngraph::Shape in_shape = node.get_input_shape(0);
-    Expects(in_shape.size() <= out_shape.size());
+    OPENVINO_ASSERT(in_shape.size() <= out_shape.size(), "Node name: ", GetName());
 
     switch (node.get_broadcast_spec().m_type) {
         case ov::op::BroadcastType::NUMPY:
@@ -37,7 +37,7 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
             break;
         case ov::op::BroadcastType::EXPLICIT: {
             const ov::Shape axes_mapping = shape_from_constant_value(node.get_input_node_ptr(2));
-            Expects(axes_mapping.size() == in_shape.size());
+            OPENVINO_ASSERT(axes_mapping.size() == in_shape.size(), "Node name: ", GetName());
             ov::Shape in_shape_reshaped(out_shape.size(), 1);
             for (size_t i = 0; i < axes_mapping.size(); ++i) {
                 in_shape_reshaped.at(axes_mapping.at(i)) = in_shape.at(i);

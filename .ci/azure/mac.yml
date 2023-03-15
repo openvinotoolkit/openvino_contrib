@@ -120,27 +120,21 @@ jobs:
         -DENABLE_CPPLINT=OFF \
         -S $(OPENVINO_REPO_DIR) \
         -B $(BUILD_DIR)
-    displayName: 'CMake'
+    displayName: 'CMake OpenVINO Contrib'
 
   - script: ninja
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Build Mac'
+    displayName: 'Build OpenVINO Contrib'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List bin files'
 
   - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Install'
+    displayName: 'Install OpenVINO Contrib'
 
   - script: ls -alR $(INSTALL_DIR)
     displayName: 'List install files'
-  
-  - task: PublishBuildArtifacts@1
-    inputs:
-      pathToPublish: $(INSTALL_DIR)
-      artifactName: 'openvino_aarch64_mac'
-    displayName: 'Publish OpenVINO AArch64 Mac package'
 
   - script: |
       . $(SETUPVARS) gradle clean build --info

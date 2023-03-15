@@ -91,7 +91,7 @@ CudaInferRequest::CudaInferRequest(const std::vector<std::shared_ptr<const ov::N
     : IInferRequestInternal(inputs, outputs),
       _executableNetwork(executableNetwork),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_},
+      profiler_{_executableNetwork->GetConfig(ov::enable_profiling.name()).as<bool>(), *_executableNetwork->graph_},
       is_benchmark_mode_{isBenchmarkMode} {
     this->setPointerToExecutableNetworkInternal(executableNetwork);
     createInferRequest();
@@ -104,7 +104,7 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
     : IInferRequestInternal(networkInputs, networkOutputs),
       _executableNetwork(executableNetwork),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{_executableNetwork->cfg_.perfCount, *_executableNetwork->graph_},
+      profiler_{_executableNetwork->GetConfig(ov::enable_profiling.name()).as<bool>(), *_executableNetwork->graph_},
       is_benchmark_mode_{isBenchmarkMode} {
     this->setPointerToExecutableNetworkInternal(executableNetwork);
     createInferRequest();

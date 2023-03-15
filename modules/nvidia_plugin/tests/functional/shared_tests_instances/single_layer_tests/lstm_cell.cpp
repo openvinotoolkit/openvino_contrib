@@ -293,8 +293,8 @@ void testOneShape(const LSTMCellTestParams& params) {
                                                            b_constant,
                                                            params.hidden_size);
 
-        Ensures(ho_size == ov::shape_size(node->get_output_shape(0)));
-        Ensures(co_size == ov::shape_size(node->get_output_shape(1)));
+        OPENVINO_ASSERT(ho_size == ov::shape_size(node->get_output_shape(0)));
+        OPENVINO_ASSERT(co_size == ov::shape_size(node->get_output_shape(1)));
 
         auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{threadContext.device(), optimizeOption},
@@ -305,8 +305,8 @@ void testOneShape(const LSTMCellTestParams& params) {
     }();
 
     ov::nvidia_gpu::WorkbufferRequest wb_request{operation->GetWorkBufferRequest()};
-    Ensures(wb_request.immutable_sizes.size() != 0);
-    Ensures(wb_request.mutable_sizes.size() != 0);
+    OPENVINO_ASSERT(wb_request.immutable_sizes.size() != 0);
+    OPENVINO_ASSERT(wb_request.mutable_sizes.size() != 0);
 
     const auto seq_length_array_size_bytes = wb_request.immutable_sizes[0];
     const auto weight_space_size = wb_request.immutable_sizes.size() > 1 ? wb_request.immutable_sizes[1] : 0;

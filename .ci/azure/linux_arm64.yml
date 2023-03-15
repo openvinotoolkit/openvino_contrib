@@ -162,7 +162,9 @@ jobs:
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
         -DTBB_DIR=$(INSTALL_ONETBB)/lib/cmake/TBB
         -DCMAKE_VERBOSE_MAKEFILE=ON
-        -DOPENVINO_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules/arm_plugin
+        -DBUILD_nvidia_plugin=OFF
+        -DBUILD_java_api=OFF
+        -DOPENVINO_EXTRA_MODULES=$(OPENVINO_CONTRIB_REPO_DIR)/modules
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
         -DCMAKE_C_COMPILER_LAUNCHER=ccache
         -DARM_COMPUTE_SCONS_JOBS=$(NUM_PROC)
@@ -170,7 +172,7 @@ jobs:
         -DCMAKE_INSTALL_PREFIX=$(INSTALL_OPENVINO)
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_OPENVINO)
-    displayName: 'CMake OpenVINO ARM plugin'
+    displayName: 'CMake OpenVINO Contrib'
 
   - script: |
       export CCACHE_DIR=$(OPENVINO_CCACHE_DIR)
@@ -180,11 +182,11 @@ jobs:
       export USE_CCACHE=1
       ninja
     workingDirectory: $(BUILD_OPENVINO)
-    displayName: 'Build OpenVINO ARM plugin'
+    displayName: 'Build OpenVINO Contrib'
 
   - script: ninja install
     workingDirectory: $(BUILD_OPENVINO)
-    displayName: 'Install OpenVINO ARM plugin'
+    displayName: 'Install OpenVINO Contrib'
 
   - task: CMake@1
     inputs:
@@ -254,7 +256,7 @@ jobs:
       cp -r $(INSTALL_ONETBB)/* $(INSTALL_ONETBB_PACKAGE)/
       zip -9 -r $(Build.ArtifactStagingDirectory)/openvino_$(OPENVINO_ARCH)_linux.zip ./*
     workingDirectory: $(INSTALL_OPENVINO)
-    displayName: 'Create OpenVINO ARM64 linux package'
+    displayName: 'Create OpenVINO Contrib AArch64 Linux package'
 
   - task: PublishBuildArtifacts@1
     inputs:
