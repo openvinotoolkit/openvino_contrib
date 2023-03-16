@@ -8,7 +8,7 @@
 
 using namespace ArmPlugin;
 
-NGRAPH_RTTI_DEFINITION(pass::ConvertBatchNormInferenceV0toV5, "ConvertBatchNormInferenceV0toV5");
+OPENVINO_OP(pass::ConvertBatchNormInferenceV0toV5, "ConvertBatchNormInferenceV0toV5");
 
 pass::ConvertBatchNormInferenceV0toV5::ConvertBatchNormInferenceV0toV5() {
     register_matcher(

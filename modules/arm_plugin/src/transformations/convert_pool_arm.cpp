@@ -7,7 +7,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmMaxPoolV1, "ConvertArmMaxPoolV1");
+OPENVINO_OP(ArmPlugin::pass::ConvertArmMaxPoolV1, "ConvertArmMaxPoolV1");
 ArmPlugin::pass::ConvertArmMaxPoolV1::ConvertArmMaxPoolV1() {
     auto max_pool = ngraph::pattern::wrap_type<ov::op::v1::MaxPool>();
 
@@ -34,7 +34,7 @@ ArmPlugin::pass::ConvertArmMaxPoolV1::ConvertArmMaxPoolV1() {
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmMaxPoolV8, "ConvertArmMaxPoolV8");
+OPENVINO_OP(ArmPlugin::pass::ConvertArmMaxPoolV8, "ConvertArmMaxPoolV8");
 ArmPlugin::pass::ConvertArmMaxPoolV8::ConvertArmMaxPoolV8() {
     auto max_pool = ngraph::pattern::wrap_type<ov::op::v8::MaxPool>();
 
@@ -64,7 +64,7 @@ ArmPlugin::pass::ConvertArmMaxPoolV8::ConvertArmMaxPoolV8() {
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertArmAvgPool, "ConvertArmAvgPool");
+OPENVINO_OP(ArmPlugin::pass::ConvertArmAvgPool, "ConvertArmAvgPool");
 ArmPlugin::pass::ConvertArmAvgPool::ConvertArmAvgPool() {
     auto avg_pool = ngraph::pattern::wrap_type<ov::op::v1::AvgPool>();
 

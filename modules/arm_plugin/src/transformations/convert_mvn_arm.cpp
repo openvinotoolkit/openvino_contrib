@@ -7,7 +7,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMVN, "ConvertMVN");
+OPENVINO_OP(ArmPlugin::pass::ConvertMVN, "ConvertMVN");
 ArmPlugin::pass::ConvertMVN::ConvertMVN() {
     auto mvn = ngraph::pattern::wrap_type<opset::MVN>();
 

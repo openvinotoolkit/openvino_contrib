@@ -10,7 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGRN, "ConvertGRN");
+OPENVINO_OP(ArmPlugin::pass::ConvertGRN, "ConvertGRN");
 ArmPlugin::pass::ConvertGRN::ConvertGRN() {
     auto grn = ngraph::pattern::wrap_type<opset::GRN>();
 

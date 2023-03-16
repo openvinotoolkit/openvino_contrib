@@ -75,7 +75,7 @@ std::shared_ptr<ArmPlugin::opset::Constant> get_reshape_order(const std::shared_
     return {};
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertTransposeMatMul, "ConvertTransposeMatMul");
+OPENVINO_OP(ArmPlugin::pass::ConvertTransposeMatMul, "ConvertTransposeMatMul");
 ArmPlugin::pass::ConvertTransposeMatMul::ConvertTransposeMatMul() {
     auto matmul = std::make_shared<opset::MatMul>(ngraph::pattern::any_input(), ngraph::pattern::any_input());
     matcher_pass_callback callback = [](ngraph::pattern::Matcher& m) {
