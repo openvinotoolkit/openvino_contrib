@@ -9,7 +9,7 @@
 
 using namespace ArmPlugin;
 
-OPENVINO_OP(ArmPlugin::pass::ConvertLogicalBase, "ConvertLogicalBase");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalBase, "ConvertLogicalBase");
 template <class T>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertLogicalBase::convert_logical() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -40,7 +40,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertLogicalBase::convert_logic
     };
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertLogicalNot, "ConvertLogicalNot");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalNot, "ConvertLogicalNot");
 ArmPlugin::pass::ConvertLogicalNot::ConvertLogicalNot() {
     auto logical_not = std::make_shared<opset::LogicalNot>(ngraph::pattern::any_input());
 
@@ -67,7 +67,7 @@ ArmPlugin::pass::ConvertLogicalNot::ConvertLogicalNot() {
     register_matcher(m, callback);
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertLogicalAnd, "ConvertLogicalAnd");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalAnd, "ConvertLogicalAnd");
 ArmPlugin::pass::ConvertLogicalAnd::ConvertLogicalAnd() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalAnd>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -76,7 +76,7 @@ ArmPlugin::pass::ConvertLogicalAnd::ConvertLogicalAnd() {
     register_matcher(m, convert_logical<opset::LogicalAnd>());
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertLogicalOr, "ConvertLogicalOr");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalOr, "ConvertLogicalOr");
 ArmPlugin::pass::ConvertLogicalOr::ConvertLogicalOr() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalOr>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -85,7 +85,7 @@ ArmPlugin::pass::ConvertLogicalOr::ConvertLogicalOr() {
     register_matcher(m, convert_logical<opset::LogicalOr>());
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertLogicalXor, "ConvertLogicalXor");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertLogicalXor, "ConvertLogicalXor");
 ArmPlugin::pass::ConvertLogicalXor::ConvertLogicalXor() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::LogicalXor>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

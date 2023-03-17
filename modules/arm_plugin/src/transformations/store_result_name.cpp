@@ -6,7 +6,7 @@
 #include "store_result_name.hpp"
 #include "transformations/utils/utils.hpp"
 
-OPENVINO_OP(ArmPlugin::pass::StoreResultName, "StoreResultName");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::StoreResultName, "StoreResultName");
 bool ArmPlugin::pass::StoreResultName::run_on_model(const std::shared_ptr<ov::Model>& m) {
     for (auto&& node : m->get_results()) {
         IE_ASSERT(node->inputs().size() == 1);

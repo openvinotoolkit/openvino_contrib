@@ -10,7 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-OPENVINO_OP(ArmPlugin::pass::ConvertConv1DBase, "ConvertConv1DBase");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertConv1DBase, "ConvertConv1DBase");
 template <class Conv>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConv1DBase::convert_conv1d_to_conv2d() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -56,7 +56,7 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConv1DBase::convert_conv1d
     };
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertConv1D, "ConvertConv1D");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertConv1D, "ConvertConv1D");
 ArmPlugin::pass::ConvertConv1D::ConvertConv1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
         ngraph::pattern::wrap_type<opset::Convolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -65,7 +65,7 @@ ArmPlugin::pass::ConvertConv1D::ConvertConv1D() {
     register_matcher(m, convert_conv1d_to_conv2d<opset::Convolution>());
 }
 
-OPENVINO_OP(ArmPlugin::pass::ConvertGroupConv1D, "ConvertGroupConv1D");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGroupConv1D, "ConvertGroupConv1D");
 ArmPlugin::pass::ConvertGroupConv1D::ConvertGroupConv1D() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::GroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),

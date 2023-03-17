@@ -8,7 +8,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-OPENVINO_OP(ArmPlugin::pass::DecomposeMish, "DecomposeMish");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DecomposeMish, "DecomposeMish");
 ArmPlugin::pass::DecomposeMish::DecomposeMish() {
     auto mish = ngraph::pattern::wrap_type<opset::Mish>();
 

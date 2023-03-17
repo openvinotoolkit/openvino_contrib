@@ -8,7 +8,7 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include <ngraph/rt_info.hpp>
 
-OPENVINO_OP(ArmPlugin::pass::ReplacePowerByMul, "ReplacePowerByMul");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ReplacePowerByMul, "ReplacePowerByMul");
 ArmPlugin::pass::ReplacePowerByMul::ReplacePowerByMul() {
     auto constant_pattern = ngraph::pattern::wrap_type<opset::Constant>();
     auto power_pattern = ngraph::pattern::wrap_type<opset::Power>({

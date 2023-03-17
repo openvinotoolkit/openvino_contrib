@@ -10,7 +10,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-OPENVINO_OP(ArmPlugin::pass::BroadcastSelect, "BroadcastSelect");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::BroadcastSelect, "BroadcastSelect");
 ArmPlugin::pass::BroadcastSelect::BroadcastSelect() {
     auto select = ngraph::pattern::wrap_type<opset::Select>();
 

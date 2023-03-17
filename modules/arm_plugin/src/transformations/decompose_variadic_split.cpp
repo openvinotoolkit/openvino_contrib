@@ -8,7 +8,7 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-OPENVINO_OP(ArmPlugin::pass::DecomposeVariadicSplit, "DecomposeVariadicSplit");
+NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::DecomposeVariadicSplit, "DecomposeVariadicSplit");
 ArmPlugin::pass::DecomposeVariadicSplit::DecomposeVariadicSplit() {
     auto split = ngraph::pattern::wrap_type<opset::VariadicSplit>();
 

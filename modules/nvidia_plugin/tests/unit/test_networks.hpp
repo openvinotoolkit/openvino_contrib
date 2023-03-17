@@ -27,7 +27,7 @@ inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
 
 class SuperDummyOp : public ov::op::Op {
 public:
-    inline static constexpr type_info_t type_info{"SuperOperation", "opset0"};
+    inline static constexpr type_info_t type_info{"SuperOperation"};
     const type_info_t& get_type_info() const override { return type_info; }
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override {
