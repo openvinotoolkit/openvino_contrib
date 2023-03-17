@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertBatchNormInference: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertBatchNormInference");
+    OPENVINO_RTTI("ConvertBatchNormInference");
     ConvertBatchNormInference();
 };
 }  // namespace pass

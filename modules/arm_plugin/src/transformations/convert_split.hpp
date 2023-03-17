@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertSplit: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertSplit");
+    OPENVINO_RTTI("ConvertSplit");
     ConvertSplit();
 };
 }  // namespace pass

@@ -10,7 +10,7 @@ namespace pass {
 
 class ReplacePowerByMul: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ReplacePowerByMul");
+    OPENVINO_RTTI("ReplacePowerByMul");
     ReplacePowerByMul();
 };
 }  // namespace pass

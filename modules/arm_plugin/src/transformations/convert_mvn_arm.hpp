@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertMVN: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertMVN");
+    OPENVINO_RTTI("ConvertMVN");
     ConvertMVN();
 };
 }  // namespace pass

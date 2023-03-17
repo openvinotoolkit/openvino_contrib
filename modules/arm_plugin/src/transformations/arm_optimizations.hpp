@@ -11,7 +11,7 @@ namespace pass {
 
 class ArmOptimizations: public ov::pass::ModelPass {
 public:
-    OPENVINO_OP("ArmOptimizations");
+    OPENVINO_RTTI("ArmOptimizations");
     ArmOptimizations(const bool lpt, const bool dump) : _lpt{lpt}, _dump{dump} {}
     bool run_on_model(const std::shared_ptr<ov::Model> &m) override;
 

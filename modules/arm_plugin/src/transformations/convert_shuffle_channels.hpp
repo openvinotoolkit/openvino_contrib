@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertShuffleChannels: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertShuffleChannels");
+    OPENVINO_RTTI("ConvertShuffleChannels");
     ConvertShuffleChannels();
 };
 }  // namespace pass

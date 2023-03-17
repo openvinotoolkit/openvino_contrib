@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertGroupConvolution: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertGroupConvolution");
+    OPENVINO_RTTI("ConvertGroupConvolution");
     ConvertGroupConvolution();
 };
 }  // namespace pass

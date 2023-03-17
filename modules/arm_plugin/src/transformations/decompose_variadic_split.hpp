@@ -10,7 +10,7 @@ namespace pass {
 
 class DecomposeVariadicSplit: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("DecomposeVariadicSplit");
+    OPENVINO_RTTI("DecomposeVariadicSplit");
     DecomposeVariadicSplit();
 };
 }  // namespace pass

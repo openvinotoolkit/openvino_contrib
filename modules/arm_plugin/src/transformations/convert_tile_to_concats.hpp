@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertTile: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertTile");
+    OPENVINO_RTTI("ConvertTile");
     ConvertTile();
 };
 }  // namespace pass

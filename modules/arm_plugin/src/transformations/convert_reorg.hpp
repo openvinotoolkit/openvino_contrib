@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertReorgYolo: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertReorgYolo");
+    OPENVINO_RTTI("ConvertReorgYolo");
     ConvertReorgYolo();
 };
 }  // namespace pass

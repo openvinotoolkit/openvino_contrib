@@ -12,26 +12,26 @@ namespace pass {
 
 class ConvertPrecisionBase : public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertPrecisionBase");
+    OPENVINO_RTTI("ConvertPrecisionBase");
     template <class T>
     ngraph::matcher_pass_callback convert_precision(const std::vector<int>& indices);
 };
 
 class ConvertPReluPrecision: public ConvertPrecisionBase {
 public:
-    OPENVINO_OP("ConvertPReluPrecision");
+    OPENVINO_RTTI("ConvertPReluPrecision");
     ConvertPReluPrecision();
 };
 
 class ConvertProposalPrecision: public ConvertPrecisionBase {
 public:
-    OPENVINO_OP("ConvertProposalPrecision");
+    OPENVINO_RTTI("ConvertProposalPrecision");
     ConvertProposalPrecision();
 };
 
 class ConvertInterpolatePrecision: public ConvertPrecisionBase {
 public:
-    OPENVINO_OP("ConvertInterpolatePrecision");
+    OPENVINO_RTTI("ConvertInterpolatePrecision");
     ConvertInterpolatePrecision();
 };
 

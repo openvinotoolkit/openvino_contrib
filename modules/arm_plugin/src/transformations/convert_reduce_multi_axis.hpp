@@ -11,20 +11,20 @@ namespace pass {
 
 class ConvertReduceMultiAxisBase : public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertReduceMultiAxisBase");
+    OPENVINO_RTTI("ConvertReduceMultiAxisBase");
     template <class T>
     ngraph::matcher_pass_callback convert_reduce();
 };
 
 class ConvertReduceProd: public ConvertReduceMultiAxisBase {
 public:
-    OPENVINO_OP("ConvertReduceProd");
+    OPENVINO_RTTI("ConvertReduceProd");
     ConvertReduceProd();
 };
 
 class ConvertReduceMin: public ConvertReduceMultiAxisBase {
 public:
-    OPENVINO_OP("ConvertReduceMin");
+    OPENVINO_RTTI("ConvertReduceMin");
     ConvertReduceMin();
 };
 

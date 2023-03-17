@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertTransposeMatMul: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertTransposeMatMul");
+    OPENVINO_RTTI("ConvertTransposeMatMul");
     ConvertTransposeMatMul();
 };
 }  // namespace pass

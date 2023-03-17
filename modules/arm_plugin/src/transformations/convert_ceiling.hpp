@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertCeiling: public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertCeiling");
+    OPENVINO_RTTI("ConvertCeiling");
     ConvertCeiling();
 };
 }  // namespace pass

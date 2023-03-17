@@ -10,20 +10,20 @@ namespace pass {
 
 class ConvertArmConvertBase : public ngraph::pass::MatcherPass {
 public:
-    OPENVINO_OP("ConvertArmConvertBase");
+    OPENVINO_RTTI("ConvertArmConvertBase");
     template <class T>
     ngraph::matcher_pass_callback convert_to_arm_convert();
 };
 
 class ConvertArmConvert : public ConvertArmConvertBase {
 public:
-    OPENVINO_OP("ConvertArmConvert");
+    OPENVINO_RTTI("ConvertArmConvert");
     ConvertArmConvert();
 };
 
 class ConvertArmConvertLike : public ConvertArmConvertBase {
 public:
-    OPENVINO_OP("ConvertArmConvertLike");
+    OPENVINO_RTTI("ConvertArmConvertLike");
     ConvertArmConvertLike();
 };
 }  // namespace pass
