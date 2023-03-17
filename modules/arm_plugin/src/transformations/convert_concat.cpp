@@ -7,7 +7,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertConcat, "ConvertConcat");
 ArmPlugin::pass::ConvertConcat::ConvertConcat() {
     auto concat = ngraph::pattern::wrap_type<opset::Concat>();
 

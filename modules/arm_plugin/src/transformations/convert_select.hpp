@@ -10,7 +10,7 @@ namespace pass {
 
 class BroadcastSelect: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("BroadcastSelect");
     BroadcastSelect();
 };
 }  // namespace pass

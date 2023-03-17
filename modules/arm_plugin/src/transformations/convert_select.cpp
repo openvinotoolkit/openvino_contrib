@@ -10,7 +10,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::BroadcastSelect, "BroadcastSelect");
 ArmPlugin::pass::BroadcastSelect::BroadcastSelect() {
     auto select = ngraph::pattern::wrap_type<opset::Select>();
 

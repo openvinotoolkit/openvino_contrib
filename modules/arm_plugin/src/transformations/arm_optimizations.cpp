@@ -105,7 +105,6 @@
 
 #include "arm_optimizations.hpp"
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ArmOptimizations, "ArmOptimizations");
 void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ov::Model>& m, const std::string& postfix) {
     if (_dump) {
         ngraph::pass::VisualizeTree{m->get_friendly_name() + "_" + postfix +

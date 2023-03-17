@@ -11,37 +11,37 @@ namespace pass {
 
 class ConvertQuantize: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertQuantize");
     ConvertQuantize();
 };
 
 class ConvolutionQuantizeFusion : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvolutionQuantizeFusion");
     ConvolutionQuantizeFusion();
 };
 
 class MeanQuantizeFusion : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("MeanQuantizeFusion");
     MeanQuantizeFusion();
 };
 
 class DequantizeInputFusion : public ngraph::pass::MatcherPass{
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("DequantizeInputFusion");
     DequantizeInputFusion();
 };
 
 class AddDequantizeOnInputs: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("AddDequantizeOnInputs");
     AddDequantizeOnInputs();
 };
 
 class ConvertBiasToI32: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertBiasToI32");
     ConvertBiasToI32();
 };
 

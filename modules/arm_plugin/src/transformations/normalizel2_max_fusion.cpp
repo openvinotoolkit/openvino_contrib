@@ -9,7 +9,6 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include "transformations/utils/utils.hpp"
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::NormalizeL2Fusion, "NormalizeL2Fusion");
 ArmPlugin::pass::NormalizeL2Fusion::NormalizeL2Fusion() {
     auto input = ngraph::pattern::any_input();
     auto exp = ngraph::pattern::wrap_type<opset::Constant>();

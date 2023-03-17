@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertInterpolate: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertInterpolate");
     ConvertInterpolate();
 };
 }  // namespace pass

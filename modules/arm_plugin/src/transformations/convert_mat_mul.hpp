@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertMatMulToFC: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertMatMulToFC");
     ConvertMatMulToFC();
 };
 }  // namespace pass

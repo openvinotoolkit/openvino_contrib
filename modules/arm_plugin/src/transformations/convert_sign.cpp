@@ -10,7 +10,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertSign, "ConvertSign");
 ArmPlugin::pass::ConvertSign::ConvertSign() {
     auto sign = ngraph::pattern::wrap_type<opset::Sign>();
 

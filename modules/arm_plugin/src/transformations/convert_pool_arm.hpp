@@ -10,19 +10,19 @@ namespace pass {
 
 class ConvertArmMaxPoolV1: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertArmMaxPoolV1");
     ConvertArmMaxPoolV1();
 };
 
 class ConvertArmMaxPoolV8: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertArmMaxPoolV8");
     ConvertArmMaxPoolV8();
 };
 
 class ConvertArmAvgPool: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertArmAvgPool");
     ConvertArmAvgPool();
 };
 

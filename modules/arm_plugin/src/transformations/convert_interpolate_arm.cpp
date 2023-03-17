@@ -65,7 +65,6 @@ bool isSupportedConfiguration(const ngraph::op::v4::Interpolate& node) {
     return false;
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertInterpolate, "ConvertInterpolate");
 ArmPlugin::pass::ConvertInterpolate::ConvertInterpolate() {
     auto interp = ngraph::pattern::wrap_type<opset::Interpolate>();
 

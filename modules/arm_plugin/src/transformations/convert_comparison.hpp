@@ -11,44 +11,44 @@ namespace pass {
 
 class ConvertComparisionBase : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertComparisionBase");
     template <class T>
     ngraph::matcher_pass_callback convert_comparision();
 };
 
 class ConvertEqual: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertEqual");
     ConvertEqual();
 };
 
 class ConvertNotEqual: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertNotEqual");
     ConvertNotEqual();
 };
 
 class ConvertGreater: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertGreater");
     ConvertGreater();
 };
 
 class ConvertGreaterEqual: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertGreaterEqual");
     ConvertGreaterEqual();
 };
 
 class ConvertLess: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertLess");
     ConvertLess();
 };
 
 class ConvertLessEqual: public ConvertComparisionBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertLessEqual");
     ConvertLessEqual();
 };
 

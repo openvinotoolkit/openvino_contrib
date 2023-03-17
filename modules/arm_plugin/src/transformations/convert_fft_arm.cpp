@@ -86,7 +86,6 @@ static bool convert_fft(const std::shared_ptr<T>& fft, bool inverse) {
     return true;
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertDFT, "ConvertDFT");
 ArmPlugin::pass::ConvertDFT::ConvertDFT() {
     auto fft = ngraph::pattern::wrap_type<opset::DFT>();
 
@@ -98,7 +97,6 @@ ArmPlugin::pass::ConvertDFT::ConvertDFT() {
     register_matcher(m, callback);
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertIDFT, "ConvertIDFT");
 ArmPlugin::pass::ConvertIDFT::ConvertIDFT() {
     auto fft = ngraph::pattern::wrap_type<opset::IDFT>();
 

@@ -15,6 +15,6 @@ class ConvertBatchNormInferenceV0toV5;
 
 class ArmPlugin::pass::ConvertBatchNormInferenceV0toV5 : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertBatchNormInferenceV0toV5");
     ConvertBatchNormInferenceV0toV5();
 };

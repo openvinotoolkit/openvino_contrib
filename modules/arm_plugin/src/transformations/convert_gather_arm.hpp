@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertGather: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_OP("ConvertGather");
     ConvertGather();
 };
 }  // namespace pass
