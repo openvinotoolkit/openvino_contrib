@@ -8,7 +8,6 @@
 #include <ngraph/pattern/op/wrap_type.hpp>
 #include "ngraph/validation_util.hpp"
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertSliceToArm, "ConvertSliceToArm", 0);
 ArmPlugin::pass::ConvertSliceToArm::ConvertSliceToArm() {
     auto slice = ngraph::pattern::wrap_type<ngraph::op::v8::Slice>();
 

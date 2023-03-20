@@ -10,12 +10,12 @@ namespace pass {
 
 class ConvertDFT: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertDFT");
     ConvertDFT();
 };
 class ConvertIDFT: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertIDFT");
     ConvertIDFT();
 };
 }  // namespace pass

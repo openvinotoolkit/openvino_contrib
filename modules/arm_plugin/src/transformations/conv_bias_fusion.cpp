@@ -19,7 +19,6 @@ using namespace ArmPlugin;
 enum Layout {N, C, H, W};
 enum Inputs {Data, Weights, Bias};
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvBiasFusionBase, "ConvBiasFusionBase", 0);
 template <class Conv, class Eltwise>
 void ArmPlugin::pass::ConvBiasFusionBase::registerMatcher(const std::string& name) {
     auto conv_pattern = ngraph::pattern::wrap_type<Conv>(ngraph::pattern::consumers_count(1));
@@ -108,7 +107,6 @@ void ArmPlugin::pass::ConvBiasFusionBase::registerMatcher(const std::string& nam
     });
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertConvBase, "ConvertConvBase", 0);
 template <class Conv, class ArmConv>
 ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_arm_conv() {
     return [&](ngraph::pattern::Matcher& m) {
@@ -154,7 +152,6 @@ ngraph::matcher_pass_callback ArmPlugin::pass::ConvertConvBase::convert_conv_to_
 
 // ----------------------------------------ConvertConvolution----------------------------------------
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertSingleConvolutionToArm, "ConvertSingleConvolutionToArm", 0);
 ArmPlugin::pass::ConvertSingleConvolutionToArm::ConvertSingleConvolutionToArm() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
         ngraph::pattern::wrap_type<opset::Convolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -163,7 +160,6 @@ ArmPlugin::pass::ConvertSingleConvolutionToArm::ConvertSingleConvolutionToArm() 
     register_matcher(m, convert_conv_to_arm_conv<opset::Convolution, opset::ArmConvolution>());
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertGroupConvolutionToArm, "ConvertGroupConvolutionToArm", 0);
 ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::GroupConvolution>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape()),
@@ -173,12 +169,10 @@ ArmPlugin::pass::ConvertGroupConvolutionToArm::ConvertGroupConvolutionToArm() {
 }
 
 // ------------------------------------------ConvBiasFusion------------------------------------------
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvAddFusion, "ConvAddFusion", 0);
 ArmPlugin::pass::ConvAddFusion::ConvAddFusion() {
     registerMatcher<opset::ArmConvolution, opset::Add>("ConvAddFusion");
 }
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::GroupConvAddFusion, "GroupConvAddFusion", 0);
 ArmPlugin::pass::GroupConvAddFusion::GroupConvAddFusion() {
     registerMatcher<opset::ArmGroupConvolution, opset::Add>("GroupConvAddFusion");
 }

@@ -12,38 +12,38 @@ namespace pass {
 
 class ConvertEltwiseBase : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertEltwiseBase");
     template <class T>
     ngraph::matcher_pass_callback convert_eltwise();
 };
 
 class ConvertAdd: public ConvertEltwiseBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertAdd");
     ConvertAdd();
 };
 
 class ConvertSubtract: public ConvertEltwiseBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertSubtract");
     ConvertSubtract();
 };
 
 class ConvertMultiply: public ConvertEltwiseBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertMultiply");
     ConvertMultiply();
 };
 
 class ConvertMinimum: public ConvertEltwiseBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertMinimum");
     ConvertMinimum();
 };
 
 class ConvertMaximum: public ConvertEltwiseBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertMaximum");
     ConvertMaximum();
 };
 

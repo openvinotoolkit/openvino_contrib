@@ -10,7 +10,7 @@ namespace pass {
 
 class NormalizeL2Fusion: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("NormalizeL2Fusion");
     NormalizeL2Fusion();
 };
 }  // namespace pass

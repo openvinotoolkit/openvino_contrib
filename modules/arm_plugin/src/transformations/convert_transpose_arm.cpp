@@ -7,7 +7,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertTranspose, "ConvertTranspose", 0);
 ArmPlugin::pass::ConvertTranspose::ConvertTranspose() {
     auto transpose = ngraph::pattern::wrap_type<opset::Transpose>();
 

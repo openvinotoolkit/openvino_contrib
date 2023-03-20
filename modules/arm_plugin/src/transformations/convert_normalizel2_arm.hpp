@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertNormalizeL2ToArm: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertNormalizeL2ToArm");
     ConvertNormalizeL2ToArm();
 };
 }  // namespace pass

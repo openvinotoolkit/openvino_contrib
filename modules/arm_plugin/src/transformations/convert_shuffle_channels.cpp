@@ -10,7 +10,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertShuffleChannels, "ConvertShuffleChannels", 0);
 ArmPlugin::pass::ConvertShuffleChannels::ConvertShuffleChannels() {
     auto shuffle = ngraph::pattern::wrap_type<opset::ShuffleChannels>();
 

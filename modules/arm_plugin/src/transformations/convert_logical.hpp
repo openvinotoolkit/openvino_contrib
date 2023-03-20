@@ -11,32 +11,32 @@ namespace pass {
 
 class ConvertLogicalBase : public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertLogicalBase");
     template <class T>
     ngraph::matcher_pass_callback convert_logical();
 };
 
 class ConvertLogicalNot: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertLogicalNot");
     ConvertLogicalNot();
 };
 
 class ConvertLogicalAnd: public ConvertLogicalBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertLogicalAnd");
     ConvertLogicalAnd();
 };
 
 class ConvertLogicalOr: public ConvertLogicalBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertLogicalOr");
     ConvertLogicalOr();
 };
 
 class ConvertLogicalXor: public ConvertLogicalBase {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertLogicalXor");
     ConvertLogicalXor();
 };
 

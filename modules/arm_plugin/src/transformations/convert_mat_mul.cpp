@@ -10,7 +10,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMatMulToFC, "ConvertMatMulToFC", 0);
 ArmPlugin::pass::ConvertMatMulToFC::ConvertMatMulToFC() {
     auto matmul = ngraph::pattern::wrap_type<opset::MatMul>();
 

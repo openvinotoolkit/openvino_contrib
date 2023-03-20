@@ -11,7 +11,7 @@ namespace pass {
 
 class MatMulBiasFusion: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("MatMulBiasFusion");
     MatMulBiasFusion();
 };
 }  // namespace pass

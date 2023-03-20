@@ -7,7 +7,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertSplit, "ConvertSplit", 0);
 ArmPlugin::pass::ConvertSplit::ConvertSplit() {
     register_matcher(std::make_shared<ngraph::pattern::Matcher>(ngraph::pattern::wrap_type<opset::Split>(), "ConvertSplit"),
         [](ngraph::pattern::Matcher& m) {

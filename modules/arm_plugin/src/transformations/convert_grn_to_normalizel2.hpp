@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertGRN: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertGRN");
     ConvertGRN();
 };
 }  // namespace pass
