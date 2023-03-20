@@ -39,13 +39,19 @@ namespace {
     }
 }  // namespace
 
-SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args, const std::vector<char>& sp_model,
-    int32_t nbest_size, float alpha,
+SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args, int32_t nbest_size, float alpha,
     bool add_bos, bool add_eos, bool reverse) : m_sp(std::make_shared<SentencePieceProcessor>()),
-    m_sp_model(sp_model), m_nbest_size(nbest_size), m_alpha(alpha), m_add_bos(add_bos), m_add_eos(add_eos),
+    m_nbest_size(nbest_size), m_alpha(alpha), m_add_bos(add_bos), m_add_eos(add_eos),
     m_reverse(reverse), Op(args) {
+    FRONT_END_GENERAL_CHECK(args.size() == 2, "SentencepieceTokenizer expects two inputs: sp model and input sentences");
+    auto sp_model_const = as_type_ptr<ov::opset10::Constant>(args[0].get_node_shared_ptr());
+    FRONT_END_GENERAL_CHECK(sp_model_const, "SentencepieceTokenizer expects SentencePiece model to be constant.");
+    //sp_model_const->get_data_ptr()
+    auto spm_model = static_cast<const char*>(sp_model_const->get_data_ptr());
+    auto spm_model_size = sp_model_const->get_byte_size();
+
     // configure SentencePieceProcessor
-    std::string model_proto(m_sp_model.data(), m_sp_model.size());
+    std::string model_proto(spm_model, spm_model_size);
     CHECK_OK(m_sp->LoadFromSerializedProto(model_proto));
 
     // form extra options to configure SentencePieceProcessor
@@ -76,12 +82,21 @@ void SentencepieceTokenizer::validate_and_infer_types() {
     set_output_type(2, element::i32, PartialShape{ Dimension(2) });  // FIXME: change to i64 after CPU fix
 }
 
+bool SentencepieceTokenizer::visit_attributes(ov::AttributeVisitor& visitor) {
+    visitor.on_attribute("nbest_size", m_nbest_size);
+    visitor.on_attribute("alpha", m_alpha);
+    visitor.on_attribute("add_bos", m_add_bos);
+    visitor.on_attribute("add_eos", m_add_eos);
+    visitor.on_attribute("reverse", m_reverse);
+    return true;
+}
+
 bool SentencepieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     std::vector<int32_t> sparse_indices;
     std::vector<int32_t> sparse_values;
     std::vector<int32_t> sparse_dense_shape;
 
-    const uint8_t* strings = inputs[0].data<uint8_t>();
+    const uint8_t* strings = inputs[1].data<uint8_t>();
     auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
     auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
     auto end_ids = begin_ids + 1;
@@ -119,7 +134,7 @@ bool SentencepieceTokenizer::has_evaluate() const {
 }
 
 std::shared_ptr<ov::Node> SentencepieceTokenizer::clone_with_new_inputs(const ov::OutputVector& new_args) const {
-    return std::make_shared<SentencepieceTokenizer>(new_args, m_sp_model, m_nbest_size, m_alpha, m_add_bos, m_add_eos, m_reverse);
+    return std::make_shared<SentencepieceTokenizer>(new_args, m_nbest_size, m_alpha, m_add_bos, m_add_eos, m_reverse);
 }
 
 OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& node) {
@@ -146,7 +161,6 @@ OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& 
     // prepare input 0 - SentencePieceTokenizer configuration model
     auto sp_model_const = as_type_ptr<ov::opset10::Constant>(sp_tokenize_op->input_value(0).get_node_shared_ptr());
     FRONT_END_GENERAL_CHECK(sp_model_const, "Conversion expects SentencePiece model to be constant.");
-    auto sp_model = sp_model_const->cast_vector<char>();
 
     // prepare input six inputs
     auto inputs = sp_tokenize_op->input_value(1);
@@ -158,8 +172,7 @@ OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& 
     auto add_eos = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(5).get_node_shared_ptr(), "add_eos");
     auto reverse = extract_scalar_const_value<bool>(sp_tokenize_op->input_value(6).get_node_shared_ptr(), "reverse");
 
-    //OutputVector inputs_vector = OutputVector{ sp_model_const, inputs, nbest_size, alpha, add_bos, add_eos, reverse };
-    OutputVector inputs_vector = OutputVector{ inputs };
+    OutputVector inputs_vector = OutputVector{ sp_model_const, inputs };
 
     // Override type of input tensor if this is a Parameter
     if (auto parameter = std::dynamic_pointer_cast<ov::opset10::Parameter>(inputs.get_node_shared_ptr())) {
@@ -169,7 +182,7 @@ OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& 
     }
 
     // create a node with custom operation
-    auto sp_tokenizer_ext = std::make_shared<SentencepieceTokenizer>(inputs_vector, sp_model, nbest_size, alpha, add_bos, add_eos, reverse);
+    auto sp_tokenizer_ext = std::make_shared<SentencepieceTokenizer>(inputs_vector, nbest_size, alpha, add_bos, add_eos, reverse);
 
     return sp_tokenizer_ext->outputs();
 }

@@ -17,8 +17,9 @@ namespace TemplateExtension {
         OPENVINO_OP("SentencepieceTokenizer");
 
         SentencepieceTokenizer() = default;
-        SentencepieceTokenizer(const ov::OutputVector& args, const std::vector<char>& sp_model, int32_t nbest_size, float alpha,
-            bool add_bos, bool add_eos, bool reverse);
+        SentencepieceTokenizer(const ov::OutputVector& args, int32_t nbest_size, float alpha, bool add_bos, bool add_eos, bool reverse);
+
+        bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
         void validate_and_infer_types() override;
 
@@ -30,7 +31,6 @@ namespace TemplateExtension {
 
     private:
         std::shared_ptr<sentencepiece::SentencePieceProcessor> m_sp;
-        std::vector<char> m_sp_model;
         int32_t m_nbest_size;
         float m_alpha;
         bool m_add_bos;
