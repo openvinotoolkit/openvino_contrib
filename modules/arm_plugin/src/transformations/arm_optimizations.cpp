@@ -144,12 +144,17 @@ void ArmPlugin::pass::ArmOptimizations::Dump(const std::shared_ptr<ov::Model>& m
     }
 }
 
-static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, ov::element::Type to, size_t idx) {
+static bool fuse_type_to_convert(const std::shared_ptr<ngraph::Node>& node, const precisions_map& precisions) {
     if (auto convert = ov::as_type_ptr<ArmPlugin::opset::Convert>(node)) {
         // For Convert node, converting precision from floating point to boolean will lead to mathematical
         // error, because here the output precision boolean is replaced by u8. E.g. floating point value 0.01
         // is converted to be 1 for boolean, but 0 for u8. Thus an Abs and Ceil node should be added before the
         // Convert node for this scenario.
+        const auto& from = convert->get_convert_element_type();
+        auto it = precisions.find(from);
+        if (it == precisions.end())
+                return false;
+        const auto& to = it->second;
         if (convert->input(0).get_element_type().is_real() &&
             convert->get_convert_element_type() == ngraph::element::boolean && to.is_integral_number()) {
             auto abs = std::make_shared<ArmPlugin::opset::Abs>(convert->input_value(0).get_node_shared_ptr());
@@ -284,7 +289,7 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
     }
 
     auto get_convert_precisions = []() {
-        precisions_array array = {
+        precisions_map map = {
             {ngraph::element::i64,     ngraph::element::i32},
             {ngraph::element::u64,     ngraph::element::i32},
             {ngraph::element::f64,     ngraph::element::f32},
@@ -293,9 +298,9 @@ bool ArmPlugin::pass::ArmOptimizations::run_on_model(const std::shared_ptr<ov::M
             {ngraph::element::u4,      ngraph::element::u8}
         };
         #ifndef __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
-            array.push_back({ngraph::element::f16, ngraph::element::f32});
+            map.insert({ngraph::element::f16, ngraph::element::f32});
         #endif
-        return array;
+        return map;
     };
     static const auto precisions = get_convert_precisions();
     type_to_fuse_map type_to_fuse = {{ArmPlugin::opset::Convert::get_type_info_static(), fuse_type_to_convert}};
