@@ -74,6 +74,13 @@ SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args, int
     constructor_validate_and_infer_types();
 }
 
+SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args, const std::shared_ptr<sentencepiece::SentencePieceProcessor>& sp,
+    int32_t nbest_size, float alpha, bool add_bos, bool add_eos, bool reverse) : m_sp(sp),
+    m_nbest_size(nbest_size), m_alpha(alpha), m_add_bos(add_bos), m_add_eos(add_eos),
+    m_reverse(reverse), Op(args) {
+    constructor_validate_and_infer_types();
+}
+
 void SentencepieceTokenizer::validate_and_infer_types() {
     // The operation SentencepieceTokenizerExtensionOp has three outputs: sparse indices, sparse values
     // and dense shape
@@ -134,7 +141,7 @@ bool SentencepieceTokenizer::has_evaluate() const {
 }
 
 std::shared_ptr<ov::Node> SentencepieceTokenizer::clone_with_new_inputs(const ov::OutputVector& new_args) const {
-    return std::make_shared<SentencepieceTokenizer>(new_args, m_nbest_size, m_alpha, m_add_bos, m_add_eos, m_reverse);
+    return std::make_shared<SentencepieceTokenizer>(new_args, m_sp, m_nbest_size, m_alpha, m_add_bos, m_add_eos, m_reverse);
 }
 
 OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& node) {

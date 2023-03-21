@@ -18,6 +18,8 @@ namespace TemplateExtension {
 
         SentencepieceTokenizer() = default;
         SentencepieceTokenizer(const ov::OutputVector& args, int32_t nbest_size, float alpha, bool add_bos, bool add_eos, bool reverse);
+        SentencepieceTokenizer(const ov::OutputVector& args, const std::shared_ptr<sentencepiece::SentencePieceProcessor>& sp, int32_t nbest_size, float alpha,
+            bool add_bos, bool add_eos, bool reverse);
 
         bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
