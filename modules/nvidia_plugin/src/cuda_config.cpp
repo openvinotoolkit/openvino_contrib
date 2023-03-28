@@ -107,8 +107,7 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
     Uncomment this code to switch to f16 by default
     if (inference_precision != ov::element::undefined)
         return inference_precision;
-    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE ||
-        execution_mode == ov::hint::ExecutionMode::UNDEFINED) {
+    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE) {
         if (isHalfSupported(CUDA::Device(deviceId))) {
             return ov::element::f16;
         }
@@ -119,8 +118,7 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
     // Default number for latency mode
     uint32_t optimal_number_of_streams = 1;
-    if ((ov::hint::PerformanceMode::THROUGHPUT == performance_mode) ||
-        (ov::hint::PerformanceMode::UNDEFINED == performance_mode && num_streams == ov::streams::AUTO)) {
+    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode) {
         // If user is planning to use number of requests which is lower than reasonable range of streams
         // there is no sense to create more
         optimal_number_of_streams = (hint_num_requests > 0) ?
