@@ -117,15 +117,6 @@ std::vector<PropertiesParams> num_streams_1_properties = {
         {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::LATENCY)},
         {ov::num_streams.name(), "1"},
     },
-    {
-        {ov::device::id.name(), "0"},
-        {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::UNDEFINED)},
-    },
-    {
-        {ov::device::id.name(), "0"},
-        {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::UNDEFINED)},
-        {ov::num_streams.name(), "1"},
-    },
 };
 
 using NumStreams1ExecNetworkTest = ExecNetworkTest;
@@ -164,11 +155,6 @@ std::vector<PropertiesParams> num_streams_8_properties = {
     {
         {ov::device::id.name(), "0"},
         {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::LATENCY)},
-        {ov::num_streams.name(), "8"},
-    },
-    {
-        {ov::device::id.name(), "0"},
-        {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::UNDEFINED)},
         {ov::num_streams.name(), "8"},
     },
 };
