@@ -68,7 +68,7 @@ target_link_libraries(${OBJ_NAME}
                       ${NGRAPH_LIBRARIES}
 )
 
-set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
+# set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
 
 
 # ATTENTION: uncomment to register a plugin in the plugins.xml file
