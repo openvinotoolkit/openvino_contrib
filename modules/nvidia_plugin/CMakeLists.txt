@@ -12,7 +12,7 @@ if(POLICY CMP0104)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-     set(CUDACXX C:\Users\sys_k8sworker\AppData\Local\Temp\cuda\cuda_nvcc\nvcc\bin)
+     set(CUDACXX C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
