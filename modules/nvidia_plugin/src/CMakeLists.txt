@@ -65,6 +65,7 @@ target_link_libraries(${OBJ_NAME}
                       CUDA::cublas
                       CUDA::cudnn
                       CUDA::cutensor
+                      inference_engine_s
                       ${NGRAPH_LIBRARIES}
 )
 
