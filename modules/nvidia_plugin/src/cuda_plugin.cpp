@@ -25,7 +25,6 @@
 #include "nvidia/nvidia_config.hpp"
 #include "openvino/runtime/properties.hpp"
 #include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
-#include "any_copy.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -121,9 +120,17 @@ bool Plugin::isOperationSupported(const std::shared_ptr<ov::Node>& node) const {
 
 void Plugin::SetConfig(const ConfigMap& config) { _cfg = Configuration{config, _cfg}; }
 
+static ConfigMap any_copy(const ov::AnyMap& params) {
+    std::map<std::string, std::string> result;
+    for (auto&& value : params) {
+        result.emplace(value.first, value.second.as<std::string>());
+    }
+    return result;
+}
+
 InferenceEngine::Parameter Plugin::GetConfig(
     const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& options) const {
-    Configuration cfg{ov::any_copy(options), _cfg};
+    Configuration cfg{any_copy(options), _cfg};
     return cfg.Get(name);
 }
 
@@ -132,7 +139,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
     using namespace InferenceEngine::CUDAMetrics;
     bool is_new_api = IsNewAPI();
 
-    Configuration cfg{ov::any_copy(options), _cfg};
+    Configuration cfg{any_copy(options), _cfg};
 
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};
