@@ -5,10 +5,11 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 #include "slice.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -33,6 +34,7 @@ static __global__ void slice_part(const Slice::Props *props, const size_t start,
 
 Slice::Slice(const Type_t element_type, const Props &props, const size_t max_threads_per_block)
     : element_type_{element_type}, props_{props}, size_{shape_size(props.new_shape)} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(size_, max_threads_per_block);
 }
 
@@ -76,7 +78,7 @@ void Slice::operator()(cudaStream_t stream, const void *src, void *dst, const si
 
 template <typename T>
 void Slice::call(cudaStream_t stream, const void *src, void *dst, size_t start) const {
-    Expects(props_ptr_);
+    assertThrow(props_ptr_, "props_ptr_ == nullptr");
     slice_part<T><<<num_blocks_, threads_per_block_, 0, stream>>>(
         static_cast<const Props *>(props_ptr_), start, size_, static_cast<const T *>(src), static_cast<T *>(dst));
 }

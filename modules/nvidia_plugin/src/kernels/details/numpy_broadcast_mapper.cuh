@@ -7,7 +7,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
-#include <gsl/gsl_assert>
+#include "error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -33,9 +33,9 @@ public:
           dst_strides_{dst_strides},
           broadcasted_dims_{broadcasted_dims},
           shape_rank_{shape_rank} {
-        Expects(src_strides_);
-        Expects(dst_strides_);
-        Expects(broadcasted_dims_);
+        assertThrow(src_strides_ != 0, "src_strides_ == 0");
+        assertThrow(dst_strides_ != 0, "dst_strides_ == 0");
+        assertThrow(broadcasted_dims_ != 0, "broadcasted_dims_ == 0");
     }
 
     __host__ __device__ bool identity() const { return broadcasted_dims_ == nullptr; }

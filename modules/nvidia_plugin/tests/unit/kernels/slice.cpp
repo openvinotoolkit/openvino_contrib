@@ -5,8 +5,8 @@
 #include <gtest/gtest.h>
 
 #include <cuda/runtime.hpp>
+#include <kernels/details/tensor_helpers.hpp>
 #include <kernels/slice.hpp>
-#include <kernels/tensor_helpers.hpp>
 
 using namespace ov::nvidia_gpu;
 

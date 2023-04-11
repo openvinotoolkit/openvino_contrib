@@ -99,11 +99,17 @@ jobs:
       powershell -command "Expand-Archive -Force gradle-$(GRADLE_VER)-bin.zip"
       python -m pip install --upgrade pip
       python -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\src\compatibility\openvino\requirements-dev.txt
+      python -m pip install -r $(OPENVINO_REPO_DIR)\src\bindings\python\requirements.txt
+      python -m pip install -r $(REPO_DIR)\modules\custom_operations\tests\requirements.txt
+      python -m pip install $(OPENVINO_REPO_DIR)\tools\mo
+      powershell -command "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
+      choco install opencv -y
     workingDirectory: $(WORK_DIR)
     displayName: 'Install dependencies'
 
   - script: |
       set PATH=$(WORK_DIR)\ninja-win;%PATH%
+      set OpenCV_DIR=C:\tools\opencv\build
       call "$(MSVS_VARS_PATH)" && cmake -GNinja ^
         -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ^
         -DBUILD_nvidia_plugin=OFF ^
@@ -115,27 +121,28 @@ jobs:
         -DENABLE_INTEL_GPU=OFF ^
         -DENABLE_INTEL_GNA=OFF ^
         -DENABLE_CPPLINT=OFF ^
+        -DENABLE_OV_ONNX_FRONTEND=ON ^
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules ^
         -DENABLE_PYTHON=ON ^
         -DCMAKE_C_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         -DCMAKE_CXX_COMPILER:PATH="$(MSVC_COMPILER_PATH)" ^
         $(OPENVINO_REPO_DIR)
     workingDirectory: $(BUILD_DIR)
-    displayName: 'CMake configure'
+    displayName: 'CMake OpenVINO Contrib'
 
   - script: dir $(OPENVINO_REPO_DIR)\temp\ /s
     displayName: 'List temp SDKs'
 
   - script: call "$(MSVS_VARS_PATH)" && $(WORK_DIR)\ninja-win\ninja
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Build Win'
+    displayName: 'Build OpenVINO Contrib'
 
   - script: dir $(OPENVINO_REPO_DIR)\bin\ /s
     displayName: 'List bin files'
 
   - script: cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) -P cmake_install.cmake
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Install'
+    displayName: 'Install OpenVINO Contrib'
 
   - script: dir $(INSTALL_DIR) /s
     displayName: 'List install files'
@@ -147,3 +154,10 @@ jobs:
       gradle test -Prun_tests -DMODELS_PATH=$(MODELS_PATH) -Ddevice=CPU --info
     workingDirectory: $(REPO_DIR)\modules\java_api
     displayName: 'Java tests'
+
+  - script: |
+      call C:\tools\opencv\build\setup_vars_opencv4.cmd
+      call $(SETUPVARS)
+      python -m pytest -k "not sparse_conv" tests\run_tests.py
+    workingDirectory: $(REPO_DIR)\modules\custom_operations
+    displayName: 'Custom user operation tests'

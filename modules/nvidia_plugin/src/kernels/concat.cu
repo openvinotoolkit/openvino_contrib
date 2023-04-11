@@ -5,9 +5,10 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
 #include "concat.hpp"
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -43,7 +44,9 @@ Concat::Concat(Type_t element_type,
       chunk_size_{chunk_size},
       all_chunk_size_{all_chunk_size},
       num_blocks_{num_blocks},
-      threads_per_block_{threadsPerBlock} {}
+      threads_per_block_{threadsPerBlock} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
+}
 
 void Concat::operator()(const cudaStream_t stream, const void* chunks, const void* const* src, void* dst) const {
     switch (element_type_) {

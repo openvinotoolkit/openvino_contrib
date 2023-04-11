@@ -120,15 +120,15 @@ jobs:
         -DENABLE_OV_PYTORCH_FRONTEND=OFF
         -DENABLE_OV_ONNX_FRONTEND=OFF
         -DENABLE_OV_PADDLE_FRONTEND=OFF
-        -DBUILD_java_api=ON
         -DBUILD_nvidia_plugin=OFF
+        -DBUILD_custom_operations=OFF
         -DOPENVINO_EXTRA_MODULES=$(REPO_DIR)/modules
         $(OPENVINO_REPO_DIR)
       workingDirectory: $(BUILD_DIR)
 
   - script: ninja
     workingDirectory: $(BUILD_DIR)
-    displayName: 'Build ARM ARM for Android ARM64'
+    displayName: 'Build OpenVINO Contrib for Android ARM64'
 
   - script: ls -alR $(OPENVINO_REPO_DIR)/bin/
     displayName: 'List binary files'

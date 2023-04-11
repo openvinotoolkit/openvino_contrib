@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertStridedSliceToArm: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertStridedSliceToArm");
     ConvertStridedSliceToArm();
 };
 }  // namespace pass

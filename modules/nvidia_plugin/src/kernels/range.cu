@@ -5,8 +5,9 @@
 #include <cuda/float16.hpp>
 
 #include "convert.cuh"
+#include "details/type_validator.hpp"
+#include "details/typed_functor.hpp"
 #include "kernels/range.hpp"
-#include "typed_functor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -66,6 +67,10 @@ RangeKernelOp::RangeKernelOp(const size_t max_size,
                              const Type_t input_step_type,
                              const Type_t output_type)
     : blocks_number_{blocks_number}, threads_per_block_{threads_per_block} {
+    TypeValidator<AllElementTypesSwitch>::check(input_start_type);
+    TypeValidator<AllElementTypesSwitch>::check(input_stop_type);
+    TypeValidator<AllElementTypesSwitch>::check(input_step_type);
+    TypeValidator<AllElementTypesSwitch>::check(output_type);
     static constexpr TypedFunctor<RangeFunctor, TFuncPtr, DIM_3D> combinations{};
     func_ptr_ = combinations[input_start_type][input_step_type][output_type];
 }

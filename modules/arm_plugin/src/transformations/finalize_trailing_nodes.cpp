@@ -10,8 +10,7 @@
 #include "transformations/utils/utils.hpp"
 #include <ngraph/rt_info.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::FinalizeTrailingNodes, "FinalizeTrailingNodes", 0);
-bool ArmPlugin::pass::FinalizeTrailingNodes::run_on_function(std::shared_ptr<ov::Model> m) {
+bool ArmPlugin::pass::FinalizeTrailingNodes::run_on_model(const std::shared_ptr<ov::Model>& m) {
     // Adding Result node for trailing nodes
     bool is_modified = false;
     for (const auto& node : m->get_ops()) {

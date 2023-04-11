@@ -36,11 +36,11 @@ bool SparseConv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     std::vector<size_t> kernelDims = inputs[3].get_shape();
 
     // Kernel layout is DxHxWxICxOH
-    const int kd = kernelDims[0];
-    const int kh = kernelDims[1];
-    const int kw = kernelDims[2];
-    const int IC = kernelDims[3];
-    const int OC = kernelDims[4];
+    const int kd = static_cast<int>(kernelDims[0]);
+    const int kh = static_cast<int>(kernelDims[1]);
+    const int kw = static_cast<int>(kernelDims[2]);
+    const int IC = static_cast<int>(kernelDims[3]);
+    const int OC = static_cast<int>(kernelDims[4]);
 
     // See https://github.com/isl-org/Open3D/blob/master/python/open3d/ml/torch/python/layers/convolutions.py
     float rw = kw * 0.51f;

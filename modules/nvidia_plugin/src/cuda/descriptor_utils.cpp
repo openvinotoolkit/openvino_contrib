@@ -10,8 +10,8 @@
 namespace CUDA {
 
 DnnTensorDescriptor makeDnnTensorDescr(const ngraph::element::Type& type, const ngraph::Shape& shape) {
-    Expects(!shape.empty());
-    Expects(shape.size() <= CUDNN_DIM_MAX);
+    OPENVINO_ASSERT(!shape.empty());
+    OPENVINO_ASSERT(shape.size() <= CUDNN_DIM_MAX);
     std::vector<int> dims;
     std::transform(shape.begin(), shape.end(), std::back_inserter(dims), [](auto v) { return static_cast<int>(v); });
     const int CUDNN_DIM_MIN =

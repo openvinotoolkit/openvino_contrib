@@ -4,8 +4,9 @@
 
 #include "convert.cuh"
 #include "convert.hpp"
-#include "error.hpp"
-#include "typed_functor.hpp"
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
+#include "details/typed_functor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -51,6 +52,8 @@ struct ConvertFunctor<TOutput, TInput, typename std::enable_if<!std::is_same<TOu
 Convert::Convert(
     Type_t output_element_type, Type_t input_element_type, size_t size, size_t numBlocks, size_t threadsPerBlock)
     : size_{size}, num_blocks_{numBlocks}, threads_per_block_{threadsPerBlock} {
+    TypeValidator<AllElementTypesSwitch>::check(output_element_type);
+    TypeValidator<AllElementTypesSwitch>::check(input_element_type);
     static constexpr TypedFunctor<ConvertFunctor, convert_t, DIM_2D> combinations{};
     convert_kernel_ = combinations[output_element_type][input_element_type];
 }

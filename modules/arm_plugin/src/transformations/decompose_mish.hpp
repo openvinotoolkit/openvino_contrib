@@ -10,7 +10,7 @@ namespace pass {
 
 class DecomposeMish: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("DecomposeMish");
     DecomposeMish();
 };
 }  // namespace pass

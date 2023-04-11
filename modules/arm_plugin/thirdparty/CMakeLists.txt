@@ -43,7 +43,14 @@ elseif(NOT TARGET arm_compute_static_libs)
         ${ARM_COMPURE_SOURCE_DIR}/*.h
     )
 
-    set(extra_cxx_flags "-fPIC ${CMAKE_CXX_FLAGS} -Wno-undef")
+    set(extra_cxx_flags "${CMAKE_CXX_FLAGS} -Wno-undef")
+    if(MSVC64)
+        # clang-cl does not recognize /MP option
+        string(REPLACE "/MP " "" extra_cxx_flags "${extra_cxx_flags}")
+    else()
+        # -fPIC is not applicable for clang-cl
+        set(extra_cxx_flags "${extra_cxx_flags} -fPIC")
+    endif()
 
     set(ARM_COMPUTE_OPTIONS
         neon=1
@@ -76,11 +83,19 @@ elseif(NOT TARGET arm_compute_static_libs)
         list(APPEND ARM_COMPUTE_OPTIONS --jobs=${ARM_COMPUTE_SCONS_JOBS})
     endif()
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND ARM_COMPUTE_OPTIONS
-             debug=1
-             asserts=1
-             logging=1)
+    set(ARM_COMPUTE_DEBUG_OPTIONS
+        debug=1
+        asserts=1
+        logging=1)
+
+    # cmake older 3.20 does not support generator expressions in add_custom_command
+    # https://cmake.org/cmake/help/latest/command/add_custom_command.html#examples-generating-files
+    if(OV_GENERATOR_MULTI_CONFIG AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.20)
+        foreach(option IN LISTS ARM_COMPUTE_DEBUG_OPTIONS)
+            list(APPEND ARM_COMPUTE_OPTIONS $<$<CONFIG:Debug>:${option}>)
+        endforeach()
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        list(APPEND ARM_COMPUTE_OPTIONS ${ARM_COMPUTE_DEBUG_OPTIONS})
     endif()
 
     if(EMSCRIPTEN OR LINUX)
@@ -184,7 +199,15 @@ elseif(NOT TARGET arm_compute_static_libs)
             endforeach()
         endif()
     elseif(MSVC64)
-        set(extra_cxx_flags "${extra_cxx_flags} /MD")
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.20)
+            set(extra_cxx_flags "${extra_cxx_flags} $<IF:$<CONFIG:Release>,/MD,/MDd>")
+        else()
+            if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+                set(extra_cxx_flags "${extra_cxx_flags} /MDd")
+            else()
+                set(extra_cxx_flags "${extra_cxx_flags} /MD")
+            endif()
+        endif()
     endif()
 
     if(ENABLE_LTO)
@@ -247,6 +270,12 @@ elseif(NOT TARGET arm_compute_static_libs)
     add_library(arm_compute::half INTERFACE IMPORTED GLOBAL)
     set_target_properties(arm_compute::half PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/ComputeLibrary/include)
+
+    # Compute Library uses cppthreads=1
+    # if one day will rely on TBB only, we can omit this dependency
+    find_package(Threads REQUIRED)
+    set_target_properties(arm_compute::arm_compute PROPERTIES
+        INTERFACE_LINK_LIBRARIES Threads::Threads)
 endif()
 
 add_subdirectory(external_kernels)

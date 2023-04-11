@@ -57,23 +57,23 @@ const std::vector<std::vector<size_t>> yolov5From40To80Shape = {
     {1, 128, 80, 80},
 };
 
-const std::vector<CoordinateTransformMode> coordinateTransformModes = {CoordinateTransformMode::half_pixel,
-                                                                       CoordinateTransformMode::pytorch_half_pixel,
-                                                                       CoordinateTransformMode::asymmetric,
-                                                                       CoordinateTransformMode::tf_half_pixel_for_nn,
-                                                                       CoordinateTransformMode::align_corners};
+const std::vector<CoordinateTransformMode> coordinateTransformModes = {CoordinateTransformMode::HALF_PIXEL,
+                                                                       CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+                                                                       CoordinateTransformMode::ASYMMETRIC,
+                                                                       CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+                                                                       CoordinateTransformMode::ALIGN_CORNERS};
 
 const std::vector<ShapeCalcMode> shapeCalculationMode = {
-    ShapeCalcMode::sizes,
-    ShapeCalcMode::scales,
+    ShapeCalcMode::SIZES,
+    ShapeCalcMode::SCALES,
 };
 
 const std::vector<NearestMode> nearestModes = {
-    NearestMode::round_prefer_floor,
-    NearestMode::round_prefer_ceil,
-    NearestMode::floor,
-    NearestMode::ceil,
-    NearestMode::simple,
+    NearestMode::ROUND_PREFER_FLOOR,
+    NearestMode::ROUND_PREFER_CEIL,
+    NearestMode::FLOOR,
+    NearestMode::CEIL,
+    NearestMode::SIMPLE,
 };
 
 const std::vector<std::vector<size_t>> pads = {
@@ -98,7 +98,7 @@ const std::vector<std::vector<float>> smokeTest2DScales = {{2.f, 2.f}};
 
 std::map<std::string, std::string> additional_config = {};
 
-const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
+const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::NEAREST),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
@@ -109,7 +109,7 @@ const auto interpolate4DScaleParams = ::testing::Combine(::testing::Values(Inter
                                                          ::testing::ValuesIn(smokeTest4DAxes),
                                                          ::testing::ValuesIn(smokeTest4DScales));
 
-const auto interpolate2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::nearest),
+const auto interpolate2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::NEAREST),
                                                          ::testing::ValuesIn(shapeCalculationMode),
                                                          ::testing::ValuesIn(coordinateTransformModes),
                                                          ::testing::ValuesIn(nearestModes),
@@ -258,21 +258,21 @@ const std::vector<InferenceEngine::Precision> linearNetPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
 };
-const std::vector<ShapeCalcMode> linearShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<ShapeCalcMode> linearShapeCalculationMode = {ShapeCalcMode::SIZES, ShapeCalcMode::SCALES};
 const std::vector<CoordinateTransformMode> linearCoordinateTransformModes = {
-    CoordinateTransformMode::half_pixel,
-    CoordinateTransformMode::pytorch_half_pixel,
-    CoordinateTransformMode::asymmetric,
-    CoordinateTransformMode::tf_half_pixel_for_nn,
-    CoordinateTransformMode::align_corners,
+    CoordinateTransformMode::HALF_PIXEL,
+    CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+    CoordinateTransformMode::ASYMMETRIC,
+    CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+    CoordinateTransformMode::ALIGN_CORNERS,
 };
-const std::vector<NearestMode> linearNearestModes = {NearestMode::simple};
+const std::vector<NearestMode> linearNearestModes = {NearestMode::SIMPLE};
 const std::vector<bool> linearAntialias = {true, false};
 
 const std::vector<std::vector<int64_t>> linearTest2DAxes = {{2, 3}};
 const std::vector<std::vector<float>> linearTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
 const std::vector<std::vector<size_t>> linearTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
-const auto linear2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+const auto linear2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::LINEAR),
                                                     ::testing::ValuesIn(linearShapeCalculationMode),
                                                     ::testing::ValuesIn(linearCoordinateTransformModes),
                                                     ::testing::ValuesIn(linearNearestModes),
@@ -300,7 +300,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_2D_Scale_Test,
 const std::vector<std::vector<int64_t>> linearTest3DAxes = {{2, 3, 4}};
 const std::vector<std::vector<float>> linearTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
 const std::vector<std::vector<size_t>> linearTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
-const auto linear3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::linear),
+const auto linear3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::LINEAR),
                                                     ::testing::ValuesIn(linearShapeCalculationMode),
                                                     ::testing::ValuesIn(linearCoordinateTransformModes),
                                                     ::testing::ValuesIn(linearNearestModes),
@@ -330,23 +330,23 @@ const std::vector<InferenceEngine::Precision> cubicNetPrecisions = {
     InferenceEngine::Precision::FP32,
 };
 const std::vector<double> cubeCoeffs = {-0.75f, -0.6f};
-const std::vector<ShapeCalcMode> cubicShapeCalculationMode = {ShapeCalcMode::sizes, ShapeCalcMode::scales};
+const std::vector<ShapeCalcMode> cubicShapeCalculationMode = {ShapeCalcMode::SIZES, ShapeCalcMode::SCALES};
 const std::vector<CoordinateTransformMode> cubicCoordinateTransformModes = {
-    CoordinateTransformMode::half_pixel,
-    CoordinateTransformMode::pytorch_half_pixel,
-    CoordinateTransformMode::asymmetric,
-    CoordinateTransformMode::tf_half_pixel_for_nn,
-    CoordinateTransformMode::align_corners,
+    CoordinateTransformMode::HALF_PIXEL,
+    CoordinateTransformMode::PYTORCH_HALF_PIXEL,
+    CoordinateTransformMode::ASYMMETRIC,
+    CoordinateTransformMode::TF_HALF_PIXEL_FOR_NN,
+    CoordinateTransformMode::ALIGN_CORNERS,
 };
 const std::vector<NearestMode> cubicNearestModes = {
-    NearestMode::simple  // Cubic interpolation algo doesn't use it.
+    NearestMode::SIMPLE  // Cubic interpolation algo doesn't use it.
 };
 const std::vector<bool> cubicAntialias = {false};  // Cubic interpolation algo doesn't use it.
 
 const std::vector<std::vector<int64_t>> cubicTest2DAxes = {{2, 3}};
 const std::vector<std::vector<float>> cubicTest2DScales = {{0.5f, 0.5f}, {1.5f, 1.5f}};
 const std::vector<std::vector<size_t>> cubicTest2DSizes = {{6, 10}, {14, 20}, {6, 20}};
-const auto cubic2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+const auto cubic2DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::CUBIC),
                                                    ::testing::ValuesIn(cubicShapeCalculationMode),
                                                    ::testing::ValuesIn(cubicCoordinateTransformModes),
                                                    ::testing::ValuesIn(cubicNearestModes),
@@ -374,7 +374,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_2D_Scale_Test,
 const std::vector<std::vector<int64_t>> cubicTest3DAxes = {{2, 3, 4}};
 const std::vector<std::vector<float>> cubicTest3DScales = {{0.5f, 0.4f, 0.6f}, {1.5f, 1.6f, 1.8f}};
 const std::vector<std::vector<size_t>> cubicTest3DSizes = {{6, 8, 10}, {10, 16, 18}, {10, 8, 18}};
-const auto cubic3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::cubic),
+const auto cubic3DScaleParams = ::testing::Combine(::testing::Values(InterpolateMode::CUBIC),
                                                    ::testing::ValuesIn(cubicShapeCalculationMode),
                                                    ::testing::ValuesIn(cubicCoordinateTransformModes),
                                                    ::testing::ValuesIn(cubicNearestModes),
@@ -425,7 +425,7 @@ INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Nearest_Benchmark,
                         nearestBenchmarkParams,
                         InterpolateLayerTest::getTestCaseName);
 
-const std::vector<InterpolateMode> benchmarkInterpolateModes = {InterpolateMode::linear, InterpolateMode::cubic};
+const std::vector<InterpolateMode> benchmarkInterpolateModes = {InterpolateMode::LINEAR, InterpolateMode::CUBIC};
 const std::vector<InferenceEngine::Precision> benchmarkPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
@@ -433,9 +433,9 @@ const std::vector<InferenceEngine::Precision> benchmarkPrecisions = {
 const std::vector<std::vector<float>> benchmarkScales = {{0.5f, 0.5f, 0.5f}, {1.5f, 1.5f, 1.5f}};
 const auto benchmarkParams =
     ::testing::Combine(::testing::Combine(::testing::ValuesIn(benchmarkInterpolateModes),
-                                          ::testing::Values(ShapeCalcMode::scales),
-                                          ::testing::Values(CoordinateTransformMode::half_pixel),
-                                          ::testing::Values(NearestMode::simple),
+                                          ::testing::Values(ShapeCalcMode::SCALES),
+                                          ::testing::Values(CoordinateTransformMode::HALF_PIXEL),
+                                          ::testing::Values(NearestMode::SIMPLE),
                                           ::testing::Values(true),  // antialias
                                           ::testing::ValuesIn(pads),
                                           ::testing::ValuesIn(pads),

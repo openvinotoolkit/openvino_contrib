@@ -10,7 +10,7 @@ namespace pass {
 
 class DecomposeNormalizeL2Add: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("DecomposeNormalizeL2Add");
     DecomposeNormalizeL2Add();
 };
 }  // namespace pass

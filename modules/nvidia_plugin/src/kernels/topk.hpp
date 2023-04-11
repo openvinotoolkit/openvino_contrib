@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "cuda_type_traits.hpp"
-#include "elementtypeswitch.hpp"
+#include "details/cuda_type_traits.hpp"
+#include "details/element_types_switch.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

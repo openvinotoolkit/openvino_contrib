@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cuda/math.cuh>
-#include <gsl/gsl_assert>
+#include "details/error.hpp"
 
 #include "convert.cuh"
 #include "interpolate_details.cuh"
@@ -110,14 +110,15 @@ InterpolateLinear::InterpolateLinear(std::vector<size_t> in_shape,
                                      bool antialias,
                                      Type_t element_type,
                                      size_t max_threads_per_block)
-    : props_device_ptr_{nullptr},
+    : InterpolateBase{element_type},
+      props_device_ptr_{nullptr},
       indices_device_ptr_{nullptr},
       num_blocks_{},
       threads_per_block_{},
       element_type_{element_type} {
-    Expects(in_shape.size() == out_shape.size());
-    Expects(in_shape.size() <= MAX_SHAPE_RANK);
-    Expects(axes.size() == scales.size());
+    assertThrow(in_shape.size() == out_shape.size(), "in_shape.size() != out_shape.size()");
+    assertThrow(in_shape.size() <= MAX_SHAPE_RANK, "in_shape.size() > MAX_SHAPE_RANK");
+    assertThrow(axes.size() == scales.size(), "axes.size() != scales.size()");
 
     std::copy(in_shape.begin(), in_shape.end(), props_.input_shape);
     std::copy(axes.begin(), axes.end(), props_.axes);

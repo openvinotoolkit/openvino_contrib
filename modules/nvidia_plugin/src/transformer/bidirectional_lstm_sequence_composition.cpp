@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
 #include "bidirectional_lstm_sequence_composition.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
-#include <gsl/gsl_assert>
 #include <gsl/span_ext>
 #include <ngraph/pass/constant_folding.hpp>
-#include "openvino/pass/manager.hpp"
-#include "openvino/pass/pattern/op/wrap_type.hpp"
 #include <ngraph/rt_info.hpp>
+#include <openvino/core/except.hpp>
 #include <openvino/op/concat.hpp>
 #include <openvino/op/lstm_sequence.hpp>
 #include <openvino/op/reshape.hpp>
@@ -25,6 +22,9 @@
 #include <transformer/nodes/lstm_sequence_optimized.hpp>
 
 #include "cuda_rt_info.hpp"
+#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/pass/manager.hpp"
+#include "openvino/pass/pattern/op/wrap_type.hpp"
 
 using namespace ov::pass;
 using namespace ov::pass::pattern;
@@ -384,9 +384,7 @@ ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized::
     MATCHER_SCOPE(ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized);
     auto transpose = wrap_type<ov::op::v5::LSTMSequence>();
 
-    ov::matcher_pass_callback callback = [](Matcher& m) {
-        return bidirectional_lstm_sequence_cudnn_optimized(m);
-    };
+    ov::matcher_pass_callback callback = [](Matcher& m) { return bidirectional_lstm_sequence_cudnn_optimized(m); };
 
     auto m = std::make_shared<Matcher>(transpose, matcher_name);
     this->register_matcher(m, callback);

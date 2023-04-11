@@ -138,10 +138,10 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
     for (const auto& input : node->inputs()) {
         const auto& tensorName = GetTensorNameInternal(input.get_source_output());
         const auto& tensorId = tensor_names_.at(tensorName);
-        Expects(&tensorId->GetBuffer() == tensorId.get());
+        OPENVINO_ASSERT(&tensorId->GetBuffer() == tensorId.get());
         mergedTensors.emplace_back(tensorName, tensorId);
     }
-    Expects(!mergedTensors.empty());
+    OPENVINO_ASSERT(!mergedTensors.empty());
 
     std::vector<BufferID> mergedBufferIds;
     std::transform(mergedTensors.begin(), mergedTensors.end(), std::back_inserter(mergedBufferIds), [](const auto& nt) {
@@ -175,13 +175,13 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         totalSize += mutable_tensor_sizes_.at(tensor->GetId());
     }
     mutable_tensor_sizes_[parentTensor->GetId()] = totalSize;
-    Expects(mergedTensorByteSize == totalSize);
+    OPENVINO_ASSERT(mergedTensorByteSize == totalSize);
 }
 
 void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int node_idx) {
     try {
-        Expects(node->inputs().size() >= 1);
-        Expects(node->outputs().size() == 1);
+        OPENVINO_ASSERT(node->inputs().size() >= 1);
+        OPENVINO_ASSERT(node->outputs().size() == 1);
         const auto input = node->inputs().at(0);
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
         const auto output = node->outputs().at(0);
@@ -203,7 +203,7 @@ void OperationBuffersExtractor::extractMutableTensors(const NodePtr& node, int n
 
 void OperationBuffersExtractor::extractParameterTensors(const NodePtr& node, int node_idx) {
     if (node->inputs().size() > 0) {
-        Expects(node->get_output_size() > 0);
+        OPENVINO_ASSERT(node->get_output_size() > 0);
         auto input = node->inputs().front().get_source_output();
         const auto& tensorId = tensor_names_.at(GetTensorNameInternal(input));
         for (auto& output : node->outputs()) {

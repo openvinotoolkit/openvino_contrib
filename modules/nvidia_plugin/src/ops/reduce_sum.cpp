@@ -7,13 +7,31 @@
 #include <cuda/descriptor_utils.hpp>
 #include <cuda_operation_registry.hpp>
 
+#include "converters.hpp"
+
 namespace ov {
 namespace nvidia_gpu {
 
 cudnnDataType_t reduceCompType(const ov::Node& node) {
-    if (node.get_input_element_type(0) == ov::element::Type_t::f64) return CUDNN_DATA_DOUBLE;
-    return CUDNN_DATA_FLOAT;  // TODO: it's unclear from documentation, whether it can be half when both tensors are
-                              // half, or int8 when both tensors are int8. we'll have to test it
+    const auto in_type = convertDataType<cudnnDataType_t>(node.get_input_element_type(0));
+    const auto out_type = convertDataType<cudnnDataType_t>(node.get_output_element_type(0));
+    // if (node.get_input_element_type(0) == ov::element::Type_t::f64) return CUDNN_DATA_DOUBLE;
+    switch (switchCase(in_type, out_type)) {
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_HALF):
+        case switchCase(CUDNN_DATA_FLOAT, CUDNN_DATA_INT8):
+        case switchCase(CUDNN_DATA_HALF, CUDNN_DATA_FLOAT):
+        case switchCase(CUDNN_DATA_INT8, CUDNN_DATA_FLOAT):
+            // TODO: it's unclear from documentation, whether it can be half when both tensors are
+            // half, or int8 when both tensors are int8. we'll have to test it
+            return CUDNN_DATA_FLOAT;
+        case switchCase(CUDNN_DATA_DOUBLE, CUDNN_DATA_DOUBLE):
+            return CUDNN_DATA_DOUBLE;
+        default:
+            throwIEException(fmt::format("ov::nvidia_gpu::reduceCompType(): Unsupported data types: in0 = {}, in1 = {}",
+                                         toString(in_type),
+                                         toString(out_type)));
+    }
 }
 
 ReduceSumOp::ReduceSumOp(const CreationContext& context,

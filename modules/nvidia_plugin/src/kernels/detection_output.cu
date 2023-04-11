@@ -14,8 +14,9 @@
 #include <cuda/stl/mdvector.cuh>
 #include <cuda/stl/span.cuh>
 
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
 #include "detection_output.hpp"
-#include "error.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -982,7 +983,9 @@ DetectionOutput::DetectionOutput(const Type_t element_type,
       priors_size_{priors_size},
       arm_confidence_size_{arm_confidence_size},
       arm_location_size_{arm_location_size},
-      result_size_{result_size} {}
+      result_size_{result_size} {
+    TypeValidator<FloatElementTypesSwitch>::check(element_type_);
+}
 
 template <typename TDataType>
 std::vector<size_t> DetectionOutput::getMutableWorkbufferSizes() const {
@@ -1100,11 +1103,14 @@ void DetectionOutput::call(const CUDA::Stream& stream,
 
     auto& dattrs = *dattrs_ptr_;
 
-    Expects(location_size_ / (4 * attrs_.num_images * (attrs_.share_location ? 1 : attrs_.num_classes)) ==
-            attrs_.num_priors);
+    assertThrow(location_size_ / (4 * attrs_.num_images * (attrs_.share_location ? 1 : attrs_.num_classes)) ==
+                    attrs_.num_priors,
+                "location_size_ / (4 * attrs_.num_images * (attrs_.share_location ? 1 : attrs_.num_classes)) != "
+                "attrs_.num_priors");
     auto locPreds = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<3>>{
         mutableWorkbuffers[kLocationsWBIdx].get(), attrs_.num_images, attrs_.num_loc_classes, attrs_.num_priors};
-    Expects(confidence_size_ / (attrs_.num_images * attrs_.num_classes) == attrs_.num_priors);
+    assertThrow(confidence_size_ / (attrs_.num_images * attrs_.num_classes) == attrs_.num_priors,
+                "confidence_size_ / (attrs_.num_images * attrs_.num_classes) != attrs_.num_priors");
     auto confPreds = CUDA::MDSpan<TDataType, CUDA::DExtents<3>>{
         mutableWorkbuffers[kConfPredsWBIdx].get(), attrs_.num_images, attrs_.num_classes, attrs_.num_priors};
     auto priorBboxes = CUDA::MDSpan<NormalizedBBox<TDataType>, CUDA::DExtents<2>>{

@@ -5,8 +5,9 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
+#include "details/error.hpp"
+#include "details/type_validator.hpp"
 #include "split.hpp"
 
 namespace ov {
@@ -39,7 +40,9 @@ Split::Split(Type_t element_type,
       num_split_chunks_{num_split_chunks},
       split_step_size_{split_step_size},
       num_blocks_{num_blocks},
-      threads_per_block_{threads_per_block} {}
+      threads_per_block_{threads_per_block} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
+}
 
 void Split::operator()(cudaStream_t stream, const void *src, void **dst) const {
     switch (element_type_) {

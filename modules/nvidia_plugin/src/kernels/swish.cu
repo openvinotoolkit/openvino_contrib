@@ -4,8 +4,8 @@
 
 #include <cuda/float16.hpp>
 
+#include "details/tensor_helpers.hpp"
 #include "swish.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

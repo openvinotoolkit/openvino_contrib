@@ -5,8 +5,8 @@
 #include <cuda/math.cuh>
 
 #include "clamp.hpp"
-#include "error.hpp"
-#include "tensor_helpers.hpp"
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

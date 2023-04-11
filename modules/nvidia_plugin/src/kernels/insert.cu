@@ -5,10 +5,11 @@
 #include <fmt/format.h>
 
 #include <cuda/float16.hpp>
-#include <gsl/gsl_assert>
 
+#include "details/error.hpp"
+#include "details/tensor_helpers.hpp"
+#include "details/type_validator.hpp"
 #include "insert.hpp"
-#include "tensor_helpers.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -34,6 +35,7 @@ static __global__ void insert_part(
 
 Insert::Insert(const Type_t element_type, const Props& props, const size_t max_threads_per_block)
     : element_type_{element_type}, props_{props}, size_{shape_size(props.old_shape)} {
+    TypeValidator<AllElementTypesSwitch>::check(element_type_);
     std::tie(num_blocks_, threads_per_block_) = calculateElementwiseGrid(size_, max_threads_per_block);
 }
 
@@ -75,7 +77,7 @@ void Insert::operator()(const cudaStream_t stream, const void* src, void* dst, c
 
 template <typename T>
 void Insert::call(const cudaStream_t stream, const void* src, void* dst, const size_t start) const {
-    Expects(props_ptr_);
+    assertThrow(props_ptr_, "props_ptr_ == nullptr");
     insert_part<T><<<num_blocks_, threads_per_block_, 0, stream>>>(
         static_cast<const Props*>(props_ptr_), start, size_, static_cast<const T*>(src), static_cast<T*>(dst));
 }

@@ -37,11 +37,7 @@ ie_add_plugin(NAME ${TARGET_NAME}
 # Enable support of CC for the plugin
 ie_mark_target_as_cc(${TARGET_NAME})
 
-if (${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL "10")
-    set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES 30 35 50 60 72)
-else()
-    set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES 35 50 60 72)
-endif()
+set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
 
 ieTargetLinkWholeArchive(${TARGET_NAME} ${OBJ_NAME})
 
@@ -72,7 +68,7 @@ target_link_libraries(${OBJ_NAME}
                       ${NGRAPH_LIBRARIES}
 )
 
-set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
+# set_target_properties(${OBJ_NAME} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ${ENABLE_LTO})
 
 
 # ATTENTION: uncomment to register a plugin in the plugins.xml file

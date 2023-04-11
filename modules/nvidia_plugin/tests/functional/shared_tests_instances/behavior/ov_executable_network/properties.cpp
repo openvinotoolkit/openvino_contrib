@@ -7,6 +7,7 @@
 #include <cuda_test_constants.hpp>
 
 #include "openvino/runtime/properties.hpp"
+#include "nvidia/properties.hpp"
 
 using namespace ov::test::behavior;
 
@@ -65,8 +66,14 @@ INSTANTIATE_TEST_SUITE_P(smoke_AutoBatch_BehaviorTests,
                          OVCompiledModelPropertiesIncorrectTests::getTestCaseName);
 
 const std::vector<ov::AnyMap> default_properties = {
-    {ov::enable_profiling(true)},
+    {ov::num_streams(1)},
+    {ov::hint::inference_precision(ov::element::undefined)},
+    {ov::hint::num_requests(0)},
+    {ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)},
+    {ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE)},
+    {ov::enable_profiling(false)},
     {ov::device::id("0")},
+    {ov::nvidia_gpu::operation_benchmark(false)}
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
@@ -76,7 +83,17 @@ INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVCompiledModelPropertiesDefaultTests::getTestCaseName);
 
 const std::vector<ov::AnyMap> properties = {
+    {ov::num_streams(8)},
+    {ov::num_streams(ov::streams::AUTO)},
+    {ov::hint::inference_precision(ov::element::undefined)},
+    {ov::hint::inference_precision(ov::element::f32)},
+    {ov::hint::inference_precision(ov::element::f16)},
+    {ov::hint::performance_mode(ov::hint::PerformanceMode::THROUGHPUT)},
+    {ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)},
+    {ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY)},
+    {ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE)},
     {ov::enable_profiling(true)},
+    {ov::enable_profiling(false)},
     {ov::device::id("0")},
     {ov::device::id("NVIDIA.0")},
 };

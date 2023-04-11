@@ -10,7 +10,7 @@ namespace pass {
 
 class ConvertMaxPoolV8: public ngraph::pass::MatcherPass {
 public:
-    NGRAPH_RTTI_DECLARATION;
+    OPENVINO_RTTI("ConvertMaxPoolV8");
     ConvertMaxPoolV8();
 };
 }  // namespace pass

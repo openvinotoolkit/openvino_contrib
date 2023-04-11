@@ -8,8 +8,6 @@
 #include <ngraph/rt_info.hpp>
 #include <ngraph/pattern/op/wrap_type.hpp>
 
-NGRAPH_RTTI_DEFINITION(ArmPlugin::pass::ConvertMaxPoolV8, "ConvertMaxPoolV8", 0);
-
 ArmPlugin::pass::ConvertMaxPoolV8::ConvertMaxPoolV8() {
     auto m = std::make_shared<ngraph::pattern::Matcher>(
             ngraph::pattern::wrap_type<opset::v8::ArmMaxPool>({ngraph::pattern::any_input(ngraph::pattern::has_static_shape())},

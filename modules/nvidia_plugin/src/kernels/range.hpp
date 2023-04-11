@@ -6,8 +6,7 @@
 
 #include <cuda_runtime.h>
 
-#include "cuda_type_traits.hpp"
-#include "ngraph/type/element_type.hpp"
+#include "details/cuda_type_traits.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
