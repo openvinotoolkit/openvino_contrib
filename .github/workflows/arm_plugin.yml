@@ -45,8 +45,8 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      # matrix:
-      #   os: ['linux-arm64']
+      matrix:
+        os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'arm64']
     # container:
