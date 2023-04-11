@@ -48,7 +48,7 @@ jobs:
       # matrix:
       #   os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ['self-hosted', 'linux']
+    runs-on: ['self-hosted', 'linux', 'arm64']
     # container:
     #   image: sandye64/openvino_manylinux_arm64:latest
     #   options: -v /home/sandye51:/home/sandye51
