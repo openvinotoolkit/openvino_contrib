@@ -100,6 +100,8 @@ elseif(NOT TARGET arm_compute_static_libs)
 
     if(EMSCRIPTEN OR LINUX)
         list(APPEND ARM_COMPUTE_OPTIONS os=linux)
+    elseif(WIN32)
+        list(APPEND ARM_COMPUTE_OPTIONS os=windows)
     elseif(ANDROID)
         list(APPEND ARM_COMPUTE_OPTIONS os=android)
     elseif(APPLE)
@@ -114,7 +116,7 @@ elseif(NOT TARGET arm_compute_static_libs)
         list(APPEND ARM_COMPUTE_OPTIONS build=native)
     endif()
 
-    if (CMAKE_CXX_COMPILER_LAUNCHER)
+    if(CMAKE_CXX_COMPILER_LAUNCHER)
         list(APPEND ARM_COMPUTE_OPTIONS compiler_cache=${CMAKE_CXX_COMPILER_LAUNCHER})
     endif()
 
