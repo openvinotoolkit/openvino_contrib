@@ -49,10 +49,13 @@ jobs:
       #   os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'coverage']
-    # container:
-    #   image: sandye64/openvino_manylinux_arm64:latest
-    #   options: -v /home/sandye51:/home/sandye51
+    container:
+      image: ubuntu:20.04
     steps:
+      - name: Hello from Docker
+          if: runner.os == 'linux'
+          run: |
+            ls /
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
         run: |
