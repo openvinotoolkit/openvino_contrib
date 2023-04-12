@@ -53,9 +53,9 @@ jobs:
       image: ubuntu:20.04
     steps:
       - name: Hello from Docker
-          if: runner.os == 'linux'
-          run: |
-            ls /
+        if: runner.os == 'linux'
+        run: |
+          ls /
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
         run: |
