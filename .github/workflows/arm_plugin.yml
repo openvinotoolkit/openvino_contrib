@@ -78,6 +78,10 @@ jobs:
         if: runner.os == 'linux'
         run: mkdir -p /github
       
+      - name: Install Build Dependencies
+        run: |
+          DEBIAN_FRONTEND="noninteractive" apt-get update && apt-get -y install python3 git ninja-build cmake build-essential
+      
       - name: Clone OpenVINO
         if: runner.os == 'linux'
         run: |
@@ -105,10 +109,6 @@ jobs:
   #         cd ${{ env.OPENVINO_REPO }} && git submodule update --init
   #         git clone https://github.com/openvinotoolkit/openvino_contrib.git
   #         cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init
-
-      - name: Install Build Dependencies
-        run: |
-          DEBIAN_FRONTEND="noninteractive" apt-get update && apt-get -y install python3 ninja-build cmake build-essential
       
       - name: Get tools versions
         run: |
