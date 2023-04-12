@@ -49,8 +49,8 @@ jobs:
       #   os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'coverage']
-    # container:
-    #   image: ubuntu:20.04
+    container:
+      image: ubuntu:20.04
     steps:
       - name: Create Directories
         if: runner.os == 'linux'
@@ -60,8 +60,8 @@ jobs:
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
         run: |
-          git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
-          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }} --jobs 4
+          git clone https://github.com/openvinotoolkit/openvino.git
+          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --jobs 4
 
   #     - name: Clone OpenVINO Contrib with cache
   #       if: ${{ runner.arch == 'ARM64' }}
