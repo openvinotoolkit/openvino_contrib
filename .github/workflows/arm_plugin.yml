@@ -65,7 +65,7 @@ jobs:
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'coverage']
     container:
-      image: ubuntu:20.04
+      image: akashchi/ubuntu:latest
       # volumes:
       #   - ${{ github.workspace }}:/github
     steps:
@@ -77,10 +77,6 @@ jobs:
       - name: Create Root Directory
         if: runner.os == 'linux'
         run: mkdir -p /github
-      
-      - name: Install Build Dependencies
-        run: |
-          apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get -y install python3 git git-lfs ninja-build cmake build-essential && git-lfs install
       
       - name: Clone OpenVINO
         if: runner.os == 'linux'
@@ -110,7 +106,7 @@ jobs:
       - name: Get tools versions
         run: |
           ninja --version || exit 1
-          # ccache --version || exit 1
+          ccache --version || exit 1
           python3 --version || exit 1
           cmake --version || exit 1
 
