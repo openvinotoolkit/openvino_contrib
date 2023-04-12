@@ -32,11 +32,11 @@ env:
   BUILD_DIR: ${{ github.workspace }}/build
   DATA_PATH: ${{ github.workspace }}/testdata
   MODELS_PATH: ${{ github.workspace }}/testdata
-  OV_TEMP: /home/sandye51/actions-runner/openvino_temp
-  CCACHE_DIR: /home/sandye51/actions-runner/build_cache
-  OPENVINO_REFERENCE: /home/sandye51/actions-runner/openvino.reference
-  OPENVINO_CONTRIB_REFERENCE: /home/sandye51/actions-runner/openvino_contrib.reference
-  SUBMODULES_REFERENCE: /home/sandye51/actions-runner/submodules.reference
+  OV_TEMP: ${{ github.workspace }}/openvino_temp
+  CCACHE_DIR: ${{ github.workspace }}/build_cache
+  OPENVINO_REFERENCE: ${{ github.workspace }}/openvino.reference
+  OPENVINO_CONTRIB_REFERENCE: ${{ github.workspace }}/openvino_contrib.reference
+  SUBMODULES_REFERENCE: ${{ github.workspace }}/submodules.reference
 
 jobs:
   Build:
@@ -49,13 +49,14 @@ jobs:
       #   os: ['linux-arm64']
         # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
     runs-on: ['self-hosted', 'linux', 'coverage']
-    container:
-      image: ubuntu:20.04
+    # container:
+    #   image: ubuntu:20.04
     steps:
-      - name: Hello from Docker
+      - name: Create Directories
         if: runner.os == 'linux'
         run: |
-          ls /
+          mkdir ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.LAYER_TESTS_INSTALL_DIR }} ${{ env.BUILD_DIR }}
+          mkdir ${{ env.DATA_PATH }} ${{ env.OV_TEMP }} ${{ env.CCACHE_DIR }} ${{ env.OPENVINO_REFERENCE }} ${{ env.OPENVINO_CONTRIB_REFERENCE }} ${{ env.SUBMODULES_REFERENCE }}
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
         run: |
