@@ -80,7 +80,7 @@ jobs:
       
       - name: Install Build Dependencies
         run: |
-          apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get -y install python3 git ninja-build cmake build-essential
+          apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get -y install python3 git git-lfs ninja-build cmake build-essential && git-lfs install
       
       - name: Clone OpenVINO
         if: runner.os == 'linux'
