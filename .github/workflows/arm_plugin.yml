@@ -39,7 +39,7 @@ env:
   SUBMODULES_REFERENCE: ${{ github.workspace }}/submodules.reference
 
 jobs:
-  Create Directories:
+  CREATE_DIRECTORIES:
     defaults:
       run:
         shell: bash
@@ -54,6 +54,7 @@ jobs:
           ls ${{ github.workspace }}
   
   Build:
+    needs: CREATE_DIRECTORIES
     defaults:
       run:
         shell: bash
