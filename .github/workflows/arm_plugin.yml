@@ -49,8 +49,8 @@ jobs:
         if: runner.os == 'linux'
         run: |
           ls -la /
-          mkdir ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.LAYER_TESTS_INSTALL_DIR }} ${{ env.BUILD_DIR }}
-          mkdir ${{ env.DATA_PATH }} ${{ env.OV_TEMP }} ${{ env.CCACHE_DIR }} ${{ env.OPENVINO_REFERENCE }} ${{ env.OPENVINO_CONTRIB_REFERENCE }} ${{ env.SUBMODULES_REFERENCE }}
+          mkdir -p ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.LAYER_TESTS_INSTALL_DIR }} ${{ env.BUILD_DIR }}
+          mkdir -p ${{ env.DATA_PATH }} ${{ env.OV_TEMP }} ${{ env.CCACHE_DIR }} ${{ env.OPENVINO_REFERENCE }} ${{ env.OPENVINO_CONTRIB_REFERENCE }} ${{ env.SUBMODULES_REFERENCE }}
           ls ${{ github.workspace }}
   
   Build:
