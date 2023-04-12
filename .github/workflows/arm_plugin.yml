@@ -39,6 +39,20 @@ env:
   SUBMODULES_REFERENCE: ${{ github.workspace }}/submodules.reference
 
 jobs:
+  Create Directories:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ['self-hosted', 'linux', 'coverage']
+    steps:
+      - name: Create Directories
+        if: runner.os == 'linux'
+        run: |
+          ls -la /
+          mkdir ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.LAYER_TESTS_INSTALL_DIR }} ${{ env.BUILD_DIR }}
+          mkdir ${{ env.DATA_PATH }} ${{ env.OV_TEMP }} ${{ env.CCACHE_DIR }} ${{ env.OPENVINO_REFERENCE }} ${{ env.OPENVINO_CONTRIB_REFERENCE }} ${{ env.SUBMODULES_REFERENCE }}
+          ls ${{ github.workspace }}
+  
   Build:
     defaults:
       run:
@@ -51,18 +65,19 @@ jobs:
     runs-on: ['self-hosted', 'linux', 'coverage']
     container:
       image: ubuntu:20.04
+      volumes:
+        - ${{ github.workspace }}:/github
     steps:
-      - name: Create Directories
+      - name: Check Volumes
         if: runner.os == 'linux'
         run: |
-          mkdir ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.LAYER_TESTS_INSTALL_DIR }} ${{ env.BUILD_DIR }}
-          mkdir ${{ env.DATA_PATH }} ${{ env.OV_TEMP }} ${{ env.CCACHE_DIR }} ${{ env.OPENVINO_REFERENCE }} ${{ env.OPENVINO_CONTRIB_REFERENCE }} ${{ env.SUBMODULES_REFERENCE }}
-          ls ${{ github.workspace }}
+          ls -la /
+          ls -la /github
       - name: Clone OpenVINO with cache
         if: runner.os == 'linux'
         run: |
-          git clone https://github.com/openvinotoolkit/openvino.git
-          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --jobs 4
+          cd /github && git clone https://github.com/openvinotoolkit/openvino.git
+          cd /github/openvino && git submodule update --init --jobs 4
 
   #     - name: Clone OpenVINO Contrib with cache
   #       if: ${{ runner.arch == 'ARM64' }}
