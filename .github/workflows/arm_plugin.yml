@@ -95,12 +95,9 @@ jobs:
       #     cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
 
       - name: Clone testdata for C API tests
-        uses: actions/checkout@v3
-        with:
-          repository: openvinotoolkit/testdata
-          path: '${{ env.DATA_PATH }}'
-          ref: 'master'
-          lfs: 'true'
+        run: |
+          cd /github && git clone https://github.com/openvinotoolkit/testdata.git
+          cd ${{ env.DATA_PATH }} && git lfs pull
 
   #     - name: Clone OpenVINO & OpenVINO Contrib
   #       if: runner.os != 'linux'
