@@ -34,9 +34,7 @@ env:
   MODELS_PATH: /github/testdata
   OV_TEMP: /github/openvino_temp
   CCACHE_DIR: /github/build_cache
-  OPENVINO_REPOSITORY: /github/openvino
   OPENVINO_REFERENCE: /github/openvino.reference
-  OPENVINO_CONTRIB_REPOSITORY: /github/openvino_contrib
   OPENVINO_CONTRIB_REFERENCE: /github/openvino_contrib.reference
   SUBMODULES_REFERENCE: /github/submodules.reference
 
@@ -72,7 +70,7 @@ jobs:
         if: runner.os == 'linux'
         run: |
           cd /github && git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
-          cd ${{ env.OPENVINO_REFERENCE }} && git submodule update --init --jobs 4
+          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --jobs 4
 
       # - name: Clone OpenVINO Contrib with cache
       #   if: ${{ runner.arch == 'ARM64' }}
@@ -478,7 +476,7 @@ jobs:
 
       - name: Clean source dir
         if: ${{ always() }}
-        run: rm -fr ${{ env.OPENVINO_REPOSITORY }} ${{ env.OPENVINO_CONTRIB_REPOSITORY }}
+        run: rm -fr ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.DATA_PATH }} ${{ env.BUILD_DIR }}
 
   # CPU_ARM_Tests:
   #   needs: Build
