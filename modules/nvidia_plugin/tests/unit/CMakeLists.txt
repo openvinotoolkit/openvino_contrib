@@ -36,7 +36,7 @@ addIeTargetTest(
             gtest_main
             gmock
             ngraphFunctions
-            commonTestUtils_s
+            commonTestUtils
         ADD_CPPLINT
         LABELS
             CUDA
