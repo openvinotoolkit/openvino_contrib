@@ -53,7 +53,7 @@ jobs:
     container:
       image: akashchi/ubuntu:latest
       volumes:
-        - "/home/devuser/actions-runner/_work":"/github"
+        - /home/devuser/actions-runner/_work:/github
     steps:
       - name: Check Volumes
         if: runner.os == 'linux'
