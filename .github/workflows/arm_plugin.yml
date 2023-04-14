@@ -24,7 +24,7 @@ env:
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_C_COMPILER_LAUNCHER: ccache
   OPENVINO_REPO: /github/openvino
-  OPENVINO_CONTRIB_REPO: /github/openvino_contrib
+  OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
   INSTALL_DIR: /github/install
   INSTALL_TEST_DIR: /github/install/tests
   SAMPLES_INSTALL_DIR: /github/install/samples
@@ -66,11 +66,15 @@ jobs:
         run: |
           git config --global --add safe.directory '*'
       
-      - name: Clone OpenVINO
+      - name: Clone OpenVINO & OpenVINO Contrib
         if: runner.os == 'linux'
         run: |
           cd /github && git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
           cd ${{ env.OPENVINO_REPO }} && git submodule update --init --jobs 4
+
+          mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
+          cd /github && git clone --reference ${{ env.OPENVINO_CONTRIB_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --jobs 4
 
       # - name: Clone OpenVINO Contrib with cache
       #   if: ${{ runner.arch == 'ARM64' }}
@@ -82,14 +86,6 @@ jobs:
         run: |
           cd /github && git clone https://github.com/openvinotoolkit/testdata.git
           cd ${{ env.DATA_PATH }} && git lfs pull
-
-  #     - name: Clone OpenVINO & OpenVINO Contrib
-  #       if: runner.os != 'linux'
-  #       run: |
-  #         git clone https://github.com/openvinotoolkit/openvino.git
-  #         cd ${{ env.OPENVINO_REPO }} && git submodule update --init
-  #         git clone https://github.com/openvinotoolkit/openvino_contrib.git
-  #         cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init
       
       - name: Get tools versions
         run: |
@@ -178,45 +174,45 @@ jobs:
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
 
-      # - name: CMake build & install
-      #   run: |
-      #     echo "::group::Clean ccache stats"
-      #     ccache --zero-stats --show-config
-      #     echo "::endgroup::"
+      - name: CMake build & install
+        run: |
+          echo "::group::Clean ccache stats"
+          ccache --zero-stats --show-config
+          echo "::endgroup::"
 
-      #     echo "::group::Cmake build logs"
-      #     cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
-      #     echo "::endgroup::"
+          echo "::group::Cmake build logs"
+          cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release || exit 1
+          echo "::endgroup::"
 
-      #     echo "::group::Show ccache stats"
-      #     ccache --show-stats
-      #     echo "::endgroup::"
+          echo "::group::Show ccache stats"
+          ccache --show-stats
+          echo "::endgroup::"
 
-      #     echo "::group::Layer tests install"
-      #     cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
-      #     cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release || exit 1
-      #     cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-      #     echo "::endgroup::"
+          echo "::group::Layer tests install"
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
+          cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release || exit 1
+          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          echo "::endgroup::"
 
-      #     echo "::group::Samples tests install"
-      #     cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
-      #     cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release || exit 1
-      #     cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-      #     echo "::endgroup::"
+          echo "::group::Samples tests install"
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
+          cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release || exit 1
+          cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          echo "::endgroup::"
 
-      #     echo "::group::CMake install"
-      #     cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-      #     cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
-      #     cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz * && cd -
-      #     cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-      #     cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/ && cd -
-      #     echo "::endgroup::"
+          echo "::group::CMake install"
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz * && cd -
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/ && cd -
+          echo "::endgroup::"
 
-      # - name: Build cpp samples
-      #   run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/cpp_samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
+      - name: Build cpp samples
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/cpp_samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
-      # - name: Build c samples
-      #   run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
+      - name: Build c samples
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
   #     - name: Samples tests
   #       if: success() && runner.os != 'linux' # TODO: enable back
