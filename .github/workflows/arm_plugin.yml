@@ -63,6 +63,11 @@ jobs:
           ls -la /github
           ls -la /github/build_cache
       
+      - name: Add Reference Repository Folders as Safe
+        if: runner.os == 'linux'
+        run: |
+          git config --global --add safe.directory ${{ env.OPENVINO_REFERENCE }}
+      
       - name: Clone OpenVINO
         if: runner.os == 'linux'
         run: |
@@ -471,9 +476,9 @@ jobs:
       #   run: ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
 
-      # - name: Clean install & source dir
-      #   if: ${{ always() }}
-      #   run: rm -fr ${{ env.INSTALL_DIR }} ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }}
+      - name: Clean source dir
+        if: ${{ always() }}
+        run: rm -fr ${{ env.OPENVINO_REPOSITORY }} ${{ env.OPENVINO_CONTRIB_REPOSITORY }}
 
   # CPU_ARM_Tests:
   #   needs: Build
