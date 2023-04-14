@@ -34,7 +34,9 @@ env:
   MODELS_PATH: /github/testdata
   OV_TEMP: /github/openvino_temp
   CCACHE_DIR: /github/build_cache
-  OPENVINO_REFERENCE: /github/openvino
+  OPENVINO_REPOSITORY: /github/openvino
+  OPENVINO_REFERENCE: /github/openvino.reference
+  OPENVINO_CONTRIB_REPOSITORY: /github/openvino_contrib
   OPENVINO_CONTRIB_REFERENCE: /github/openvino_contrib.reference
   SUBMODULES_REFERENCE: /github/submodules.reference
 
@@ -75,7 +77,7 @@ jobs:
 
       - name: Clone testdata for C API tests
         run: |
-          cd /github && git clone --reference ${{ env.DATA_PATH }} https://github.com/openvinotoolkit/testdata.git
+          cd /github && git clone https://github.com/openvinotoolkit/testdata.git
           cd ${{ env.DATA_PATH }} && git lfs pull
 
   #     - name: Clone OpenVINO & OpenVINO Contrib
