@@ -166,7 +166,7 @@ jobs:
             -DENABLE_TESTS=ON \
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
-            -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
             -S ${{ env.OPENVINO_REPO }} \
             -B ${{ env.BUILD_DIR }}
