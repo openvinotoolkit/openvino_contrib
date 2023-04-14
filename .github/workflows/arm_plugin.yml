@@ -113,8 +113,6 @@ jobs:
       - name: Install python dependencies
         run: |
           # For Python API
-          ls -la /github
-          ls -la ${{ env.OPENVINO_REPO }}
           python3 -m pip install --upgrade pip
           python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
