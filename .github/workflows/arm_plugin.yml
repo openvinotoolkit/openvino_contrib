@@ -60,7 +60,6 @@ jobs:
         run: |
           ls -la /
           ls -la /github
-          ls -la ${{ github.workspace }}
       
       - name: Create Root Directory
         if: runner.os == 'linux'
