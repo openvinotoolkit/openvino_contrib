@@ -70,11 +70,10 @@ jobs:
         if: runner.os == 'linux'
         run: |
           cd /github && git clone --reference ${{ env.OPENVINO_REFERENCE }} https://github.com/openvinotoolkit/openvino.git
-          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --jobs 4
-
+          cd ${{ env.OPENVINO_REPO }} && git submodule update --init --recursive
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
           cd /github && git clone --reference ${{ env.OPENVINO_CONTRIB_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --jobs 4
+          cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --recursive
 
       # - name: Clone OpenVINO Contrib with cache
       #   if: ${{ runner.arch == 'ARM64' }}
