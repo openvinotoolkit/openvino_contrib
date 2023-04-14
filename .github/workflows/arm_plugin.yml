@@ -210,20 +210,19 @@ jobs:
       - name: Build c samples
         run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
-  #     - name: Samples tests
-  #       if: success() && runner.os != 'linux' # TODO: enable back
-  #       run: |
-  #         source ${{ env.INSTALL_DIR }}/setupvars.sh
-  #         python3 -m pip install -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
-  #         export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
-  #         python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
-  #           --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
-  #           --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
-  #       env:
-  #         IE_APP_PATH: ${{ env.BUILD_DIR }}/cpp_samples_install
-  #         IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
-  #         SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
-  #         WORKSPACE: ${{ env.INSTALL_DIR }}
+      - name: Samples tests
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          python3 -m pip install -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
+          export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
+          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
+            --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
+        env:
+          IE_APP_PATH: ${{ env.BUILD_DIR }}/cpp_samples_install
+          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
+          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: Upload openvino package
         uses: actions/upload-artifact@v3
@@ -241,7 +240,7 @@ jobs:
       #   if: ${{ always() }}
       #   run: rm -fr ${{ env.BUILD_DIR }}
 
-  #     #
+      #
       # Python tests
       #
 
@@ -370,10 +369,10 @@ jobs:
       #   env:
       #     TEST_DEVICE: CPU
 
-      - name: Python Frontend tests
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=$INSTALL_TEST_DIR/TEST-test_py_fontend.xml
+      # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' - https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4701470274/jobs/8337523065
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=$INSTALL_TEST_DIR/TEST-test_py_fontend.xml
 
       #
       # C++ tests
