@@ -205,15 +205,14 @@ jobs:
           echo "::endgroup::"
 
       - name: Build cpp samples
-        run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/cpp_samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
       - name: Build c samples
-        run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/c_samples_install -b ${{ env.BUILD_DIR }}/c_samples
+        run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
       - name: Samples tests
         run: |
           echo "::group::Directories Content"
-          ls -la ${{ env.IE_APP_PATH }}
           ls -la ${{ env.IE_APP_PATH }}
           ls -la ${{ env.INSTALL_DIR }}/samples/python
           echo "::endgroup::"
@@ -225,7 +224,7 @@ jobs:
             --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
         env:
-          IE_APP_PATH: ${{ env.BUILD_DIR }}/cpp_samples_install/samples_bin
+          IE_APP_PATH: ${{ env.BUILD_DIR }}/samples_install/samples_bin
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
           SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
           WORKSPACE: ${{ env.INSTALL_DIR }}
