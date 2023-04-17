@@ -58,7 +58,7 @@ std::shared_ptr<ov::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ov:
         lstmSequence->validate_and_infer_types();
         return lstmSequence;
     } else {
-        throw ngraph::ngraph_error("Incorrect number of new arguments");
+        OPENVINO_THROW("Incorrect number of new arguments");
     }
 }
 
