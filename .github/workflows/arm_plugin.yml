@@ -135,7 +135,10 @@ jobs:
 
       - name: Install build dependencies
         if: runner.os == 'linux'
-        run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+        run: |
+          # GPU driver. TODO: mv to Docker
+          apt-get update && apt-get install -y --no-install-recommends intel-opencl-icd
+          ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
       # Build
@@ -222,17 +225,17 @@ jobs:
           SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
           WORKSPACE: ${{ env.INSTALL_DIR }}
 
-      - name: Upload openvino package
-        uses: actions/upload-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+      # - name: Upload openvino package
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: openvino_package
+      #     path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
 
-      - name: Upload openvino tests package
-        uses: actions/upload-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+      # - name: Upload openvino tests package
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: openvino_tests
+      #     path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
 
       #
       # Python tests
