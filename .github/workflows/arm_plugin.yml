@@ -39,7 +39,6 @@ env:
   SUBMODULES_REFERENCE: /github/submodules.reference
 
 jobs:
-  
   Build:
     defaults:
       run:
@@ -585,6 +584,7 @@ jobs:
 
   GPU_Tests:
     needs: Build
+
     defaults:
       run:
         shell: bash
@@ -625,5 +625,5 @@ jobs:
 
       - name: Intel GPU plugin func tests
         run: |
-          source ${{ env.INSTALL_DIR }}
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
