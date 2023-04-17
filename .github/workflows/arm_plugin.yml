@@ -54,6 +54,7 @@ jobs:
       image: akashchi/ubuntu:latest
       volumes:
         - /home/devuser/actions-runner/_work:/github
+      options: --device /dev/dri --device-cgroup-rule='c 189:* rmw'
     steps:
       - name: Check Volumes
         if: runner.os == 'linux'
@@ -76,12 +77,6 @@ jobs:
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
           cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-
-      # - name: Clone OpenVINO Contrib with cache
-      #   if: ${{ runner.arch == 'ARM64' }}
-      #   run: |
-      #     git clone --reference ${{ env.SUBMODULES_REFERENCE }} https://github.com/openvinotoolkit/openvino_contrib.git
-      #     cd ${{ env.OPENVINO_CONTRIB_REPO }} && git submodule update --init --reference ${{ env.SUBMODULES_REFERENCE }}
 
       - name: Clone testdata for C API tests
         run: |
@@ -421,11 +416,11 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      # - name: ONNX frontend tests  # Uncomment once GPU enabled
-      #   run: |
-      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-      #     ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* \
-      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
+      - name: ONNX frontend tests
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* \
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
       - name: TensorFlow Common tests
         run: |
