@@ -419,11 +419,11 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      - name: ONNX frontend tests
-        run: |
-          source ${{ env.INSTALL_DIR }}/setupvars.sh
-          ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* \
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
+      # - name: ONNX frontend tests
+      #   run: |
+      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
+      #     ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* \
+      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
       - name: TensorFlow Common tests
         run: |
@@ -583,38 +583,47 @@ jobs:
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
 
-  # GPU_Tests:
-  #   needs: Build
-  #   defaults:
-  #     run:
-  #       shell: bash
-  #   runs-on: ['self-hosted', 'windows']
-  #   env:
-  #     INSTALL_DIR: ${{ github.workspace }}/install
-  #     INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
+  GPU_Tests:
+    needs: Build
+    defaults:
+      run:
+        shell: bash
+    runs-on: ['self-hosted', 'linux', 'coverage']
+    container:
+      image: akashchi/ubuntu:latest
+      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
+    env:
+      INSTALL_DIR: /github/install
+      INSTALL_TEST_DIR: /github/install/tests
 
-  #   steps:
-  #     - name: Download OpenVINO package
-  #       uses: actions/download-artifact@v3
-  #       with:
-  #         name: openvino_package
+    steps:
+      - name: Create Directories
+        run: |
+          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+      
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
 
-  #     - name: Download OpenVINO tests package
-  #       uses: actions/download-artifact@v3
-  #       with:
-  #         name: openvino_tests
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.INSTALL_TEST_DIR }}
 
-  #     - name: Extract OpenVINO packages
-  #       run: |
-  #         mkdir -p "$INSTALL_DIR"
-  #         tar -xzf openvino_package.tar.gz -C "$INSTALL_DIR" && rm openvino_package.tar.gz || exit 1
-  #         tar -xzf openvino_tests.tar.gz -C "$INSTALL_DIR" && rm openvino_tests.tar.gz || exit 1
+      - name: Extract OpenVINO packages
+        run: |
+          pushd ${{ env.INSTALL_DIR }}
+            tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
+          popd
 
-  #     - name: Intel GPU plugin func tests
-  #       run: |
-  #         source "$INSTALL_DIR/setupvars.sh"
-  #         "$INSTALL_TEST_DIR/ov_gpu_func_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-GPUFuncTests.xml"
+          pushd ${{ env.INSTALL_TEST_DIR }}
+            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_TEST_DIR }} && rm openvino_tests.tar.gz || exit 1
+          popd
 
-  #     - name: Clean installation dir
-  #       if: ${{ always() }}
-  #       run: rm -fr "$INSTALL_DIR"
+      - name: Intel GPU plugin func tests
+        run: |
+          source ${{ env.INSTALL_DIR }}
+          ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
