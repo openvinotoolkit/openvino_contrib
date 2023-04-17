@@ -510,7 +510,7 @@ jobs:
   #   runs-on: ['self-hosted', 'linux', 'arm64']
   #   env:
   #     INSTALL_DIR: ${{ github.workspace }}/install
-  #     INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
+  #     INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
 
   #   steps:
   #     - name: Download OpenVINO package
@@ -533,7 +533,7 @@ jobs:
   #       if: runner.os == 'macOS'
   #       run: |
   #         source ${{ env.INSTALL_DIR }}/setupvars.sh
-  #         ${{ env.INSTALL_TESTS_DIR }}/armFuncTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TESTS_DIR }}/TEST-ARMCPUFuncTests.xml
+  #         ${{ env.INSTALL_TEST_DIR }}/armFuncTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ARMCPUFuncTests.xml
 
   #     - name: Clean installation dir
   #       if: ${{ always() }}
@@ -570,13 +570,6 @@ jobs:
           name: openvino_tests
           path: ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Check Directories
-        run: |
-          ls -la /github
-          ls -la ${{ env.INSTALL_DIR }}
-          ls -la ${{ env.INSTALL_TEST_DIR }}
-
-      
       - name: Extract OpenVINO packages
         run: |
           pushd ${{ env.INSTALL_DIR }}
@@ -590,7 +583,7 @@ jobs:
       - name: Intel CPU plugin func tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          ${{ env.INSTALL_TESTS_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
+          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
 
   # GPU_Tests:
   #   needs: Build
@@ -600,7 +593,7 @@ jobs:
   #   runs-on: ['self-hosted', 'windows']
   #   env:
   #     INSTALL_DIR: ${{ github.workspace }}/install
-  #     INSTALL_TESTS_DIR: ${{ github.workspace }}/install/tests
+  #     INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
 
   #   steps:
   #     - name: Download OpenVINO package
@@ -622,7 +615,7 @@ jobs:
   #     - name: Intel GPU plugin func tests
   #       run: |
   #         source "$INSTALL_DIR/setupvars.sh"
-  #         "$INSTALL_TESTS_DIR/ov_gpu_func_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TESTS_DIR/TEST-GPUFuncTests.xml"
+  #         "$INSTALL_TEST_DIR/ov_gpu_func_tests" --gtest_print_time=1 --gtest_output=xml:"$INSTALL_TEST_DIR/TEST-GPUFuncTests.xml"
 
   #     - name: Clean installation dir
   #       if: ${{ always() }}
