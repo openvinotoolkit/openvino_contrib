@@ -54,7 +54,7 @@ jobs:
       image: akashchi/ubuntu:latest
       volumes:
         - /home/devuser/actions-runner/_work:/github
-      options: --device /dev/dri --device-cgroup-rule='c 189:* rmw'
+      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
     steps:
       - name: Check Volumes
         if: runner.os == 'linux'
