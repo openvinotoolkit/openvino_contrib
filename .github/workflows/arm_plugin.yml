@@ -545,6 +545,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
+    runs-on: ubuntu-latest
     # runs-on: ['self-hosted', 'linux', 'coverage']
     container:
       image: akashchi/ubuntu:latest
