@@ -39,15 +39,25 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
     set(HAS_REQUIRED)
     find_package(CUDA REQUIRED)
     set(CUDAToolkit_VERSION_MAJOR ${CUDA_VERSION_MAJOR})
+    set(CUDAToolkit_VERSION_MINOR ${CUDA_VERSION_MINOR})
     set(CUDAToolkit_INCLUDE_DIRS ${CUDA_INCLUDE_DIRS})
     foreach(LIB IN LISTS CUDA_LIBRARIES)
         if (LIB MATCHES ".*cudart.*")
-            add_library(cudart SHARED IMPORTED GLOBAL)
+            if(WIN32)
+                add_library(cudart STATIC IMPORTED GLOBAL)
+                # Even though we're linking against a .dll, in Windows you statically link against
+                # the .lib file found under lib/x64. The .dll will be loaded at runtime automatically
+                # from the PATH search.
+            else()
+                add_library(cudart SHARED IMPORTED GLOBAL)
+            endif()
             set_target_properties(cudart PROPERTIES IMPORTED_LOCATION ${LIB})
-            # list contains /usr/local/cuda-10.2/lib64/libcudart_static.a;-pthread;dl;/usr/lib/x86_64-linux-gnu/librt.so
-            # and rt is not added via other ways when build contains no *.cu files
-            # and dl is not added via other ways when build contains no *.cu files in some other cases
-            target_link_libraries(cudart INTERFACE rt dl)
+            if(NOT WIN32)
+                # list contains /usr/local/cuda-10.2/lib64/libcudart_static.a;-pthread;dl;/usr/lib/x86_64-linux-gnu/librt.so
+                # and rt is not added via other ways when build contains no *.cu files
+                # and dl is not added via other ways when build contains no *.cu files in some other cases
+                target_link_libraries(cudart INTERFACE rt dl)
+            endif()
             add_library(CUDA::cudart ALIAS cudart)
         endif()
     endforeach()
@@ -56,7 +66,11 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
                  NAMES cuda
                  HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
                  PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-    add_library(cuda_driver SHARED IMPORTED GLOBAL)
+    if(WIN32)
+        add_library(cuda_driver STATIC IMPORTED GLOBAL)
+    else()
+        add_library(cuda_driver SHARED IMPORTED GLOBAL)
+    endif()
     set_target_properties(cuda_driver PROPERTIES IMPORTED_LOCATION "${CUDA_DRIVER_PATH}")
     add_library(CUDA::cuda_driver ALIAS cuda_driver)
     # Search for CUBLAS Library
@@ -64,7 +78,11 @@ if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
                  NAMES cublas
                  HINTS "${CUDA_TOOLKIT_ROOT_DIR}" "$ENV{CUDA_PATH}"
                  PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
-    add_library(cublas SHARED IMPORTED GLOBAL)
+    if(WIN32)
+        add_library(cublas STATIC IMPORTED GLOBAL)
+    else()
+        add_library(cublas SHARED IMPORTED GLOBAL)
+    endif()
     set_target_properties(cublas PROPERTIES IMPORTED_LOCATION "${CUBLAS_PATH}")
     add_library(CUDA::cublas ALIAS cublas)
 else()
