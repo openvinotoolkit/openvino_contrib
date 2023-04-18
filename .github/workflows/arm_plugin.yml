@@ -193,7 +193,7 @@ jobs:
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
-            tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude "tests/" *
+            tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
           popd
           
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
