@@ -1,6 +1,3 @@
-'category: ARM plugin':
-- 'modules/arm_plugin/**/*'
-
 'category: CI':
 - '.github/**/*'
 - '.ci/**/*'
