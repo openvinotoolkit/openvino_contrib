@@ -256,7 +256,7 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_reduction.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_unary.py
 
-      - name: Python API 2.0 Tests
+      - name: Python API 2.0 Tests  # TODO: RM some ignores based on Azure pipeline filters
         run: |
           # For python imports to import pybind_mock_frontend
           export PYTHONPATH=$INSTALL_TEST_DIR:$PYTHONPATH
@@ -275,100 +275,100 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_frontend/test_frontend_onnx.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
 
-      # - name: Model Optimizer UT
-      #   if: success() && runner.os != 'linux' # mxnet is not available on macOS, TODO: create ticket
-      #   run: python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
-      #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      - name: Model Optimizer UT
+        if: runner.os != 'macos' # mxnet is not available on macOS, TODO: create ticket
+        run: python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
+              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
-      # - name: PyTorch Layer Tests
-      #   if: success() && runner.os != 'linux' # functional issues: accuracy or dynamic shapes
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=$INSTALL_TEST_DIR/TEST-pytorch.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: PyTorch Layer Tests
+        if: runner.os != 'macos' # functional issues: accuracy or dynamic shapes
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: TensorFlow 1 Layer Tests - TF FE
-      #   if: success() && runner.os != 'linux' # functional issues on ARM CPU plugin
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
-      #     python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-      #     export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=$INSTALL_TEST_DIR/TEST-tf_fe.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow 1 Layer Tests - TF FE
+        if: runner.os != 'macos' # functional issues on ARM CPU plugin
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: TensorFlow 2 Layer Tests - TF FE
-      #   if: success() && runner.os != 'linux' # tensorflow-macos issue
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=$INSTALL_TEST_DIR/TEST-tf2_fe.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow 2 Layer Tests - TF FE
+        if: runner.os != 'macos' # tensorflow-macos issue
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: TensorFlow 1 Layer Tests - Legacy FE
-      #   if: success() && runner.os != 'linux'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=$INSTALL_TEST_DIR/TEST-tf_Roll.xmlTEST
+      - name: TensorFlow 1 Layer Tests - Legacy FE
+        if: runner.os != 'macos'
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
 
-      # - name: TensorFlow 2 Layer Tests - Legacy FE
-      #   if: success() && runner.os != 'linux'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
-      #         --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-tf2_Activation.xmlTEST -k "sigmoid"
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow 2 Layer Tests - Legacy FE
+        if: runner.os != 'macos'
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
+              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: TensorFlow Lite Layer Tests - TFL FE
-      #   if: success() && runner.os != 'linux' # not tensorflow.lite
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=$OPENVINO_REPO/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=$INSTALL_TEST_DIR/TEST-tfl_fe.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow Lite Layer Tests - TFL FE
+        if: runner.os != 'macos' # not tensorflow.lite
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Complex Python params
-      #   if: success() && runner.os != 'linux'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_complex_params.py \
-      #       --ir_version=11 --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_complex_params.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Complex Python params
+        if: runner.os != 'macos'
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_complex_params.py \
+            --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_complex_params.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Import TF model from memory
-      #   if: success() && runner.os != 'linux'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_tf.py --ir_version=11 \
-      #       --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_tf.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Import TF model from memory
+        if: runner.os != 'macos'
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_tf.py --ir_version=11 \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_tf.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Import PyTorch model from memory
-      #   if: success() && runner.os != 'linux'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_pytorch.py --ir_version=11 \
-      #       --junitxml=$INSTALL_TEST_DIR/TEST-test_mo_convert_pytorch.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Import PyTorch model from memory
+        if: runner.os != 'macos'
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_pytorch.py --ir_version=11 \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
       # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' - https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4701470274/jobs/8337523065
       #   run: |
       #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=$INSTALL_TEST_DIR/TEST-test_py_fontend.xml
+      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       #
       # C++ tests
@@ -480,7 +480,7 @@ jobs:
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 \
-                --gtest_filter=-*smoke_TopK_With_Hardcoded_Refs*:*HeteroSyntheticTest.someLayersToMajorPluginOthersToFallback* \
+                --gtest_filter=*smoke* \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
 
       - name: Inference Engine C API tests
