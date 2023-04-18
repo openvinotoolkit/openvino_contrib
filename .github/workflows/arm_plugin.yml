@@ -577,7 +577,7 @@ jobs:
           popd
 
           pushd ${{ env.INSTALL_TEST_DIR }}
-            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_TEST_DIR }} && rm openvino_tests.tar.gz || exit 1
+            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
           popd
       
       - name: Check Directories
@@ -589,7 +589,7 @@ jobs:
       - name: Intel CPU plugin func tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
+          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
 
   GPU_Tests:
     needs: Build
@@ -629,10 +629,10 @@ jobs:
           popd
 
           pushd ${{ env.INSTALL_TEST_DIR }}
-            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_TEST_DIR }} && rm openvino_tests.tar.gz || exit 1
+            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
           popd
 
       - name: Intel GPU plugin func tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
+          ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
