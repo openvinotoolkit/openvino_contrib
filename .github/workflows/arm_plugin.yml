@@ -545,12 +545,12 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-    runs-on: ['self-hosted', 'linux', 'coverage']
+    # runs-on: ['self-hosted', 'linux', 'coverage']
     container:
       image: akashchi/ubuntu:latest
     env:
-      INSTALL_DIR: /github/install
-      INSTALL_TEST_DIR: /github/install/tests
+      INSTALL_DIR: /openvino/install
+      INSTALL_TEST_DIR: /openvino/install/tests
 
     steps:
       - name: Create Directories
@@ -578,6 +578,12 @@ jobs:
           pushd ${{ env.INSTALL_TEST_DIR }}
             tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_TEST_DIR }} && rm openvino_tests.tar.gz || exit 1
           popd
+      
+      - name: Check Directories
+        run: |
+          ls -la ${{ env.INSTALL_DIR }}
+
+          ls -la ${{ env.INSTALL_TEST_DIR }}
 
       - name: Intel CPU plugin func tests
         run: |
