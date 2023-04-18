@@ -6,9 +6,6 @@
 /.github/  @openvinotoolkit/openvino-ci-maintainers
 /.ci/  @openvinotoolkit/openvino-ci-maintainers
 
-# OpenVINO ARM Plugin:
-/modules/arm_plugin/ @openvinotoolkit/openvino_contrib-arm_plugin-maintainers
-
 # OpenVINO Runtime Java API:
 /modules/java_api/ @openvinotoolkit/openvino_contrib-java_api-maintainers
 

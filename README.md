@@ -33,7 +33,6 @@ $ cmake -DOPENVINO_EXTRA_MODULES=<openvino_contrib>/modules -DBUILD_java_api=OFF
 
 Additional build instructions are available for the following modules:
 
-* [**arm_plugin**](./modules/arm_plugin/README.md)
 * [**nvidia_plugin**](./modules/nvidia_plugin/README.md)
 * [**ovms_ai_extension**](./modules/ovms_ai_extension/README.md)
 * [**custom_operations**](./modules/custom_operations/README.md)
