@@ -116,7 +116,7 @@ jobs:
           # For running TensorFlow frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
           # For running Paddle frontend unit tests
-          # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
 
       - name: Install MO dependencies
         run: |
@@ -124,15 +124,12 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
-          # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          # python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
         if: runner.os == 'linux'
-        run: |
-          # GPU driver. TODO: mv to Docker
-          apt-get update && apt-get install -y --no-install-recommends intel-opencl-icd
-          ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+        run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
       # Build
@@ -194,9 +191,17 @@ jobs:
           echo "::group::CMake install"
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
-          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz * && cd -
+          
+          pushd ${{ env.INSTALL_DIR }}
+            tar -czvf --exclude "tests" ${{ env.BUILD_DIR }}/openvino_package.tar.gz *
+          popd
+          
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          cd ${{ env.INSTALL_DIR }} && tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/ && cd -
+          
+          pushd ${{ env.INSTALL_DIR }}
+            tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/
+          popd
+          
           echo "::endgroup::"
 
       - name: Build cpp samples
@@ -254,7 +259,7 @@ jobs:
       - name: Python API 2.0 Tests  # TODO: RM some ignores based on Azure pipeline filters
         run: |
           # For python imports to import pybind_mock_frontend
-          export PYTHONPATH=$INSTALL_TEST_DIR:$PYTHONPATH
+          export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
@@ -272,7 +277,11 @@ jobs:
 
       - name: Model Optimizer UT
         if: runner.os != 'macos' # mxnet is not available on macOS, TODO: create ticket
-        run: python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
+        run: |
+          ls -la ${{ env.INSTALL_TEST_DIR }}
+          ls -la ${{ env.INSTALL_TEST_DIR }}/mo
+          ls -la ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
