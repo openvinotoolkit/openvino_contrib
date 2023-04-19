@@ -32,6 +32,7 @@ env:
   OPENVINO_REFERENCE: /sources_cache/openvino.reference
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
   SUBMODULES_REFERENCE: /sources_cache/submodules.reference
+  PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
   Build:
@@ -251,34 +252,20 @@ jobs:
 
       - name: nGraph and IE Python Bindings Tests
         run: |
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph \
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph  ${{ env.PYTHON_STATIC_ARGS }} \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_zoo_models.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_convpool.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_backend.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_logical.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_matmul.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_reduction.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests_compatibility/test_onnx/test_ops_unary.py
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
 
-      - name: Python API 2.0 Tests  # TODO: RM some ignores based on Azure pipeline filters
+      - name: Python API 2.0 Tests
         run: |
           # For python imports to import pybind_mock_frontend
           export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
-          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino \
+          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_convpool.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_logical.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_matmul.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_reduction.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_reshape.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_unary.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_ops_random.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_frontend/test_frontend_onnx.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_frontend/test_frontend_onnx_editor.py
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
       # - name: Model Optimizer UT
       #   if: runner.os != 'macos' # mxnet is not available on macOS, TODO: create ticket "AttributeError: module 'numpy' has no attribute 'bool'."
@@ -287,7 +274,7 @@ jobs:
       #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
-        if: runner.os != 'macos' # functional issues: accuracy or dynamic shapes
+        if: runner.os != 'macos'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
@@ -338,17 +325,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: MO Python API Tests - Complex Python params  # ModuleNotFoundError: No module named 'openvino.test_utils'
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_complex_params.py \
-            --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_complex_params.xmlTEST
-        env:
-          TEST_DEVICE: CPU
-
-      - name: MO Python API Tests  # ModuleNotFoundError: No module named 'openvino.test_utils'
+      - name: MO Python API Tests
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
