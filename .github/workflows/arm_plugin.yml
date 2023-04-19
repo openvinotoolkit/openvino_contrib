@@ -372,6 +372,7 @@ jobs:
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       #
