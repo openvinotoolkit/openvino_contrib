@@ -338,40 +338,41 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Complex Python params  # ModuleNotFoundError: No module named 'openvino.test_utils'
-      #   if: ${{ always() }}
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_complex_params.py \
-      #       --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_complex_params.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Complex Python params  # ModuleNotFoundError: No module named 'openvino.test_utils'
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_complex_params.py \
+            --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_complex_params.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Import TF model from memory  # ModuleNotFoundError: No module named 'openvino.test_utils'
-      #   if: ${{ always() }}
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_tf.py --ir_version=11 \
-      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_tf.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Import TF model from memory  # ModuleNotFoundError: No module named 'openvino.test_utils'
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_tf.py --ir_version=11 \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_tf.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests - Import PyTorch model from memory  # ModuleNotFoundError: No module named 'openvino.test_utils'
-      #   if: ${{ always() }}
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_pytorch.py --ir_version=11 \
-      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_pytorch.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests - Import PyTorch model from memory  # ModuleNotFoundError: No module named 'openvino.test_utils'
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests/test_mo_convert_pytorch.py --ir_version=11 \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert_pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' - https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4701470274/jobs/8337523065
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
+      - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' - https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4701470274/jobs/8337523065
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       #
       # C++ tests
@@ -413,18 +414,19 @@ jobs:
           ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
 
-      # - name: PaddlePaddle frontend tests  # Expected: doLoadFromFile() doesn't throw an exception. Actual: it throws.
-      #   if: runner.os != 'macOS' # PDPD cannot convert generate_deformable_conv.py, TODO: create bug and exclude
-      #   run: |
-      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-      #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 \
-      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
+      - name: PaddlePaddle frontend tests  # Expected: doLoadFromFile() doesn't throw an exception. Actual: it throws.
+        if: ${{ always() }}
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      # - name: ONNX frontend tests
-      #   run: |
-      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-      #     ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* \
-      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
+      - name: ONNX frontend tests
+        if: ${{ always() }}
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*onnx_model_rnn_fwd_bias_initial_h* --gtest_filter=*smoke* \
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
       - name: TensorFlow Common tests
         run: |
