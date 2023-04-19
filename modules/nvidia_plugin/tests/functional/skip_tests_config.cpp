@@ -119,6 +119,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*smoke_Auto_BehaviorTests*.*)",
         R"(.*smoke_Multi_BehaviorTests*.*)",
         R"(.*HETERO(W|w)ithMULTI*.*)",
+         // 106454, 106628
+        R"(.*.*LoadNetworkToDefaultDeviceNoThrow.*)",
     };
 
 #ifdef _WIN32

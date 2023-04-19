@@ -16,8 +16,8 @@ include(FetchContent)
 
 FetchContent_Declare(
   sentencepiece
-  URL      https://github.com/google/sentencepiece/archive/refs/tags/v0.1.97.tar.gz
-  URL_HASH SHA256=41c3a07f315e3ac87605460c8bb8d739955bc8e7f478caec4017ef9b7d78669b
+  URL      https://github.com/google/sentencepiece/archive/87721596842ab099c603b23357d948906813e853.tar.gz
+  URL_HASH SHA256=a7c105aca0131b4a899155a6c44ea9728e63514edaa8d71fa92e7a5de53b6ca0
 )
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "^(Apple)?Clang$")
@@ -46,9 +46,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
   "${sentencepiece_SOURCE_DIR}"
   "${sentencepiece_BINARY_DIR}")
 
-# sentencepiece for some reason uses /MT on Windows, while default flag is /MD
 if(CMAKE_CL_64)
-    target_compile_options(sentencepiece-static PRIVATE "$<IF:$<CONFIG:Release>,/MD,/MDd>")
     target_compile_definitions(sentencepiece-static PRIVATE _CRT_SECURE_NO_WARNINGS _SCL_SECURE_NO_WARNINGS)
 endif()
 

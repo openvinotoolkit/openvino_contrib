@@ -36,20 +36,6 @@ if(NOT CUSTOM_OPERATIONS)
   list(REMOVE_ITEM CUSTOM_OPERATIONS ov_extension)
 endif()
 
-message("  List of custom operations in ${TARGET_NAME} extension: ")
-foreach(op IN LISTS CUSTOM_OPERATIONS)
-  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${op}")
-    file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/${op}/*.cpp")
-    list(APPEND SRC ${op_src})
-  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${op}.cpp")
-    list(APPEND SRC "${CMAKE_CURRENT_SOURCE_DIR}/${op}.cpp")
-  else()
-    message(FATAL_ERROR "${TARGET_NAME} does not have operation with name '${op}'")
-  endif()
-
-  message("    - ${op}")
-endforeach()
-
 list(APPEND SRC "${CMAKE_CURRENT_SOURCE_DIR}/ov_extension.cpp")
 
 # filter out some operations, requiring specific dependencies
@@ -65,6 +51,20 @@ if(NOT TBB_FOUND)
     list(REMOVE_ITEM CUSTOM_OPERATIONS ${op})
   endforeach()
 endif()
+
+message("  List of custom operations in ${TARGET_NAME} extension: ")
+foreach(op IN LISTS CUSTOM_OPERATIONS)
+  if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/${op}")
+    file(GLOB op_src "${CMAKE_CURRENT_SOURCE_DIR}/${op}/*.cpp")
+    list(APPEND SRC ${op_src})
+  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${op}.cpp")
+    list(APPEND SRC "${CMAKE_CURRENT_SOURCE_DIR}/${op}.cpp")
+  else()
+    message(FATAL_ERROR "${TARGET_NAME} does not have operation with name '${op}'")
+  endif()
+
+  message("    - ${op}")
+endforeach()
 
 #
 # Create library

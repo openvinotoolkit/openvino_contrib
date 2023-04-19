@@ -36,7 +36,7 @@ std::vector<ov::PropertyName> Configuration::get_rw_properties() {
     static const std::vector<ov::PropertyName> rw_properties = {
         // Configs
         ov::PropertyName{ov::device::id.name(), ov::PropertyMutability::RW},
-        ov::PropertyName{ov::inference_precision.name(), ov::PropertyMutability::RW},
+        ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW},
         ov::PropertyName{ov::num_streams.name(), ov::PropertyMutability::RW},
         ov::PropertyName{ov::hint::num_requests.name(), ov::PropertyMutability::RW},
         ov::PropertyName{ov::hint::performance_mode.name(), ov::PropertyMutability::RW},
@@ -64,7 +64,7 @@ std::vector<ov::PropertyName> Configuration::get_supported_properties() {
 std::vector<ov::PropertyName> Configuration::get_caching_properties() {
     static const std::vector<ov::PropertyName> caching_properties = {
         ov::PropertyName{ov::device::architecture.name(), ov::PropertyMutability::RO},
-        ov::PropertyName{ov::inference_precision.name(), ov::PropertyMutability::RW},
+        ov::PropertyName{ov::hint::inference_precision.name(), ov::PropertyMutability::RW},
         ov::PropertyName{ov::hint::execution_mode.name(), ov::PropertyMutability::RW}
     };
     return caching_properties;
@@ -107,8 +107,7 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
     Uncomment this code to switch to f16 by default
     if (inference_precision != ov::element::undefined)
         return inference_precision;
-    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE ||
-        execution_mode == ov::hint::ExecutionMode::UNDEFINED) {
+    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE) {
         if (isHalfSupported(CUDA::Device(deviceId))) {
             return ov::element::f16;
         }
@@ -119,8 +118,7 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
     // Default number for latency mode
     uint32_t optimal_number_of_streams = 1;
-    if ((ov::hint::PerformanceMode::THROUGHPUT == performance_mode) ||
-        (ov::hint::PerformanceMode::UNDEFINED == performance_mode && num_streams == ov::streams::AUTO)) {
+    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode) {
         // If user is planning to use number of requests which is lower than reasonable range of streams
         // there is no sense to create more
         optimal_number_of_streams = (hint_num_requests > 0) ?
@@ -171,7 +169,7 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         } else if (ov::hint::num_requests == key) {
             hint_num_requests = ov::util::from_string(value, ov::hint::num_requests);
         } else if (ov::hint::inference_precision == key) {
-            auto element_type = ov::util::from_string(value, ov::inference_precision);
+            auto element_type = ov::util::from_string(value, ov::hint::inference_precision);
             const std::set<ov::element::Type> supported_types = {
                 ov::element::undefined, ov::element::f16, ov::element::f32,
             };

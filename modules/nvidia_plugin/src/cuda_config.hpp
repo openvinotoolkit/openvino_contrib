@@ -50,8 +50,8 @@ private:
     bool operation_benchmark = false;
     uint32_t hint_num_requests = 0;
     ov::streams::Num num_streams = 0;
-    ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::UNDEFINED;
-    ov::hint::ExecutionMode execution_mode = ov::hint::ExecutionMode::UNDEFINED;
+    ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::LATENCY;
+    ov::hint::ExecutionMode execution_mode = ov::hint::ExecutionMode::PERFORMANCE;
     ov::element::Type inference_precision = ov::element::undefined;
 };
 

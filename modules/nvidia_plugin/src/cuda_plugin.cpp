@@ -120,15 +120,26 @@ bool Plugin::isOperationSupported(const std::shared_ptr<ov::Node>& node) const {
 
 void Plugin::SetConfig(const ConfigMap& config) { _cfg = Configuration{config, _cfg}; }
 
+static ConfigMap any_copy(const ov::AnyMap& params) {
+    std::map<std::string, std::string> result;
+    for (auto&& value : params) {
+        result.emplace(value.first, value.second.as<std::string>());
+    }
+    return result;
+}
+
 InferenceEngine::Parameter Plugin::GetConfig(
-    const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& /*options*/) const {
-    return _cfg.Get(name);
+    const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& options) const {
+    Configuration cfg{any_copy(options), _cfg};
+    return cfg.Get(name);
 }
 
 InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
                                              const std::map<std::string, InferenceEngine::Parameter>& options) const {
     using namespace InferenceEngine::CUDAMetrics;
     bool is_new_api = IsNewAPI();
+
+    Configuration cfg{any_copy(options), _cfg};
 
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};
@@ -164,14 +175,14 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
             return decltype(ov::available_devices)::value_type{availableDevices};
         IE_SET_METRIC_RETURN(AVAILABLE_DEVICES, availableDevices);
     } else if (ov::device::uuid == name) {
-        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
+        const auto deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         ov::device::UUID uuid = {};
         std::copy(std::begin(props.uuid.bytes), std::end(props.uuid.bytes), std::begin(uuid.uuid));
         return decltype(ov::device::uuid)::value_type{uuid};
     } else if (ov::device::full_name == name || METRIC_KEY(FULL_DEVICE_NAME) == name) {
-        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
+        const auto deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         const std::string name = props.name;
@@ -181,7 +192,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
     } else if (METRIC_KEY(IMPORT_EXPORT_SUPPORT) == name) {
         IE_SET_METRIC_RETURN(IMPORT_EXPORT_SUPPORT, true);
     } else if (ov::device::architecture == name || METRIC_KEY(DEVICE_ARCHITECTURE) == name) {
-        const auto deviceId = _cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
+        const auto deviceId = cfg.Get(CONFIG_KEY(DEVICE_ID)).as<std::string>();
         CUDA::Device device{std::stoi(deviceId)};
         const auto& props = device.props();
         std::stringstream ss;
@@ -207,7 +218,7 @@ InferenceEngine::Parameter Plugin::GetMetric(const std::string& name,
         using uint = unsigned int;
         IE_SET_METRIC_RETURN(RANGE_FOR_ASYNC_INFER_REQUESTS, std::make_tuple(uint{1}, uint{1}, uint{1}));
     } else if (Configuration::is_rw_property(name)) {
-        return _cfg.Get(name);
+        return cfg.Get(name);
     } else {
         IE_THROW(NotFound) << "Unsupported device metric: " << name;
     }
