@@ -385,7 +385,7 @@ jobs:
           ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
 
-      # - name: PaddlePaddle frontend tests  # Expected: doLoadFromFile() doesn't throw an exception. Actual: it throws. Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
+      # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #   run: |
       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
@@ -516,19 +516,18 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-    runs-on: ubuntu-latest
-    # runs-on: ['self-hosted', 'linux', 'coverage']
+    # runs-on: ubuntu-latest
+    runs-on: ['self-hosted', 'linux', 'coverage']
     container:
       image: akashchi/ubuntu:latest
     env:
       INSTALL_DIR: /openvino/install
       INSTALL_TEST_DIR: /openvino/install/tests
-      GTEST_PARALLEL_DIR: /github/gtest_parallel
 
     steps:
       - name: Create Directories
         run: |
-          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.GTEST_PARALLEL_DIR }}
+          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
       
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
@@ -551,10 +550,6 @@ jobs:
           pushd ${{ env.INSTALL_TEST_DIR }}
             tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
           popd
-
-      # - name: Clone gtest_parallel
-      #   run: |
-      #     cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
       
       - name: Intel CPU plugin func tests
         run: |
