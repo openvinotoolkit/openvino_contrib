@@ -4,7 +4,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ${{ github.run_id }}
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 env:
