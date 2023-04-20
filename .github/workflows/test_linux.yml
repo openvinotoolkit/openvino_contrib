@@ -1,4 +1,4 @@
-name: Tests on Windows
+name: Tests on Linux
 on:
   workflow_dispatch:
   pull_request:
