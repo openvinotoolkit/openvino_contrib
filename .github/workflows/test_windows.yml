@@ -40,7 +40,6 @@ jobs:
     runs-on: ['windows-latest']
     steps:
       - name: Create Root
-        if: runner.os == 'linux'
         run: |
           mkdir -p /github
           ls -la /github
