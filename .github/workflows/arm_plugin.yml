@@ -555,12 +555,11 @@ jobs:
       - name: Clone gtest_parallel
         run: |
           cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
-          ls -la ${{ env.GTEST_PARALLEL_DIR }}
       
       - name: Intel CPU plugin func tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke*
+          python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_filter=*smoke*
           # ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
 
   GPU_Tests:
@@ -608,10 +607,9 @@ jobs:
       - name: Clone gtest_parallel
         run: |
           cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
-          ls -la ${{ env.GTEST_PARALLEL_DIR }}
 
       - name: Intel GPU plugin func tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke* --gtest_print_time=1
+          python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
           # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
