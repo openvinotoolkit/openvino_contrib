@@ -1,11 +1,7 @@
-name: ARM plugin
+name: Tests on Windows
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches:
-      - 'master'
-      - 'github-actions'
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
@@ -41,15 +37,7 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      # matrix:
-      #   os: ['linux-arm64']
-        # os: ['macos-arm64', 'windows-latest-8-cores', 'ubuntu-20.04-16-cores']
-    runs-on: ['self-hosted', 'linux', 'coverage']
-    container:
-      image: akashchi/ubuntu:latest
-      volumes:
-        - /home/devuser/actions-runner/_work:/sources_cache
-      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
+    runs-on: ['windows-latest']
     steps:
       - name: Create Root
         if: runner.os == 'linux'
@@ -57,26 +45,27 @@ jobs:
           mkdir -p /github
           ls -la /github
       
-      - name: Check Volumes
-        if: runner.os == 'linux'
-        run: |
-          ls -la /sources_cache
+      # - name: Check Volumes
+      #   if: runner.os == 'linux'
+      #   run: |
+      #     ls -la /sources_cache
       
-      - name: Add Reference Repository Folders as Safe
-        if: runner.os == 'linux'
-        run: |
-          git config --global --add safe.directory '*'
+      # - name: Add Reference Repository Folders as Safe
+      #   if: runner.os == 'linux'
+      #   run: |
+      #     git config --global --add safe.directory '*'
       
       - name: Clone OpenVINO & OpenVINO Contrib
-        if: runner.os == 'linux'
         run: |
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino.git
+          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino.git
+          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git
 
           # TODO: rm when scheduled on actual branches
           cd ${{ env.OPENVINO_REPO }} && git checkout 1281074e1599edc6b090fa468b8406ba5c4e7c29
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
 
       - name: Clone testdata for C API tests
         run: |
@@ -85,8 +74,8 @@ jobs:
       
       - name: Get tools versions
         run: |
-          ninja --version || exit 1
-          ccache --version || exit 1
+          # ninja --version || exit 1
+          # ccache --version || exit 1
           python3 --version || exit 1
           cmake --version || exit 1
 
@@ -134,7 +123,6 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
-        if: runner.os == 'linux'
         run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
