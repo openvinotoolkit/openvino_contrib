@@ -31,7 +31,6 @@ SentencepieceTokenizer::SentencepieceTokenizer(const OutputVector& args, int32_t
     FRONT_END_GENERAL_CHECK(args.size() == 2, "SentencepieceTokenizer expects two inputs: sp model and input sentences");
     auto sp_model_const = as_type_ptr<Constant>(args[0].get_node_shared_ptr());
     FRONT_END_GENERAL_CHECK(sp_model_const, "SentencepieceTokenizer expects SentencePiece model to be constant.");
-    //sp_model_const->get_data_ptr()
     auto spm_model = static_cast<const char*>(sp_model_const->get_data_ptr());
     auto spm_model_size = sp_model_const->get_byte_size();
 
