@@ -14,16 +14,16 @@ env:
   CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_C_COMPILER_LAUNCHER: ccache
-  OPENVINO_REPO: \github\openvino
-  OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
-  INSTALL_DIR: /github/install
-  INSTALL_TEST_DIR: /github/install/tests
-  SAMPLES_INSTALL_DIR: /github/install/samples
-  LAYER_TESTS_INSTALL_DIR: /github/install/tests/layer_tests
-  BUILD_DIR: /github/build
-  DATA_PATH: /github/testdata
-  MODELS_PATH: /github/testdata
-  OV_TEMP: /github/openvino_temp
+  OPENVINO_REPO: ${{ github.workspace }}\openvino
+  OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib_repo
+  INSTALL_DIR: ${{ github.workspace }}\install
+  INSTALL_TEST_DIR: ${{ github.workspace }}\install\tests
+  SAMPLES_INSTALL_DIR: ${{ github.workspace }}\install\samples
+  LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}\install\tests\layer_tests
+  BUILD_DIR: ${{ github.workspace }}\build
+  DATA_PATH: ${{ github.workspace }}\testdata
+  MODELS_PATH: ${{ github.workspace }}\testdata
+  OV_TEMP: ${{ github.workspace }}\openvino_temp
   CCACHE_DIR: /sources_cache/build_cache
   OPENVINO_REFERENCE: /sources_cache/openvino.reference
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
@@ -39,35 +39,29 @@ jobs:
       fail-fast: false
     runs-on: ['windows-latest']
     steps:
-      - name: Create Root
-        run: |
-          Write-Output ${{ github.workspace }}
       
       # - name: Check Volumes
-      #   if: runner.os == 'linux'
       #   run: |
       #     ls -la /sources_cache
       
       # - name: Add Reference Repository Folders as Safe
-      #   if: runner.os == 'linux'
       #   run: |
       #     git config --global --add safe.directory '*'
       
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino.git
-          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git
+          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git ${{ env.OPENVINO_REPO }}
 
           # TODO: rm when scheduled on actual branches
           cd ${{ env.OPENVINO_REPO }} && git checkout 1281074e1599edc6b090fa468b8406ba5c4e7c29
           
-          mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
 
       - name: Clone testdata for C API tests
         run: |
-          cd /github && git clone https://github.com/openvinotoolkit/testdata.git
+          git clone https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
           cd ${{ env.DATA_PATH }} && git lfs pull
       
       - name: Get tools versions
