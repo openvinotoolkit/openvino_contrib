@@ -86,23 +86,9 @@ jobs:
           python3 --version || exit 1
           cmake --version || exit 1
 
-  #     #
-  #     # Dependencies
-  #     #
-
-  #     - uses: actions/setup-python@v4
-  #       if: runner.os != 'linux'
-  #       id: cp310
-  #       with:
-  #         python-version: '3.10'
-  #         cache: 'pip'
-  #         cache-dependency-path: |
-  #           openvino/src/bindings/python/wheel/requirements-dev.txt
-  #           openvino/src/bindings/python/requirements.txt
-  #           openvino/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-  #           openvino/src/frontends/onnx/tests/requirements.txt
-  #           openvino/src/frontends/tensorflow/tests/requirements.txt
-  #           # openvino/src/frontends/paddle/tests/requirements.txt
+      #
+      # Dependencies
+      #
 
       - name: Install python dependencies
         run: |
@@ -130,7 +116,6 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
-        if: runner.os == 'linux'
         run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
 
       #
@@ -267,14 +252,12 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      # - name: Model Optimizer UT
-      #   if: runner.os != 'macos' # "AttributeError: module 'numpy' has no attribute 'bool'."
+      # - name: Model Optimizer UT # "AttributeError: module 'numpy' has no attribute 'bool'."
       #   run: |
       #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
       #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
-        if: runner.os != 'macos'
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
@@ -282,8 +265,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      # - name: TensorFlow 1 Layer Tests - TF FE
-      #   if: runner.os != 'macos' # functional issues on ARM CPU plugin  # 1 test fails with "fixture 'op_type' not found"
+      # - name: TensorFlow 1 Layer Tests - TF FE # 1 test fails with "fixture 'op_type' not found"
       #   run: |
       #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
       #     # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
@@ -293,8 +275,7 @@ jobs:
       #   env:
       #     TEST_DEVICE: CPU
 
-      # - name: TensorFlow 2 Layer Tests - TF FE
-      #   if: runner.os != 'macos' # tensorflow-macos issue 1 test fails with "AssertionError: IR generation failed with 139 exit code: /bin/bash: line 1: 74927 Segmentation fault"
+      # - name: TensorFlow 2 Layer Tests - TF FE #  1 test fails with "AssertionError: IR generation failed with 139 exit code: /bin/bash: line 1: 74927 Segmentation fault"
       #   run: |
       #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
       #     export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
@@ -400,14 +381,12 @@ jobs:
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
 
       - name: TensorFlow frontend tests
-        if: runner.os != 'macOS' # Tensorflow is not installed on macos
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
-        if: runner.os != 'macOS' # Tensorflow is not installed on macos
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 \
@@ -426,14 +405,12 @@ jobs:
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-commonUtilsTests.xml
 
       - name: CPU plugin unit tests
-        if: runner.os != 'macOS' # not available on macOS
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
 
       # - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
-      #   if: runner.os != 'macOS' 
       #   run: |
       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
       #     ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 \
