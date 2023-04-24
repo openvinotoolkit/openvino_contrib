@@ -24,6 +24,9 @@ env:
   DATA_PATH: ${{ github.workspace }}\testdata
   MODELS_PATH: ${{ github.workspace }}\testdata
   OV_TEMP: ${{ github.workspace }}\openvino_temp
+  TOOLS_DIRECTORY: ${{ github.workspace }}\tools
+  MSVS_VARS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat
+  MSVC_COMPILER_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.24.28314\bin\Hostx64\x64\cl.exe
   CCACHE_DIR: /sources_cache/build_cache
   OPENVINO_REFERENCE: /sources_cache/openvino.reference
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
@@ -43,6 +46,9 @@ jobs:
       # - name: Check Volumes
       #   run: |
       #     ls -la /sources_cache
+      - name: Create Directories
+        run: |
+          mkdir ${{ env.TOOLS_DIRECTORY }}
       
       # - name: Add Reference Repository Folders as Safe
       #   run: |
@@ -114,8 +120,12 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
-#       - name: Install build dependencies
-#         run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+      - name: Install build dependencies
+        run: | 
+          pushd ${{ env.TOOLS_DIRECTORY }}
+            Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip -OutFile ninja-win.zip
+            Expand-Archive -Force ninja-win.zip
+          popd
 
       #
       # Build
@@ -125,32 +135,28 @@ jobs:
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
 
-#       - name: CMake configure
-#         id: cmake-configure
-#         run: |
-#           echo "::group::Define cmake arguments"
-#           if [[ "${{ runner.arch }}" == "ARM64" ]] ; then
-#             cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
-#           fi
-#           echo "::endgroup::"
-
-#           echo "::group::CMake configure"
-#           cmake "${cmake_args[@]}" \
-#             -DENABLE_CPPLINT=OFF \
-#             -DENABLE_NCC_STYLE=OFF \
-#             -DENABLE_DATA=OFF \
-#             -DENABLE_TESTS=ON \
-#             -DENABLE_PYTHON=ON \
-#             -DENABLE_WHEEL=ON \
-#             -DENABLE_OV_ONNX_FRONTEND=ON \
-#             -DENABLE_FASTER_BUILD=ON \
-#             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
-#             -DENABLE_STRICT_DEPENDENCIES=OFF \
-#             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" \
-#             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin \
-#             -S ${{ env.OPENVINO_REPO }} \
-#             -B ${{ env.BUILD_DIR }}
-#           echo "::endgroup::"
+      - name: CMake configure
+        id: cmake-configure
+        run: |
+          echo "::group::CMake configure"
+          set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;%PATH%
+          
+          & "${{ MSVS_VARS_PATH }}" && cmake -G "Ninja Multi-Config" `
+            -DENABLE_CPPLINT=OFF `
+            -DENABLE_NCC_STYLE=OFF `
+            -DENABLE_DATA=OFF `
+            -DENABLE_TESTS=ON `
+            -DENABLE_PYTHON=ON `
+            -DENABLE_WHEEL=ON `
+            -DENABLE_OV_ONNX_FRONTEND=ON `
+            -DENABLE_FASTER_BUILD=ON `
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
+            -DENABLE_STRICT_DEPENDENCIES=OFF `
+            -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
+            -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin `
+            -S ${{ env.OPENVINO_REPO }} `
+            -B ${{ env.BUILD_DIR }}
+          echo "::endgroup::"
 
 #       - name: CMake build & install
 #         run: |
