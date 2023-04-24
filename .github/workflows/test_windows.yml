@@ -147,11 +147,8 @@ jobs:
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           vswhere -legacy -prerelease -format json
-
-          where vsvarsall.bat
-          where cl.exe
           
-          & "${{ env.MSVS_VARS_PATH }}" && cmake -G "Ninja Multi-Config" `
+          & vsvarsall.bat && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
