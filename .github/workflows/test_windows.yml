@@ -139,7 +139,7 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::CMake configure"
-          set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;%PATH%
+          set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
           & "${{ env.MSVS_VARS_PATH }}" && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
