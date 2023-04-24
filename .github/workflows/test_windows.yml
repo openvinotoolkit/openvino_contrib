@@ -134,6 +134,12 @@ jobs:
       - name: Get number of CPU cores
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
+      
+      - name: Append the directory of 'vcvarsall.bat' to PATH environment variable
+        uses: myci-actions/export-env-var-powershell@1
+        with:
+          name: PATH
+          value: $env:PATH;C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build
 
       - name: CMake configure
         id: cmake-configure
@@ -142,7 +148,8 @@ jobs:
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           vswhere -legacy -prerelease -format json
 
-          ls "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build"
+          where vsvarsall.bat
+          where cl.exe
           
           & "${{ env.MSVS_VARS_PATH }}" && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
