@@ -90,6 +90,11 @@ jobs:
       # Dependencies
       #
 
+      - name: Install build dependencies
+        run: |
+          ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+          apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang
+
       - name: Install python dependencies
         run: |
           # For Python API
@@ -97,12 +102,16 @@ jobs:
           python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
+          
           # For running Python API tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+          
           # For running ONNX frontend unit tests
           python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
+          
           # For running TensorFlow frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          
           # For running Paddle frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
 
@@ -115,9 +124,6 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
-      - name: Install build dependencies
-        run: ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
-
       #
       # Build
       #
@@ -129,14 +135,9 @@ jobs:
       - name: CMake configure
         id: cmake-configure
         run: |
-          echo "::group::Define cmake arguments"
-          if [[ "${{ runner.arch }}" == "ARM64" ]] ; then
-            cmake_args=(-DARM_COMPUTE_SCONS_JOBS=4)
-          fi
-          echo "::endgroup::"
-
           echo "::group::CMake configure"
-          cmake "${cmake_args[@]}" \
+          cmake \
+            -GNinja \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_NCC_STYLE=OFF \
             -DENABLE_DATA=OFF \
@@ -201,6 +202,18 @@ jobs:
       - name: Build c samples
         run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
+      - name: Upload openvino package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+
+      - name: Upload openvino tests package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+
       - name: Samples tests
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
@@ -214,19 +227,7 @@ jobs:
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
           SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
           WORKSPACE: ${{ env.INSTALL_DIR }}
-
-      - name: Upload openvino package
-        uses: actions/upload-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
-
-      - name: Upload openvino tests package
-        uses: actions/upload-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
-
+      
       #
       # Python tests
       #
@@ -252,12 +253,15 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      # - name: Model Optimizer UT # "AttributeError: module 'numpy' has no attribute 'bool'."
-      #   run: |
-      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
-      #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      - name: Model Optimizer UT # "AttributeError: module 'numpy' has no attribute 'bool'."
+        if: ${{ always() }}
+        run: |
+          export LD_LIBRARY_PATH=${{ env.OPENVINO_REPO }}/temp/gna_03.05.00.1906/linux/x64:$LD_LIBRARY_PATH
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
+              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
+        if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
@@ -265,23 +269,25 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      # - name: TensorFlow 1 Layer Tests - TF FE # 1 test fails with "fixture 'op_type' not found"
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
-      #     python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-      #     export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow 1 Layer Tests - TF FE # 1 test fails with "fixture 'op_type' not found"
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: TensorFlow 2 Layer Tests - TF FE #  1 test fails with "AssertionError: IR generation failed with 139 exit code: /bin/bash: line 1: 74927 Segmentation fault"
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: TensorFlow 2 Layer Tests - TF FE #  1 test fails with "AssertionError: IR generation failed with 139 exit code: /bin/bash: line 1: 74927 Segmentation fault"
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
       - name: TensorFlow 1 Layer Tests - Legacy FE
         run: |
@@ -306,21 +312,21 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      # - name: MO Python API Tests  # 6 fails with: ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (1, 2) + inhomogeneous part.
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
-      #   env:
-      #     TEST_DEVICE: CPU
+      - name: MO Python API Tests  # 6 fails with: ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (1, 2) + inhomogeneous part.
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          source ${{ env.INSTALL_DIR }}/setupvars.sh && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions'
-      #   run: |
-      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-      #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-      #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-      #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
+      - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions'
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          source ${{ env.INSTALL_DIR }}/setupvars.sh && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       #
       # C++ tests
@@ -489,8 +495,8 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-    # runs-on: ubuntu-latest
-    runs-on: ['self-hosted', 'linux', 'coverage']
+    runs-on: ubuntu-latest
+    # runs-on: ['self-hosted', 'linux', 'coverage']
     container:
       image: akashchi/ubuntu:latest
     env:
