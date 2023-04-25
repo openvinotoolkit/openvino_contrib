@@ -31,4 +31,4 @@ namespace TemplateExtension {
 
 ov::OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& node);
 
-ov::OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node);
+ov::frontend::NamedOutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node);

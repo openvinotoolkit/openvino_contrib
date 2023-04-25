@@ -18,6 +18,8 @@
 #include "openvino/opsets/opset10.hpp"
 #include "openvino/op/util/framework_node.hpp"
 
+#define USE_STRING_TENSORS
+
 using sentencepiece::ModelProto;
 using sentencepiece::NormalizerSpec;
 using sentencepiece::SentencePieceProcessor;
@@ -30,9 +32,9 @@ using namespace ov::opset10;
 
 namespace {
     bool evaluate_helper(const ov::TensorVector& inputs,
-        std::vector<int32_t>& sparse_indices,
+        std::vector<int64_t>& sparse_indices,
         std::vector<int32_t>& sparse_values,
-        std::vector<int32_t>& sparse_dense_shape) {
+        std::vector<int64_t>& sparse_dense_shape) {
         // the operation has the following inputs:
         // 0. spm_model
         // 1. data input
@@ -41,14 +43,24 @@ namespace {
         // 4. add_bos
         // 5. add_eos
         // 6. reverse
+
+        //std::cerr << "SentencePiece Op evaluate\n";
+
         auto spm_model = static_cast<char*>(inputs[0].data());
         auto spm_model_size = inputs[0].get_byte_size();
 
+#ifdef USE_STRING_TENSORS
+        const ov::Tensor& strings_tensor = **reinterpret_cast<ov::Tensor**>(inputs[1].data<uint8_t>());
+        const std::string* strings = strings_tensor.data<std::string>();
+        size_t batch_size = ov::shape_size(strings_tensor.get_shape());
+        //std::cerr << "    Batch size: " << batch_size << "\n";
+#else
         const uint8_t* strings = inputs[1].data<uint8_t>();
         auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
         auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
         auto end_ids = begin_ids + 1;
         auto data = strings + 4 + 4 + 4*batch_size;
+#endif
 
         auto nbest_size = *static_cast<int32_t*>(inputs[2].data());
         auto alpha = *static_cast<float*>(inputs[3].data());
@@ -80,10 +92,15 @@ namespace {
 
         size_t max_token_id = 0;
         for (size_t batch_ind = 0; batch_ind < batch_size; ++batch_ind) {
+#ifdef USE_STRING_TENSORS
+            const std::string& sentence = strings[batch_ind];
+            //std::cerr << "    sentence: " << sentence << "\n";
+#else
             auto begin_ind = begin_ids[batch_ind];
             auto end_ind = end_ids[batch_ind];
-            std::vector<int32_t> ids;
             std::string sentence(data + begin_ind, data + end_ind);
+#endif
+            std::vector<int32_t> ids;
             CHECK_OK(sp.SampleEncode(sentence, nbest_size, alpha, &ids));
             // put into resulted vectors
             for (size_t token_id = 0; token_id < ids.size(); ++token_id) {
@@ -109,24 +126,24 @@ SentencepieceTokenizer::SentencepieceTokenizer(const ov::OutputVector& args)
 void SentencepieceTokenizer::validate_and_infer_types() {
     // The operation SentencepieceTokenizerExtensionOp has three outputs: sparse indices, sparse values
     // and dense shape
-    set_output_type(0, element::i32, PartialShape{ Dimension(), Dimension(2) });  // FIXME: change to i64 after CPU fix
+    set_output_type(0, element::i64, PartialShape{ Dimension(), Dimension(2) });  // FIXME: change to i64 after CPU fix
     set_output_type(1, element::i32, PartialShape{ Dimension() });
-    set_output_type(2, element::i32, PartialShape{ Dimension(2) });  // FIXME: change to i64 after CPU fix
+    set_output_type(2, element::i64, PartialShape{ Dimension(2) });  // FIXME: change to i64 after CPU fix
 }
 
 bool SentencepieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    std::vector<int32_t> m_sparse_indices;
+    std::vector<int64_t> m_sparse_indices;
     std::vector<int32_t> m_sparse_values;
-    std::vector<int32_t> m_sparse_dense_shape;
+    std::vector<int64_t> m_sparse_dense_shape;
 
     evaluate_helper(inputs, m_sparse_indices, m_sparse_values, m_sparse_dense_shape);
 
     outputs[0].set_shape({ m_sparse_indices.size() / 2, 2 });
-    memcpy(outputs[0].data(), m_sparse_indices.data(), sizeof(int32_t) * m_sparse_indices.size());
+    memcpy(outputs[0].data(), m_sparse_indices.data(), sizeof(int64_t) * m_sparse_indices.size());
     outputs[1].set_shape({ m_sparse_values.size() });
     memcpy(outputs[1].data(), m_sparse_values.data(), sizeof(int32_t) * m_sparse_values.size());
     outputs[2].set_shape({ 2 });
-    memcpy(outputs[2].data(), m_sparse_dense_shape.data(), sizeof(int32_t) * m_sparse_dense_shape.size());
+    memcpy(outputs[2].data(), m_sparse_dense_shape.data(), sizeof(int64_t) * m_sparse_dense_shape.size());
     return true;
 }
 
@@ -148,7 +165,7 @@ OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& node) {
     return { sp_model_const };
 }
 
-OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node) {
+frontend::NamedOutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node) {
     // this is custom translator that converts a sub-graph with SentencePieceOp, SentencePieceTokenizer,
     // and RaggedTensorToSparse operation- into a custom operation SentencepieceTokenizerExtensionOp
     FRONT_END_GENERAL_CHECK(node.get_input_size() > 0, "RaggedTensorToSparse expects at least one input.");
@@ -172,15 +189,21 @@ OutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& 
 
     OutputVector inputs_vector = OutputVector{ sp_model_const, inputs, nbest_size, alpha, add_bos, add_eos, reverse };
 
+#ifndef USE_STRING_TENSORS
     // Override type of input tensor if this is a Parameter
     if(auto parameter = std::dynamic_pointer_cast<ov::opset10::Parameter>(inputs.get_node_shared_ptr())) {
         parameter->set_partial_shape(ov::PartialShape{Dimension()});
         parameter->set_element_type(ov::element::u8);
         parameter->validate_and_infer_types();
     }
+#endif
 
     // create a node with custom operation
     auto sp_tokenizer_ext = std::make_shared<SentencepieceTokenizer>(inputs_vector);
 
-    return sp_tokenizer_ext->outputs();
+    return {
+        {"sparse_indices", sp_tokenizer_ext->output(0)},
+        {"sparse_values", sp_tokenizer_ext->output(1)},
+        {"sparse_dense_shape", sp_tokenizer_ext->output(2)},
+    };
 }
