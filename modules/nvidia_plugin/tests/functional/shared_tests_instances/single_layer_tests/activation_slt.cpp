@@ -2669,7 +2669,7 @@ struct ClampBenchmark : testing::Test {
         std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CancellationToken token{};
-        ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+        ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
         ov::nvidia_gpu::Profiler profiler{false, graph};
         ov::nvidia_gpu::InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
@@ -2696,7 +2696,7 @@ struct ClampBenchmark : testing::Test {
                             wbRequest.immutable_sizes[1] == minMaxSizeBytes);
 
             ov::nvidia_gpu::IOperationExec::Buffers initBuffers{static_cast<DevPtr>(maxAlloc),
-                                                            static_cast<DevPtr>(minAlloc)};
+                                                                static_cast<DevPtr>(minAlloc)};
             operation->InitSharedImmutableWorkbuffers(initBuffers);
 
             workbuffers.immutable_buffers.emplace_back(static_cast<CDevPtr>(maxAlloc));
