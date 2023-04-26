@@ -255,6 +255,7 @@ jobs:
 
       - name: Model Optimizer UT # "AttributeError: module 'numpy' has no attribute 'bool'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4796517925/jobs/8532367004
         run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
           export LD_LIBRARY_PATH=${{ env.OPENVINO_REPO }}/temp/gna_03.05.00.1906/linux/x64:$LD_LIBRARY_PATH
           export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:${{ env.INSTALL_DIR }}/python/python3.8:$PYTHONPATH
           
