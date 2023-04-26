@@ -25,6 +25,7 @@
 #include "cuda_plugin.hpp"
 #include "ie_ngraph_utils.hpp"
 #include "ngraph/util.hpp"
+#include "nvidia/properties.hpp"
 
 using namespace InferenceEngine;
 
@@ -92,7 +93,8 @@ CudaInferRequest::CudaInferRequest(const std::vector<std::shared_ptr<const ov::N
       _executableNetwork(executableNetwork),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{_executableNetwork->GetConfig(ov::enable_profiling.name()).as<bool>(), *_executableNetwork->graph_},
-      is_benchmark_mode_{isBenchmarkMode} {
+      is_benchmark_mode_{isBenchmarkMode},
+      use_cuda_graph_{_executableNetwork->GetConfig("NVIDIA_USE_CUDA_GRAPH").as<bool>()} {
     this->setPointerToExecutableNetworkInternal(executableNetwork);
     createInferRequest();
 }
@@ -105,7 +107,8 @@ CudaInferRequest::CudaInferRequest(const InferenceEngine::InputsDataMap& network
       _executableNetwork(executableNetwork),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{_executableNetwork->GetConfig(ov::enable_profiling.name()).as<bool>(), *_executableNetwork->graph_},
-      is_benchmark_mode_{isBenchmarkMode} {
+      is_benchmark_mode_{isBenchmarkMode},
+      use_cuda_graph_{_executableNetwork->GetConfig("NVIDIA_USE_CUDA_GRAPH").as<bool>()} {
     this->setPointerToExecutableNetworkInternal(executableNetwork);
     createInferRequest();
 }
@@ -283,7 +286,8 @@ void CudaInferRequest::startPipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    is_benchmark_mode_};
+                                                    is_benchmark_mode_,
+                                                    use_cuda_graph_};
         graph.Run(inferRequestContext, memory);
         profiler_.StopStage(Profiler::StartPipeline);
     } catch (...) {
