@@ -139,8 +139,9 @@ jobs:
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
 
+      - uses: ilammy/msvc-dev-cmd@v1
+      
       - name: CMake configure
-        uses: ilammy/msvc-dev-cmd@v1
         id: cmake-configure
         run: |
           echo "::group::CMake configure"
