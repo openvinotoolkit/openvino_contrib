@@ -61,10 +61,10 @@ jobs:
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino.git
-          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino.git ${{ env.OPENVINO_REPO }}
+          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
 
           # TODO: rm when scheduled on actual branches
-          cd ${{ env.OPENVINO_REPO }} && git checkout 5533de5dd87b0630daf40be89aa93a6f1db0754e
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation
           
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
           git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
@@ -139,7 +139,7 @@ jobs:
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
 
-      # - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@v1
       
       - name: CMake configure
         id: cmake-configure
