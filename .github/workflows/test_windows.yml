@@ -145,18 +145,8 @@ jobs:
       - name: CMake configure
         id: cmake-configure
         run: |
-          echo "::group::Dirs"
-
-          ls "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC"
-          ls "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary"
-          ls "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build"
-
-          echo "::endgroup::"
-          
-          
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
-          vswhere -legacy -prerelease -format json
           
           & {{ env.MSVS_VARS_PATH }} && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
