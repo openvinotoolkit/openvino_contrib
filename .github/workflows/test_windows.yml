@@ -32,6 +32,11 @@ env:
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
   SUBMODULES_REFERENCE: /sources_cache/submodules.reference
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
+  SETUPVARS: ${{ env.INSTALL_DIR }}\setupvars.bat
+  CMAKE_VERSION: "3.24.0"
+  CMAKE_CMD: ${{ github.workspace }}\cmake-${{ env.CMAKE_VERSION }}-windows-x86_64\cmake-${{ env.CMAKE_VERSION }}-windows-x86_64\bin\cmake.exe
+  OV_CMAKE_TOOLCHAIN_FILE: ${{ env.OPENVINO_REPO }}\cmake\toolchains\mt.runtime.win32.toolchain.cmake
+
 
 jobs:
   Build:
@@ -135,15 +140,20 @@ jobs:
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
       
-      - name: Append the directory of 'vcvarsall.bat' to PATH environment variable
-        uses: myci-actions/export-env-var-powershell@1
-        with:
-          name: PATH
-          value: $env:PATH;C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build
+      - uses: ilammy/msvc-dev-cmd@v1
 
       - name: CMake configure
         id: cmake-configure
         run: |
+          echo "::group::Dirs"
+
+          ls C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC
+          ls C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary
+          ls C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build
+
+          echo "::endgroup::"
+          
+          
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           vswhere -legacy -prerelease -format json
