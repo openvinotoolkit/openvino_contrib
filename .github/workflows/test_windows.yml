@@ -143,25 +143,24 @@ jobs:
 
       - name: CMake configure
         id: cmake-configure
-        shell: cmd
         run: |
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
-          call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake -G "Ninja Multi-Config" ^
-            -DENABLE_CPPLINT=OFF ^
-            -DENABLE_NCC_STYLE=OFF ^
-            -DENABLE_DATA=OFF ^
-            -DENABLE_TESTS=ON ^
-            -DENABLE_PYTHON=ON ^
-            -DENABLE_WHEEL=ON ^
-            -DENABLE_OV_ONNX_FRONTEND=ON ^
-            -DENABLE_FASTER_BUILD=ON ^
-            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF ^
-            -DENABLE_STRICT_DEPENDENCIES=OFF ^
-            -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" ^
-            -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin ^
-            -S ${{ env.OPENVINO_REPO }} ^
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
+            -DENABLE_CPPLINT=OFF `
+            -DENABLE_NCC_STYLE=OFF `
+            -DENABLE_DATA=OFF `
+            -DENABLE_TESTS=ON `
+            -DENABLE_PYTHON=ON `
+            -DENABLE_WHEEL=ON `
+            -DENABLE_OV_ONNX_FRONTEND=ON `
+            -DENABLE_FASTER_BUILD=ON `
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
+            -DENABLE_STRICT_DEPENDENCIES=OFF `
+            -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
+            -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}/modules/arm_plugin `
+            -S ${{ env.OPENVINO_REPO }} `
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
 
