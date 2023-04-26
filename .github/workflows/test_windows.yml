@@ -170,12 +170,13 @@ jobs:
 
       - name: CMake build & install
         run: |
+          $ErrorActionPreference = "Stop"
           # echo "::group::Clean ccache stats"
           # ccache --zero-stats --show-config
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          (cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release) -or exit
+          cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
@@ -183,20 +184,20 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          (cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests) -or exit
-          (cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release) -or exit
-          (cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests) -or exit
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          (cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests) -or exit
-          (cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release) -or exit
-          (cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests)-or exit
+          cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+          cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          (cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}) -or exit
-          (cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels) -or exit
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
