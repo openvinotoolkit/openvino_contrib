@@ -147,7 +147,7 @@ jobs:
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_amd64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
