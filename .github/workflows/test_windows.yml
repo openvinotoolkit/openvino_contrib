@@ -32,10 +32,10 @@ env:
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
   SUBMODULES_REFERENCE: /sources_cache/submodules.reference
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
-  SETUPVARS: ${{ env.INSTALL_DIR }}\setupvars.bat
+  SETUPVARS: ${{ github.workspace }}\install\setupvars.bat
   CMAKE_VERSION: "3.24.0"
-  CMAKE_CMD: ${{ github.workspace }}\cmake-${{ env.CMAKE_VERSION }}-windows-x86_64\cmake-${{ env.CMAKE_VERSION }}-windows-x86_64\bin\cmake.exe
-  OV_CMAKE_TOOLCHAIN_FILE: ${{ env.OPENVINO_REPO }}\cmake\toolchains\mt.runtime.win32.toolchain.cmake
+  CMAKE_CMD: ${{ github.workspace }}\cmake-3.24.0-windows-x86_64\cmake-3.24.0-windows-x86_64\bin\cmake.exe
+  OV_CMAKE_TOOLCHAIN_FILE: ${{ github.workspace }}\openvino\cmake\toolchains\mt.runtime.win32.toolchain.cmake
 
 
 jobs:
