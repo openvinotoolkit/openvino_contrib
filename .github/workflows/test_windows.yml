@@ -133,10 +133,10 @@ jobs:
         run: |
           choco install --no-progress ninja
 
-          pushd ${{ env.TOOLS_DIRECTORY }}
-            Invoke-WebRequest https://github.com/Kitware/CMake/releases/download/v${{ env.CMAKE_VERSION }}/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip -OutFile cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip
-            Expand-Archive -Force cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip
-          popd
+          # pushd ${{ env.TOOLS_DIRECTORY }}
+          #   Invoke-WebRequest https://github.com/Kitware/CMake/releases/download/v${{ env.CMAKE_VERSION }}/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip -OutFile cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip
+          #   Expand-Archive -Force cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip
+          # popd
 
       #
       # Build
@@ -156,7 +156,7 @@ jobs:
         run: |
           echo "::group::CMake configure"
           
-          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} -G "Ninja Multi-Config" `
+          & "{{ env.MSVS_VARS_PATH }}" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
@@ -185,7 +185,7 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
@@ -193,20 +193,20 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "{{ env.MSVS_VARS_PATH }}" && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "{{ env.MSVS_VARS_PATH }}" && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          & "{{ env.MSVS_VARS_PATH }}" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
