@@ -14,6 +14,9 @@ env:
   # CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
   # CMAKE_CXX_COMPILER_LAUNCHER: ccache
   # CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: sccache
+  CMAKE_C_COMPILER_LAUNCHER: sccache
+  SCCACHE_GHA_ENABLED: 'true'
   OPENVINO_REPO: ${{ github.workspace }}\openvino
   OPENVINO_CONTRIB_REPO: ${{ github.workspace }}\openvino_contrib_repo
   INSTALL_DIR: ${{ github.workspace }}\install
@@ -144,6 +147,9 @@ jobs:
         id: cpu-cores
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
       
       - name: CMake configure
         id: cmake-configure
@@ -179,8 +185,7 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          # set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
-          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
@@ -188,20 +193,20 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-          cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-          cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-          cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          & {{ env.MSVS_VARS_PATH }} && ${{ env.CMAKE_CMD }} --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
