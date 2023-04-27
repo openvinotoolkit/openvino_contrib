@@ -128,10 +128,12 @@ jobs:
 
       - name: Install build dependencies
         run: | 
-          pushd ${{ env.TOOLS_DIRECTORY }}
-            Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip -OutFile ninja-win.zip
-            Expand-Archive -Force ninja-win.zip
-          popd
+          # pushd ${{ env.TOOLS_DIRECTORY }}
+          #   Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip -OutFile ninja-win.zip
+          #   Expand-Archive -Force ninja-win.zip
+          # popd
+
+          choco install --no-progress ninja
 
           pushd ${{ env.TOOLS_DIRECTORY }}
             Invoke-WebRequest https://github.com/Kitware/CMake/releases/download/v${{ env.CMAKE_VERSION }}/cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip -OutFile cmake-${{ env.CMAKE_VERSION }}-windows-x86_64.zip
@@ -152,7 +154,7 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::CMake configure"
-          set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
+          # set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
           & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
@@ -184,7 +186,7 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
+          # set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel --config Release
           echo "::endgroup::"
 
