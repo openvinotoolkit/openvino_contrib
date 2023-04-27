@@ -25,7 +25,7 @@ env:
   MODELS_PATH: ${{ github.workspace }}\testdata
   OV_TEMP: ${{ github.workspace }}\openvino_temp
   TOOLS_DIRECTORY: ${{ github.workspace }}\tools
-  MSVS_VARS_PATH: "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+  MSVS_VARS_PATH: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat"
   CCACHE_DIR: /sources_cache/build_cache
   OPENVINO_REFERENCE: /sources_cache/openvino.reference
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
@@ -154,7 +154,7 @@ jobs:
           echo "::group::CMake configure"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
-          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} -G "Ninja Multi-Config" `
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
@@ -184,7 +184,7 @@ jobs:
 
           echo "::group::Cmake build logs"
           set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
-          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel --config Release
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
