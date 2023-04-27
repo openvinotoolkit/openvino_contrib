@@ -127,12 +127,7 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
 
       - name: Install build dependencies
-        run: | 
-          # pushd ${{ env.TOOLS_DIRECTORY }}
-          #   Invoke-WebRequest https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip -OutFile ninja-win.zip
-          #   Expand-Archive -Force ninja-win.zip
-          # popd
-
+        run: |
           choco install --no-progress ninja
 
           pushd ${{ env.TOOLS_DIRECTORY }}
@@ -144,9 +139,9 @@ jobs:
       # Build
       #
 
-      # - name: Get number of CPU cores
-      #   uses: SimenB/github-actions-cpu-cores@v1
-      #   id: cpu-cores
+      - name: Get number of CPU cores
+        uses: SimenB/github-actions-cpu-cores@v1
+        id: cpu-cores
 
       - uses: ilammy/msvc-dev-cmd@v1
       
@@ -154,7 +149,6 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::CMake configure"
-          # set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
           
           & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
@@ -187,7 +181,7 @@ jobs:
 
           echo "::group::Cmake build logs"
           # set PATH=${{ env.TOOLS_DIRECTORY }}\ninja-win;$PATH
-          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel --config Release
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && ${{ env.CMAKE_CMD }} --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
