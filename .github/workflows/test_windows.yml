@@ -61,7 +61,9 @@ jobs:
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino.git
-          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
+          # git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
+
+          git clone https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }} && cd ${{ env.OPENVINO_REPO }} && git submodule update --init --recursive
 
           # TODO: rm when scheduled on actual branches
           cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule sync
