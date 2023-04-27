@@ -153,7 +153,7 @@ jobs:
         run: |
           echo "::group::CMake configure"
           
-          & "$MSVS_VARS_PATH" x64 && cmake -G "Ninja Multi-Config" `
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
@@ -182,7 +182,7 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          & "$MSVS_VARS_PATH" && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
@@ -190,20 +190,20 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          & "$MSVS_VARS_PATH" && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-          & "$MSVS_VARS_PATH" && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-          & "$MSVS_VARS_PATH" && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          & "$MSVS_VARS_PATH" && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-          & "$MSVS_VARS_PATH" && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-          & "$MSVS_VARS_PATH" && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          & "$MSVS_VARS_PATH" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-          & "$MSVS_VARS_PATH" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          & "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
