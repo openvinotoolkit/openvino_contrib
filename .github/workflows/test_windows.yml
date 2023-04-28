@@ -193,13 +193,13 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           pushd ${{ env.INSTALL_DIR }}
-            tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
+            tar -czvf ${{ env.BUILD_DIR }}\openvino_package.tar.gz --exclude=tests ${{ env.BUILD_DIR }}
           popd
           
           cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           
           pushd ${{ env.INSTALL_DIR }}
-            tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/
+            tar -czvf ${{ env.BUILD_DIR }}\openvino_tests.tar.gz tests\
           popd
           
           echo "::endgroup::"
@@ -224,57 +224,56 @@ jobs:
 #           SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
 #           WORKSPACE: ${{ env.INSTALL_DIR }}
 
-#       - name: Upload openvino package
-#         uses: actions/upload-artifact@v3
-#         with:
-#           name: openvino_package
-#           path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+      - name: Upload openvino package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
 
-#       - name: Upload openvino tests package
-#         uses: actions/upload-artifact@v3
-#         with:
-#           name: openvino_tests
-#           path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+      - name: Upload openvino tests package
+        uses: actions/upload-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
 
-#       #
-#       # Python tests
-#       #
+      #
+      # Python tests
+      #
 
-#       - name: Install Python wheels
-#         run: |
-#           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}/tools
+      - name: Install Python wheels
+        run: |
+          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}/tools
 
-#       - name: nGraph and IE Python Bindings Tests
-#         run: |
-#           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph  ${{ env.PYTHON_STATIC_ARGS }} \
-#             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
-#             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py \
-#             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
+      - name: nGraph and IE Python Bindings Tests
+        run: |
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph  ${{ env.PYTHON_STATIC_ARGS }} \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
 
-#       - name: Python API 2.0 Tests
-#         run: |
-#           # For python imports to import pybind_mock_frontend
-#           export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
-#           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} \
-#             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
-#             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
-#             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
-#             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
+      - name: Python API 2.0 Tests
+        run: |
+          # For python imports to import pybind_mock_frontend
+          export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
+          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} \
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-#       # - name: Model Optimizer UT
-#       #   if: runner.os != 'macos' # "AttributeError: module 'numpy' has no attribute 'bool'."
-#       #   run: |
-#       #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
-#       #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      # - name: Model Optimizer UT
+      #   if: runner.os != 'macos' # "AttributeError: module 'numpy' has no attribute 'bool'."
+      #   run: |
+      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
+      #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
-#       - name: PyTorch Layer Tests
-#         if: runner.os != 'macos'
-#         run: |
-#           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
-#           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
-#         env:
-#           TEST_DEVICE: CPU
+      - name: PyTorch Layer Tests
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
 #       # - name: TensorFlow 1 Layer Tests - TF FE
 #       #   if: runner.os != 'macos' # functional issues on ARM CPU plugin  # 1 test fails with "fixture 'op_type' not found"
