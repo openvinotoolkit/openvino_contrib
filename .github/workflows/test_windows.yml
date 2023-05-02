@@ -194,6 +194,26 @@ jobs:
           
           echo "::endgroup::"
 
+          echo "::group::Archive Artifacts"
+          
+          $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
+          $compress = @{
+            Path = $file
+            CompressionLevel = "Fastest"
+            DestinationPath = "${{ env.BUILD_DIR }}/openvino_package.zip"
+          }
+          Compress-Archive @compress
+
+          $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}\tests"
+          $compress = @{
+            Path = $file
+            CompressionLevel = "Fastest"
+            DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
+          }
+          Compress-Archive @compress
+
+          echo "::endgroup::"
+
 #       - name: Build cpp samples
 #         run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
@@ -218,15 +238,13 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: |
-            ${{ env.BUILD_DIR }}
-            !${{ env.BUILD_DIR }}/tests
+          path: ${{ env.BUILD_DIR }}/openvino_package.zip
 
       - name: Upload openvino tests package
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: ${{ env.BUILD_DIR }}/tests
+          path: ${{ env.BUILD_DIR }}/openvino_tests.zip
 
       #
       # Python tests
