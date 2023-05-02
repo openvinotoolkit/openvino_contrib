@@ -192,16 +192,6 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
-          pushd ${{ env.INSTALL_DIR }}
-            tar -czvf ${{ env.BUILD_DIR }}\openvino_package.tar.gz --exclude=tests ${{ env.BUILD_DIR }}
-          popd
-          
-          cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          
-          pushd ${{ env.INSTALL_DIR }}
-            tar -czvf ${{ env.BUILD_DIR }}\openvino_tests.tar.gz tests\
-          popd
-          
           echo "::endgroup::"
 
 #       - name: Build cpp samples
@@ -228,13 +218,15 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          path: |
+            ${{ env.BUILD_DIR }}
+            !${{ env.BUILD_DIR }}/tests
 
       - name: Upload openvino tests package
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+          path: ${{ env.BUILD_DIR }}/tests
 
       #
       # Python tests
@@ -242,7 +234,7 @@ jobs:
 
       - name: Install Python wheels
         run: |
-          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}/tools
+          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
       - name: nGraph and IE Python Bindings Tests
         run: |
