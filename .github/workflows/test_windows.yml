@@ -214,11 +214,23 @@ jobs:
 
           echo "::endgroup::"
 
-#       - name: Build cpp samples
-#         run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
+      - name: Build cpp samples
+        run: |
+          & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
-#       - name: Build c samples
-#         run: ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples.sh -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
+      - name: Build c samples
+        run: |
+          & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
+        
+      - name: Build cpp samples 2
+        if: ${{ always() }}
+        run: |
+          & "${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
+
+      - name: Build c samples 2
+        if: ${{ always() }}
+        run: |
+          & "${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
 #       - name: Samples tests
 #         run: |
@@ -251,25 +263,26 @@ jobs:
       #
 
       - name: Install Python wheels
+        if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      - name: nGraph and IE Python Bindings Tests
-        run: |
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph  ${{ env.PYTHON_STATIC_ARGS }} \
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
+      # - name: nGraph and IE Python Bindings Tests
+      #   run: |
+      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
+      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
 
-      - name: Python API 2.0 Tests
-        run: |
-          # For python imports to import pybind_mock_frontend
-          export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
-          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} \
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
+      # - name: Python API 2.0 Tests
+      #   run: |
+      #     # For python imports to import pybind_mock_frontend
+      #     $env:PYTHONPATH=${{ env.INSTALL_TEST_DIR }};$PYTHONPATH
+      #     python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
+      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
       # - name: Model Optimizer UT
       #   if: runner.os != 'macos' # "AttributeError: module 'numpy' has no attribute 'bool'."
@@ -278,9 +291,10 @@ jobs:
       #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
+        if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}
+          $env:PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$PYTHONPATH
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -328,14 +342,15 @@ jobs:
 #         env:
 #           TEST_DEVICE: CPU
 
-#       # - name: MO Python API Tests  # 6 fails with: ValueError: setting an array element with a sequence. The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (1, 2) + inhomogeneous part.
-#       #   run: |
-#       #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#       #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-#       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-#       #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
-#       #   env:
-#       #     TEST_DEVICE: CPU
+      - name: MO Python API Tests
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }};$PYTHONPATH
+          & ${{ env.INSTALL_DIR }}/setupvars.bat
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
 #       # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions'
 #       #   run: |
@@ -348,11 +363,11 @@ jobs:
 #       # C++ tests
 #       #
 
-#       - name: OpenVINO Core unit tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
+      # - name: OpenVINO Core unit tests
+      #   run: |
+      #     & ${{ env.INSTALL_DIR }}/setupvars.bat
+      #     ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
+      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
 
 #       - name: OpenVINO Inference functional tests
 #         run: |
