@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
     strategy:
       fail-fast: false
-    runs-on: ['windows-2019-8-cores']
+    runs-on: ['windows-2019']
     steps:
       
       # - name: Check Volumes
