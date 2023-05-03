@@ -12,6 +12,11 @@ More specifically, here we implement custom OpenVINO operations that add support
 
 * [torch.fft](examples/fft)
 
+Also, it contains the conversion extension `translate_sentencepiece_tokenizer` and the operation extension `SentencepieceTokenizer`
+to add support for the tokenization part from TensorFlow [universal-sentence-encoder-multilingual](https://tfhub.dev/google/universal-sentence-encoder-multilingual/3) model.
+The conversion extension changes the input format of the model. So the custom operation `SentencepieceTokenizer` expects 1D string tensor packed into the bitstream of the specific format.
+For more information about the format, check the code for `SentencepieceTokenizer`.
+
 And other custom operations introduced by third-party frameworks:
 
 * [calculate_grid](/examples/calculate_grid) and [sparse_conv](/examples/sparse_conv) from [Open3D](https://github.com/isl-org/Open3D)
