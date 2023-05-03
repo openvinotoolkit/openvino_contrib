@@ -150,7 +150,7 @@ jobs:
             -DENABLE_INTEL_GNA=OFF `
             -DENABLE_HETERO=OFF `
             -DENABLE_OV_PADDLE_FRONTEND=OFF `
-            -DENABLE_OV_PYTORCH_FRONTEND=OFF `
+            -DENABLE_OV_PYTORCH_FRONTEND=ON `
             -DENABLE_OV_TF_FRONTEND=OFF `
             -DENABLE_OV_TF_LITE_FRONTEND=OFF `
             -DENABLE_OV_ONNX_FRONTEND=OFF `
@@ -358,8 +358,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           $env:PATH="C:\hostedtoolcache\windows\Python\3.10.11\x64\lib\site-packages\openvino\libs;$env:PATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
         env:
           TEST_DEVICE: CPU
