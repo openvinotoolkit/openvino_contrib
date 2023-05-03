@@ -26,7 +26,7 @@ env:
   MODELS_PATH: "${{ github.workspace }}\\testdata"
   OV_TEMP: "${{ github.workspace }}\\openvino_temp"
   TOOLS_DIRECTORY: "${{ github.workspace }}\\tools"
-  MSVS_VARS_PATH: "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat"
+  MSVS_VARS_PATH: "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat"
   CCACHE_DIR: /sources_cache/build_cache
   OPENVINO_REFERENCE: /sources_cache/openvino.reference
   OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
     strategy:
       fail-fast: false
-    runs-on: ['windows-latest-8-cores']
+    runs-on: ['windows-2019-8-cores']
     steps:
       
       # - name: Check Volumes
@@ -140,16 +140,21 @@ jobs:
         run: |
           echo "::group::CMake configure"
           
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_DATA=OFF `
             -DENABLE_TESTS=ON `
             -DENABLE_PYTHON=ON `
             -DENABLE_WHEEL=ON `
+            -DENABLE_OV_PADDLE_FRONTEND=OFF `
+            -DENABLE_OV_PYTORCH_FRONTEND=OFF `
+            -DENABLE_OV_TF_FRONTEND=OFF `
+            -DENABLE_OV_TF_LITE_FRONTEND=OFF `
             -DENABLE_OV_ONNX_FRONTEND=OFF `
             -DBUILD_nvidia_plugin=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
+            -DENABLE_INTEL_GPU_DEFAULT=OFF `
             -DBUILD_SHARED_LIBS=OFF `
             -DCMAKE_BUILD_TYPE=Release `
             -DENABLE_FASTER_BUILD=ON `
@@ -169,7 +174,7 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Cmake build logs"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
 
           # echo "::group::Show ccache stats"
@@ -177,20 +182,20 @@ jobs:
           # echo "::endgroup::"
 
           echo "::group::Layer tests install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
 
           echo "::group::CMake install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           
           echo "::endgroup::"
 
@@ -216,24 +221,24 @@ jobs:
 
       - name: Build cpp samples
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
       - name: Build c samples
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
         
       - name: Build cpp samples 2
         if: ${{ always() }}
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & "${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
       - name: Build c samples 2
         if: ${{ always() }}
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & "C:\\Program Files\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & "${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
 #       - name: Samples tests
@@ -298,7 +303,8 @@ jobs:
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$PYTHONPATH"
+          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.10.11\x64\lib\site-packages\openvino\libs;$env:PATH"
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -352,6 +358,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$PYTHONPATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.10.11\x64\lib\site-packages\openvino\libs;$env:PATH"
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
         env:
           TEST_DEVICE: CPU
