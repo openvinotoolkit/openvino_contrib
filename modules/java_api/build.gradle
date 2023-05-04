@@ -6,27 +6,33 @@ import org.gradle.internal.os.OperatingSystem
 println 'Operating system: ' + OperatingSystem.current()
 
 def nativesCPP;
-def openvinoVersion = "2022.1"
+def openvinoVersion = "2023.0"
+
+def native_resources = []
+def tbb_dir = System.getenv('TBB_DIR')
+if (tbb_dir) {
+    if (new File(tbb_dir + "/../lib/").exists()) {
+        native_resources.add(tbb_dir + "/../lib/");
+    } else {
+        native_resources.add(tbb_dir + "/../../");
+    }
+}
 
 if (OperatingSystem.current().isMacOsX()) {
     nativesCPP = 'macosx-x86_64'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64/Release");
 } else if (OperatingSystem.current().isLinux()) {
     nativesCPP = 'linux-x86_64'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64");
 } else if (OperatingSystem.current().isWindows()) {
     nativesCPP = 'windows-x86_64'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release");
 } else {
     logger.warn('Unknown operating system!')
 }
 
 project.version = "${openvinoVersion}-${nativesCPP}"
 
-def native_resources = [
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64",  // UNIX
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64/Release",  // Mac
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release",  // Windows
-    System.getenv('TBB_DIR') + "/../lib/",
-    System.getenv('TBB_DIR') + "/../../",
-]
 def resources_list = ""
 native_resources.each {
     def tree = fileTree(it) {
