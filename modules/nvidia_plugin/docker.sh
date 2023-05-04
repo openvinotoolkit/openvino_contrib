@@ -33,7 +33,7 @@ function build() {
     fi
 
     pushd "${CUDA_PACKAGES_PATH}"
-    docker build -t openvino/cudaplugin-2022.1 .
+    docker build -t openvino/cudaplugin-2022.3 .
     if [[ ! ./Dockerfile -ef ${CUDA_PACKAGES_PATH}/Dockerfile ]]; then
         rm -f "${CUDA_PACKAGES_PATH}"/Dockerfile
     fi
@@ -41,8 +41,9 @@ function build() {
 }
 
 function run() {
-    OPENVINO_TEMP_PATH=$OPENVINO_HOME/inference-engine/temp
-    OPENCV_PATH=$OPENVINO_TEMP_PATH/opencv_4.5.1_ubuntu18/opencv
+    OPENVINO_TEMP_PATH=$OPENVINO_HOME/temp
+    TEMPCV_DIR=${OPENVINO_TEMP_PATH}/opencv_4*
+    OPENCV_PATH=$(ls -d -1 ${TEMPCV_DIR} )
     TBB_PATH=$OPENVINO_TEMP_PATH/tbb
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+LD_LIBRARY_PATH:}${TBB_PATH}/lib:${OPENCV_PATH}/lib:${OPENVINO_HOME}/bin/intel64/${BUILD_TYPE}/lib"
 
@@ -51,7 +52,7 @@ function run() {
                           -v "${PWD}:${PWD}" \
                           -v "${OPENVINO_TEMP_PATH}:${OPENVINO_TEMP_PATH}" \
                           -v "${USER_SHARE_PATH}:${USER_SHARE_PATH}" \
-                          -w "${PWD}" openvino/cudaplugin-2022.1 \
+                          -w "${PWD}" openvino/cudaplugin-2022.3 \
                           ${USER_APP}
 }
 
