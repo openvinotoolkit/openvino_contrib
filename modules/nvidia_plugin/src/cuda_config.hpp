@@ -45,9 +45,11 @@ struct Configuration {
     static constexpr uint32_t reasonable_limit_of_streams = 10;
     int deviceId = 0;
     InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
+
 private:
     bool is_profiling_enabled = false;
     bool operation_benchmark = false;
+    bool use_cuda_graph = true;
     uint32_t hint_num_requests = 0;
     ov::streams::Num num_streams = 0;
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::LATENCY;

@@ -84,7 +84,7 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
@@ -98,7 +98,7 @@ TEST_F(ParameterTest, canExecuteSync) {
 
 TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();

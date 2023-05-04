@@ -33,7 +33,8 @@ public:
                             const ThreadContext& threadContext,
                             CancellationToken& token,
                             Profiler& profiler,
-                            bool isBenchmarkMode = false)
+                            bool isBenchmarkMode = false,
+                            bool useCudaGraph = true)
         : threadContext{threadContext},
           token{token},
           profiler{profiler},
@@ -41,7 +42,8 @@ public:
           inputs_mapping{inputMapping},
           blob_outputs{outputs},
           outputs_mapping{outputMapping},
-          is_benchmark_mode_{isBenchmarkMode} {}
+          is_benchmark_mode_{isBenchmarkMode},
+          use_cuda_graph_{useCudaGraph} {}
     // don't allow storing references to temporary
     template <typename... Args>
     InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
@@ -85,6 +87,7 @@ public:
     [[nodiscard]] ov::nvidia_gpu::CancellationToken& getCancellationToken() const noexcept { return token; }
     [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
     [[nodiscard]] bool isBenchmarkMode() const noexcept { return is_benchmark_mode_; }
+    [[nodiscard]] bool useCudaGraph() const noexcept { return use_cuda_graph_; }
 
 private:
     const ThreadContext& threadContext;
@@ -95,6 +98,7 @@ private:
     const std::vector<std::shared_ptr<ngraph::runtime::Tensor>>& blob_outputs;
     const std::map<std::string, std::size_t>& outputs_mapping;
     bool is_benchmark_mode_;
+    bool use_cuda_graph_;
 };
 
 }  // namespace nvidia_gpu

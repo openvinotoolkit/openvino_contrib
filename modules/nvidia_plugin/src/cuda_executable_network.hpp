@@ -89,7 +89,7 @@ private:
     std::shared_ptr<ngraph::Function> function_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;
-    std::unique_ptr<CudaGraph> graph_;
+    std::unique_ptr<ExecGraph> graph_;
     std::shared_ptr<MemoryPool> memory_pool_;
 };
 

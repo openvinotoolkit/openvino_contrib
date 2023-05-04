@@ -102,7 +102,7 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto mem = blob->as<MemoryBlob>()->rmap();
@@ -117,7 +117,7 @@ TEST_F(ResultTest, canExecuteSync) {
 
 TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
