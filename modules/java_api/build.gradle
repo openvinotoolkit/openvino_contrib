@@ -25,6 +25,7 @@ def native_resources = [
     System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64/Release",  // Mac
     System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release",  // Windows
     System.getenv('TBB_DIR') + "/../lib/",
+    System.getenv('TBB_DIR') + "/../../",
 ]
 def resources_list = ""
 native_resources.each {
