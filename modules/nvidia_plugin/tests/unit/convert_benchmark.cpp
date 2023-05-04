@@ -49,20 +49,20 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
 
     using Type_t = ov::element::Type_t;
-    static constexpr auto supported_types = {Type_t::boolean,
-                                             Type_t::bf16,
-                                             Type_t::f16,
-                                             Type_t::f32,
-                                             Type_t::f64,
-                                             Type_t::i8,
-                                             Type_t::i16,
-                                             Type_t::i32,
-                                             Type_t::i64,
-                                             /*Type_t::u1, convert doesn't support it*/
-                                             Type_t::u8,
-                                             Type_t::u16,
-                                             Type_t::u32,
-                                             Type_t::u64};
+    constexpr Type_t supported_types[] = {Type_t::boolean,
+                                          Type_t::bf16,
+                                          Type_t::f16,
+                                          Type_t::f32,
+                                          Type_t::f64,
+                                          Type_t::i8,
+                                          Type_t::i16,
+                                          Type_t::i32,
+                                          Type_t::i64,
+                                          /*Type_t::u1, convert doesn't support it*/
+                                          Type_t::u8,
+                                          Type_t::u16,
+                                          Type_t::u32,
+                                          Type_t::u64};
     for (auto inputIdx : supported_types) {
         for (auto outputIdx : supported_types) {
             const auto inputType = Type_t(static_cast<std::underlying_type<Type_t>::type>(inputIdx));
