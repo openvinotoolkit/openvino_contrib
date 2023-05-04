@@ -83,7 +83,7 @@ inline __device__ T exp(T x) {
 
 template <typename T>
 inline __device__ T pow(T x, T y) {
-    return ::pow(x, y);
+    return static_cast<T>(powf(static_cast<float>(x), static_cast<float>(y)));
 }
 
 template <typename T>
@@ -101,11 +101,6 @@ inline __device__ T abs(T a) {
 template <>
 inline __device__ __half round(__half x) {
     return ::round(static_cast<float>(x));
-}
-
-template <>
-inline __device__ __half pow<__half>(__half x, __half y) {
-    return powf(static_cast<float>(x), static_cast<float>(y));
 }
 
 #if defined(CUDA_HAS_HALF_MATH)
@@ -169,11 +164,6 @@ inline __device__ __half abs<__half>(__half x) {
 template <>
 inline __device__ __nv_bfloat16 round(__nv_bfloat16 x) {
     return ::round(static_cast<float>(x));
-}
-
-template <>
-inline __device__ __nv_bfloat16 pow<__nv_bfloat16>(__nv_bfloat16 x, __nv_bfloat16 y) {
-    return powf(static_cast<float>(x), static_cast<float>(y));
 }
 
 #if defined(CUDA_HAS_BF16_MATH)
