@@ -66,7 +66,7 @@ struct ConcatTest : testing::Test {
         auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
         ASSERT_TRUE(concatOp);
         CancellationToken token{};
-        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};

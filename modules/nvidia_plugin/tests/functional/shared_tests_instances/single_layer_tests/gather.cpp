@@ -358,7 +358,6 @@ INSTANTIATE_TEST_CASE_P(smoke_Gather_v8_12,
                                            ::testing::Values(smoke_12_ov_params_v8.device_)),
                         Gather8LayerTest::getTestCaseName);
 
-
 // ------------- Tacotron2 shapes -------------
 const GatherTestParams tacotron2_enc_params_v1_v7 = {{148, 512}, {1, 1000}};
 
@@ -691,7 +690,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;

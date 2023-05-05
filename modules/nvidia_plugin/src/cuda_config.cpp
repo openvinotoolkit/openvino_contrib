@@ -14,6 +14,14 @@
 
 using namespace ov::nvidia_gpu;
 
+namespace internal {
+/**
+ * @brief Defines if NVIDIA Plugin should use CUDA graphs for performance acceleration
+ */
+static constexpr ov::Property<bool, ov::PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
+
+}  // namespace internal
+
 Configuration::Configuration() {}
 
 std::vector<ov::PropertyName> Configuration::get_ro_properties() {
@@ -164,6 +172,8 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
             streams_executor_config_.SetConfig(key, value);
         } else if (ov::nvidia_gpu::operation_benchmark == key || NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
             operation_benchmark = ov::util::from_string(value, ov::nvidia_gpu::operation_benchmark);
+        } else if (internal::use_cuda_graph == key) {
+            use_cuda_graph = ov::util::from_string(value, internal::use_cuda_graph);
         } else if (ov::enable_profiling == key) {
             is_profiling_enabled = ov::util::from_string(value, ov::enable_profiling);
         } else if (ov::hint::num_requests == key) {
@@ -198,6 +208,8 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
         return is_profiling_enabled;
     } else if (name == ov::nvidia_gpu::operation_benchmark || name == NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)) {
         return operation_benchmark;
+    } else if (name == internal::use_cuda_graph) {
+        return use_cuda_graph;
     } else if (name == ov::num_streams) {
         return (num_streams == 0) ?
             ov::streams::Num(get_optimal_number_of_streams()) : num_streams;

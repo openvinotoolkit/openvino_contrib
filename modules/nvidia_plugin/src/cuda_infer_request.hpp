@@ -105,6 +105,7 @@ private:
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> input_tensors_;
     std::vector<std::shared_ptr<ngraph::runtime::Tensor>> output_tensors_;
     bool is_benchmark_mode_;
+    bool use_cuda_graph_;
 };
 // ! [infer_request:header]
 

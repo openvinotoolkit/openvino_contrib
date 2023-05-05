@@ -90,7 +90,7 @@ struct PoolingTest : testing::Test {
         CUDA::Device device{};
         const bool optimizeOption = false;
         CancellationToken token{};
-        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};

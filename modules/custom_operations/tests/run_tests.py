@@ -4,9 +4,7 @@
 from openvino.runtime import Core
 from openvino.tools.mo import convert_model
 
-import subprocess
 import pytest
-from pathlib import Path
 import numpy as np
 import os
 

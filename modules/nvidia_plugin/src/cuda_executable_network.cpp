@@ -120,8 +120,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     // Apply common transformations
     transformer.common_transform(device, function_, inputInfoMap, outputsInfoMap, cfg_);
     // Clone model and additionally apply export specific transformations
-    export_function_ =
-        transformer.clone_and_export_transform(device, function_, inputInfoMap, outputsInfoMap, cfg_);
+    export_function_ = transformer.clone_and_export_transform(device, function_, inputInfoMap, outputsInfoMap, cfg_);
     //  CUDA-specific tranformations
     transformer.cuda_transform(device, function_, cfg_);
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
@@ -142,7 +141,7 @@ void ExecutableNetwork::CompileNetwork(const std::shared_ptr<const ngraph::Funct
     const bool opBenchOption = cfg_.Get(NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)).as<bool>();
     const auto creationContext = CreationContext{device, opBenchOption};
 
-    graph_ = std::make_unique<CudaGraph>(creationContext, function_);
+    graph_ = std::make_unique<ExecGraph>(creationContext, function_);
 
     memory_pool_ = CreateMemoryPool();
 }
@@ -343,7 +342,8 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         supported_properties.push_back(ov::PropertyName(ov::supported_properties.name(), PropertyMutability::RO));
         supported_properties.push_back(ov::PropertyName(ov::model_name.name(), PropertyMutability::RO));
         supported_properties.push_back(ov::PropertyName(ov::execution_devices.name(), PropertyMutability::RO));
-        supported_properties.push_back(ov::PropertyName(ov::optimal_number_of_infer_requests.name(), PropertyMutability::RO));
+        supported_properties.push_back(
+            ov::PropertyName(ov::optimal_number_of_infer_requests.name(), PropertyMutability::RO));
         auto config_properties = cfg_.get_rw_properties();
         supported_properties.insert(supported_properties.end(), config_properties.begin(), config_properties.end());
         return decltype(ov::supported_properties)::value_type{supported_properties};
@@ -365,14 +365,12 @@ InferenceEngine::Parameter ExecutableNetwork::GetMetric(const std::string& name)
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (ov::model_name == name || EXEC_NETWORK_METRIC_KEY(NETWORK_NAME) == name) {
         auto networkName = export_function_->get_friendly_name();
-        if (is_new_api)
-            return decltype(ov::model_name)::value_type{networkName};
+        if (is_new_api) return decltype(ov::model_name)::value_type{networkName};
         IE_SET_METRIC_RETURN(NETWORK_NAME, networkName);
     } else if (ov::optimal_number_of_infer_requests == name ||
                EXEC_NETWORK_METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS) == name) {
         const unsigned value = memory_pool_->Size();
-        if (is_new_api)
-            return decltype(ov::optimal_number_of_infer_requests)::value_type{value};
+        if (is_new_api) return decltype(ov::optimal_number_of_infer_requests)::value_type{value};
         IE_SET_METRIC_RETURN(OPTIMAL_NUMBER_OF_INFER_REQUESTS, value);
     } else if (ov::execution_devices == name) {
         return decltype(ov::execution_devices)::value_type{plugin_->GetName() + "." + std::to_string(cfg_.deviceId)};
