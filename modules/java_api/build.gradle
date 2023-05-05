@@ -4,6 +4,9 @@ plugins {
 
 import org.gradle.internal.os.OperatingSystem
 println 'Operating system: ' + OperatingSystem.current()
+def arch = System.getProperty("os.arch")
+println 'CPU architecture: ' + arch
+
 
 def nativesCPP;
 def openvinoVersion = "2023.0"
@@ -19,17 +22,18 @@ if (tbb_dir) {
 }
 
 if (OperatingSystem.current().isMacOsX()) {
-    nativesCPP = 'macosx-x86_64'
+    nativesCPP = 'macosx-'
     native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64/Release");
 } else if (OperatingSystem.current().isLinux()) {
-    nativesCPP = 'linux-x86_64'
+    nativesCPP = 'linux-'
     native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64");
 } else if (OperatingSystem.current().isWindows()) {
-    nativesCPP = 'windows-x86_64'
+    nativesCPP = 'windows-'
     native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release");
 } else {
     logger.warn('Unknown operating system!')
 }
+nativesCPP += arch == "amd64" ? "x86_64" : arch
 
 project.version = "${openvinoVersion}-${nativesCPP}"
 
