@@ -53,7 +53,8 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
-git checkout develop
+git fetch --tags
+git checkout 2022.3.0
 ```
 3. Prepare a build folder:
 ```bash
@@ -103,6 +104,8 @@ git clone --recurse-submodules --single-branch --branch=master https://github.co
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
+git fetch --tags
+git checkout 2022.3.0
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
