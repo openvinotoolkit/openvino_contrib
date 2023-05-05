@@ -7,9 +7,9 @@ The plugin uses custom kernels and [cuBLAS, cuDNN, cuTENSOR libraries\*] as a ba
 ## Supported Platforms
 OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platforms: 
 
-OS                     | GPU
----------------------- | ----------------------
-Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000
+OS                     | GPU                   | Driver               |
+---------------------- | --------------------- |--------------------- |
+Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000| 520.61.05            |
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
@@ -32,13 +32,13 @@ sudo apt-get update
 sudo apt-get install clang-8 clang++8
 ```
 
-2. Install **NVIDIA 460** version of driver from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
-3. Install **CUDA 11.2** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
+2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
+3. Install **CUDA 11.8** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
    
    Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`    
 
-4. Install **cuDNN 8.1.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
-5. Install **cuTENSOR 1.3.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+4. Install **cuDNN 8.6.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+5. Install **cuTENSOR 1.6.1** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
 
 ### Build with cmake
 
@@ -107,12 +107,12 @@ git checkout develop
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
-export CUDACXX=/usr/local/cuda-11.2/bin/nvcc
+export CUDACXX=/usr/local/cuda-11.8/bin/nvcc
 ```
 
 4. Add the path to the cuda libraries to the `LD_LIBRARY_PATH` environment variable like the next (use yours path)
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/bin/nvcc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.8/bin/nvcc
 ```
 
 5. Run setup.py build command as follows.
