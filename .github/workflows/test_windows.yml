@@ -152,7 +152,7 @@ jobs:
             -DENABLE_OV_PADDLE_FRONTEND=OFF `
             -DENABLE_OV_PYTORCH_FRONTEND=ON `
             -DENABLE_OV_TF_FRONTEND=ON `
-            -DENABLE_OV_TF_LITE_FRONTEND=OFF `
+            -DENABLE_OV_TF_LITE_FRONTEND=ON `
             -DENABLE_OV_ONNX_FRONTEND=OFF `
             -DBUILD_nvidia_plugin=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
@@ -218,6 +218,16 @@ jobs:
           }
           Compress-Archive @compress
 
+          echo "::endgroup::"
+      
+      - name: Check Test Sources
+        run: |
+          echo "::group::Build Dir"
+          ls ${{ env.BUILD_DIR }}
+          echo "::endgroup::"
+          
+          echo "::group::Test Dir"
+          ls ${{ env.INSTALL_TEST_DIR }}
           echo "::endgroup::"
 
       - name: Build cpp samples
@@ -300,7 +310,7 @@ jobs:
       #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
       #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
-      - name: PyTorch Layer Tests
+      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -310,7 +320,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow 1 Layer Tests - TF FE
+      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "fixture 'op_type' not found" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -347,15 +357,17 @@ jobs:
 #         env:
 #           TEST_DEVICE: CPU
 
-#       - name: TensorFlow Lite Layer Tests - TFL FE
-#         run: |
-#           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-#           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
-#         env:
-#           TEST_DEVICE: CPU
+      - name: TensorFlow Lite Layer Tests - TFL FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.8.10\x64\lib\site-packages\openvino\libs;$env:PATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
 
-      - name: MO Python API Tests
+      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -365,12 +377,13 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-#       # - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions'
-#       #   run: |
-#       #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#       #     export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-#       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-#       #     python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
+      - name: Python Frontend tests
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.8.10\x64\lib\site-packages\openvino\libs;$env:PATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
 #       #
 #       # C++ tests
