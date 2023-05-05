@@ -87,8 +87,8 @@ const auto pad3DConstparams = testing::Combine(testing::ValuesIn(padsBegin3D),
 
 INSTANTIATE_TEST_CASE_P(smoke_Pad3DConst, PadLayerTest, pad3DConstparams, PadLayerTest::getTestCaseName);
 
-const std::vector<std::vector<int64_t>> padsBegin4D = {{0, 3, 0, 0}, {0, 0, 0, 1}, {0, 0, 1, 1}, {2, 0, 0, 0}};
-const std::vector<std::vector<int64_t>> padsEnd4D = {{0, 3, 0, 0}, {1, 0, 0, 0}, {0, 0, 0, 2}, {1, 3, 0, 0}};
+const std::vector<std::vector<int64_t>> padsBegin4D = {{0, 3, 0, 0}, {0, 0, 0, 1}, {0, 0, 1, 1}, {2, 0, 0, 0}, {-1, -1, -1, -1}, {0, 0, 2, -1}};
+const std::vector<std::vector<int64_t>> padsEnd4D = {{0, 3, 0, 0}, {1, 0, 0, 0}, {0, 0, 0, 2}, {1, 3, 0, 0}, {-1, -1, -1, -1}, {0, 0, -1, 3}};
 
 const auto pad4DConstparams = testing::Combine(testing::ValuesIn(padsBegin4D),
                                                testing::ValuesIn(padsEnd4D),
