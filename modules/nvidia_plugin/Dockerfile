@@ -19,11 +19,13 @@ RUN set -exuo pipefail ; \
 	add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /" ; \
 	apt update ; \
 	DEBIAN_FRONTEND=noninteractive apt install -y \
+		./libcudnn*.deb \
 		autoconf \
 		automake \
 		build-essential \
 		ca-certificates \
 		clang-format-9 \
+		cuda-runtime-11-8 \
 		cuda-11-8 \
 		curl \
 		g++-multilib \
@@ -55,6 +57,7 @@ RUN set -exuo pipefail ; \
 		time \
 		unzip \
 		wget \
+		cuda-drivers=520.61.05-1\
 	; \
 	pip3 install cython ; \
 	curl -L https://github.com/Kitware/ninja/releases/download/v1.10.0.gfb670.kitware.jobserver-1/ninja-1.10.0.gfb670.kitware.jobserver-1_x86_64-linux-gnu.tar.gz | tar xzv --strip-components=1 -C /usr/local/bin ; \
