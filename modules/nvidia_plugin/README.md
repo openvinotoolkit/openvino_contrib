@@ -48,13 +48,11 @@ Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
-git fetch --tags
-git checkout 2022.3.0
 ```
 3. Prepare a build folder:
 ```bash
@@ -99,13 +97,11 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git
+git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
-git fetch --tags
-git checkout 2022.3.0
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
