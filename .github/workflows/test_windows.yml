@@ -82,7 +82,7 @@ jobs:
       - uses: actions/setup-python@v4
         id: cp38
         with:
-          python-version: '3.8'
+          python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: '**/requirements*.txt'
       
@@ -358,7 +358,7 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
               --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
         env:
           TEST_DEVICE: CPU
