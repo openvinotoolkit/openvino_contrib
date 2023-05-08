@@ -346,20 +346,22 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-#       - name: TensorFlow 1 Layer Tests - Legacy FE
-#         run: |
-#           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-#           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
+      - name: TensorFlow 1 Layer Tests - Legacy FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
 
-#       - name: TensorFlow 2 Layer Tests - Legacy FE
-#         run: |
-#           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-#           export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-#           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
-#               --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
-#         env:
-#           TEST_DEVICE: CPU
+      - name: TensorFlow 2 Layer Tests - Legacy FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          export PYTHONPATH=${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
+          python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
+              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
+        env:
+          TEST_DEVICE: CPU
 
       - name: TensorFlow Lite Layer Tests - TFL FE
         if: ${{ always() }}
