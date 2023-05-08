@@ -1,7 +1,8 @@
-FROM docker.io/library/ubuntu:focal
+FROM nvidia/cuda:11.8.0-runtime-ubuntu20.04
 ARG enable_tensorrt
 ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
 
+# nv-tensorrt-repo-*.deb packages
 COPY *.deb  /
 
 SHELL ["/bin/bash", "-c"]
@@ -24,7 +25,8 @@ RUN set -exuo pipefail ; \
 		build-essential \
 		ca-certificates \
 		clang-format-9 \
-		cuda \
+		cuda-runtime-11-8 \
+		cuda-11-8 \
 		curl \
 		g++-multilib \
 		gcc-multilib \
@@ -35,8 +37,8 @@ RUN set -exuo pipefail ; \
 		libavformat-dev \
 		libboost-regex-dev \
 		libcairo2-dev \
-		libcutensor1 \
-		libcutensor-dev \
+		libcutensor1=1.6.1.5-1 \
+		libcutensor-dev=1.6.1.5-1 \
 		libglib2.0-dev \
 		libgstreamer1.0-0 \
 		libgtk2.0-dev \
@@ -55,6 +57,7 @@ RUN set -exuo pipefail ; \
 		time \
 		unzip \
 		wget \
+		cuda-drivers=520.61.05-1\
 	; \
 	pip3 install cython ; \
 	curl -L https://github.com/Kitware/ninja/releases/download/v1.10.0.gfb670.kitware.jobserver-1/ninja-1.10.0.gfb670.kitware.jobserver-1_x86_64-linux-gnu.tar.gz | tar xzv --strip-components=1 -C /usr/local/bin ; \
