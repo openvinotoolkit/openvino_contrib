@@ -45,7 +45,7 @@ if (OperatingSystem.current().isMacOsX()) {
 } else {
     logger.warn('Unknown operating system!')
 }
-nativesCPP += arch == "amd64" ? "x86_64" : arch
+nativesCPP += arch;
 
 project.version = "${openvinoVersion}-${nativesCPP}"
 
