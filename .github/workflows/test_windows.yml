@@ -293,28 +293,32 @@ jobs:
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      # - name: nGraph and IE Python Bindings Tests
-      #   run: |
-      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
-      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
-      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
+      - name: nGraph and IE Python Bindings Tests
+        if: ${{ always() }}
+        run: |
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
 
-      # - name: Python API 2.0 Tests
-      #   run: |
-      #     # For python imports to import pybind_mock_frontend
-      #     $env:PYTHONPATH=${{ env.INSTALL_TEST_DIR }};$PYTHONPATH
-      #     python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
-      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
-      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
-      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
+      - name: Python API 2.0 Tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          # For python imports to import pybind_mock_frontend
+          $env:PYTHONPATH=${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH
+          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      # - name: Model Optimizer UT
-      #   if: runner.os != 'macos' # "AttributeError: module 'numpy' has no attribute 'bool'."
-      #   run: |
-      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
-      #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      - name: Model Optimizer UT
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
+              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
         if: ${{ always() }}
