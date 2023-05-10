@@ -293,7 +293,7 @@ jobs:
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      - name: nGraph and IE Python Bindings Tests
+      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4936809040/jobs/8824796907
         if: ${{ always() }}
         run: |
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
@@ -306,14 +306,14 @@ jobs:
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           # For python imports to import pybind_mock_frontend
-          $env:PYTHONPATH=${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH
+          $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      - name: Model Optimizer UT
+      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4936809040/jobs/8824796907
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
@@ -405,22 +405,19 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
+          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" -ArgumentList "--gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml"
 
       - name: OpenVINO Inference functional tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
+          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" -ArgumentList "--gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml"
 
       - name: OpenVINO Inference unit tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml
+          & "${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests" @("--gtest_print_time=1", "--gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml")
 
       - name: Low Precision Transformations Tests
         if: ${{ always() }}
