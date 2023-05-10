@@ -197,6 +197,8 @@ jobs:
           echo "::group::CMake install"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           
           echo "::endgroup::"
 
@@ -258,7 +260,7 @@ jobs:
 
 #       - name: Samples tests
 #         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
+#           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
 #           python3 -m pip install -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
 #           export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
 #           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
@@ -391,169 +393,147 @@ jobs:
           $env:PATH="C:\hostedtoolcache\windows\Python\3.8.10\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
-#       #
-#       # C++ tests
-#       #
+      #
+      # C++ tests
+      #
 
-      # - name: OpenVINO Core unit tests
+      - name: OpenVINO Core unit tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
+
+      - name: OpenVINO Inference functional tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
+
+      - name: OpenVINO Inference unit tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml
+
+      - name: Low Precision Transformations Tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
+
+      - name: OpenVINO Conditional compilation tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
+
+      - name: IR frontend tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
+
+      # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #   run: |
-      #     & ${{ env.INSTALL_DIR }}/setupvars.bat
-      #     ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
-      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+      #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
+      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-#       - name: OpenVINO Inference functional tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
+      - name: ONNX frontend tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
-#       - name: OpenVINO Inference unit tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml
+      - name: TensorFlow Common tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
 
-#       - name: Low Precision Transformations Tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
+      - name: TensorFlow frontend tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
 
-#       - name: OpenVINO Conditional compilation tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
+      - name: TensorFlow Lite frontend tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
 
-#       - name: IR frontend tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
+      - name: Transformations Tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_transformations_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-Transformations.xml
 
-#       # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
-#       #   run: |
-#       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-#       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
-#       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
+      - name: Common test utils tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/commonUtilsTests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-commonUtilsTests.xml
 
-#       - name: ONNX frontend tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
+      - name: CPU plugin unit tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
 
-#       - name: TensorFlow Common tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
+      # - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
+      #   if: runner.os != 'macOS' 
+      #   run: |
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+      #     ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 \
+      #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
 
-#       - name: TensorFlow frontend tests
-#         if: runner.os != 'macOS' # Tensorflow is not installed on macos
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
+      - name: MULTI / AUTO plugin unit tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ieMultiPluginUnitTests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-MultiAutoUnitTests.xml
 
-#       - name: TensorFlow Lite frontend tests
-#         if: runner.os != 'macOS' # Tensorflow is not installed on macos
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
+      - name: Template plugin tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 `
+                --gtest_filter=*smoke* `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
 
-#       - name: Transformations Tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_transformations_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-Transformations.xml
+      - name: Inference Engine C API tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/InferenceEngineCAPITests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceEngineCAPITests.xml
 
-#       - name: Common test utils tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/commonUtilsTests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-commonUtilsTests.xml
+      - name: OpenVINO C API tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
 
-#       - name: CPU plugin unit tests
-#         if: runner.os != 'macOS' # not available on macOS
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
+      # - name: Clean directories
+      #   if: ${{ always() }}
+      #   run: rm -fr ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.DATA_PATH }} ${{ env.BUILD_DIR }}
 
-#       # - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
-#       #   if: runner.os != 'macOS' 
-#       #   run: |
-#       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
-#       #     ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 \
-#       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
-
-#       - name: MULTI / AUTO plugin unit tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ieMultiPluginUnitTests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-MultiAutoUnitTests.xml
-
-#       - name: Template plugin tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 \
-#                 --gtest_filter=*smoke* \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
-
-#       - name: Inference Engine C API tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/InferenceEngineCAPITests --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceEngineCAPITests.xml
-
-#       - name: OpenVINO C API tests
-#         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
-#           ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 \
-#                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
-
-#       # - name: Clean directories
-#       #   if: ${{ always() }}
-#       #   run: rm -fr ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.DATA_PATH }} ${{ env.BUILD_DIR }}
-
-#   # CPU_ARM_Tests:
-#   #   needs: Build
-#   #   defaults:
-#   #     run:
-#   #       shell: bash
-#   #   runs-on: ['self-hosted', 'linux', 'arm64']
-#   #   env:
-#   #     INSTALL_DIR: ${{ github.workspace }}/install
-#   #     INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
-
-#   #   steps:
-#   #     - name: Download OpenVINO package
-#   #       uses: actions/download-artifact@v3
-#   #       with:
-#   #         name: openvino_package
-
-#   #     - name: Download OpenVINO tests package
-#   #       uses: actions/download-artifact@v3
-#   #       with:
-#   #         name: openvino_tests
-
-#   #     - name: Extract OpenVINO packages
-#   #       run: |
-#   #         mkdir -p ${{ env.INSTALL_DIR }}
-#   #         tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
-#   #         tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
-
-#   #     - name: ARM CPU plugin func tests
-#   #       if: runner.os == 'macOS'
-#   #       run: |
-#   #         source ${{ env.INSTALL_DIR }}/setupvars.sh
-#   #         ${{ env.INSTALL_TEST_DIR }}/armFuncTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ARMCPUFuncTests.xml
-
-#   #     - name: Clean installation dir
-#   #       if: ${{ always() }}
-#   #       run: rm -fr ${{ env.INSTALL_DIR }}
 
 #   CPU_Tests:
 #     needs: Build
@@ -599,7 +579,7 @@ jobs:
       
 #       - name: Intel CPU plugin func tests
 #         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
+#           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
 #           # python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_filter=*smoke*
 #           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
 
@@ -651,6 +631,6 @@ jobs:
 
 #       - name: Intel GPU plugin func tests
 #         run: |
-#           source ${{ env.INSTALL_DIR }}/setupvars.sh
+#           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
 #           python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
 #           # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
