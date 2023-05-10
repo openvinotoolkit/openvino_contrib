@@ -305,7 +305,6 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          # For python imports to import pybind_mock_frontend
           $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
