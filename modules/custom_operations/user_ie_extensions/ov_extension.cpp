@@ -55,8 +55,10 @@
 #ifdef sentence_piece
 #    include "sentence_piece/sentence_piece.hpp"
 #    define SENTENSE_PIECE_EXT                                                                                              \
-            std::make_shared<ov::OpExtension<CaseFoldUTF8>>(),                                 \
+            std::make_shared<ov::OpExtension<CaseFold>>(),                                 \
             std::make_shared<ov::frontend::ConversionExtension>("CaseFoldUTF8", translate_case_fold_utf8),             \
+            std::make_shared<ov::OpExtension<NormalizeUnicode>>(),                                 \
+            std::make_shared<ov::frontend::ConversionExtension>("NormalizeUTF8", translate_normalize_utf8),             \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
             std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
             std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),

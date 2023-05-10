@@ -46,20 +46,20 @@ ov::OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& nod
 ov::frontend::NamedOutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node);
 
 // https://www.tensorflow.org/text/api_docs/python/text/case_fold_utf8
-class OPENVINO_API CaseFoldUTF8 : public ov::op::Op {
+class OPENVINO_API CaseFold  : public ov::op::Op {
 public:
-    OPENVINO_OP("CaseFoldUTF8");
+    OPENVINO_OP("CaseFold ");
 
-    CaseFoldUTF8() = default;
+    CaseFold () = default;
 
-    CaseFoldUTF8(const ov::OutputVector& arguments) : ov::op::Op(arguments) {
+    CaseFold (const ov::OutputVector& arguments) : ov::op::Op(arguments) {
         constructor_validate_and_infer_types();
     }
 
     void validate_and_infer_types() override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
-        return std::make_shared<CaseFoldUTF8>(inputs);
+        return std::make_shared<CaseFold >(inputs);
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
@@ -73,4 +73,42 @@ public:
     }
 };
 
+
 ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node);
+
+
+class OPENVINO_API NormalizeUnicode : public ov::op::Op {
+public:
+    OPENVINO_OP("NormalizeUnicode");
+
+    NormalizeUnicode () = default;
+
+    NormalizeUnicode(const ov::OutputVector& arguments, const std::string& normalization_form) :
+        ov::op::Op(arguments),
+        m_normalization_form(normalization_form) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<NormalizeUnicode>(inputs, m_normalization_form);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        visitor.on_attribute("normalization_form", m_normalization_form);
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+private:
+
+    std::string m_normalization_form;
+};
+
+ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node);

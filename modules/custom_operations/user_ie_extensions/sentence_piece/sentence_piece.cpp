@@ -696,22 +696,22 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
 }
 
 
-void CaseFoldUTF8::validate_and_infer_types() {
+void CaseFold::validate_and_infer_types() {
     check_string_input(this, 0);
     set_string_output(this, 0, get_input_partial_shape(0));
 }
 
-bool CaseFoldUTF8::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     auto begins = inputs[0].data<const int32_t>();
     auto ends   = inputs[1].data<const int32_t>();
     auto chars  = inputs[2].data<const uint8_t>();
 
-    // Stub implementation that transforms each input string "X" to "CaseFoldUTF8(X)" for debugging purposes
+    // Stub implementation that transforms each input string "X" to "CaseFold(X)" for debugging purposes
     {
         // Set output shapes
         outputs[0].set_shape(inputs[0].get_shape());
         outputs[1].set_shape(inputs[1].get_shape());
-        const std::string left_side = "CaseFoldUTF8(", right_side = ")";
+        const std::string left_side = "CaseFold(", right_side = ")";
         const size_t num_elements = inputs[0].get_size();
         const size_t new_len = inputs[2].get_size() + (left_side.length() + right_side.length())*num_elements;
         outputs[2].set_shape(Shape{new_len});
@@ -740,7 +740,62 @@ bool CaseFoldUTF8::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
 
 ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node) {
     std::cerr << "translate_case_fold_utf8\n";
-    FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "CaseFoldUTF8 expects only 1 input");
-    return { post_translate_string_tensor_output(std::make_shared<CaseFoldUTF8>(pre_translate_string_tensor_input(node, 0))->outputs()) };
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "CaseFold expects only 1 input");
+    return { post_translate_string_tensor_output(std::make_shared<CaseFold>(
+        pre_translate_string_tensor_input(node, 0))->outputs()) };
 }
 
+
+
+void NormalizeUnicode::validate_and_infer_types() {
+    check_string_input(this, 0);
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool NormalizeUnicode::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto begins = inputs[0].data<const int32_t>();
+    auto ends   = inputs[1].data<const int32_t>();
+    auto chars  = inputs[2].data<const uint8_t>();
+
+#if 0
+    // TODO: Complete implementation
+#else
+    // Stub implementation that transforms each input string "X" to "NormalizeUnicode(X, normalization_form)" for debugging purposes
+    {
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+        const std::string left_side = "NormalizeUnicode(", right_side = ")", delimeter = ", ";
+        const size_t num_elements = inputs[0].get_size();
+        const size_t new_len = inputs[2].get_size() + (left_side.length() + right_side.length() + delimeter.length() + m_normalization_form.length())*num_elements;
+        outputs[2].set_shape(Shape{new_len});
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_begins = outputs[0].data<int32_t>();
+        auto new_ends   = outputs[1].data<int32_t>();
+        auto new_chars  = outputs[2].data<uint8_t>();
+        int32_t char_offset = 0;
+
+        for(size_t i = 0; i < num_elements; ++i) {
+            new_begins[i] = char_offset;
+            std::string new_str = left_side + std::string(chars + begins[i], chars + ends[i]) + delimeter + m_normalization_form + right_side;
+            std::copy(new_str.data(), new_str.data() + new_str.length(), new_chars + char_offset);
+            char_offset += new_str.length();
+            new_ends[i] = char_offset;
+        }
+        return true;
+    }
+    // End of stub implementation
+#endif
+}
+
+
+ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node) {
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "NormalizeUTF8 expects only 1 input");
+    return { post_translate_string_tensor_output(std::make_shared<NormalizeUnicode>(
+        pre_translate_string_tensor_input(node, 0),
+        node.get_attribute<std::string>("normalization_form"))->outputs()) };
+}
