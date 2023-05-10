@@ -160,7 +160,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
                 fmt::format("The eps attribute of the MVN-6 operation must be positive number, but value is {}.",
                             mvnOp_v6->get_eps()));
         }
-        if (ngraph::get_constant_from_source(node.get_input_node_shared_ptr(1)) == nullptr) {
+        if (ov::get_constant_from_source(node.get_input_node_shared_ptr(1)) == nullptr) {
             throwIEException("The nvidia_gpu MVN-6 operation implemented only for constant axes input.");
         }
     }
@@ -209,7 +209,7 @@ ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
     }
     if (version_ == MvnV6) {
         const auto signed_axes =
-            ngraph::get_constant_from_source(node.get_input_node_shared_ptr(1))->cast_vector<int64_t>();
+            ov::get_constant_from_source(node.get_input_node_shared_ptr(1))->cast_vector<int64_t>();
         auto reducedShape = node.get_input_shape(0);
         ngraph::AxisSet axes;
         for (auto v : signed_axes) {

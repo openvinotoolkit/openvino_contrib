@@ -1,22 +1,19 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <ie_parameter.hpp>
 #include <map>
 #include <memory>
-#include <nvidia/nvidia_config.hpp>
-#include <openvino/runtime/properties.hpp>
 #include <string>
-#include <threading/ie_istreams_executor.hpp>
+
+#include "nvidia/nvidia_config.hpp"
+#include "openvino/runtime/properties.hpp"
+#include "threading/ie_istreams_executor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
-
-using ConfigMap = std::map<std::string, std::string>;
-
 struct Configuration {
     using Ptr = std::shared_ptr<Configuration>;
 
@@ -26,27 +23,29 @@ struct Configuration {
     Configuration& operator=(const Configuration&) = default;
     Configuration& operator=(Configuration&&) = default;
 
-    explicit Configuration(const ConfigMap& config,
+    explicit Configuration(const ov::AnyMap& params,
                            const Configuration& defaultCfg = {},
                            const bool throwOnUnsupported = true);
 
-    InferenceEngine::Parameter Get(const std::string& name) const;
+    ov::Any get(const std::string& name) const;
 
     static std::vector<ov::PropertyName> get_supported_properties();
     static std::vector<ov::PropertyName> get_ro_properties();
     static std::vector<ov::PropertyName> get_rw_properties();
     static std::vector<ov::PropertyName> get_caching_properties();
     static bool is_rw_property(const std::string& name);
-    void update_device_id(const ConfigMap& config);
+    bool is_stream_executor_property(const std::string& name) const;
+    void update_device_id(const ov::AnyMap& config);
+    int get_device_id() const { return device_id; };
     ov::element::Type get_inference_precision() const noexcept;
     uint32_t get_optimal_number_of_streams() const noexcept;
 
     // Plugin configuration parameters
     static constexpr uint32_t reasonable_limit_of_streams = 10;
-    int deviceId = 0;
-    InferenceEngine::IStreamsExecutor::Config streams_executor_config_;
+    ov::threading::IStreamsExecutor::Config streams_executor_config_;
 
 private:
+    int device_id = 0;
     bool is_profiling_enabled = false;
     bool operation_benchmark = false;
     bool use_cuda_graph = true;

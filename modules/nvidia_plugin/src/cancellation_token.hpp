@@ -26,23 +26,13 @@ public:
     /**
      * Set token status as cancelled
      */
-    void Cancel() { is_cancelled_.store(true, std::memory_order_release); }
-
-    /**
-     * Throws exception THROW_IE_EXCEPTION_WITH_STATUS(INFER_CANCELLED) if detected cancel status
-     */
-    void Check() {
-        if (is_cancelled_.load(std::memory_order_acquire)) {
-            is_cancelled_.store(false, std::memory_order_release);
-            if (cancel_callback_) {
-                cancel_callback_();
-            }
-            throwInferCancelled();
-        }
+    void Cancel() {
+        if (cancel_callback_) {
+            cancel_callback_();
+        };
     }
 
 private:
-    std::atomic<bool> is_cancelled_{false};
     std::function<void()> cancel_callback_;
 };
 

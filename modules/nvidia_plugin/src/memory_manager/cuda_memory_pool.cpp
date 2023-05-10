@@ -34,7 +34,6 @@ void MemoryPool::Interrupt() { cond_var_.notify_all(); }
 MemoryPool::Proxy MemoryPool::WaitAndGet(CancellationToken& cancellationToken) {
     std::unique_lock<std::mutex> lock{mtx_};
     cond_var_.wait(lock, [this, &cancellationToken] {
-        cancellationToken.Check();
         return !memory_blocks_.empty();
     });
     Proxy memoryManagerProxy{shared_from_this(), move(memory_blocks_.back())};

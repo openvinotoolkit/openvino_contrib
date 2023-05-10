@@ -19,7 +19,6 @@
 #include "transformations/op_conversions/convert_ti_to_sequences.hpp"
 #include "transformer/convolution_asym_padding_transformation.hpp"
 #include "transformer/fuse_conv_biasadd_activation.hpp"
-#include "transformer/preprocessing/preprocessing.hpp"
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
@@ -41,8 +40,6 @@ using namespace ov::nvidia_gpu;
 
 void GraphTransformer::common_transform(const CUDA::Device& device,
                                         const std::shared_ptr<ov::Model>& model,
-                                        const InferenceEngine::InputsDataMap& inputInfoMap,
-                                        const InferenceEngine::OutputsDataMap& outputsInfoMap,
                                         const Configuration& config) const {
     auto inference_precision = config.get_inference_precision();
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
@@ -79,7 +76,6 @@ void GraphTransformer::common_transform(const CUDA::Device& device,
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
     manager.register_pass<ov::pass::InitNodeInfo>();
-    manager.register_pass<ov::nvidia_gpu::pass::AddPreprocessing>(inputInfoMap);
     manager.register_pass<ov::pass::CommonOptimizations>();
     manager.register_pass<ov::pass::ReshapePRelu>();
     manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
@@ -130,40 +126,6 @@ void GraphTransformer::common_transform(const CUDA::Device& device,
     return;
 }
 
-std::shared_ptr<ov::Model> GraphTransformer::clone_and_export_transform(
-    const CUDA::Device& device,
-    const std::shared_ptr<const ov::Model>& model,
-    const InferenceEngine::InputsDataMap& inputInfoMap,
-    const InferenceEngine::OutputsDataMap& outputsInfoMap,
-    const Configuration& config) const {
-
-    auto transformed_model = ov::clone_model(*model);
-
-    ov::pass::Manager manager;
-    // NOTE: G-API supports only FP32 networks for pre-processing
-    //       nvidia_gpu supports FP16 networks, but this transformation is needed for export
-    bool needF16toF32 = false;
-    for (const auto& param : model->get_parameters()) {
-        if (param->get_element_type() == ov::element::f16 &&
-            inputInfoMap.at(param->get_friendly_name())->getTensorDesc().getPrecision() !=
-                InferenceEngine::Precision::FP16) {
-            needF16toF32 = true;
-            break;
-        }
-    }
-    if (needF16toF32) {
-        manager.register_pass<ov::pass::ConvertPrecision>(
-            precisions_map{{ov::element::f16, ov::element::f32}});
-
-    }
-    manager.run_passes(transformed_model);
-
-    [[maybe_unused]] const auto& transformedOps = transformed_model->get_ordered_ops();
-    [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
-
-    return transformed_model;
-}
-
 void GraphTransformer::cuda_transform(const CUDA::Device& device,
                                       const std::shared_ptr<ov::Model>& model,
                                       const Configuration& config) const {
@@ -190,9 +152,7 @@ void GraphTransformer::cuda_transform(const CUDA::Device& device,
 
 void GraphTransformer::transform(const CUDA::Device& device,
                                  const std::shared_ptr<ov::Model>& model,
-                                 const InferenceEngine::InputsDataMap& inputInfoMap,
-                                 const InferenceEngine::OutputsDataMap& outputsInfoMap,
                                  const Configuration& config) const {
-    common_transform(device, model, inputInfoMap, outputsInfoMap, config);
+    common_transform(device, model, config);
     cuda_transform(device, model, config);
 }

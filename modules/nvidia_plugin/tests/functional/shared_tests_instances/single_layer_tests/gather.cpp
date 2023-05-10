@@ -692,7 +692,7 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};

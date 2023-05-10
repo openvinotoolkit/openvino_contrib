@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -44,14 +44,14 @@ CudaThreadPool::CudaThreadPool(CUDA::Device d, unsigned _numThreads) {
         }
         latch.wait();
     } catch (...) {
-        stopThreadPool();
+        stop_thread_pool();
         throw;
     }
 }
 
-CudaThreadPool::~CudaThreadPool() { stopThreadPool(); }
+CudaThreadPool::~CudaThreadPool() { stop_thread_pool(); }
 
-void CudaThreadPool::stopThreadPool() noexcept {
+void CudaThreadPool::stop_thread_pool() noexcept {
     {
         std::lock_guard<std::mutex> lock(mtx_);
         is_stopped_ = true;
@@ -60,10 +60,10 @@ void CudaThreadPool::stopThreadPool() noexcept {
     threads_.clear();
 }
 
-const ThreadContext& CudaThreadPool::GetThreadContext() {
+const ThreadContext& CudaThreadPool::get_thread_context() {
     if (!contextPtr) {
         throwIEException(
-            "Call GetThreadContext() not from ThreadPool owned thread is not "
+            "Call get_thread_context() not from ThreadPool owned thread is not "
             "allowed !!");
     }
     return *contextPtr;

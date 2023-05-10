@@ -1,37 +1,52 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <cpp_interfaces/interface/ie_iplugin_internal.hpp>
+#include "openvino/runtime/icompiled_model.hpp"
+#include "openvino/runtime/iplugin.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 
 #include "cuda_config.hpp"
-#include "cuda_executable_network.hpp"
+#include "cuda_compiled_model.hpp"
 #include "cuda_thread_pool.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-class Plugin : public InferenceEngine::IInferencePlugin {
+class Plugin : public ov::IPlugin {
 public:
     using Ptr = std::shared_ptr<Plugin>;
 
     Plugin();
     ~Plugin();
 
-    void SetConfig(const std::map<std::string, std::string>& config) override;
-    InferenceEngine::QueryNetworkResult QueryNetwork(const InferenceEngine::CNNNetwork& network,
-                                                     const std::map<std::string, std::string>& config) const override;
-    InferenceEngine::IExecutableNetworkInternal::Ptr LoadExeNetworkImpl(
-        const InferenceEngine::CNNNetwork& network, const std::map<std::string, std::string>& config) override;
-    InferenceEngine::Parameter GetConfig(
-        const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& options) const override;
-    InferenceEngine::Parameter GetMetric(
-        const std::string& name, const std::map<std::string, InferenceEngine::Parameter>& options) const override;
-    InferenceEngine::IExecutableNetworkInternal::Ptr ImportNetwork(
-        std::istream& model, const std::map<std::string, std::string>& config) override;
+    void set_property(const ov::AnyMap& properties) override;
+
+    ov::Any get_property(const std::string& name, const ov::AnyMap& arguments) const override;
+
+    std::shared_ptr<ov::ICompiledModel> compile_model(const std::shared_ptr<const ov::Model>& model,
+                                                      const ov::AnyMap& properties) const override;
+
+    std::shared_ptr<ov::ICompiledModel> compile_model(const std::shared_ptr<const ov::Model>& model,
+                                                      const ov::AnyMap& properties,
+                                                      const ov::RemoteContext& context) const override;
+
+    std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model_stream,
+                                                     const ov::AnyMap& properties) const override;
+
+    std::shared_ptr<ov::ICompiledModel> import_model(std::istream& model_stream,
+                                                     const ov::RemoteContext& context,
+                                                     const ov::AnyMap& properties) const override;
+
+    ov::SupportedOpsMap query_model(const std::shared_ptr<const ov::Model>& model,
+                                    const ov::AnyMap& properties) const override;
+
+    std::shared_ptr<ov::IRemoteContext> create_context(const ov::AnyMap& remote_properties) const override;
+
+    std::shared_ptr<ov::IRemoteContext> get_default_context(const ov::AnyMap& remote_properties) const override;
 
 private:
     friend class ExecutableNetwork;
@@ -45,16 +60,14 @@ private:
      * @param cfg Configuration used for CpuStreamExecutor creation
      * @return CpuStreamExecutor
      */
-    InferenceEngine::ITaskExecutor::Ptr GetStreamExecutor(const Configuration& cfg);
+    std::shared_ptr<ov::threading::ITaskExecutor> get_stream_executor(const Configuration& cfg) const;
 
-    int cudaDeviceID() const noexcept { return 0; }  // TODO implement
+    int nvidia_device_id() const noexcept { return 0; }  // TODO implement
 
-    bool isOperationSupported(const std::shared_ptr<ov::Node>& node) const;
+    bool is_operation_supported(const std::shared_ptr<ov::Node>& node) const;
 
-    std::mutex mtx_;
     GraphTransformer transformer_{};
-    Configuration _cfg;
-    std::unordered_map<std::string, InferenceEngine::ITaskExecutor::Ptr> _waitExecutors;
+    Configuration config_;
     std::unordered_map<std::string, std::shared_ptr<CudaThreadPool>> device_thread_pool_;
 };
 

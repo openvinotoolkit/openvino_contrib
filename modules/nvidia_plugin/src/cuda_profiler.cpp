@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,68 +12,52 @@ namespace nvidia_gpu {
 
 namespace {
 
-InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const IOperationMeta& op, unsigned execution_index) {
-    InferenceEngine::InferenceEngineProfileInfo result{};
-    op.GetCategory().copy(result.exec_type, sizeof(result.exec_type) - 1);
-    op.GetTypeName().copy(result.layer_type, sizeof(result.layer_type) - 1);
-    result.execution_index = execution_index;
-    return result;
+std::pair<std::string, ov::ProfilingInfo> make_profile_info(const IOperationMeta& op) {
+    ov::ProfilingInfo result{};
+    result.exec_type = op.GetCategory();
+    result.node_type = op.GetTypeName();
+    result.node_name = op.GetName();
+    return {result.node_name, result};
 }
 
-InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(const std::string& layer,
-                                                            const std::string_view& exec_type) {
-    InferenceEngine::InferenceEngineProfileInfo result{};
-    exec_type.copy(result.exec_type, sizeof(result.exec_type) - 1);
-    layer.copy(result.layer_type, sizeof(result.layer_type) - 1);
-    result.execution_index = 0;
-    return result;
+std::pair<std::string, ov::ProfilingInfo> make_profile_info(std::string stage_name,
+                                                            std::chrono::microseconds real_time,
+                                                            std::chrono::microseconds cpu_time = std::chrono::microseconds(0)) noexcept {
+    return {stage_name, ov::ProfilingInfo{ov::ProfilingInfo::Status::NOT_RUN, real_time, cpu_time, stage_name}};
 }
-
-constexpr InferenceEngine::InferenceEngineProfileInfo makeProfileInfo(long long realTime_uSec,
-                                                                      long long cpuTime_uSec = 0) noexcept {
-    return InferenceEngine::InferenceEngineProfileInfo{
-        InferenceEngine::InferenceEngineProfileInfo::EXECUTED, realTime_uSec, cpuTime_uSec};
-}
-
 }  // namespace
 
 Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCount} {
     std::vector<OperationBase::Ptr> execSequence;
-    CollectSubGraphs(graph, execSequence);
+    collect_subgraphs(graph, execSequence);
 
     if (perf_count_) {
-        for (int i = 0; i < execSequence.size(); ++i) {
+        for (size_t i = 0; i < execSequence.size(); ++i) {
             auto& op = *execSequence[i];
-            const auto& name = op.GetName();
-            const auto& type = op.GetTypeName();
-            auto perf = perf_counters_.find(name);
-            if (perf == perf_counters_.cend()) perf_counters_.emplace(name, makeProfileInfo(op, i));
-            perf = perf_counters_.find(type);
-            if (perf == perf_counters_.cend()) {
-                perf_counters_.emplace(type, makeProfileInfo(op.GetTypeName(), op.GetCategory()));
-            } else {
-                // Layers of the same type may have different exec_type, in sych case we clear exec_type
-                if (perf->second.exec_type[0] && op.GetCategory().compare(perf->second.exec_type) != 0)
-                    perf->second.exec_type[0] = 0;
-            }
+            perf_counters_.emplace(make_profile_info(op));
+            execution_order_.push_back(op.GetName());
         }
     }
 }
 
-void Profiler::ProcessEvents() {
+void Profiler::process_events() {
     if (!perf_count_ || infer_count_ == 0) return;
-    constexpr float ms2us = 1000.0;
+    constexpr float ms2us = 1000.0f;
+    auto time_per_infer_ms = [this](float timing) {
+        return std::chrono::microseconds(static_cast<long long>(ms2us * timing / infer_count_));
+    };
+
     std::map<std::string, float> layer_timing{};
     for (auto& timing_map : subgraph_perf_steps_map_) {
         auto& timings = timing_map.second;
         for (auto& timing : timings) {
-            timing.Measure();
-            const auto perf = perf_counters_.find(timing.GetOpName());
+            timing.measure();
+            const auto perf = perf_counters_.find(timing.get_op_name());
             if (perf != perf_counters_.cend()) {
-                perf->second.realTime_uSec = timing.Duration() * ms2us / infer_count_;
-                perf->second.status = InferenceEngine::InferenceEngineProfileInfo::EXECUTED;
-                if (perf->second.layer_type[0]) {
-                    layer_timing[perf->second.layer_type] += timing.Duration();
+                perf->second.real_time = time_per_infer_ms(timing.duration());
+                perf->second.status = ov::ProfilingInfo::Status::EXECUTED;
+                if (perf->second.node_type[0]) {
+                    layer_timing[perf->second.node_type] += timing.duration();
                 }
             }
         }
@@ -81,27 +65,37 @@ void Profiler::ProcessEvents() {
     for (auto const& timing : layer_timing) {
         const auto summary = perf_counters_.find(timing.first);
         if (summary != perf_counters_.cend()) {
-            summary->second.realTime_uSec = timing.second * ms2us / infer_count_;
-            summary->second.status = InferenceEngine::InferenceEngineProfileInfo::EXECUTED;
+            summary->second.real_time = time_per_infer_ms(timing.second);
+            summary->second.status = ov::ProfilingInfo::Status::EXECUTED;
         }
     }
 
+    // Sum of all Parameters divided by count of infer requests
+    std::chrono::microseconds zero_time(0);
     auto param_timing = layer_timing.find("Parameter");
+    auto parameter_ms = param_timing == layer_timing.cend() ? zero_time : time_per_infer_ms(param_timing->second);
+
+    // Sum of all Results divided by count of infer requests
     auto result_timing = layer_timing.find("Result");
+    auto result_ms = result_timing == layer_timing.cend() ? zero_time : time_per_infer_ms(result_timing->second);
+
     // Adding some overall performance counters
-    perf_counters_["1. input preprocessing"] = makeProfileInfo(0, durations_[Preprocess].count());
-    perf_counters_["2. input transfer to a device"] = makeProfileInfo(
-        // Sum of all Parameters divided by count of infer requests
-        param_timing == layer_timing.cend() ? 0 : param_timing->second * ms2us / infer_count_);
-    perf_counters_["3. execution time"] =
-        makeProfileInfo(exec_timing_.measure() * ms2us / infer_count_, durations_[StartPipeline].count());
-    perf_counters_["4. output transfer from a device"] = makeProfileInfo(
-        // Sum of all Results divided by count of infer requests
-        result_timing == layer_timing.cend() ? 0 : result_timing->second * ms2us / infer_count_);
-    perf_counters_["5. output postprocessing"] = makeProfileInfo(0, durations_[Postprocess].count());
+    auto stage_time_ms = [this](const Stages& stage) {
+        return std::chrono::microseconds(static_cast<long long>(durations_[stage].count()));
+    };
+
+    auto insert_stage = [&](const std::pair<std::string, ov::ProfilingInfo>& value) {
+        auto const result = stage_counters_.insert(value);
+        if (!result.second) { result.first->second = value.second; }
+    };
+    insert_stage(make_profile_info("1. input preprocessing", zero_time, stage_time_ms(Preprocess)));
+    insert_stage(make_profile_info("2. input transfer to a device", parameter_ms));
+    insert_stage(make_profile_info("3. execution time", time_per_infer_ms(exec_timing_.measure()), stage_time_ms(StartPipeline)));
+    insert_stage(make_profile_info("4. output transfer from a device", result_ms));
+    insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(Postprocess)));
 }
 
-Profiler::ProfilerSequence Profiler::CreateExecSequence(const SubGraph* subGraphPtr) {
+Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGraphPtr) {
     OPENVINO_ASSERT(active_stream_);
     ++infer_count_;
     auto foundPerfStepsIter = std::find_if(subgraph_perf_steps_map_.begin(),
@@ -112,36 +106,50 @@ Profiler::ProfilerSequence Profiler::CreateExecSequence(const SubGraph* subGraph
                             static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
 }
 
-void Profiler::CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
+void Profiler::collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
     std::vector<ProfileExecStep> perfSteps;
     const auto& execSequence = graph.getExecSequence();
     for (const auto& execStep : execSequence) {
-        CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+        collect_node_visitor(execStep, perfSteps, allExecSequence);
     }
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
 }
 
-void Profiler::CollectSubGraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
+void Profiler::collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
     std::vector<ProfileExecStep> perfSteps;
     const auto& execSequence = graph.getExecSequence();
     for (const auto& execStep : execSequence) {
         if (!dynamic_cast<ParameterOp*>(execStep.get()) && !dynamic_cast<ResultOp*>(execStep.get())) {
-            CollectNodeVisitor(execStep, perfSteps, allExecSequence);
+            collect_node_visitor(execStep, perfSteps, allExecSequence);
         }
     }
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
 }
 
-void Profiler::CollectNodeVisitor(const OperationBase::Ptr& execStep,
-                                  std::vector<ProfileExecStep>& perfSteps,
-                                  std::vector<OperationBase::Ptr>& allExecSequence) {
+void Profiler::collect_node_visitor(const OperationBase::Ptr& execStep,
+                                    std::vector<ProfileExecStep>& perfSteps,
+                                    std::vector<OperationBase::Ptr>& allExecSequence) {
     allExecSequence.push_back(execStep);
     const auto& op = *execStep;
     perfSteps.emplace_back(*this, op);
     if (const auto tensorIteratorPtr = dynamic_cast<const TensorIteratorOp*>(&op)) {
-        CollectSubGraphs(*tensorIteratorPtr, allExecSequence);
+        collect_subgraphs(*tensorIteratorPtr, allExecSequence);
     }
 }
 
+const std::vector<ov::ProfilingInfo> Profiler::get_performance_counts() const {
+    std::vector<ov::ProfilingInfo> result;
+    // First insert common stage information
+    for (auto& stage_info : stage_counters_) {
+        result.push_back(stage_info.second);
+    }
+    // Peformance counters in right order
+    for (auto& name : execution_order_) {
+        if (perf_counters_.count(name)) {
+            result.push_back(perf_counters_.at(name));
+        }
+    }
+    return result;
+}
 }  // namespace nvidia_gpu
 }  // namespace ov

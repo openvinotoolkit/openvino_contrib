@@ -6,6 +6,9 @@
 
 #include <chrono>
 #include <map>
+
+#include "openvino/runtime/profiling_info.hpp"
+
 #include <ops/tensor_iterator.hpp>
 #include <utils/perf_timing.hpp>
 #include <vector>
@@ -23,7 +26,7 @@ class Profiler {
 public:
     enum Stages { Preprocess, Postprocess, StartPipeline, WaitPipeline, NumOfStages };
 
-    using PerformaceCounters = std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>;
+    using PerformaceCounters = std::map<std::string, ov::ProfilingInfo>;
     using Duration = std::chrono::duration<float, std::micro>;
     using Time = std::chrono::steady_clock;
 
@@ -39,40 +42,40 @@ public:
     /**
      * Start time measurement of stage
      */
-    void SetStream(const CUDA::Stream& stream) { active_stream_ = &stream; }
+    void set_stream(const CUDA::Stream& stream) { active_stream_ = &stream; }
 
     /**
      * Start time measurement of stage
      */
-    void StartStage() { start_ = Time::now(); }
+    void start_stage() { start_ = Time::now(); }
 
     /**
      * Stop time measurement of stage
      * @param stage Stage for which time measurement was performed
      */
-    void StopStage(Stages stage) { durations_[stage] = Time::now() - start_; }
+    void stop_stage(Stages stage) { durations_[stage] = Time::now() - start_; }
 
     /**
      * Creates profiler sequence and increase infer request counter
      * @return ProfilerSequence for single InferRequest
      */
-    Profiler::ProfilerSequence CreateExecSequence(const SubGraph* subGraphPtr);
+    Profiler::ProfilerSequence create_exec_sequence(const SubGraph* subGraphPtr);
 
     /**
      * Returns performance counters
      * @return Performance counters
      */
-    [[nodiscard]] const PerformaceCounters& GetPerformanceCounts() const { return perf_counters_; }
+    [[nodiscard]] const std::vector<ov::ProfilingInfo> get_performance_counts() const;
 
     /**
      * Processes performance events into performance counters
      */
-    void ProcessEvents();
+    void process_events();
 
 private:
-    void CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
-    void CollectSubGraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
-    void CollectNodeVisitor(const OperationBase::Ptr& execStep,
+    void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
+    void collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
+    void collect_node_visitor(const OperationBase::Ptr& execStep,
                             std::vector<ProfileExecStep>& perfSteps,
                             std::vector<OperationBase::Ptr>& allExecSequence);
 
@@ -80,6 +83,8 @@ private:
     const bool perf_count_;
     std::vector<std::pair<const void*, std::vector<ProfileExecStep>>> subgraph_perf_steps_map_;
     PerformaceCounters perf_counters_{};
+    PerformaceCounters stage_counters_{};
+    std::vector<std::string> execution_order_{};
     utils::PerformaceTiming exec_timing_{};
     // for performance counters
     std::array<Duration, NumOfStages> durations_;
@@ -102,7 +107,7 @@ public:
      * @param args Additional arguments for Execute method of operation
      */
     template <typename... TArgs>
-    void Execute(TArgs&&... args) const {
+    void execute(TArgs&&... args) const {
         if (this->profiler_.perf_count_) {
             timing_.setStart(*this->profiler_.active_stream_);
             exec_step_.Execute(std::forward<TArgs>(args)...);
@@ -131,22 +136,22 @@ public:
     operator const OperationBase&() const { return static_cast<const OperationBase&>(exec_step_); }
 
     /**
-     * Measure time for this execution step
+     * measure time for this execution step
      * @return Time for this step
      */
-    float Measure() { return timing_.measure(); }
+    float measure() { return timing_.measure(); }
 
     /**
      * Get time for this execution step
      * @return Time for this step
      */
-    [[nodiscard]] float Duration() const noexcept { return timing_.duration(); }
+    [[nodiscard]] float duration() const noexcept { return timing_.duration(); }
 
     /**
      * Get name of the operation
      * @return Name of the operation
      */
-    [[nodiscard]] const std::string& GetOpName() { return exec_step_.GetName(); }
+    [[nodiscard]] const std::string& get_op_name() { return exec_step_.GetName(); }
 
 private:
     Profiler& profiler_;

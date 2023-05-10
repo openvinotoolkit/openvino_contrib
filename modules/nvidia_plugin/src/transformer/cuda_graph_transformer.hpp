@@ -26,15 +26,7 @@ public:
      */
     void common_transform(const CUDA::Device& device,
                           const std::shared_ptr<ov::Model>& model,
-                          const InferenceEngine::InputsDataMap& inputInfoMap,
-                          const InferenceEngine::OutputsDataMap& outputsInfoMap,
                           const Configuration& config) const;
-
-    std::shared_ptr<ov::Model> clone_and_export_transform(const CUDA::Device& device,
-                                                          const std::shared_ptr<const ov::Model>& model,
-                                                          const InferenceEngine::InputsDataMap& inputInfoMap,
-                                                          const InferenceEngine::OutputsDataMap& outputsInfoMap,
-                                                          const Configuration& config) const;
     /**
      * @brief Transform takes an ov::Model and applies only
      *        CUDA-specific transformations to achieve the maximum optimization of the
@@ -64,8 +56,6 @@ public:
       */
     void transform(const CUDA::Device& device,
                    const std::shared_ptr<ov::Model>& model,
-                   const InferenceEngine::InputsDataMap& inputInfoMap,
-                   const InferenceEngine::OutputsDataMap& outputsInfoMap,
                    const Configuration& config) const;
 };
 

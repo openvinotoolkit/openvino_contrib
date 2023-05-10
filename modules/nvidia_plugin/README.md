@@ -34,8 +34,8 @@ sudo apt-get install clang-8 clang++8
 
 2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
 3. Install **CUDA 11.8** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
-   
-   Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`    
+
+   Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`
 
 4. Install **cuDNN 8.6.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
 5. Install **cuTENSOR 1.6.1** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
@@ -164,12 +164,21 @@ docker commit openvino/cudaplugin-2022.3 <name of new image>
 ```
 
 ## Supported Configuration Parameters
-The plugin supports the configuration parameters listed below. All parameters must be set before calling `ov::Core::compile_model()` in order to take effect. When specifying key values as raw strings (that is, when using Python API), omit the `KEY_` prefix.
+The plugin supports the configuration parameters listed below:
+* `ov::hint::performance_mode`
+* `ov::hint::execution_mode`
+* `ov::hint::inference_precision`
+* `ov::num_streams`
+* `ov::enable_profiling`
 
-Parameter name  | Parameter values  | Default  | Description
-------------- | ------------- | ------------- | -------------
-`NVIDIA_THROUGHPUT_STREAMS`   | `NVIDIA_THROUGHPUT_AUTO`, or non negative integer values  | 1  | Specifies number of CPU "execution" streams for the throughput mode. Upper bound for the number of inference requests that can be executed simultaneously.
-`NVIDIA_OPERATION_BENCHMARK`   | `NVIDIA_YES`, `NVIDIA_NO`  | `NVIDIA_NO`  | Specifies if operation level benchmark should be run for increasing performance of network
+Please refer to OpenVINO documentation for details.
+
+### Plugin specific parameters
+* `ov::nvidia_gpu::operation_benchmark` - specifies if operation level benchmark should be run for increasing performance of network (`false` by default)
+
+All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
+ 
+## Compile options
 
 During compilation of the openvino_nvidia_gpu_plugin, user could specify the following options:
 1) `-DCUDA_KERNEL_PRINT_LOG=ON` enables print logs from kernels (WARNING, be careful with this options, could print to many logs)
@@ -181,32 +190,6 @@ nvidia-smi --query-gpu=compute_cap --format=csv
 
 ## Supported Layers and Limitations
 The plugin supports IRv10 and higher. The list of supported layers and its limitations are defined in [cuda_opset.md](docs/cuda_opset.md).
-
-## Supported Model Formats
-* FP32 – Supported
-* FP16 – Supported and preferred
-* U8 - Not supported
-* U16 - Not supported
-* I8 - Not supported
-* I16 - Not supported
-
-## Supported Input Precision
-* FP32 - Supported
-* FP16 - Supported
-* U8 - Not supported
-* U16 - Not supported
-* I8 - Not supported
-* I16 - Not supported
-
-## Supported Output Precision
-* FP32 – Supported
-* FP16 - Not supported
-
-## Supported Input Layout
-* NCDHW – Not supported
-* NCHW - Supported
-* NHWC - Supported
-* NC - Supported
 
 ## License
 OpenVINO™ NVIDIA GPU plugin is licensed under [Apache License Version 2.0](LICENSE).

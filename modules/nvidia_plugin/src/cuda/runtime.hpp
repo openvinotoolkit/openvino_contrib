@@ -116,7 +116,7 @@ inline int residentGrids(const cudaDeviceProp& p) {
     return defaultResidentGrids;
 }
 
-inline int maxConcurrentStreams(CUDA::Device d) {
+inline int max_concurrent_streams(CUDA::Device d) {
     auto p = d.props();
     int r = p.asyncEngineCount;
     if (!p.concurrentKernels) return r + 1;

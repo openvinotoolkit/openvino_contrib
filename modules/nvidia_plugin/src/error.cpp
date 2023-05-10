@@ -6,7 +6,7 @@
 
 #include <fmt/format.h>
 
-#include <details/ie_exception.hpp>
+#include "openvino/core/except.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -20,16 +20,7 @@ template <typename T>
 
 [[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
                                               const std::experimental::source_location& location) {
-    throwException<InferenceEngine::GeneralError>(msg, location);
-}
-
-[[gnu::cold, noreturn]] void throwNotFound(const std::string& msg, const std::experimental::source_location& location) {
-    throwException<InferenceEngine::NotFound>(msg, location);
-}
-
-[[gnu::cold, noreturn]] void throwInferCancelled(const std::string& msg,
-                                                 const std::experimental::source_location& location) {
-    throwException<InferenceEngine::InferCancelled>(msg, location);
+    throwException<ov::Exception>(msg, location);
 }
 
 [[gnu::cold]] void logError(const std::string& /*msg*/, const std::experimental::source_location& /*location*/) {

@@ -135,13 +135,12 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
 
     auto& cancellationToken = context.getCancellationToken();
     auto& profiler = context.getProfiler();
-    profiler.SetStream(stream);
-    for (auto& op : profiler.CreateExecSequence(this)) {
-        cancellationToken.Check();
+    profiler.set_stream(stream);
+    for (auto& op : profiler.create_exec_sequence(this)) {
         auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
         auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
         auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->Execute(context, inputTensors, outputTensors, workBuffers);
+        op->execute(context, inputTensors, outputTensors, workBuffers);
     }
 }
 

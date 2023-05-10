@@ -1,34 +1,30 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <cpp_interfaces/impl/ie_infer_async_request_thread_safe_default.hpp>
+#include "openvino/runtime/iasync_infer_request.hpp"
+#include "openvino/runtime/iinfer_request.hpp"
 
 #include "cuda_infer_request.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-class CudaAsyncInferRequest : public InferenceEngine::AsyncInferRequestThreadSafeDefault {
+class CudaAsyncInferRequest : public ov::IAsyncInferRequest {
 public:
-    CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferRequest,
-                          const InferenceEngine::ITaskExecutor::Ptr& taskExecutor,
-                          const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
-                          const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor);
+    CudaAsyncInferRequest(const CudaInferRequest::Ptr& request,
+                          const std::shared_ptr<ov::threading::ITaskExecutor>& task_executor,
+                          const std::shared_ptr<ov::threading::ITaskExecutor>& wait_executor,
+                          const std::shared_ptr<ov::threading::ITaskExecutor>& callback_executor);
 
-    /**
-     * Cancel AsyncInferRequest
-     */
-    void Cancel() override;
-    /**
-     * Overrides default behaviour and run request asynchronous
-     */
-    void Infer_ThreadUnsafe() override;
+    ~CudaAsyncInferRequest();
+    void cancel() override;
+    void infer_thread_unsafe() override;
 
 private:
-    CudaInferRequest::Ptr _inferRequest;
+    CudaInferRequest::Ptr request_;
 };
 
 }  // namespace nvidia_gpu

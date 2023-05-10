@@ -14,16 +14,14 @@ class CancellationTokenTest : public testing::Test {
     void TearDown() override {}
 };
 
-TEST_F(CancellationTokenTest, Cancel_Throw) {
+TEST_F(CancellationTokenTest, Cancel_No_Throw) {
     CancellationToken token{};
-    token.Cancel();
-    ASSERT_THROW(token.Check(), InferenceEngine::details::InferenceEngineException);
+    ASSERT_NO_THROW(token.Cancel());
 }
 
-TEST_F(CancellationTokenTest, Cancel_Throw_Callback) {
+TEST_F(CancellationTokenTest, Cancel_No_Throw_Callback) {
     bool is_cancelled = false;
     CancellationToken token{[&is_cancelled] { is_cancelled = true; }};
-    token.Cancel();
-    ASSERT_THROW(token.Check(), InferenceEngine::details::InferenceEngineException);
+    ASSERT_NO_THROW(token.Cancel());
     ASSERT_TRUE(is_cancelled);
 }
