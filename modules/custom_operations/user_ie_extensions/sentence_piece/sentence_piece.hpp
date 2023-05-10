@@ -44,3 +44,33 @@ namespace TemplateExtension {
 ov::OutputVector translate_sentencepiece_op(const ov::frontend::NodeContext& node);
 
 ov::frontend::NamedOutputVector translate_sentencepiece_tokenizer(const ov::frontend::NodeContext& node);
+
+// https://www.tensorflow.org/text/api_docs/python/text/case_fold_utf8
+class OPENVINO_API CaseFoldUTF8 : public ov::op::Op {
+public:
+    OPENVINO_OP("CaseFoldUTF8");
+
+    CaseFoldUTF8() = default;
+
+    CaseFoldUTF8(const ov::OutputVector& arguments) : ov::op::Op(arguments) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<CaseFoldUTF8>(inputs);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+};
+
+ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node);

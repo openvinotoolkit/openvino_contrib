@@ -20,7 +20,7 @@
 
 #endif
 
-#define SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
+//#define SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
 
 using sentencepiece::SentencePieceProcessor;
 using namespace TemplateExtension;
@@ -108,15 +108,12 @@ void SentencepieceTokenizer::validate_and_infer_types() {
 
     #else
 
-    if(get_input_element_type(1) != element::u8) {
-        std::cout << "Stopped\n";
-        std::cin.get();
-    }
-
+#if 0   // change to 0 when compiled with master and the bug with data propagation from within inline context is not solved
     FRONT_END_GENERAL_CHECK(
         get_input_element_type(1) == element::u8,
         "SentencepieceTokenizer accepts sentences as the second input and it should be of type u8 tensor, but got " +
             get_input_element_type(1).get_type_name());
+#endif
 
     #endif
 
@@ -136,6 +133,19 @@ bool SentencepieceTokenizer::visit_attributes(AttributeVisitor& visitor) {
     visitor.on_attribute("add_eos", m_add_eos);
     visitor.on_attribute("reverse", m_reverse);
     return true;
+}
+
+void parse_packed_strings (const Tensor& packed, int32_t& batch_size, const int32_t*& begin_ids, const int32_t*& end_ids, const uint8_t*& symbols) {
+    auto strings = packed.data<const uint8_t>();
+    auto bitstream_size = packed.get_byte_size();
+    // check the format of the input bitstream representing the string tensor
+    FRONT_END_GENERAL_CHECK(bitstream_size >= 4, "Incorrect packed string tensor format: no batch size in the packed string tensor");
+    batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
+    FRONT_END_GENERAL_CHECK(bitstream_size >= 4 + 4 + 4 * batch_size,
+        "Incorrect packed string tensor format: the packed string tensor must contain first string offset and end indices");
+    begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
+    end_ids = begin_ids + 1;
+    symbols = strings + 4 + 4 + 4 * batch_size;
 }
 
 bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector& inputs) const {
@@ -166,17 +176,22 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
 
 #else
 
-    const uint8_t* strings = inputs[1].data<uint8_t>();
-    auto bitstream_size = inputs[1].get_byte_size();
+    // const uint8_t* strings = inputs[1].data<const uint8_t>();
+    // auto bitstream_size = inputs[1].get_byte_size();
 
-    // check the format of the input bitstream representing the string tensor
-    FRONT_END_GENERAL_CHECK(bitstream_size >= 4, "Incorrect packed string tensor format: no batch size in the packed string tensor");
-    auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
-    FRONT_END_GENERAL_CHECK(bitstream_size >= 4 + 4 + 4 * batch_size,
-        "Incorrect packed string tensor format: the packed string tensor must contain first string offset and end indices");
-    auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
-    auto end_ids = begin_ids + 1;
-    auto data = strings + 4 + 4 + 4 * batch_size;
+    // // check the format of the input bitstream representing the string tensor
+    // FRONT_END_GENERAL_CHECK(bitstream_size >= 4, "Incorrect packed string tensor format: no batch size in the packed string tensor");
+    // auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
+    // FRONT_END_GENERAL_CHECK(bitstream_size >= 4 + 4 + 4 * batch_size,
+    //     "Incorrect packed string tensor format: the packed string tensor must contain first string offset and end indices");
+    // auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
+    // auto end_ids = begin_ids + 1;
+    // auto data = strings + 4 + 4 + 4 * batch_size;
+    int32_t batch_size;
+    const int32_t* begin_ids;
+    const int32_t* end_ids;
+    const uint8_t* data;
+    parse_packed_strings(inputs[1], batch_size, begin_ids, end_ids, data);
 
 #endif
 
@@ -236,6 +251,100 @@ OutputVector translate_sentencepiece_op(const NodeContext& node) {
 }
 
 
+
+
+void check_string_input(const Node* node, size_t input_index) {
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+0) == element::i32, "Expected an i32 tensor as the first part of the decomposed string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+1) == element::i32, "Expected an i32 tensor as the second part of the decomposed string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+2) == element::u8,  "Expected a u8 tensor as the third part of the decomposed string representation");
+}
+
+void set_string_output(Node* node, size_t output_index, const PartialShape& shape) {
+    node->set_output_type(output_index+0, element::i32, shape);
+    node->set_output_type(output_index+1, element::i32, shape);
+    node->set_output_type(output_index+2, element::u8,  PartialShape{Dimension()});
+}
+
+
+// Having a decomposed representation for a tensor, converts it to a single string tensor
+// (packed u8 or natively supported element::string depending on whether or not USE_STRING_TENSORS defined).
+class StringTensorPack : public ov::op::Op {
+public:
+    OPENVINO_OP("StringTensorPack");
+
+    StringTensorPack(OutputVector inputs, const std::string& mode = "begins_ends")
+        : ov::op::Op(inputs), m_mode(mode) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override {
+        OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supporst only 'begins_ends' mode, but get " + m_mode);
+        check_string_input(this, 0);
+        #ifdef USE_STRING_TENSORS
+        set_output_type(0, element::string, get_input_partial_shape(0));
+        #else
+        set_output_type(0, element::u8, PartialShape{Dimension()});
+        #endif
+    }
+
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const OutputVector& inputs) const override {
+        auto result = std::make_shared<StringTensorPack>(inputs, m_mode);
+        return result;
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        visitor.on_attribute("mode", m_mode);
+        return true;
+    }
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+#ifdef USE_STRING_TENSORS
+        // TODO
+        return false;
+#else
+        auto rank = inputs[0].get_shape().size();
+        if (rank != 1) {
+            std::cerr << "[ WARNING ] StringTensorPack ignores the rank " << rank << " of input tensor and set rank=1 in the output\n";
+        }
+
+        auto num_elements = shape_size(inputs[0].get_shape());
+        auto num_chars = shape_size(inputs[2].get_shape());
+        auto num_output_elements = 4*(1 + 1 + num_elements) + num_chars;
+        outputs[0].set_shape(Shape{num_output_elements});
+
+        //auto begins = inputs[0].data<const int32_t>();    // this is not needed as no repacking happens in this version of code
+        auto ends   = inputs[1].data<const int32_t>();
+        auto chars  = inputs[2].data<const uint8_t>();
+
+        auto output = outputs[0].data<uint8_t>();
+        auto output_int32 = reinterpret_cast<int32_t*>(output);
+
+        *output_int32++ = num_elements;
+        *output_int32++ = 0;
+        output_int32 = std::copy(ends, ends + num_elements, output_int32);
+        output = reinterpret_cast<uint8_t*>(output_int32);
+        output = std::copy(chars, chars + num_chars, output);
+
+        OPENVINO_ASSERT(num_output_elements == output - outputs[0].data<uint8_t>(), "[ INTERNAL ERROR ] StringTensorPack output tensor is corrupted");
+
+        // WARNING! Chars are not repacked. If there are gaps between strings, they will remain.
+
+        return true;
+#endif
+    }
+
+private:
+
+    std::string m_mode;
+};
+
+
+
 // Unpack a string tensor representation regardless of the source format, which
 // can be an OV tensor with element::string element type (if supported) or u8
 // packed representation, to a decompose tensor representation that may potentially
@@ -261,13 +370,15 @@ public:
             get_input_size() == 1,
             "Number of inputs for StringTensorUnpack is not equal to 1");
 
+#if 0 // Uncomment it when the bug is fixed with type substitution in TF partition call inlining
         OPENVINO_ASSERT(
             #ifdef USE_STRING_TENSORS
             get_input_element_type(0) == element::string ||
             #endif
             get_input_element_type(0) == element::dynamic ||
             get_input_element_type(0) == element::u8,
-            "Unsupported input element type for StringTensorUnpack");
+            "Unsupported input element type for StringTensorUnpack: " + get_input_element_type(0).get_type_name());
+#endif
 
         OPENVINO_ASSERT(
             get_input_partial_shape(0).rank().is_static(),
@@ -339,7 +450,9 @@ public:
         // Shape is not known in advance and only rank of the output can be set
 
         OPENVINO_ASSERT(
+#if 0 // Uncomment it when the bug is fixed with type substitution in TF partition call inlining
             get_input_element_type(0) == element::u8 &&
+#endif
             get_input_partial_shape(0).rank().is_static() && get_input_partial_shape(0).rank().get_length() == 1,
             "StringTensorUnpack expects a u8 tensor with rank 1 that holds packed batched string tensor as an input, but observes type " +
                 get_input_element_type(0).get_type_name() + " and shape " + get_input_partial_shape(0).to_string());
@@ -392,9 +505,7 @@ public:
         OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorUnpack supporst only 'begins_ends' mode, but get " + m_mode);
 
         if (m_mode == "begins_ends") {
-            set_output_type(0, element::i32, output_shape);
-            set_output_type(1, element::i32, output_shape);
-            set_output_type(2, element::u8, PartialShape{Dimension()});
+            set_string_output(this, 0, output_shape);
         }
     }
 
@@ -404,7 +515,6 @@ public:
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
-        // FIXME: Serialization only, there is no deserialization
         visitor.on_attribute("mode", m_mode);
         return true;
     }
@@ -414,7 +524,6 @@ public:
     }
 
     bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-
 
 #ifdef USE_STRING_TENSORS
 
@@ -456,14 +565,68 @@ public:
 
 #else
 
-        OPENVINO_ASSERT(false, "StringTensorUnpack supporst only element::string representation");
-        return false;
+        int32_t batch_size;
+        const int32_t* begin_ids;
+        const int32_t* end_ids;
+        const uint8_t* data;
+        parse_packed_strings(inputs[0], batch_size, begin_ids, end_ids, data);
+
+        auto num_chars = end_ids[batch_size - 1];
+
+        outputs[0].set_shape(Shape({static_cast<unsigned long>(batch_size)}));
+        outputs[1].set_shape(Shape({static_cast<unsigned long>(batch_size)}));
+        outputs[2].set_shape(Shape{static_cast<unsigned long>(num_chars)});
+
+        auto begins = outputs[0].data<int32_t>();
+        auto ends = outputs[1].data<int32_t>();
+        auto chars = outputs[2].data<uint8_t>();
+
+        std::copy(begin_ids, begin_ids + batch_size, begins);
+        std::copy(end_ids, end_ids + batch_size, ends);
+        std::copy(data, data + num_chars, chars);
+
+        return true;
 
 #endif
     }
 
     std::string m_mode;
 };
+
+OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t input_index) {
+    auto input = node.get_input(input_index);
+    auto input_node = input.get_node_shared_ptr();
+
+#ifndef USE_STRING_TENSORS
+    // Override type of input tensor if this is a Parameter
+    if (auto parameter = std::dynamic_pointer_cast<Parameter>(input_node)) {
+        std::cerr << "Overriding Parameter element_type to U8 to be ready to accept a packed batch of strings\n";
+        parameter->set_partial_shape(PartialShape{ Dimension() });
+        parameter->set_element_type(element::u8);
+        parameter->validate_and_infer_types();
+    }
+#endif
+
+    if (auto struct_pack = std::dynamic_pointer_cast<StringTensorPack>(input_node)) {
+        FRONT_END_GENERAL_CHECK(struct_pack->get_input_size() == 3, "Expected 3 inputs to StringTensorPack which represents a string tensor");
+        return struct_pack->input_values();
+    } else {
+        #if defined(USE_STRING_TENSORS) || true     // always
+        return std::make_shared<StringTensorUnpack>(OutputVector{input}, "begins_ends")->outputs();
+        #else
+        // Suppose this is u8 packed string tensor with a single batch dimension
+        // Unpack this tensor using standard operations
+
+        // Cannot do that because there is not ReinterprectCast operation in OV
+        // TODO: Find a way to make it without reinterpretation operation
+        #endif
+    }
+}
+
+ov::Output<ov::Node> post_translate_string_tensor_output(const OutputVector& outputs) {
+    FRONT_END_GENERAL_CHECK(outputs.size() == 3, "Expected 3 tensors in decomposed string tensor representation");
+    return std::make_shared<StringTensorPack>(outputs, "begins_ends");
+}
 
 NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     // this is custom translator that converts a sub-graph with SentencePieceOp, SentencePieceTokenizer,
@@ -494,6 +657,7 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
 #ifndef USE_STRING_TENSORS
     // Override type of input tensor if this is a Parameter
     if (auto parameter = std::dynamic_pointer_cast<Parameter>(inputs.get_node_shared_ptr())) {
+        std::cerr << "HERE\n";
         parameter->set_partial_shape(PartialShape{ Dimension() });
         parameter->set_element_type(element::u8);
         parameter->validate_and_infer_types();
@@ -530,3 +694,53 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
 
     return named_results;
 }
+
+
+void CaseFoldUTF8::validate_and_infer_types() {
+    check_string_input(this, 0);
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool CaseFoldUTF8::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto begins = inputs[0].data<const int32_t>();
+    auto ends   = inputs[1].data<const int32_t>();
+    auto chars  = inputs[2].data<const uint8_t>();
+
+    // Stub implementation that transforms each input string "X" to "CaseFoldUTF8(X)" for debugging purposes
+    {
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+        const std::string left_side = "CaseFoldUTF8(", right_side = ")";
+        const size_t num_elements = inputs[0].get_size();
+        const size_t new_len = inputs[2].get_size() + (left_side.length() + right_side.length())*num_elements;
+        outputs[2].set_shape(Shape{new_len});
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_begins = outputs[0].data<int32_t>();
+        auto new_ends   = outputs[1].data<int32_t>();
+        auto new_chars  = outputs[2].data<uint8_t>();
+        int32_t char_offset = 0;
+
+        for(size_t i = 0; i < num_elements; ++i) {
+            new_begins[i] = char_offset;
+            std::string new_str = left_side + std::string(chars + begins[i], chars + ends[i]) + right_side;
+            std::copy(new_str.data(), new_str.data() + new_str.length(), new_chars + char_offset);
+            char_offset += new_str.length();
+            new_ends[i] = char_offset;
+        }
+        return true;
+    }
+    // End of stub implementation
+}
+
+
+ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node) {
+    std::cerr << "translate_case_fold_utf8\n";
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "CaseFoldUTF8 expects only 1 input");
+    return { post_translate_string_tensor_output(std::make_shared<CaseFoldUTF8>(pre_translate_string_tensor_input(node, 0))->outputs()) };
+}
+
