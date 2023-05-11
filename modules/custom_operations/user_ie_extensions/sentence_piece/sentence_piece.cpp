@@ -259,6 +259,27 @@ void check_string_input(const Node* node, size_t input_index) {
     FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+2) == element::u8,  "Expected a u8 tensor as the third part of the decomposed string representation");
 }
 
+void check_string_scalar_input(const Node* node, size_t input_index) {
+    auto shape = node->get_input_partial_shape(input_index);
+    auto element_type = node->get_input_element_type(input_index);
+
+    #ifdef USE_STRING_TENSORS
+
+    OPENVINO_ASSERT(
+        (element_type == element::dynamic || element_type == element::string) &&
+        (shape.rank().is_dynamic() || shape.rank().get_length() == 0),
+        "string/0D tensor is expected");
+
+    #else
+
+    OPENVINO_ASSERT(
+        (element_type == element::dynamic || element_type == element::u8) &&
+        (shape.rank().is_dynamic() || shape.rank().get_length() == 1),
+        "u8/1D tensor is expected");
+
+    #endif
+}
+
 void set_string_output(Node* node, size_t output_index, const PartialShape& shape) {
     node->set_output_type(output_index+0, element::i32, shape);
     node->set_output_type(output_index+1, element::i32, shape);
@@ -266,332 +287,265 @@ void set_string_output(Node* node, size_t output_index, const PartialShape& shap
 }
 
 
-// Having a decomposed representation for a tensor, converts it to a single string tensor
-// (packed u8 or natively supported element::string depending on whether or not USE_STRING_TENSORS defined).
-class StringTensorPack : public ov::op::Op {
-public:
-    OPENVINO_OP("StringTensorPack");
-
-    StringTensorPack(OutputVector inputs, const std::string& mode = "begins_ends")
-        : ov::op::Op(inputs), m_mode(mode) {
-        constructor_validate_and_infer_types();
-    }
-
-    void validate_and_infer_types() override {
-        OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supporst only 'begins_ends' mode, but get " + m_mode);
-        check_string_input(this, 0);
-        #ifdef USE_STRING_TENSORS
-        set_output_type(0, element::string, get_input_partial_shape(0));
-        #else
-        set_output_type(0, element::u8, PartialShape{Dimension()});
-        #endif
-    }
+void StringTensorPack::validate_and_infer_types() {
+    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supporst only 'begins_ends' mode, but get " + m_mode);
+    check_string_input(this, 0);
+    #ifdef USE_STRING_TENSORS
+    set_output_type(0, element::string, get_input_partial_shape(0));
+    #else
+    set_output_type(0, element::u8, PartialShape{Dimension()});
+    #endif
+}
 
 
-    std::shared_ptr<ov::Node> clone_with_new_inputs(const OutputVector& inputs) const override {
-        auto result = std::make_shared<StringTensorPack>(inputs, m_mode);
-        return result;
-    }
-
-    bool visit_attributes(ov::AttributeVisitor& visitor) override {
-        visitor.on_attribute("mode", m_mode);
-        return true;
-    }
-
-    bool has_evaluate() const {
-        return true;
-    }
-
-    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+bool StringTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
 #ifdef USE_STRING_TENSORS
-        // TODO
-        return false;
+    // TODO
+    return false;
 #else
-        auto rank = inputs[0].get_shape().size();
-        if (rank != 1) {
-            std::cerr << "[ WARNING ] StringTensorPack ignores the rank " << rank << " of input tensor and set rank=1 in the output\n";
-        }
+    auto rank = inputs[0].get_shape().size();
+    if (rank != 1) {
+        std::cerr << "[ WARNING ] StringTensorPack ignores the rank " << rank << " of input tensor and set rank=1 in the output\n";
+    }
 
-        auto num_elements = shape_size(inputs[0].get_shape());
-        auto num_chars = shape_size(inputs[2].get_shape());
-        auto num_output_elements = 4*(1 + 1 + num_elements) + num_chars;
-        outputs[0].set_shape(Shape{num_output_elements});
+    auto num_elements = shape_size(inputs[0].get_shape());
+    auto num_chars = shape_size(inputs[2].get_shape());
+    auto num_output_elements = 4*(1 + 1 + num_elements) + num_chars;
+    outputs[0].set_shape(Shape{num_output_elements});
 
-        //auto begins = inputs[0].data<const int32_t>();    // this is not needed as no repacking happens in this version of code
-        auto ends   = inputs[1].data<const int32_t>();
-        auto chars  = inputs[2].data<const uint8_t>();
+    //auto begins = inputs[0].data<const int32_t>();    // this is not needed as no repacking happens in this version of code
+    auto ends   = inputs[1].data<const int32_t>();
+    auto chars  = inputs[2].data<const uint8_t>();
 
-        auto output = outputs[0].data<uint8_t>();
-        auto output_int32 = reinterpret_cast<int32_t*>(output);
+    auto output = outputs[0].data<uint8_t>();
+    auto output_int32 = reinterpret_cast<int32_t*>(output);
 
-        *output_int32++ = num_elements;
-        *output_int32++ = 0;
-        output_int32 = std::copy(ends, ends + num_elements, output_int32);
-        output = reinterpret_cast<uint8_t*>(output_int32);
-        output = std::copy(chars, chars + num_chars, output);
+    *output_int32++ = num_elements;
+    *output_int32++ = 0;
+    output_int32 = std::copy(ends, ends + num_elements, output_int32);
+    output = reinterpret_cast<uint8_t*>(output_int32);
+    output = std::copy(chars, chars + num_chars, output);
 
-        OPENVINO_ASSERT(num_output_elements == output - outputs[0].data<uint8_t>(), "[ INTERNAL ERROR ] StringTensorPack output tensor is corrupted");
+    OPENVINO_ASSERT(num_output_elements == output - outputs[0].data<uint8_t>(), "[ INTERNAL ERROR ] StringTensorPack output tensor is corrupted");
 
-        // WARNING! Chars are not repacked. If there are gaps between strings, they will remain.
+    // WARNING! Chars are not repacked. If there are gaps between strings, they will remain.
 
-        return true;
+    return true;
 #endif
-    }
-
-private:
-
-    std::string m_mode;
-};
+}
 
 
-
-// Unpack a string tensor representation regardless of the source format, which
-// can be an OV tensor with element::string element type (if supported) or u8
-// packed representation, to a decompose tensor representation that may potentially
-// consist of multiple tensors. The destination format is defined by `mode` attribute.
-// Shape of the output tensor is compitelly recognized from the input (if supported)
-// or defined partially by a dedicated input attribute `shape`. If `shape` is not set,
-// which default to completelly dynamic `shape`, then output shape is defined
-// by an input tensor.
-class StringTensorUnpack : public ov::op::Op {
-public:
-    OPENVINO_OP("StringTensorUnpack");
-
-    StringTensorUnpack(OutputVector inputs, const std::string& mode = "begins_ends"
-        /*const std::string* _data = nullptr, PartialShape _input_shape = PartialShape::dynamic()*/)
-        : ov::op::Op(inputs), m_mode(mode) {
-        constructor_validate_and_infer_types();
-    }
-    //const std::string* data = nullptr;
-    //PartialShape input_shape;
-
-    void validate_and_infer_types() override {
-        OPENVINO_ASSERT(
-            get_input_size() == 1,
-            "Number of inputs for StringTensorUnpack is not equal to 1");
+void StringTensorUnpack::validate_and_infer_types() {
+    OPENVINO_ASSERT(
+        get_input_size() == 1,
+        "Number of inputs for StringTensorUnpack is not equal to 1");
 
 #if 0 // Uncomment it when the bug is fixed with type substitution in TF partition call inlining
-        OPENVINO_ASSERT(
-            #ifdef USE_STRING_TENSORS
-            get_input_element_type(0) == element::string ||
-            #endif
-            get_input_element_type(0) == element::dynamic ||
-            get_input_element_type(0) == element::u8,
-            "Unsupported input element type for StringTensorUnpack: " + get_input_element_type(0).get_type_name());
+    OPENVINO_ASSERT(
+        #ifdef USE_STRING_TENSORS
+        get_input_element_type(0) == element::string ||
+        #endif
+        get_input_element_type(0) == element::dynamic ||
+        get_input_element_type(0) == element::u8,
+        "Unsupported input element type for StringTensorUnpack: " + get_input_element_type(0).get_type_name());
 #endif
 
-        OPENVINO_ASSERT(
-            get_input_partial_shape(0).rank().is_static(),
-            "StringTensorUnpack supports only static input rank");
+    OPENVINO_ASSERT(
+        get_input_partial_shape(0).rank().is_static(),
+        "StringTensorUnpack supports only static input rank");
 
 #if 0
-        // Obtain shape from rt_info.
-        auto& rt_info = get_input_node_shared_ptr(0)->get_rt_info();
-        auto ops = rt_info.find("original_partial_shape");
-        if(ops != rt_info.end()) {
-            input_shape = ops->second.as<PartialShape>();
-            std::cerr << "StringTensorUnpack: orig_partial_shape: " << input_shape << "\n";
-        } else {
-            std::cerr << "Impossible\n";
-            std::cerr << get_input_node_shared_ptr(0) << "\n";
-        }
+    // Obtain shape from rt_info.
+    auto& rt_info = get_input_node_shared_ptr(0)->get_rt_info();
+    auto ops = rt_info.find("original_partial_shape");
+    if(ops != rt_info.end()) {
+        input_shape = ops->second.as<PartialShape>();
+        std::cerr << "StringTensorUnpack: orig_partial_shape: " << input_shape << "\n";
+    } else {
+        std::cerr << "Impossible\n";
+        std::cerr << get_input_node_shared_ptr(0) << "\n";
+    }
 #endif
 
-        auto output_shape = PartialShape::dynamic();
+    auto output_shape = PartialShape::dynamic();
 
 #ifdef USE_STRING_TENSORS
 
-        // In case of explicit string tensors the shape is carried by input tensor itself
-        // OPENVINO_ASSERT(
-        //     input_shape == PartialShape::dynamic(),
-        //     "Excplicitly set shape for a string tensor in the unpacking is not supported");
+    // In case of explicit string tensors the shape is carried by input tensor itself
+    // OPENVINO_ASSERT(
+    //     input_shape == PartialShape::dynamic(),
+    //     "Excplicitly set shape for a string tensor in the unpacking is not supported");
 
-        #ifdef USE_INPUT_OUTPUT_STRING_TENSOR_HACK
+    #ifdef USE_INPUT_OUTPUT_STRING_TENSOR_HACK
 
-        // There are two cases that affect expected element type of the input tensor:
-        // before the hack is applied (element::string) and after it (element::u8).
+    // There are two cases that affect expected element type of the input tensor:
+    // before the hack is applied (element::string) and after it (element::u8).
 
-        OPENVINO_ASSERT(
-            get_input_element_type(0) == element::string
-            || get_input_element_type(0) == element::u8,
-            "Type of StringTensorUnpack input is expected to be element::string before a model compilation or element::u8 after the compilation");
+    OPENVINO_ASSERT(
+        get_input_element_type(0) == element::string
+        || get_input_element_type(0) == element::u8,
+        "Type of StringTensorUnpack input is expected to be element::string before a model compilation or element::u8 after the compilation");
 
-        if(get_input_element_type(0) == element::string) {
-            output_shape = get_input_partial_shape(0);
-        }
-
-        if(get_input_element_type(0) == element::u8)
-        {
-            // After the plugin hack, a tensor is represented as a wrapping u8 tensor that will hold a pointer to a string tensor.
-            // The original shape of a string tensor is stored in RT attribute of a tensor descriptor.
-            const auto& rt_info = get_input_tensor(0).get_rt_info();
-            auto it = rt_info.find("__original_partial_shape");
-
-            // StringTensorUnpack expects __original_partial_shape attribute of type PartialShape in the input tensor.
-            // If it is not found that means that model compilation wasn't pass the expected transformation where a string tensor
-            // is wrapped to a u8 tensor holding a pointer, or because evaluation of this node is in progress and tensor attributes aren't preserved.
-            if(it != rt_info.end() && it->second.is<PartialShape>()) {
-                output_shape = it->second.as<PartialShape>();
-            }
-        }
-
-        #else
-
-        OPENVINO_ASSERT(
-            get_input_element_type(0) == element::string,
-            "StringTensorUnpack expects element::string in an input tensor, but it is " + std::string(get_input_element_type(0)));
-
+    if(get_input_element_type(0) == element::string) {
         output_shape = get_input_partial_shape(0);
+    }
 
-        #endif
+    if(get_input_element_type(0) == element::u8)
+    {
+        // After the plugin hack, a tensor is represented as a wrapping u8 tensor that will hold a pointer to a string tensor.
+        // The original shape of a string tensor is stored in RT attribute of a tensor descriptor.
+        const auto& rt_info = get_input_tensor(0).get_rt_info();
+        auto it = rt_info.find("__original_partial_shape");
+
+        // StringTensorUnpack expects __original_partial_shape attribute of type PartialShape in the input tensor.
+        // If it is not found that means that model compilation wasn't pass the expected transformation where a string tensor
+        // is wrapped to a u8 tensor holding a pointer, or because evaluation of this node is in progress and tensor attributes aren't preserved.
+        if(it != rt_info.end() && it->second.is<PartialShape>()) {
+            output_shape = it->second.as<PartialShape>();
+        }
+    }
+
+    #else
+
+    OPENVINO_ASSERT(
+        get_input_element_type(0) == element::string,
+        "StringTensorUnpack expects element::string in an input tensor, but it is " + std::string(get_input_element_type(0)));
+
+    output_shape = get_input_partial_shape(0);
+
+    #endif
 
 #else
-        // Expect packed string tensor represenation which can carry only a string tensors of shape [?]
-        // Shape is not known in advance and only rank of the output can be set
+    // Expect packed string tensor represenation which can carry only a string tensors of shape [?]
+    // Shape is not known in advance and only rank of the output can be set
 
-        OPENVINO_ASSERT(
+    OPENVINO_ASSERT(
 #if 0 // Uncomment it when the bug is fixed with type substitution in TF partition call inlining
-            get_input_element_type(0) == element::u8 &&
+        get_input_element_type(0) == element::u8 &&
 #endif
-            get_input_partial_shape(0).rank().is_static() && get_input_partial_shape(0).rank().get_length() == 1,
-            "StringTensorUnpack expects a u8 tensor with rank 1 that holds packed batched string tensor as an input, but observes type " +
-                get_input_element_type(0).get_type_name() + " and shape " + get_input_partial_shape(0).to_string());
+        get_input_partial_shape(0).rank().is_static() && get_input_partial_shape(0).rank().get_length() == 1,
+        "StringTensorUnpack expects a u8 tensor with rank 1 that holds packed batched string tensor as an input, but observes type " +
+            get_input_element_type(0).get_type_name() + " and shape " + get_input_partial_shape(0).to_string());
 
-        output_shape = PartialShape({Dimension()});  // [?]
+    output_shape = PartialShape({Dimension()});  // [?]
 
-        #if 0
+    #if 0
 
-        if(get_input_element_type(0) == element::u8) {
-            if(all_inputs_are_constants(this)) {
-                std::cerr << "StringTensorUnpack: u8/const\n";
-                // HACK: Tensor of strings is passed by a raw pointer to a tensor
-                auto constant = std::dynamic_pointer_cast<ov::opset1::Constant>(get_input_node_shared_ptr(0));
-                size_t raw_size = constant->get_shape()[0];
-                if(raw_size == 0) {
-                    // means empty input
-                    std::cerr << "StringTensorUnpack: empty\n";
-                    data = nullptr;
-                    input_shape = PartialShape({0});
-                } else if(raw_size == sizeof(void*)) {
-                    std::cerr << "StringTensorUnpack: not empty, tensor HACK\n";
-                    auto tensor = *reinterpret_cast<const ov::Tensor* const *>(constant->get_data_ptr<uint8_t>());
-                    std::cerr << "Pointer to tensor from op: " << tensor << "\n";
-                    input_shape = tensor->get_shape();
-                    data = tensor->data<std::string>();
-                } else {
-
-                    OPENVINO_ASSERT(
-                        false,
-                        "Unexpected size for hacked Tensor<string> input. Something went wrong.");
-                }
+    if(get_input_element_type(0) == element::u8) {
+        if(all_inputs_are_constants(this)) {
+            std::cerr << "StringTensorUnpack: u8/const\n";
+            // HACK: Tensor of strings is passed by a raw pointer to a tensor
+            auto constant = std::dynamic_pointer_cast<ov::opset1::Constant>(get_input_node_shared_ptr(0));
+            size_t raw_size = constant->get_shape()[0];
+            if(raw_size == 0) {
+                // means empty input
+                std::cerr << "StringTensorUnpack: empty\n";
+                data = nullptr;
+                input_shape = PartialShape({0});
+            } else if(raw_size == sizeof(void*)) {
+                std::cerr << "StringTensorUnpack: not empty, tensor HACK\n";
+                auto tensor = *reinterpret_cast<const ov::Tensor* const *>(constant->get_data_ptr<uint8_t>());
+                std::cerr << "Pointer to tensor from op: " << tensor << "\n";
+                input_shape = tensor->get_shape();
+                data = tensor->data<std::string>();
             } else {
-                std::cerr << "StringTensorUnpack: u8/not constant\n";
+
+                OPENVINO_ASSERT(
+                    false,
+                    "Unexpected size for hacked Tensor<string> input. Something went wrong.");
             }
         } else {
-            std::cerr << "StringTensorUnpack: string\n";
-            input_shape = get_input_partial_shape(0);
-            if(all_inputs_are_constants(this)) {
-                auto constant = std::dynamic_pointer_cast<ov::opset1::Constant>(get_input_node_shared_ptr(0));
-                data = constant->get_data_ptr<std::string>();
-            } else {
-                input_shape = get_input_partial_shape(0);
-            }
+            std::cerr << "StringTensorUnpack: u8/not constant\n";
         }
+    } else {
+        std::cerr << "StringTensorUnpack: string\n";
+        input_shape = get_input_partial_shape(0);
+        if(all_inputs_are_constants(this)) {
+            auto constant = std::dynamic_pointer_cast<ov::opset1::Constant>(get_input_node_shared_ptr(0));
+            data = constant->get_data_ptr<std::string>();
+        } else {
+            input_shape = get_input_partial_shape(0);
+        }
+    }
 
-        #endif
+    #endif
 
 #endif
 
-        OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorUnpack supporst only 'begins_ends' mode, but get " + m_mode);
+    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorUnpack supporst only 'begins_ends' mode, but get " + m_mode);
 
-        if (m_mode == "begins_ends") {
-            set_string_output(this, 0, output_shape);
-        }
+    if (m_mode == "begins_ends") {
+        set_string_output(this, 0, output_shape);
     }
+}
 
-    std::shared_ptr<ov::Node> clone_with_new_inputs(const OutputVector& inputs) const override {
-        auto result = std::make_shared<StringTensorUnpack>(inputs, m_mode);
-        return result;
-    }
-
-    bool visit_attributes(ov::AttributeVisitor& visitor) override {
-        visitor.on_attribute("mode", m_mode);
-        return true;
-    }
-
-    bool has_evaluate() const {
-        return true;
-    }
-
-    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
 
 #ifdef USE_STRING_TENSORS
 
-        #ifdef USE_INPUT_OUTPUT_STRING_TENSOR_HACK
-        auto tensor = *reinterpret_cast<const ov::Tensor* const *>(inputs[0].data<uint8_t>());
-        #else
-        auto tensor = inputs[0];
-        #endif
+    #ifdef USE_INPUT_OUTPUT_STRING_TENSOR_HACK
+    auto tensor = *reinterpret_cast<const ov::Tensor* const *>(inputs[0].data<uint8_t>());
+    #else
+    auto tensor = inputs[0];
+    #endif
 
-        //std::cerr << "Pointer to tensor from op evaluate: " << tensor << "\n";
-        Shape input_shape = tensor->get_shape();
-        const std::string* input_strings = tensor->data<std::string>();
-        std::cerr << "input_shape = " << input_shape << "\n";
-        //std::cerr << data << "\n";
+    //std::cerr << "Pointer to tensor from op evaluate: " << tensor << "\n";
+    Shape input_shape = tensor->get_shape();
+    const std::string* input_strings = tensor->data<std::string>();
+    std::cerr << "input_shape = " << input_shape << "\n";
+    //std::cerr << data << "\n";
 
-        auto nelements = shape_size(input_shape);
-        size_t total = 0;
-        for(size_t i = 0; i < nelements; ++i)
-            total += input_strings[i].length();
+    auto nelements = shape_size(input_shape);
+    size_t total = 0;
+    for(size_t i = 0; i < nelements; ++i)
+        total += input_strings[i].length();
 
-        outputs[0].set_shape(input_shape);
-        outputs[1].set_shape(input_shape);
-        outputs[2].set_shape(Shape{total});
+    outputs[0].set_shape(input_shape);
+    outputs[1].set_shape(input_shape);
+    outputs[2].set_shape(Shape{total});
 
-        auto begins = outputs[0].data<int32_t>();
-        auto ends = outputs[1].data<int32_t>();
-        auto output_symbols = reinterpret_cast<char*>(outputs[2].data<uint8_t>());
-        size_t offset = 0;
+    auto begins = outputs[0].data<int32_t>();
+    auto ends = outputs[1].data<int32_t>();
+    auto output_symbols = reinterpret_cast<char*>(outputs[2].data<uint8_t>());
+    size_t offset = 0;
 
-        for(size_t i = 0; i < nelements; ++i)
-        {
-            begins[i] = offset;
-            output_symbols = std::copy(input_strings[i].begin(), input_strings[i].end(), output_symbols);
-            offset += input_strings[i].length();
-            ends[i] = offset;
-        }
+    for(size_t i = 0; i < nelements; ++i)
+    {
+        begins[i] = offset;
+        output_symbols = std::copy(input_strings[i].begin(), input_strings[i].end(), output_symbols);
+        offset += input_strings[i].length();
+        ends[i] = offset;
+    }
 
-        return true;
+    return true;
 
 #else
 
-        int32_t batch_size;
-        const int32_t* begin_ids;
-        const int32_t* end_ids;
-        const uint8_t* data;
-        parse_packed_strings(inputs[0], batch_size, begin_ids, end_ids, data);
+    int32_t batch_size;
+    const int32_t* begin_ids;
+    const int32_t* end_ids;
+    const uint8_t* data;
+    parse_packed_strings(inputs[0], batch_size, begin_ids, end_ids, data);
 
-        auto num_chars = end_ids[batch_size - 1];
+    auto num_chars = end_ids[batch_size - 1];
 
-        outputs[0].set_shape(Shape({static_cast<unsigned long>(batch_size)}));
-        outputs[1].set_shape(Shape({static_cast<unsigned long>(batch_size)}));
-        outputs[2].set_shape(Shape{static_cast<unsigned long>(num_chars)});
+    outputs[0].set_shape(Shape{static_cast<unsigned long>(batch_size)});
+    outputs[1].set_shape(Shape{static_cast<unsigned long>(batch_size)});
+    outputs[2].set_shape(Shape{static_cast<unsigned long>(num_chars)});
 
-        auto begins = outputs[0].data<int32_t>();
-        auto ends = outputs[1].data<int32_t>();
-        auto chars = outputs[2].data<uint8_t>();
+    auto begins = outputs[0].data<int32_t>();
+    auto ends = outputs[1].data<int32_t>();
+    auto chars = outputs[2].data<uint8_t>();
 
-        std::copy(begin_ids, begin_ids + batch_size, begins);
-        std::copy(end_ids, end_ids + batch_size, ends);
-        std::copy(data, data + num_chars, chars);
+    std::copy(begin_ids, begin_ids + batch_size, begins);
+    std::copy(end_ids, end_ids + batch_size, ends);
+    std::copy(data, data + num_chars, chars);
 
-        return true;
+    return true;
 
 #endif
-    }
+}
 
-    std::string m_mode;
-};
 
 OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t input_index) {
     auto input = node.get_input(input_index);
@@ -798,4 +752,90 @@ ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node)
     return { post_translate_string_tensor_output(std::make_shared<NormalizeUnicode>(
         pre_translate_string_tensor_input(node, 0),
         node.get_attribute<std::string>("normalization_form"))->outputs()) };
+}
+
+
+
+
+void RegexNormalization::validate_and_infer_types() {
+    check_string_input(this, 0);
+    check_string_scalar_input(this, 3);
+    check_string_scalar_input(this, 4);
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool RegexNormalization::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto begins = inputs[0].data<const int32_t>();
+    auto ends   = inputs[1].data<const int32_t>();
+    auto chars  = inputs[2].data<const uint8_t>();
+
+#ifdef USE_STRING_TENSORS
+    auto search_pattern  = *inputs[3].data<const std::string>();
+    auto replace_pattern  = *inputs[4].data<const std::string>();
+#else
+    auto search_pattern_buf  = inputs[3].data<const uint8_t>();
+    auto replace_pattern_buf  = inputs[4].data<const uint8_t>();
+    auto search_pattern = absl::string_view((const char*)search_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+    auto replace_pattern = absl::string_view((const char*)replace_pattern_buf, shape_size(inputs[4].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+#endif
+
+#if 0
+    // TODO: Complete implementation
+#else
+    // Stub implementation that transforms each input string "X" to "RegexNormalization(X, search_pattern, replace_pattern)" for debugging purposes
+    {
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+        const std::string left_side = "RegexNormalization(", right_side = ")", delimeter = ", ";
+        const size_t num_elements = inputs[0].get_size();
+        const size_t new_len = inputs[2].get_size() + (left_side.length() + right_side.length() + 2*delimeter.length() + search_pattern.length() + replace_pattern.length())*num_elements;
+        outputs[2].set_shape(Shape{new_len});
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_begins = outputs[0].data<int32_t>();
+        auto new_ends   = outputs[1].data<int32_t>();
+        auto new_chars  = outputs[2].data<uint8_t>();
+        int32_t char_offset = 0;
+
+        for(size_t i = 0; i < num_elements; ++i) {
+            new_begins[i] = char_offset;
+
+            std::string new_str =
+                left_side + std::string(chars + begins[i], chars + ends[i]) + delimeter +
+                std::string(search_pattern) + delimeter +
+                std::string(replace_pattern) + right_side;
+
+            std::copy(new_str.data(), new_str.data() + new_str.length(), new_chars + char_offset);
+            char_offset += new_str.length();
+            new_ends[i] = char_offset;
+        }
+        return true;
+    }
+    // End of stub implementation
+#endif
+}
+
+
+std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeContext& node, const std::string& name) {
+    // FIXME: using space to pad the value to work-around CPU issue with empty constants
+    auto value = node.get_attribute<std::string>(name) + " ";
+
+    #ifdef USE_STRING_TENSORS
+    return std::make_shared<Constant>(element::string, {}, value);
+    #else
+    return std::make_shared<Constant>(element::u8, Shape{value.length()}, (const void*)value.data());
+    #endif
+}
+
+
+ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext& node) {
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "StaticRegexReplace expects only 1 input");
+    ov::OutputVector inputs = pre_translate_string_tensor_input(node, 0);
+    inputs.push_back(string_attribute_to_constant(node, "pattern"));
+    inputs.push_back(string_attribute_to_constant(node, "rewrite"));
+    return { post_translate_string_tensor_output(std::make_shared<RegexNormalization>(inputs)->outputs()) };
 }
