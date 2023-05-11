@@ -404,13 +404,13 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" -ArgumentList "--gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml"
+          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" -ArgumentList "--gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml" -PassThru -Wait
 
       - name: OpenVINO Inference functional tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" -ArgumentList "--gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml"
+          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" -ArgumentList "--gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml" -PassThru -Wait
 
       - name: OpenVINO Inference unit tests
         if: ${{ always() }}
@@ -535,53 +535,54 @@ jobs:
       #   run: rm -fr ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.DATA_PATH }} ${{ env.BUILD_DIR }}
 
 
-#   CPU_Tests:
-#     needs: Build
-#     defaults:
-#       run:
-#         shell: bash
-#     strategy:
-#       fail-fast: false
-#     # runs-on: ubuntu-latest
-#     runs-on: ['self-hosted', 'linux', 'coverage']
-#     container:
-#       image: akashchi/ubuntu:latest
-#     env:
-#       INSTALL_DIR: /openvino/install
-#       INSTALL_TEST_DIR: /openvino/install/tests
+  CPU_Tests:
+    needs: Build
+    if: ${{ always() }}
+    strategy:
+      fail-fast: false
+    runs-on: ['windows-latest-8-cores']
+    env:
+      INSTALL_DIR: "${{ github.workspace }}\\install"
+      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
 
-#     steps:
-#       - name: Create Directories
-#         run: |
-#           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+    steps:
+      - name: Create Directories
+        run: |
+          mkdir ${{ env.INSTALL_DIR }}
+          mkdir ${{ env.INSTALL_TEST_DIR }}
       
-#       - name: Download OpenVINO package
-#         uses: actions/download-artifact@v3
-#         with:
-#           name: openvino_package
-#           path: ${{ env.INSTALL_DIR }}
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
 
-#       - name: Download OpenVINO tests package
-#         uses: actions/download-artifact@v3
-#         with:
-#           name: openvino_tests
-#           path: ${{ env.INSTALL_TEST_DIR }}
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.INSTALL_TEST_DIR }}
 
-#       - name: Extract OpenVINO packages
-#         run: |
-#           pushd ${{ env.INSTALL_DIR }}
-#             tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
-#           popd
+      - name: Extract OpenVINO packages
+        run: |
+          pushd ${{ env.INSTALL_DIR }}
+            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+          popd
 
-#           pushd ${{ env.INSTALL_TEST_DIR }}
-#             tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
-#           popd
+          pushd ${{ env.INSTALL_TEST_DIR }}
+            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+          popd
       
-#       - name: Intel CPU plugin func tests
-#         run: |
-#           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-#           # python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_filter=*smoke*
-#           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
+      - name: Check extraction
+        run: |
+          ls "${{ github.workspace }}"
+          ls "${{ env.INSTALL_DIR }}"
+          ls "${{ env.INSTALL_TEST_DIR }}"
+      
+      - name: Intel CPU plugin func tests
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          & "${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests" @("--gtest_print_time=1", "--gtest_filter=*smoke*", "--gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"")
 
 #   GPU_Tests:
 #     needs: Build
