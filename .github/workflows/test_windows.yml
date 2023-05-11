@@ -400,17 +400,22 @@ jobs:
       # C++ tests
       #
 
+      - name: Check Test Dir
+        if: ${{ always() }}
+        run: |
+          ls "${{ env.INSTALL_DIR }}"
+
       - name: OpenVINO Core unit tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" -ArgumentList "--gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml" -PassThru -Wait
+          & "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
 
       - name: OpenVINO Inference functional tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          Start-Process -NoNewWindow -FilePath "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" -ArgumentList "--gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml" -PassThru -Wait
+          & "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
 
       - name: OpenVINO Inference unit tests
         if: ${{ always() }}
@@ -422,8 +427,7 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
+          "${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
 
       - name: OpenVINO Conditional compilation tests
         if: ${{ always() }}
@@ -436,13 +440,12 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
+          "${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
 
       # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #   run: |
       #     & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-      #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
+      #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* `
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
       - name: ONNX frontend tests
@@ -456,15 +459,14 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
+          "${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
 
       - name: TensorFlow frontend tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
+          pushd ${{ env.INSTALL_TEST_DIR }}
+          .\ov_tensorflow_frontend_tests.exe --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
         if: ${{ always() }}
@@ -570,7 +572,7 @@ jobs:
           popd
 
           pushd ${{ env.INSTALL_TEST_DIR }}
-            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
           popd
       
       - name: Check extraction
@@ -582,7 +584,7 @@ jobs:
       - name: Intel CPU plugin func tests
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          & "${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests" @("--gtest_print_time=1", "--gtest_filter=*smoke*", "--gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"")
+          "${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests" --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
 #   GPU_Tests:
 #     needs: Build
