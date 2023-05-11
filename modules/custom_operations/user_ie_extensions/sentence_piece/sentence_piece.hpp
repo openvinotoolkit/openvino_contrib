@@ -225,3 +225,5 @@ public:
 };
 
 ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext& node);
+
+ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node);

@@ -554,6 +554,7 @@ OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t i
 #ifndef USE_STRING_TENSORS
     // Override type of input tensor if this is a Parameter
     if (auto parameter = std::dynamic_pointer_cast<Parameter>(input_node)) {
+        // TODO: Apply this change conditionally based on real Parameter value
         std::cerr << "Overriding Parameter element_type to U8 to be ready to accept a packed batch of strings\n";
         parameter->set_partial_shape(PartialShape{ Dimension() });
         parameter->set_element_type(element::u8);
@@ -839,3 +840,31 @@ ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext&
     inputs.push_back(string_attribute_to_constant(node, "rewrite"));
     return { post_translate_string_tensor_output(std::make_shared<RegexNormalization>(inputs)->outputs()) };
 }
+
+
+ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node) {
+    // This is a copied-and-pasted and adopted fragment of TF reshape translator from OV.
+    // It checks if the input tensor has string type, and then perform custom tranlation.
+    // Otherwise it should operate identically to the stock version of Reshape translator in TF FE.
+    // TODO: Introduce an API to call original translators from an extension without copying the code to an extension.
+
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 2, "Tensorflow Reshape op should have two inputs");
+    auto tensor = node.get_input(0);
+    auto shape = node.get_input(1);
+    if(auto pack = dynamic_cast<StringTensorPack*>(tensor.get_node())) {
+        // TODO: If it is a beginning of the graph, how to detect strings? It falls in 'else' branch in this case.
+        // FIXME: Needs extension for a Parameter to prepare it first
+        auto begins = std::make_shared<Reshape>(pack->input_value(0), shape, false);
+        auto ends = std::make_shared<Reshape>(pack->input_value(1), shape, false);
+        auto chars = pack->input_value(2);
+
+        auto reshape = post_translate_string_tensor_output({begins, ends, chars});
+
+        return {reshape};
+    } else {
+        auto reshape = std::make_shared<Reshape>(tensor, shape, false);
+        return {reshape};
+    }
+    // set_node_name(node.get_name(), reshape); // TODO: requires dependencies from TF FE internals
+}
+
