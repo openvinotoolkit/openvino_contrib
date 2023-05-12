@@ -11,7 +11,7 @@
 #include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

@@ -52,9 +52,6 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
       config_(std::move(cfg)),
       cuda_stream_executor_(std::move(wait_executor)),
       loaded_from_cache_(loaded_from_cache) {
-    // TODO: if your plugin supports device ID (more that single instance of device can be on host machine)
-    // you should select proper device based on KEY_DEVICE_ID or automatic behavior
-    // In this case, _waitExecutor should also be created per device.
     try {
         compile_model(model);
         init_executor();  // creates thread-based executor using for async requests
@@ -94,11 +91,8 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     GraphTransformer transformer;
     // Clone model
     model_ = ov::clone_model(*model);
-    // Apply common transformations
-    transformer.common_transform(device, model_, config_);
-    export_model_ = model_->clone();
-    //  CUDA-specific tranformations
-    transformer.cuda_transform(device, model_, config_);
+    // Apply transformations pipeline
+    transformer.transform(device, model_, config_);
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
     for (auto&& result : model_->get_results()) {
@@ -317,35 +311,33 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
 }
 
 std::shared_ptr<const ov::Model> CompiledModel::get_runtime_model() const {
+    // TODO add performance information
     return model_->clone();
 }
 
-void CompiledModel::export_model(std::ostream& model) const {
+void CompiledModel::export_model(std::ostream& model_stream) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CompiledModel::export_model");
 
-    // Note: custom ngraph extensions are not supported
-    std::stringstream xmlFile, binFile;
-    auto& rt_info = export_model_->get_rt_info();
+    std::stringstream xml_file, bin_file;
+    auto& rt_info = model_->get_rt_info();
     int64_t version = 11;
     if (rt_info.count("version")) {
         version = rt_info.at("version").as<int64_t>();
     }
 
-    ov::pass::Serialize serializer(xmlFile, binFile, static_cast<ov::pass::Serialize::Version>(version));
-    serializer.run_on_model(ngraph::clone_function(*export_model_));
+    ov::pass::Serialize serializer(xml_file, bin_file, static_cast<ov::pass::Serialize::Version>(version));
+    serializer.run_on_model(ov::clone_model(*model_));
 
-    auto m_constants = binFile.str();
-    auto m_model = xmlFile.str();
+    auto weights = bin_file.str();
+    auto model = xml_file.str();
 
-    auto dataSize = static_cast<std::uint64_t>(m_model.size());
-    model.write(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-    model.write(m_model.c_str(), dataSize);
+    auto data_size = static_cast<std::uint64_t>(model.size());
+    model_stream.write(reinterpret_cast<char*>(&data_size), sizeof(data_size));
+    model_stream.write(model.c_str(), data_size);
 
-    dataSize = static_cast<std::uint64_t>(m_constants.size());
-    model.write(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-    model.write(reinterpret_cast<char*>(&m_constants[0]), dataSize);
-
-    // TODO: implement network precision, layout, preprocessing info serialization
+    data_size = static_cast<std::uint64_t>(weights.size());
+    model_stream.write(reinterpret_cast<char*>(&data_size), sizeof(data_size));
+    model_stream.write(reinterpret_cast<char*>(&weights[0]), data_size);
 }
 
 }  // namespace nvidia_gpu

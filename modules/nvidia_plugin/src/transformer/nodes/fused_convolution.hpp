@@ -4,15 +4,14 @@
 
 #pragma once
 
-#include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
-#include <openvino/op/convolution.hpp>
-#include <openvino/op/group_conv.hpp>
 #include <type_traits>
 
-#include "cuda_plugin_custom_node_types.hpp"
+#include "activation_type.hpp"
+#include "ngraph/node.hpp"
+#include "ngraph/shape.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 
@@ -38,7 +37,10 @@ class BasicFusedConvolution : public TBaseConvolution {
 public:
     using BaseConvolution = TBaseConvolution;
 
-    virtual ~BasicFusedConvolution() = default;
+    OPENVINO_OP(conv_name<TBaseConvolution>, "nvidia_gpu", TBaseConvolution);
+
+    BasicFusedConvolution() = default;
+    ~BasicFusedConvolution() = default;
 
     explicit BasicFusedConvolution(const ov::Output<ov::Node>& data_batch,
                                    const ov::Output<ov::Node>& filters,
@@ -50,9 +52,6 @@ public:
                                    const ov::op::PadType& auto_pad,
                                    ActivationMode activation)
         : TBaseConvolution(data_batch, filters, strides, pads_begin, pads_end, dilations, auto_pad),
-          bias_shape_{bias.get_shape()},
-          bias_type_{bias.get_element_type()},
-          has_add_node_{false},
           activation_{activation} {
         TBaseConvolution::set_arguments({data_batch, filters, bias});
         TBaseConvolution::constructor_validate_and_infer_types();
@@ -69,15 +68,10 @@ public:
                                    const ov::op::PadType& auto_pad,
                                    ActivationMode activation)
         : TBaseConvolution(data_batch, filters, strides, pads_begin, pads_end, dilations, auto_pad),
-          bias_shape_{bias.get_shape()},
-          bias_type_{bias.get_element_type()},
-          has_add_node_{true},
           activation_{activation} {
         TBaseConvolution::set_arguments({data_batch, filters, bias, add_node});
         TBaseConvolution::constructor_validate_and_infer_types();
     }
-
-    OPENVINO_OP(conv_name<TBaseConvolution>, "nvidia_gpu", TBaseConvolution);
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override {
         ov::check_new_args_count(this, new_args);
@@ -105,8 +99,15 @@ public:
         }
     }
 
+    bool visit_attributes(AttributeVisitor& visitor) override {
+        TBaseConvolution::visit_attributes(visitor);
+        visitor.on_attribute("activation", activation_);
+        return true;
+    }
+
     void validate_and_infer_types() override {
         TBaseConvolution::validate_and_infer_types();
+        OPENVINO_ASSERT(TBaseConvolution::get_input_size() == 3 || TBaseConvolution::get_input_size() == 4);
         const auto& conv_out_shape = TBaseConvolution::get_output_shape(0);
         const auto& element_type = TBaseConvolution::get_output_element_type(0);
 
@@ -115,39 +116,28 @@ public:
         constexpr size_t conv_output_rank_max{5};
         constexpr size_t conv_bias_rank_min{3};
         OPENVINO_ASSERT(conv_out_shape.size() <= conv_output_rank_max);
-        OPENVINO_ASSERT(bias_shape_.size() >= conv_bias_rank_min);
+        auto bias_shape = TBaseConvolution::get_input_shape(2);
+        OPENVINO_ASSERT(bias_shape.size() >= conv_bias_rank_min);
         const size_t conv_channel_dim_size = conv_out_shape.at(conv_out_shape.size() - nchw_channel_dim_offset);
-        const size_t bias_channel_dim_size = bias_shape_.at(bias_shape_.size() - nchw_channel_dim_offset);
+        const size_t bias_channel_dim_size = bias_shape.at(bias_shape.size() - nchw_channel_dim_offset);
 
         OPENVINO_ASSERT(conv_channel_dim_size == bias_channel_dim_size);
-        OPENVINO_ASSERT(bias_type_ == element_type);
+        OPENVINO_ASSERT(TBaseConvolution::get_input_element_type(2) == element_type);
 
         TBaseConvolution::set_output_type(0, element_type, conv_out_shape);
     }
 
-    bool has_add_node() const { return has_add_node_; }
+    bool has_add_node() const { return (TBaseConvolution::get_input_size() == 4); }
 
     void set_activation(ActivationMode mode) { activation_ = mode; }
 
     ActivationMode get_activation() const { return activation_; }
 
 private:
-    ov::Shape bias_shape_;
-    ov::element::Type bias_type_;
-    bool has_add_node_;
     ActivationMode activation_;
 };  // class TBaseConvolution
 
-class FusedConvolution : public BasicFusedConvolution<ov::op::v1::Convolution> {
-public:
-    using BasicFusedConvolution::BasicFusedConvolution;
-
-    ~FusedConvolution() override;
-};
-class FusedGroupConvolution : public BasicFusedConvolution<ov::op::v1::GroupConvolution> {
-public:
-    using BasicFusedConvolution::BasicFusedConvolution;
-    ~FusedGroupConvolution() override;
-};
+using FusedConvolution = BasicFusedConvolution<ov::op::v1::Convolution>;
+using FusedGroupConvolution = BasicFusedConvolution<ov::op::v1::GroupConvolution>;
 
 }  // namespace ov::nvidia_gpu::nodes

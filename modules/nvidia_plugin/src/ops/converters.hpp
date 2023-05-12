@@ -16,7 +16,7 @@
 #include <string_view>
 #include <type_traits>
 
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

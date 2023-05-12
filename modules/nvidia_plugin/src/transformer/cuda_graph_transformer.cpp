@@ -38,9 +38,9 @@
 
 using namespace ov::nvidia_gpu;
 
-void GraphTransformer::common_transform(const CUDA::Device& device,
-                                        const std::shared_ptr<ov::Model>& model,
-                                        const Configuration& config) const {
+void GraphTransformer::transform(const CUDA::Device& device,
+                                 const std::shared_ptr<ov::Model>& model,
+                                 const Configuration& config) const {
     auto inference_precision = config.get_inference_precision();
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
         throwIEException("Inference precision f16 is not supported by device!");
@@ -118,19 +118,6 @@ void GraphTransformer::common_transform(const CUDA::Device& device,
                 return is_sequence_primitive_supported(node);
             });
 
-    manager.run_passes(model);
-
-    [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
-    [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
-
-    return;
-}
-
-void GraphTransformer::cuda_transform(const CUDA::Device& device,
-                                      const std::shared_ptr<ov::Model>& model,
-                                      const Configuration& config) const {
-    ov::pass::Manager manager;
-
     manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
@@ -148,11 +135,4 @@ void GraphTransformer::cuda_transform(const CUDA::Device& device,
     [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
 
     return;
-}
-
-void GraphTransformer::transform(const CUDA::Device& device,
-                                 const std::shared_ptr<ov::Model>& model,
-                                 const Configuration& config) const {
-    common_transform(device, model, config);
-    cuda_transform(device, model, config);
 }

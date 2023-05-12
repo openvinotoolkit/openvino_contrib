@@ -8,7 +8,7 @@
 #include <ngraph/type/element_type.hpp>
 #include <openvino/op/convolution.hpp>
 
-#include "cuda_plugin_custom_node_types.hpp"
+#include "activation_type.hpp"
 #include "ngraph/attribute_adapter.hpp"
 #include "ngraph/ngraph_visibility.hpp"
 #include "ngraph/type.hpp"
@@ -18,6 +18,11 @@ namespace ov::nvidia_gpu::nodes {
 // TODO: Try to use BasicFusedConvolution or derive from ov::op::v1::ConvolutionBackpropData
 class FusedConvBackpropData : public ov::op::Op {
 public:
+    OPENVINO_OP("FusedConvBackpropData", "nvidia_gpu");
+
+    FusedConvBackpropData() = default;
+    ~FusedConvBackpropData() = default;
+
     explicit FusedConvBackpropData(const ov::Output<Node>& data_batch,
                                    const ov::Output<Node>& filters,
                                    const ov::Output<Node>& add,
@@ -37,8 +42,6 @@ public:
                                    const ov::Strides& dilations,
                                    const ov::op::PadType& auto_pad,
                                    const ov::CoordinateDiff& output_padding);
-
-    OPENVINO_OP("FusedConvBackpropData", "nvidia_gpu");
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
@@ -71,8 +74,6 @@ private:
     ov::Strides dilations_;
     ov::op::PadType auto_pad_;
     ov::CoordinateDiff output_padding_;
-    ov::Shape add_shape_;
-    ov::element::Type add_type_;
 };
 
 }  // namespace ov::nvidia_gpu::nodes

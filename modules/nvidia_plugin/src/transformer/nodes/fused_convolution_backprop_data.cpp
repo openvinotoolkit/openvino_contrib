@@ -24,9 +24,7 @@ FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
       pads_end_(pads_end),
       dilations_(dilations),
       auto_pad_(auto_pad),
-      output_padding_(output_padding),
-      add_shape_{add.get_shape()},
-      add_type_(add.get_element_type()) {
+      output_padding_(output_padding) {
     constructor_validate_and_infer_types();
 }
 
@@ -46,9 +44,7 @@ FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
       pads_end_(pads_end),
       dilations_(dilations),
       auto_pad_(auto_pad),
-      output_padding_(output_padding),
-      add_shape_{add.get_shape()},
-      add_type_(add.get_element_type()) {
+      output_padding_(output_padding) {
     constructor_validate_and_infer_types();
 }
 
@@ -260,8 +256,9 @@ void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::
 void FusedConvBackpropData::validate_and_infer_types() {
     conv_validate_and_infer_types();
     const auto& element_type = get_output_element_type(0);
+    const auto& add_type = get_input_element_type(2);
     //  OPENVINO_ASSERT(conv_out_shape == add_shape_);
-    OPENVINO_ASSERT(element_type == add_type_);
+    OPENVINO_ASSERT(element_type == add_type);
 }
 
 }  // namespace ov::nvidia_gpu::nodes

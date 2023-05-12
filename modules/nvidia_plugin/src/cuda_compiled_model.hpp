@@ -81,7 +81,6 @@ private:
     mutable std::atomic<std::size_t> request_id_ = {0};
     Configuration config_;
     std::shared_ptr<ov::threading::ITaskExecutor> cuda_stream_executor_ = nullptr;
-    std::shared_ptr<ov::Model> export_model_;
     std::shared_ptr<ov::Model> model_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;

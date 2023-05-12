@@ -55,15 +55,17 @@ private:
     enum class cuda_attribute { name };
 
     /**
-     * Gets CpuStreamExecutor if it was already created,
-     * creates otherwise one for device specified in cfg
-     * @param cfg Configuration used for CpuStreamExecutor creation
-     * @return CpuStreamExecutor
+     * Gets CudaThreadPool
+     * @param config Configuration used for CudaThreadPool selection
+     * @return CudaThreadPool
      */
-    std::shared_ptr<ov::threading::ITaskExecutor> get_stream_executor(const Configuration& cfg) const;
+    std::shared_ptr<ov::threading::ITaskExecutor> get_stream_executor(const Configuration& config) const;
 
-    int nvidia_device_id() const noexcept { return 0; }  // TODO implement
-
+    /**
+     * Check whether node is supported by plugin
+     * @param node node to be checked
+     * @return true if supported, false otherwise
+     */
     bool is_operation_supported(const std::shared_ptr<ov::Node>& node) const;
 
     GraphTransformer transformer_{};

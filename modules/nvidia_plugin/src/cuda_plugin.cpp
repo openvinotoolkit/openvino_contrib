@@ -1,23 +1,29 @@
 // Copyright (C) 20182023 Intel Corporation
 // SPDXLicenseIdentifier: Apache2.0
 //
-#include <ie_metric_helpers.hpp>
-
 #include <fmt/format.h>
 
-#include <cuda/props.hpp>
-#include <openvino/op/util/op_types.hpp>
-#include <threading/ie_executor_manager.hpp>
-#include <transformations/rt_info/fused_names_attribute.hpp>
+#include "ie_metric_helpers.hpp"
 
+#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
+#include "cuda/props.hpp"
 #include "cuda_compiled_model.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
 #include "nvidia/nvidia_config.hpp"
+#include "openvino/core/op_extension.hpp"
+#include "openvino/op/util/op_types.hpp"
+#include "openvino/runtime/core.hpp"
 #include "openvino/runtime/properties.hpp"
-#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
+#include "threading/ie_executor_manager.hpp"
+#include "transformations/rt_info/fused_names_attribute.hpp"
+#include "transformer/nodes/concat_optimized.hpp"
+#include "transformer/nodes/fully_connected.hpp"
+#include "transformer/nodes/fused_convolution.hpp"
+#include "transformer/nodes/fused_convolution_backprop_data.hpp"
+#include "transformer/nodes/lstm_sequence_optimized.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -72,21 +78,32 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::import_model");
 
     // Read XML content
-    std::string xmlString;
-    std::uint64_t dataSize = 0;
-    model_stream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-    xmlString.resize(dataSize);
-    model_stream.read(const_cast<char*>(xmlString.c_str()), dataSize);
+    std::string xml_string;
+    std::uint64_t data_size = 0;
+    model_stream.read(reinterpret_cast<char*>(&data_size), sizeof(data_size));
+    xml_string.resize(data_size);
+    model_stream.read(const_cast<char*>(xml_string.c_str()), data_size);
 
-    // read blob content
+    // Read blob content
     ov::Tensor weights;
-    model_stream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-    if (0 != dataSize) {
-        weights = ov::Tensor(ov::element::from<char>(), ov::Shape{static_cast<ov::Shape::size_type>(dataSize)});
-        model_stream.read(weights.data<char>(), dataSize);
+    model_stream.read(reinterpret_cast<char*>(&data_size), sizeof(data_size));
+    if (0 != data_size) {
+        weights = ov::Tensor(ov::element::from<char>(), ov::Shape{static_cast<ov::Shape::size_type>(data_size)});
+        model_stream.read(weights.data<char>(), data_size);
     }
 
-    auto model = get_core()->read_model(xmlString, weights);
+    // Register operation itself, required to be read from IR
+    const std::vector<ov::Extension::Ptr> extensions = {
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::ConcatOptimized>>(),
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FullyConnected>>(),
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedConvBackpropData>>(),
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedConvolution>>(),
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedGroupConvolution>>(),
+        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::LSTMSequenceOptimized>>()};
+
+    ov::Core core;
+    core.add_extension(extensions);
+    auto model = core.read_model(xml_string, weights);
 
     Configuration full_config{properties, config_};
     auto wait_executor = get_stream_executor(full_config);

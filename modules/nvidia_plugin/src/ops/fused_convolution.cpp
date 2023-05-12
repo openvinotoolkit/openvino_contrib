@@ -13,7 +13,7 @@
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
 #include "fused_convolution_cudnn_decomposed.hpp"
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 #ifdef ENABLE_CUDNN_BACKEND_API
 #include "fused_convolution_cudnn_be.hpp"
 #endif  // ENABLE_CUDNN_BACKEND_API

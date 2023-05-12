@@ -14,7 +14,7 @@ OperationBase::OperationBase(const CreationContext& /*context*/,
                              const ov::Node& node,
                              IndexCollection&& inputIds,
                              IndexCollection&& outputIds)
-    : node_name_{node.get_name()},
+    : node_name_{node.get_friendly_name()},
       type_name_{node.get_type_info().name},
       input_ids_{move(inputIds)},
       output_ids_{move(outputIds)} {}
