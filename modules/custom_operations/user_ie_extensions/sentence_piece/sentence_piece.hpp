@@ -48,6 +48,37 @@ private:
 };
 
 
+// Having a decomposed representation for a tensor, converts it to a single string tensor for debugging purposes and to facilitate model conversion
+// Base tensor on which this operation builds a ragged tensor can have any shape or type, this operation doesn't try to interpret it.
+class RaggedTensorPack : public ov::op::Op {
+public:
+    OPENVINO_OP("RaggedTensorPack");
+
+    RaggedTensorPack () = default;
+
+    RaggedTensorPack(ov::OutputVector inputs)
+        : ov::op::Op(inputs) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        auto result = std::make_shared<RaggedTensorPack>(inputs);
+        return result;
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const;
+};
+
 
 // Unpack a string tensor representation regardless of the source format, which
 // can be an OV tensor with element::string element type (if supported) or u8
@@ -226,4 +257,45 @@ public:
 
 ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext& node);
 
+class OPENVINO_API RegexSplit : public ov::op::Op {
+public:
+    OPENVINO_OP("RegexSplit");
+
+    RegexSplit () = default;
+
+    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "removed", bool invert = false) :
+        ov::op::Op(arguments),
+        m_behaviour(behaviour),
+        m_invert(invert) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<RegexSplit>(inputs, m_behaviour, m_invert);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        visitor.on_attribute("behaviour", m_behaviour);
+        visitor.on_attribute("invert", m_invert);
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+private:
+
+    std::string m_behaviour;
+    bool m_invert;
+};
+
+ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeContext& node);
+
+
 ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node);
+ov::OutputVector translate_const(const ov::frontend::NodeContext& node);

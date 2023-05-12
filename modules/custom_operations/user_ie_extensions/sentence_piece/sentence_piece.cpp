@@ -5,7 +5,9 @@
 #include "normalizer.h"
 #include "sentence_piece.hpp"
 
+#include "openvino/op/util/framework_node.hpp"
 #include "openvino/opsets/opset10.hpp"
+
 
 //#define USE_STRING_TENSORS
 
@@ -281,9 +283,17 @@ void check_string_scalar_input(const Node* node, size_t input_index) {
 }
 
 void set_string_output(Node* node, size_t output_index, const PartialShape& shape) {
-    node->set_output_type(output_index+0, element::i32, shape);
-    node->set_output_type(output_index+1, element::i32, shape);
-    node->set_output_type(output_index+2, element::u8,  PartialShape{Dimension()});
+    node->set_output_type(output_index+0, element::i32, shape);     // byte offset in output[+2] -- begin of each string
+    node->set_output_type(output_index+1, element::i32, shape);     // byte offset in output[+2] -- end of each string
+    node->set_output_type(output_index+2, element::u8,  PartialShape{Dimension()});     // symbols from all strings concatenated
+}
+
+void set_ragged_string_output(Node* node, size_t output_index, const PartialShape& shape) {
+    node->set_output_type(output_index+0, element::i32, shape);     // element offset in output[+2] -- begin of each ragged dimension elements
+    node->set_output_type(output_index+1, element::i32, shape);     // element offset in output[+3] -- end of each ragged dimension elements
+    node->set_output_type(output_index+2, element::i32, PartialShape{Dimension()}); // byte offset in output[+4] -- begin of each string
+    node->set_output_type(output_index+3, element::i32, PartialShape{Dimension()}); // byte offset in output[+4] -- end of each string
+    node->set_output_type(output_index+4, element::u8,  PartialShape{Dimension()}); // symbols from all strings cnocatenated
 }
 
 
@@ -332,6 +342,30 @@ bool StringTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
 
     return true;
 #endif
+}
+
+
+
+void RaggedTensorPack::validate_and_infer_types() {
+    OPENVINO_ASSERT(get_input_size() == 3);
+    OPENVINO_ASSERT(get_input_element_type(0) == element::i32);
+    OPENVINO_ASSERT(get_input_element_type(1) == element::i32);
+
+    // Pass through the base tensor which is used to build ragged dimensions
+    // TODO: Provide correct implementation that saves information about ragged structure
+    // TODO: Requires single-tensor packed representation for ragged tensor
+    set_output_type(0, get_input_element_type(2), get_input_partial_shape(2));
+}
+
+
+bool RaggedTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    // Implementation for debuggin purposes: directly print ragged indices to std::cout and pass throug the base tensor with elements.
+
+    // TODO: Actually print indices, skipped for now...
+
+    inputs[2].copy_to(outputs[0]);
+
+    return true;
 }
 
 
@@ -479,6 +513,31 @@ void StringTensorUnpack::validate_and_infer_types() {
     }
 }
 
+void unpack_strings (const std::string* strings, const Shape shape, ov::Tensor& begins, ov::Tensor& ends, ov::Tensor& chars) { // TODO: no need for a reference to a ov::Tensor?
+    auto nelements = shape_size(shape);
+
+    size_t total = 0;
+    for(size_t i = 0; i < nelements; ++i)
+        total += strings[i].length();
+
+    begins.set_shape(shape);
+    ends.set_shape(shape);
+    chars.set_shape(Shape{total});
+
+    auto pbegins = begins.data<int32_t>();
+    auto pends = ends.data<int32_t>();
+    auto poutput_symbols = reinterpret_cast<char*>(chars.data<uint8_t>());
+    size_t offset = 0;
+
+    for(size_t i = 0; i < nelements; ++i)
+    {
+        pbegins[i] = offset;
+        poutput_symbols = std::copy(strings[i].begin(), strings[i].end(), poutput_symbols);
+        offset += strings[i].length();
+        pends[i] = offset;
+    }
+}
+
 bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
 
 #ifdef USE_STRING_TENSORS
@@ -489,33 +548,10 @@ bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     auto tensor = inputs[0];
     #endif
 
-    //std::cerr << "Pointer to tensor from op evaluate: " << tensor << "\n";
     Shape input_shape = tensor->get_shape();
     const std::string* input_strings = tensor->data<std::string>();
-    std::cerr << "input_shape = " << input_shape << "\n";
-    //std::cerr << data << "\n";
-
-    auto nelements = shape_size(input_shape);
-    size_t total = 0;
-    for(size_t i = 0; i < nelements; ++i)
-        total += input_strings[i].length();
-
-    outputs[0].set_shape(input_shape);
-    outputs[1].set_shape(input_shape);
-    outputs[2].set_shape(Shape{total});
-
-    auto begins = outputs[0].data<int32_t>();
-    auto ends = outputs[1].data<int32_t>();
-    auto output_symbols = reinterpret_cast<char*>(outputs[2].data<uint8_t>());
-    size_t offset = 0;
-
-    for(size_t i = 0; i < nelements; ++i)
-    {
-        begins[i] = offset;
-        output_symbols = std::copy(input_strings[i].begin(), input_strings[i].end(), output_symbols);
-        offset += input_strings[i].length();
-        ends[i] = offset;
-    }
+    //std::cerr << "input_shape = " << input_shape << "\n";
+    unpack_strings(input_strings, input_shape, outputs[0], outputs[1], outputs[2]);
 
     return true;
 
@@ -581,6 +617,11 @@ OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t i
 ov::Output<ov::Node> post_translate_string_tensor_output(const OutputVector& outputs) {
     FRONT_END_GENERAL_CHECK(outputs.size() == 3, "Expected 3 tensors in decomposed string tensor representation");
     return std::make_shared<StringTensorPack>(outputs, "begins_ends");
+}
+
+ov::Output<ov::Node> post_translate_ragged_tensor_output(const OutputVector& outputs) {
+    FRONT_END_GENERAL_CHECK(outputs.size() == 3, "Expected 3 tensors in decomposed string tensor representation");
+    return std::make_shared<RaggedTensorPack>(outputs);
 }
 
 NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
@@ -756,8 +797,6 @@ ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node)
 }
 
 
-
-
 void RegexNormalization::validate_and_infer_types() {
     check_string_input(this, 0);
     check_string_scalar_input(this, 3);
@@ -842,6 +881,126 @@ ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext&
 }
 
 
+
+void RegexSplit::validate_and_infer_types() {
+    check_string_input(this, 0);
+    check_string_scalar_input(this, 3);
+    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto begins = inputs[0].data<const int32_t>();
+    auto ends   = inputs[1].data<const int32_t>();
+    auto chars  = inputs[2].data<const uint8_t>();
+
+#ifdef USE_STRING_TENSORS
+    auto split_pattern  = *inputs[3].data<const std::string>();
+#else
+    auto split_pattern_buf  = inputs[3].data<const uint8_t>();
+    auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+#endif
+
+#if 0
+    // TODO: Complete implementation
+#else
+    // Stub implementation that transforms each input string "X" to multiple "RegexSplit(X, split_pattern) = part(X)" for debugging purposes
+    // Where part(X) is a part of original X divided by predefined length with some reminder
+    // So each element X is divided into multiple output elements along ragged dimension, and the number of elements depends on the input X length and
+    // can vary for different X. For example, let the length = 2 and input X = "words", the output would consist of 3 elements along corresponding
+    // ragged dimension in the output with values:
+    //  - "RegexSplit(word, search_pattern, replace_pattern) = wo",
+    //  - "RegexSplit(word, search_pattern, replace_pattern) = rd",
+    //  - "RegexSplit(word, search_pattern, replace_pattern) = s"
+    // split_pattern is cut for the sake of readability of ouput
+    {
+        #if 1
+        const size_t part_length = 30;   // any positive number, defines the length of each part in bytes
+
+        std::string split_pattern_part = std::string(split_pattern.substr(0, part_length));
+        std::cerr << "Split patter part: " << split_pattern_part << "\n";
+
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+
+        const std::string left_side = "RegexSplit(", right_side = ")", delimeter = ", ";
+        const size_t num_elements = inputs[0].get_size();
+        size_t num_parts = 0;   // will count the number of all parts
+        size_t num_additional_chars = 0;  //
+        // Count the resulting number of part that we are going to obtain
+        for(size_t i = 0; i < num_elements; ++i) {
+            auto length = ends[i] - begins[i];
+            auto num_of_whole_parts = length/part_length;
+            auto remainder = length%part_length;
+            auto num_local_parts = num_of_whole_parts + int(bool(remainder));
+            num_parts += num_local_parts;
+            num_additional_chars += length*num_local_parts;
+        }
+
+        size_t num_chars = inputs[2].get_size();
+
+        // FIXME: Overestimation
+        const size_t new_num_chars = num_chars + num_parts*30/*!*/ + (left_side.length() + right_side.length() + delimeter.length() + split_pattern_part.length())*num_elements;
+        outputs[2].set_shape(Shape{num_parts});
+        outputs[3].set_shape(Shape{num_parts});
+        outputs[4].set_shape(Shape{new_num_chars});
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_ragged_begins = outputs[0].data<int32_t>();
+        auto new_ragged_ends   = outputs[1].data<int32_t>();
+        auto new_begins = outputs[2].data<int32_t>();
+        auto new_ends   = outputs[3].data<int32_t>();
+        auto new_chars  = outputs[4].data<uint8_t>();
+        int32_t ragged_offset = 0;
+        int32_t char_offset = 0;
+
+        for(size_t i = 0; i < num_elements; ++i) {
+            new_ragged_begins[i] = ragged_offset;
+            auto old_str = std::string(chars + begins[i], chars + ends[i]);
+            auto new_str_part_base = left_side + old_str + delimeter + split_pattern_part + right_side;
+
+            for(size_t j = 0; j < old_str.length(); j += part_length) {
+                new_begins[ragged_offset] = char_offset;
+                //auto new_str_part = new_str_part_base + old_str.substr(j, part_length);
+                std::string new_str_part = j == 0 ? new_str_part_base : "part[" + std::to_string(i) + "," + std::to_string(j) + "]";
+                std::copy(new_str_part.data(), new_str_part.data() + new_str_part.length(), new_chars + char_offset);
+                char_offset += new_str_part.length();
+                new_ends[ragged_offset] = char_offset;
+                ++ragged_offset;
+            }
+
+            new_ragged_ends[i] = ragged_offset;
+        }
+
+        outputs[4].set_shape({char_offset});
+
+        //OPENVINO_ASSERT(char_offset == new_num_chars, "Internal error in RegexSplit::evaluate: out of range for chars");
+        OPENVINO_ASSERT(ragged_offset == num_parts, "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+
+        #endif
+        return true;
+    }
+    // End of stub implementation
+#endif
+}
+
+
+ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeContext& node) {
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 3, "RegexSplitWithOffsets expects 3 inputs");
+    ov::OutputVector inputs = pre_translate_string_tensor_input(node, 0);
+    auto delim_regex_pattern = node.get_input(1).get_node()->input_value(2);    // use u8 part of packed string tensor as we are expecting a scalar string: TODO: verify it is really there
+    inputs.push_back(delim_regex_pattern);
+    std::cerr << "String constant: " << delim_regex_pattern << "\n";
+    //inputs.push_back(string_attribute_to_constant(node, "rewrite"));
+    auto outputs = std::make_shared<RegexSplit>(inputs)->outputs();
+    auto flatten_string_tensor = post_translate_string_tensor_output({outputs[2], outputs[3], outputs[4]});
+    return { post_translate_ragged_tensor_output({outputs[0], outputs[1], flatten_string_tensor}) };
+}
+
+
 ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node) {
     // This is a copied-and-pasted and adopted fragment of TF reshape translator from OV.
     // It checks if the input tensor has string type, and then perform custom tranlation.
@@ -866,5 +1025,33 @@ ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node) {
         return {reshape};
     }
     // set_node_name(node.get_name(), reshape); // TODO: requires dependencies from TF FE internals
+}
+
+
+// Copied and pasted from TF FE and adopted to not use internal TF FE operation classes
+ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
+    auto ov_type = node.get_attribute_as_any("dtype");
+    std::shared_ptr<Node> const_node;
+    if (!ov_type.is<ov::element::Type>() || ov_type.as<ov::element::Type>() == ov::element::dynamic ||
+        ov_type.as<ov::element::Type>() == ov::element::undefined) {
+        if (ov_type.is<std::string>() && ov_type.as<std::string>() == "DT_STRING") {
+            auto value_as_any = node.get_attribute_as_any("value");
+            const auto& values = value_as_any.as<std::vector<std::string>>();
+            ov::Tensor begins(element::i32, {}), ends(element::i32, {}), chars(element::u8, {});
+            unpack_strings(&values[0], {values.size()}, begins, ends, chars);
+            const_node = std::make_shared<StringTensorPack>(OutputVector{
+                std::make_shared<Constant>(begins),
+                std::make_shared<Constant>(ends),
+                std::make_shared<Constant>(chars)
+            });
+        } else {
+            const_node = std::make_shared<ov::op::util::FrameworkNode>(OutputVector{});
+        }
+    } else {
+        auto tensor = node.get_attribute<ov::Tensor>("value");
+        const_node = std::make_shared<Constant>(tensor.get_element_type(), tensor.get_shape(), tensor.data());
+    }
+    //set_node_name(node.get_name(), const_node);   // TODO: Provide alternative to internal function set_node_name
+    return {const_node};
 }
 

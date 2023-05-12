@@ -56,6 +56,7 @@
 #    include "sentence_piece/sentence_piece.hpp"
 #    define SENTENSE_PIECE_EXT                                                                                              \
             std::make_shared<ov::OpExtension<StringTensorPack>>(),                                                          \
+            std::make_shared<ov::OpExtension<RaggedTensorPack>>(),                                                          \
             std::make_shared<ov::OpExtension<StringTensorUnpack>>(),                                                        \
             std::make_shared<ov::OpExtension<CaseFold>>(),                                                                  \
             std::make_shared<ov::frontend::ConversionExtension>("CaseFoldUTF8", translate_case_fold_utf8),                  \
@@ -63,7 +64,10 @@
             std::make_shared<ov::frontend::ConversionExtension>("NormalizeUTF8", translate_normalize_utf8),                 \
             std::make_shared<ov::OpExtension<RegexNormalization>>(),                                                        \
             std::make_shared<ov::frontend::ConversionExtension>("StaticRegexReplace", translate_static_regex_replace),      \
+            std::make_shared<ov::OpExtension<RegexSplit>>(),                                                                \
+            std::make_shared<ov::frontend::ConversionExtension>("RegexSplitWithOffsets", translate_regex_split_with_offsets), \
             std::make_shared<ov::frontend::ConversionExtension>("Reshape", translate_reshape),                              \
+            std::make_shared<ov::frontend::ConversionExtension>("Const", translate_const),                                  \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
             std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
             std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
