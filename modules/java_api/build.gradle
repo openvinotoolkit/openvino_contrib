@@ -4,28 +4,51 @@ plugins {
 
 import org.gradle.internal.os.OperatingSystem
 println 'Operating system: ' + OperatingSystem.current()
+def arch = System.getProperty("os.arch")
+def ov_arch = arch;
+println 'CPU architecture: ' + arch
+
 
 def nativesCPP;
-def openvinoVersion = "2022.1"
+def openvinoVersion = "2023.0"
+
+def native_resources = []
+def tbb_dir = System.getenv('TBB_DIR')
+if (tbb_dir) {
+    if (new File(tbb_dir + "/../lib/").exists()) {
+        native_resources.add(tbb_dir + "/../lib/");
+    } else {
+        native_resources.add(tbb_dir + "/../../");
+    }
+}
+
+if (arch == "x86_64" || arch == "amd64" || arch == "x64" || arch == "x86-64") {
+    arch = "x86_64";
+    ov_arch = "intel64";
+} else if (arch == "aarch64" || arch == "arm64" || arch == "arm-v8") {
+    arch = "arm64";
+    ov_arch = "aarch64";
+} else if (arch == "arm" || arch == "arm-v7" || arch == "armv7" || arch == "arm32") {
+    arch = "arm32";
+    ov_arch = "armhf";
+}
 
 if (OperatingSystem.current().isMacOsX()) {
-    nativesCPP = 'macosx-x86_64'
+    nativesCPP = 'macosx-'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/" + ov_arch + "/Release");
 } else if (OperatingSystem.current().isLinux()) {
-    nativesCPP = 'linux-x86_64'
+    nativesCPP = 'linux-'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/" + ov_arch);
 } else if (OperatingSystem.current().isWindows()) {
-    nativesCPP = 'windows-x86_64'
+    nativesCPP = 'windows-'
+    native_resources.add(System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/" + ov_arch + "/Release");
 } else {
     logger.warn('Unknown operating system!')
 }
+nativesCPP += arch;
 
 project.version = "${openvinoVersion}-${nativesCPP}"
 
-def native_resources = [
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64",  // UNIX
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/lib/intel64/Release",  // Mac
-    System.getenv('INTEL_OPENVINO_DIR') + "/runtime/bin/intel64/Release",  // Windows
-    System.getenv('TBB_DIR') + "/../lib/",
-]
 def resources_list = ""
 native_resources.each {
     def tree = fileTree(it) {
