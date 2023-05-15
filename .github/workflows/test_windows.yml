@@ -404,18 +404,19 @@ jobs:
         if: ${{ always() }}
         run: |
           ls "${{ env.INSTALL_DIR }}"
+          ls "${{ env.INSTALL_TEST_DIR }}"
 
       - name: OpenVINO Core unit tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          & "${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests" --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
+          ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
 
       - name: OpenVINO Inference functional tests
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          & "${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
+          ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
 
       - name: OpenVINO Inference unit tests
         if: ${{ always() }}
@@ -427,7 +428,8 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          "${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
+          ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 `
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
 
       - name: OpenVINO Conditional compilation tests
         if: ${{ always() }}
@@ -439,8 +441,7 @@ jobs:
       - name: IR frontend tests
         if: ${{ always() }}
         run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          "${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests" --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
 
       # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #   run: |
@@ -584,7 +585,7 @@ jobs:
       - name: Intel CPU plugin func tests
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          "${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests" --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
+          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
 #   GPU_Tests:
 #     needs: Build
