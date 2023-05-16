@@ -45,10 +45,6 @@ jobs:
       fail-fast: false
     runs-on: ['windows-latest-8-cores']
     steps:
-      
-      # - name: Check Volumes
-      #   run: |
-      #     ls -la /sources_cache
       - name: Create Directories
         run: |
           mkdir ${{ env.TOOLS_DIRECTORY }}
@@ -80,18 +76,11 @@ jobs:
       #
 
       - uses: actions/setup-python@v4
-        id: cp38
+        id: cp39
         with:
           python-version: '3.9'
           cache: 'pip'
           cache-dependency-path: '**/requirements*.txt'
-      
-      - name: Get tools versions
-        run: |
-          # ninja --version
-          # ccache --version
-          python3 --version
-          cmake --version
 
       - name: Install python dependencies
         run: |
@@ -124,6 +113,13 @@ jobs:
       - name: Install build dependencies
         run: |
           choco install --no-progress ninja
+
+      - name: Get tools versions
+        run: |
+          # ninja --version
+          # ccache --version
+          python3 --version
+          cmake --version
 
       #
       # Build
@@ -580,54 +576,65 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
-#   GPU_Tests:
-#     needs: Build
+  GPU_Tests:
+    needs: Build
+    if: ${{ always() }}
+    defaults:
+      run:
+        shell: pwsh
+    strategy:
+      fail-fast: false
+    runs-on: ['windows-latest-8-cores']
+    env:
+      INSTALL_DIR: "${{ github.workspace }}\\install"
+      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+      GTEST_PARALLEL_DIR: "${{ github.workspace }}\\gtest_parallel"
 
-#     defaults:
-#       run:
-#         shell: bash
-#     runs-on: ['self-hosted', 'linux', 'coverage']
-#     container:
-#       image: akashchi/ubuntu:latest
-#       options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
-#     env:
-#       INSTALL_DIR: /github/install
-#       INSTALL_TEST_DIR: /github/install/tests
-#       GTEST_PARALLEL_DIR: /github/gtest_parallel
-
-#     steps:
-#       - name: Create Directories
-#         run: |
-#           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.GTEST_PARALLEL_DIR }}
+    steps:
+      - name: Create Directories
+        run: |
+          mkdir ${{ env.INSTALL_DIR }}
+          mkdir ${{ env.INSTALL_TEST_DIR }}
+          mkdir ${{ env.GTEST_PARALLEL_DIR }}
       
-#       - name: Download OpenVINO package
-#         uses: actions/download-artifact@v3
-#         with:
-#           name: openvino_package
-#           path: ${{ env.INSTALL_DIR }}
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
 
-#       - name: Download OpenVINO tests package
-#         uses: actions/download-artifact@v3
-#         with:
-#           name: openvino_tests
-#           path: ${{ env.INSTALL_TEST_DIR }}
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.INSTALL_TEST_DIR }}
 
-#       - name: Extract OpenVINO packages
-#         run: |
-#           pushd ${{ env.INSTALL_DIR }}
-#             tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
-#           popd
+      - name: Extract OpenVINO packages
+        run: |
+          pushd ${{ env.INSTALL_DIR }}
+            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+          popd
 
-#           pushd ${{ env.INSTALL_TEST_DIR }}
-#             tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
-#           popd
+          pushd ${{ env.INSTALL_TEST_DIR }}
+            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+          popd
       
-#       - name: Clone gtest_parallel
-#         run: |
-#           cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
+      - name: Check extraction
+        run: |
+          ls "${{ github.workspace }}"
+          ls "${{ env.INSTALL_DIR }}"
+          ls "${{ env.INSTALL_TEST_DIR }}"
+      
+      - name: Clone gtest_parallel
+        run: |
+          git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
 
-#       - name: Intel GPU plugin func tests
-#         run: |
-#           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-#           python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
-#           # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Intel GPU plugin func tests
+        shell: cmd
+        run: |
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
+          # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
