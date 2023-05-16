@@ -40,19 +40,20 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 }
 }  // namespace
 
-CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model,
-                                   bool is_benchmark_mode)
+CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(), *compiled_model->graph_},
-      is_benchmark_mode_{is_benchmark_mode},
-      use_cuda_graph_{compiled_model->get_property("NVIDIA_USE_CUDA_GRAPH").as<bool>()} {
+      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
+      use_cuda_graph_{compiled_model->get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
     create_infer_request();
 }
 
 void CudaInferRequest::create_infer_request() {
-    auto request_id = std::to_string(get_nvidia_model()->request_id_.fetch_add(1));
-    std::string name = get_nvidia_model()->model_->get_friendly_name() + "_Req" + request_id;
+    auto compiled_model = get_nvidia_model();
+    auto device_id = std::to_string(compiled_model->config_.get_device_id());
+    auto request_id = std::to_string(compiled_model->request_id_.fetch_add(1));
+    std::string name = "NVIDIA" + device_id + "_" + compiled_model->model_->get_friendly_name() + "_req" + request_id;
 
     _profilingTask = {
         openvino::itt::handle(name + "_Preprocess"),

@@ -14,14 +14,6 @@
 
 using namespace ov::nvidia_gpu;
 
-namespace internal {
-/**
- * @brief Defines if NVIDIA Plugin should use CUDA graphs for performance acceleration
- */
-static constexpr ov::Property<bool, ov::PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
-
-}  // namespace internal
-
 Configuration::Configuration() {}
 
 std::vector<ov::PropertyName> Configuration::get_ro_properties() {

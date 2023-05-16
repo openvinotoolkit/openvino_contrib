@@ -53,17 +53,6 @@ public:
 
     ov::Any get_property(const std::string& name) const override;
 
-    std::string new_request_name() {
-        return "Cuda" + std::to_string(config_.get_device_id()) + "_" + model_->get_friendly_name() + "_Req" +
-               std::to_string(request_id_++);
-    }
-    const ov::op::v0::Parameter& parameter(const std::string& name) const {
-        return *model_->get_parameters().at(input_index_.at(name));
-    }
-    const ov::op::v0::Result& result(const std::string& name) const {
-        return *model_->get_results().at(output_index_.at(name));
-    }
-
 protected:
     std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
 
