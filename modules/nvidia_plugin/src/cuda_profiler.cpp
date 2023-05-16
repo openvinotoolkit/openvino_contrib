@@ -12,9 +12,16 @@ namespace nvidia_gpu {
 
 namespace {
 
+std::string get_primitive_type(const IOperationMeta& op) {
+    std::stringstream ss;
+    ss << op.GetCategory() << "_";
+    ss << op.GetRuntimePrecision();
+    return ss.str();
+}
+
 std::pair<std::string, ov::ProfilingInfo> make_profile_info(const IOperationMeta& op) {
     ov::ProfilingInfo result{};
-    result.exec_type = op.GetCategory();
+    result.exec_type = get_primitive_type(op);
     result.node_type = op.GetTypeName();
     result.node_name = op.GetName();
     return {result.node_name, result};
@@ -49,6 +56,8 @@ void Profiler::process_events() {
 
     std::map<std::string, float> layer_timing{};
     for (auto& timing_map : subgraph_perf_steps_map_) {
+        auto graph = static_cast<const ov::nvidia_gpu::SubGraph*>(timing_map.first);
+        OPENVINO_ASSERT(graph, "Performance counter graph is empty");
         auto& timings = timing_map.second;
         for (auto& timing : timings) {
             timing.measure();
@@ -58,6 +67,25 @@ void Profiler::process_events() {
                 perf->second.status = ov::ProfilingInfo::Status::EXECUTED;
                 if (perf->second.node_type[0]) {
                     layer_timing[perf->second.node_type] += timing.duration();
+                }
+                auto ops = graph->getModel()->get_ops();
+                const auto& op = std::find_if(ops.begin(), ops.end(),
+                    [&timing](std::shared_ptr<ov::Node>& node) { return node->get_friendly_name() == timing.get_op_name(); });
+                if (op != ops.end()) {
+                    auto& info = (*op)->get_rt_info();
+                    const auto& it = info.find(ov::nvidia_gpu::PERF_COUNTER_NAME);
+                    OPENVINO_ASSERT(it != info.end(), "Operation ", (*op)->get_friendly_name(), " doesn't contain performance counter");
+                    auto info_perf_count = it->second.as<std::shared_ptr<ov::nvidia_gpu::PerfCounts>>();
+                    info_perf_count->total_duration += ms2us*timing.duration();
+                    info_perf_count->num += infer_count_;
+                    auto pos = perf->second.exec_type.find('_');
+                    if (pos != std::string::npos) {
+                        info_perf_count->impl_type = perf->second.exec_type.substr(0, pos);
+                        info_perf_count->runtime_precision = perf->second.exec_type.substr(pos + 1);
+                    } else {
+                        info_perf_count->impl_type = perf->second.exec_type;
+                        info_perf_count->runtime_precision = "undefined";
+                    }
                 }
             }
         }

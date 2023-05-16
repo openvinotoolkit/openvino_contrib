@@ -17,7 +17,13 @@ OperationBase::OperationBase(const CreationContext& /*context*/,
     : node_name_{node.get_friendly_name()},
       type_name_{node.get_type_info().name},
       input_ids_{move(inputIds)},
-      output_ids_{move(outputIds)} {}
+      output_ids_{move(outputIds)} {
+    if (node.get_input_size() > 0) {
+        runtime_precision_ = node.get_input_element_type(0);
+    } else if (node.get_output_size() > 0) {
+        runtime_precision_ = node.get_output_element_type(0);
+    }
+}
 
 }  // namespace nvidia_gpu
 }  // namespace ov

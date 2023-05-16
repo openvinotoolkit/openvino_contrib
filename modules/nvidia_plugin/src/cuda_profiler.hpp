@@ -8,6 +8,7 @@
 #include <map>
 
 #include "openvino/runtime/profiling_info.hpp"
+#include "openvino/runtime/exec_model_info.hpp"
 
 #include <ops/tensor_iterator.hpp>
 #include <utils/perf_timing.hpp>
@@ -18,6 +19,21 @@
 
 namespace ov {
 namespace nvidia_gpu {
+
+static const char PERF_COUNTER_NAME[] = "nvidia_perf_counter";
+
+struct PerfCounts {
+    uint64_t total_duration;
+    uint32_t num;
+    std::string impl_type;
+    std::string runtime_precision;
+
+    PerfCounts() : total_duration(0), num(0) {}
+
+    uint64_t average() const {
+        return (num == 0) ? 0 : total_duration / num;
+    }
+};
 
 /**
  * Creates profiler sequence and stores profiler results.

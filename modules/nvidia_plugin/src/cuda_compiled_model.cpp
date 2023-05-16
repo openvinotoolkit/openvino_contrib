@@ -107,6 +107,12 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
         input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), parameter_index);
     }
 
+    // Integrate performance counters to the compiled model
+    for (const auto& op : model_->get_ops()) {
+        auto& rt_info = op->get_rt_info();
+        rt_info[ov::nvidia_gpu::PERF_COUNTER_NAME] = std::make_shared<ov::nvidia_gpu::PerfCounts>();
+    }
+
     // Perform any other steps like allocation and filling backend specific memory handles and so on
     const bool opBenchOption = config_.get(ov::nvidia_gpu::operation_benchmark.name()).as<bool>();
     const auto creationContext = CreationContext{device, opBenchOption};
@@ -311,8 +317,40 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
 }
 
 std::shared_ptr<const ov::Model> CompiledModel::get_runtime_model() const {
-    // TODO add performance information
-    return model_->clone();
+    auto model = model_->clone();
+    // Add execution information into the model
+    size_t exec_order = 0;
+    for (const auto& op : model->get_ordered_ops()) {
+        auto& info = op->get_rt_info();
+        const auto& it = info.find(ov::nvidia_gpu::PERF_COUNTER_NAME);
+        OPENVINO_ASSERT(it != info.end(), "Operation ", op, " doesn't contain performance counter");
+        auto perf_count = it->second.as<std::shared_ptr<ov::nvidia_gpu::PerfCounts>>();
+        OPENVINO_ASSERT(perf_count, "Performance counter is empty");
+        info[ov::exec_model_info::LAYER_TYPE] = op->get_type_info().name;
+        info[ov::exec_model_info::EXECUTION_ORDER] = std::to_string(exec_order++);
+        info[ov::exec_model_info::IMPL_TYPE] = perf_count->impl_type;
+        auto perf_count_enabled = config_.get(ov::enable_profiling.name()).as<bool>();
+        info[ov::exec_model_info::PERF_COUNTER] = perf_count_enabled && perf_count->average() != 0
+                                                      ? std::to_string(perf_count->average())
+                                                      : "not_executed";
+
+        std::string original_names = ov::getFusedNames(op);
+        if (original_names.empty()) {
+            original_names = op->get_friendly_name();
+        } else if (original_names.find(op->get_friendly_name()) == std::string::npos) {
+            original_names = op->get_friendly_name() + "," + original_names;
+        }
+        info[ov::exec_model_info::ORIGINAL_NAMES] = original_names;
+        info[ov::exec_model_info::RUNTIME_PRECISION] = perf_count->runtime_precision;
+
+        std::stringstream precisions_ss;
+        for (size_t i = 0 ; i < op->get_output_size(); i++) {
+            if (i > 0) precisions_ss << ",";
+            precisions_ss << op->get_output_element_type(i);
+        }
+        info[ov::exec_model_info::OUTPUT_PRECISIONS] = precisions_ss.str();
+    }
+    return model;
 }
 
 void CompiledModel::export_model(std::ostream& model_stream) const {

@@ -30,6 +30,7 @@ public:
     const std::vector<OperationBase::Ptr>& getParams() const;
     const std::vector<OperationBase::Ptr>& getExecSequence() const;
     const std::vector<OperationBase::Ptr>& getResults() const;
+    const std::shared_ptr<const ov::Model> getModel() const { return model_; };
 
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
@@ -68,7 +69,7 @@ protected:
     std::vector<OperationBase::Ptr> exec_sequence_;
     std::vector<OperationBase::Ptr> results_;
     std::vector<OperationInfo> results_info_;
-    std::shared_ptr<const ngraph::Function> function_;
+    std::shared_ptr<const ov::Model> model_;
 };
 
 inline SubGraph::~SubGraph() {}
