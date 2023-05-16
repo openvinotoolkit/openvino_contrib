@@ -24,6 +24,7 @@
 #include "transformer/nodes/fused_convolution.hpp"
 #include "transformer/nodes/fused_convolution_backprop_data.hpp"
 #include "transformer/nodes/lstm_sequence_optimized.hpp"
+#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -33,6 +34,11 @@ Plugin::Plugin() {
         CUDA::Device device{i};
         const size_t num_concurrent_streams = max_concurrent_streams(device);
         device_thread_pool_[std::to_string(i)] = std::make_shared<CudaThreadPool>(device, num_concurrent_streams);
+        configs_.insert({std::to_string(i),
+            Configuration({ov::device::id(i),
+                            // TODO uncomment next line to switch default precision
+                            // ov::hint::inference_precision(isHalfSupported(device) ? ov::element::f16 : ov::element::f32)})});
+                            ov::hint::inference_precision(ov::element::undefined)})});
     }
 }
 
@@ -41,7 +47,7 @@ Plugin::~Plugin() {
 
 std::shared_ptr<ov::threading::ITaskExecutor> Plugin::get_stream_executor(const Configuration& config) const {
     auto device_id = std::to_string(config.get_device_id());
-    OPENVINO_ASSERT(device_thread_pool_.count(device_id), "Device id is out of range!");
+    OPENVINO_ASSERT(device_thread_pool_.count(device_id), "Couldn't find config for NVIDIA with id ", device_id);
     return device_thread_pool_.at(device_id);
 }
 
@@ -50,12 +56,25 @@ std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<
     return compile_model(model, properties, {});
 }
 
+Configuration Plugin::get_full_config(const ov::AnyMap& properties, const bool throw_on_unsupported) const {
+    std::string device_id = default_device_id;
+    if (properties.find(ov::device::id.name()) != properties.end()) {
+        device_id = properties.find(ov::device::id.name())->second.as<std::string>();
+        auto pos = device_id.find_last_of("NVIDIA.");
+        if (pos != std::string::npos) {
+            device_id = device_id.substr(pos + 1);
+        }
+    }
+    OPENVINO_ASSERT(configs_.find(device_id) != configs_.end(), "Couldn't find config for NVIDIA with id ", device_id);
+    return Configuration{properties, configs_.at(device_id), throw_on_unsupported};
+}
+
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<const ov::Model>& model,
                                                           const ov::AnyMap& properties,
                                                           const ov::RemoteContext& context) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::compile_model");
 
-    auto full_config = Configuration{properties, config_};
+    auto full_config = get_full_config(properties);
     CUDA::Device device{full_config.get_device_id()};
 
     // Create stream executor for given device
@@ -105,7 +124,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
     core.add_extension(extensions);
     auto model = core.read_model(xml_string, weights);
 
-    Configuration full_config{properties, config_};
+    auto full_config = get_full_config(properties);
     auto wait_executor = get_stream_executor(full_config);
     auto compiled_model= std::make_shared<CompiledModel>(model,
                                                          full_config,
@@ -119,14 +138,14 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
                                         const ov::AnyMap& properties) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::query_model");
 
-    Configuration full_config{properties, config_, false};
+    auto full_config = get_full_config(properties, false);
 
     auto supported = ov::get_supported_nodes(model,
     [&](std::shared_ptr<ov::Model>& model) {
             transformer_.transform(CUDA::Device{full_config.get_device_id()}, model, full_config);
         },
     [&](const std::shared_ptr<ngraph::Node>& op) {
-        return is_operation_supported(op);
+        return is_operation_supported(op, full_config);
     });
 
     ov::SupportedOpsMap res;
@@ -146,11 +165,11 @@ std::shared_ptr<ov::IRemoteContext> Plugin::get_default_context(
     OPENVINO_NOT_IMPLEMENTED;
 }
 
-bool Plugin::is_operation_supported(const std::shared_ptr<ov::Node>& node) const {
+bool Plugin::is_operation_supported(const std::shared_ptr<ov::Node>& node, const Configuration& config) const {
     bool is_op_supported = false;
     if (OperationRegistry::getInstance().hasOperation(node)) {
         const TensorID dummyTensorID{0};
-        const CreationContext context{CUDA::Device{config_.get_device_id()}, false};
+        const CreationContext context{CUDA::Device{config.get_device_id()}, false};
         const std::vector<TensorID> inIds(node->get_input_size(), dummyTensorID);
         const std::vector<TensorID> outIds(node->get_output_size(), dummyTensorID);
         try {
@@ -162,12 +181,35 @@ bool Plugin::is_operation_supported(const std::shared_ptr<ov::Node>& node) const
     return is_op_supported;
 }
 
-void Plugin::set_property(const ov::AnyMap& properties) { config_ = Configuration{properties, config_}; }
+void Plugin::set_property(const ov::AnyMap& properties) {
+    auto has_property_value = [&properties](const std::string& name) {
+        return properties.find(name) != properties.end();
+    };
+    auto get_property_value = [&properties](const std::string& name) {
+        return properties.at(name).as<std::string>();
+    };
+    auto update_config = [this, &properties](Configuration& config) {
+        config = Configuration{properties, config};
+    };
+    if (has_property_value(InferenceEngine::PluginConfigInternalParams::KEY_CONFIG_DEVICE_ID)) {
+        std::string device_id = get_property_value(InferenceEngine::PluginConfigInternalParams::KEY_CONFIG_DEVICE_ID);
+        update_config(configs_.at(device_id));
+    } else {
+        if (has_property_value(ov::device::id.name())) {
+            default_device_id = get_property_value(ov::device::id.name());
+            update_config(configs_.at(default_device_id));
+        } else {
+            for (auto& conf : configs_) {
+                update_config(conf.second);
+            }
+        }
+    }
+}
 
 ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properties) const {
     using namespace InferenceEngine::CUDAMetrics;
 
-    Configuration full_config{properties, config_};
+    auto full_config = get_full_config(properties);
 
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};

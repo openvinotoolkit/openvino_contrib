@@ -101,16 +101,6 @@ void Configuration::update_device_id(const ov::AnyMap& config) {
 
 ov::element::Type Configuration::get_inference_precision() const noexcept {
     return inference_precision;
-    /*
-    Uncomment this code to switch to f16 by default
-    if (inference_precision != ov::element::undefined)
-        return inference_precision;
-    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE) {
-        if (isHalfSupported(CUDA::Device(deviceId))) {
-            return ov::element::f16;
-        }
-    }
-    return ov::element::f32; */
 }
 
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {

@@ -66,10 +66,13 @@ private:
      * @param node node to be checked
      * @return true if supported, false otherwise
      */
-    bool is_operation_supported(const std::shared_ptr<ov::Node>& node) const;
+    bool is_operation_supported(const std::shared_ptr<ov::Node>& node, const Configuration& config) const;
+
+    Configuration get_full_config(const ov::AnyMap& properties, const bool throw_on_unsupported = true) const;
 
     GraphTransformer transformer_{};
-    Configuration config_;
+    std::string default_device_id = "0";
+    std::map<std::string, Configuration> configs_;
     std::unordered_map<std::string, std::shared_ptr<CudaThreadPool>> device_thread_pool_;
 };
 
