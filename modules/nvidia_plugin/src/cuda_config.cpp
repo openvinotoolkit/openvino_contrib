@@ -106,7 +106,7 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
     // Default number for latency mode
     uint32_t optimal_number_of_streams = 1;
-    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode) {
+    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode || num_streams == ov::streams::AUTO) {
         // If user is planning to use number of requests which is lower than reasonable range of streams
         // there is no sense to create more
         optimal_number_of_streams = (hint_num_requests > 0) ?

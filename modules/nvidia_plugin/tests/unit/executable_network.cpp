@@ -193,3 +193,8 @@ TEST_P(NumStreamsAUTOExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_GT(memoryManagerPool->Size(), 1);
 }
+
+INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
+                         NumStreamsAUTOExecNetworkTest,
+                         ::testing::ValuesIn(num_streams_auto_properties),
+                         ExecNetworkTest::getTestCaseName);
