@@ -232,27 +232,15 @@ jobs:
           ls ${{ env.INSTALL_TEST_DIR }}
           echo "::endgroup::"
 
-      - name: Build cpp samples
-        run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
-          & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
+      # - name: Build cpp samples  # cannot be built as VS 2019 is required in *build_samples*.bat; in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   run: |
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+      #     & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
 
-      - name: Build c samples
-        run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
-          & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
-        
-      - name: Build cpp samples 2
-        if: ${{ always() }}
-        run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
-          & "${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/cpp_samples
-
-      - name: Build c samples 2
-        if: ${{ always() }}
-        run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
-          & "${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat" -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
+      # - name: Build c samples # cannot be built as VS 2019 is required. in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   run: |
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+      #     & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.BUILD_DIR }}/samples_install -b ${{ env.BUILD_DIR }}/c_samples
 
 #       - name: Samples tests
 #         run: |
@@ -289,7 +277,7 @@ jobs:
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4936809040/jobs/8824796907
+      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
@@ -308,14 +296,14 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4936809040/jobs/8824796907
+      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
-      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
+      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -325,7 +313,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with " multiprocessing.context.TimeoutError: Inference Engine running timed out!" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4913107573/jobs/8772901520
+      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "test_tf_UnaryOps.py::TestUnaryOps::test_unary_op_mish[ ie_device:CPU - precision:FP32 - params:{'shape': [10, 12]} ]" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -364,7 +352,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow Lite Layer Tests - TFL FE
+      - name: TensorFlow Lite Layer Tests - TFL FE # 2 fail with "RuntimeError: Check 'number_axes == end_number_axes' failed at C:\a\openvino_contrib\openvino_contrib\openvino\src\core\shape_inference\include\strided_slice_shape_inference.hpp:77:" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753 
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -374,7 +362,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4883549921/jobs/8715044265
+      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -384,7 +372,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4891698506/jobs/8732545111
+      - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -507,7 +495,7 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
 
-      - name: Inference Engine C API tests
+      - name: Inference Engine C API tests # 4 fail with "where GetParam() = \"\"" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         shell: cmd
         if: ${{ always() }}
         run: |
@@ -571,70 +559,70 @@ jobs:
           ls "${{ env.INSTALL_DIR }}"
           ls "${{ env.INSTALL_TEST_DIR }}"
       
-      - name: Intel CPU plugin func tests
+      - name: Intel CPU plugin func tests  # fail with "Unexpected application crash with code: 22. Program will aborted." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8937444946 + problems for HETERO
         shell: cmd
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
-  GPU_Tests:
-    needs: Build
-    if: ${{ always() }}
-    defaults:
-      run:
-        shell: pwsh
-    strategy:
-      fail-fast: false
-    runs-on: ['windows-latest-8-cores']
-    env:
-      INSTALL_DIR: "${{ github.workspace }}\\install"
-      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
-      GTEST_PARALLEL_DIR: "${{ github.workspace }}\\gtest_parallel"
+  # GPU_Tests:  # fails due to missing driver? in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167
+  #   needs: Build
+  #   if: ${{ always() }}
+  #   defaults:
+  #     run:
+  #       shell: pwsh
+  #   strategy:
+  #     fail-fast: false
+  #   runs-on: ['windows-latest-8-cores']
+  #   env:
+  #     INSTALL_DIR: "${{ github.workspace }}\\install"
+  #     INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+  #     GTEST_PARALLEL_DIR: "${{ github.workspace }}\\gtest_parallel"
 
-    steps:
-      - name: Create Directories
-        run: |
-          mkdir ${{ env.INSTALL_DIR }}
-          mkdir ${{ env.INSTALL_TEST_DIR }}
-          mkdir ${{ env.GTEST_PARALLEL_DIR }}
+  #   steps:
+  #     - name: Create Directories
+  #       run: |
+  #         mkdir ${{ env.INSTALL_DIR }}
+  #         mkdir ${{ env.INSTALL_TEST_DIR }}
+  #         mkdir ${{ env.GTEST_PARALLEL_DIR }}
       
-      - name: Download OpenVINO package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.INSTALL_DIR }}
+  #     - name: Download OpenVINO package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_package
+  #         path: ${{ env.INSTALL_DIR }}
 
-      - name: Download OpenVINO tests package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.INSTALL_TEST_DIR }}
+  #     - name: Download OpenVINO tests package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_tests
+  #         path: ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Extract OpenVINO packages
-        run: |
-          pushd ${{ env.INSTALL_DIR }}
-            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
-          popd
+  #     - name: Extract OpenVINO packages
+  #       run: |
+  #         pushd ${{ env.INSTALL_DIR }}
+  #           Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+  #         popd
 
-          pushd ${{ env.INSTALL_TEST_DIR }}
-            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
-          popd
+  #         pushd ${{ env.INSTALL_TEST_DIR }}
+  #           Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+  #         popd
       
-      - name: Check extraction
-        run: |
-          ls "${{ github.workspace }}"
-          ls "${{ env.INSTALL_DIR }}"
-          ls "${{ env.INSTALL_TEST_DIR }}"
+  #     - name: Check extraction
+  #       run: |
+  #         ls "${{ github.workspace }}"
+  #         ls "${{ env.INSTALL_DIR }}"
+  #         ls "${{ env.INSTALL_TEST_DIR }}"
       
-      - name: Clone gtest_parallel
-        run: |
-          git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
+  #     - name: Clone gtest_parallel
+  #       run: |
+  #         git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: '3.9'
       
-      - name: Intel GPU plugin func tests
-        shell: cmd
-        run: |
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
-          # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
+  #     - name: Intel GPU plugin func tests
+  #       shell: cmd
+  #       run: |
+  #         call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
+  #         # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
