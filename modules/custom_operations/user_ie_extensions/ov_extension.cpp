@@ -66,6 +66,9 @@
             std::make_shared<ov::frontend::ConversionExtension>("StaticRegexReplace", translate_static_regex_replace),      \
             std::make_shared<ov::OpExtension<RegexSplit>>(),                                                                \
             std::make_shared<ov::frontend::ConversionExtension>("RegexSplitWithOffsets", translate_regex_split_with_offsets), \
+            std::make_shared<ov::OpExtension<WordpieceTokenizer>>(),                                                        \
+            std::make_shared<ov::frontend::ConversionExtension>("WordpieceTokenizeWithOffsets", translate_wordpiece_tokenize_with_offsets), \
+            std::make_shared<ov::frontend::ConversionExtension>("LookupTableFindV2", translate_lookup_table_find_v2),       \
             std::make_shared<ov::frontend::ConversionExtension>("Reshape", translate_reshape),                              \
             std::make_shared<ov::frontend::ConversionExtension>("Const", translate_const),                                  \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \

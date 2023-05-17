@@ -8,6 +8,8 @@
 #include "openvino/op/util/framework_node.hpp"
 #include "openvino/opsets/opset10.hpp"
 
+// TODO: Replace shape_size(t.get_shape()) by t.get_size(), where t is ov::Tensor
+
 #ifndef OPENVINO_ELEMENT_STRING_SUPPORTED
     #define OPENVINO_ELEMENT_STRING_SUPPORTED 0
 #endif
@@ -282,6 +284,14 @@ void check_string_scalar_input(const Node* node, size_t input_index) {
     #endif
 }
 
+void check_ragged_string_input(const Node* node, size_t input_index) {
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+0) == element::i32, "Expected an i32 tensor as the first part of the decomposed ragged string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+1) == element::i32, "Expected an i32 tensor as the second part of the decomposed ragged string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+2) == element::i32, "Expected an i32 tensor as the third part of the decomposed ragged string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+3) == element::i32, "Expected an i32 tensor as the forth part of the decomposed ragged string representation");
+    FRONT_END_GENERAL_CHECK(node->get_input_element_type(input_index+4) == element::u8,  "Expected a u8 tensor as the fifth part of the decomposed ragged string representation");
+}
+
 void set_string_output(Node* node, size_t output_index, const PartialShape& shape) {
     node->set_output_type(output_index+0, element::i32, shape);     // byte offset in output[+2] -- begin of each string
     node->set_output_type(output_index+1, element::i32, shape);     // byte offset in output[+2] -- end of each string
@@ -294,6 +304,12 @@ void set_ragged_string_output(Node* node, size_t output_index, const PartialShap
     node->set_output_type(output_index+2, element::i32, PartialShape{Dimension()}); // byte offset in output[+4] -- begin of each string
     node->set_output_type(output_index+3, element::i32, PartialShape{Dimension()}); // byte offset in output[+4] -- end of each string
     node->set_output_type(output_index+4, element::u8,  PartialShape{Dimension()}); // symbols from all strings cnocatenated
+}
+
+void set_ragged_output(Node* node, size_t output_index, const PartialShape& shape, element::Type type) {
+    node->set_output_type(output_index+0, element::i32, shape);     // element offset in output[+2] -- begin of each ragged dimension elements
+    node->set_output_type(output_index+1, element::i32, shape);     // element offset in output[+2] -- end of each ragged dimension elements
+    node->set_output_type(output_index+2, type, PartialShape{Dimension()}); // flatten elements
 }
 
 
@@ -526,19 +542,22 @@ bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVec
 }
 
 
-OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t input_index) {
-    auto input = node.get_input(input_index);
+void override_parameter (std::shared_ptr<ov::Node> node, element::Type type, const PartialShape& shape) {
+    if (auto parameter = std::dynamic_pointer_cast<Parameter>(node)) {
+        // TODO: Apply this change conditionally based on real Parameter value
+        std::cerr << "Overriding Parameter element_type to " << type << " and shape " << shape << "\n";
+        parameter->set_partial_shape(shape);
+        parameter->set_element_type(type);
+        parameter->validate_and_infer_types();
+    }
+}
+
+// TODO: replace NodeContext and input_index by a single input
+OutputVector pre_translate_string_tensor_input(ov::Output<ov::Node> input) {
     auto input_node = input.get_node_shared_ptr();
 
 #if !USE_STRING_TENSORS
-    // Override type of input tensor if this is a Parameter
-    if (auto parameter = std::dynamic_pointer_cast<Parameter>(input_node)) {
-        // TODO: Apply this change conditionally based on real Parameter value
-        std::cerr << "Overriding Parameter element_type to U8 to be ready to accept a packed batch of strings\n";
-        parameter->set_partial_shape(PartialShape{ Dimension() });
-        parameter->set_element_type(element::u8);
-        parameter->validate_and_infer_types();
-    }
+    override_parameter(input_node, element::u8, PartialShape{Dimension()});
 #endif
 
     if (auto struct_pack = std::dynamic_pointer_cast<StringTensorPack>(input_node)) {
@@ -552,9 +571,29 @@ OutputVector pre_translate_string_tensor_input(const NodeContext& node, size_t i
         // Unpack this tensor using standard operations
 
         // Cannot do that because there is not ReinterprectCast operation in OV
-        // TODO: Find a way to make it without reinterpretation operation
+        // TODO: Find a way to make it without reinterpretation operation or introduce it as an extension (easy)
         #endif
     }
+}
+
+
+
+OutputVector pre_translate_ragged_tensor_input(ov::Output<ov::Node> input) {
+    auto ragged_pack = dynamic_cast<RaggedTensorPack*>(input.get_node());
+    OPENVINO_ASSERT(ragged_pack, "Expected RaggedTensorPack but didn't find it");
+    return ragged_pack->input_values();
+}
+
+OutputVector pre_translate_ragged_string_tensor_input(ov::Output<ov::Node> input) {
+    // auto ragged_pack = dynamic_cast<RaggedTensorPack*>(node.get_input(input_index).get_node());
+    // OPENVINO_ASSERT(ragged_pack, "Expected RaggedTensorPack but didn't find it");
+    auto ragged_inputs = pre_translate_ragged_tensor_input(input);
+    auto string_inputs = pre_translate_string_tensor_input(ragged_inputs[2]);
+    ragged_inputs.pop_back();
+    ragged_inputs.insert(ragged_inputs.end(), string_inputs.begin(), string_inputs.end());
+    // auto string_pack = dynamic_cast<StringTensorPack*>(ragged_pack->get_input_node_ptr(2));
+    // OPENVINO_ASSERT(string_pack, "Expected StringTensorPack as a base for RaggedTensorPack but didn't find it");
+    return ragged_inputs;
 }
 
 ov::Output<ov::Node> post_translate_string_tensor_output(const OutputVector& outputs) {
@@ -679,7 +718,7 @@ bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& input
 ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node) {
     FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "CaseFold expects only 1 input");
     return { post_translate_string_tensor_output(std::make_shared<CaseFold>(
-        pre_translate_string_tensor_input(node, 0))->outputs()) };
+        pre_translate_string_tensor_input(node.get_input(0)))->outputs()) };
 }
 
 
@@ -733,7 +772,7 @@ bool NormalizeUnicode::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
 ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node) {
     FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "NormalizeUTF8 expects only 1 input");
     return { post_translate_string_tensor_output(std::make_shared<NormalizeUnicode>(
-        pre_translate_string_tensor_input(node, 0),
+        pre_translate_string_tensor_input(node.get_input(0)),
         node.get_attribute<std::string>("normalization_form"))->outputs()) };
 }
 
@@ -810,7 +849,7 @@ std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeCont
 
 ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext& node) {
     FRONT_END_GENERAL_CHECK(node.get_input_size() == 1, "StaticRegexReplace expects only 1 input");
-    ov::OutputVector inputs = pre_translate_string_tensor_input(node, 0);
+    ov::OutputVector inputs = pre_translate_string_tensor_input(node.get_input(0));
     inputs.push_back(string_attribute_to_constant(node, "pattern"));
     inputs.push_back(string_attribute_to_constant(node, "rewrite"));
     return { post_translate_string_tensor_output(std::make_shared<RegexNormalization>(inputs)->outputs()) };
@@ -919,12 +958,135 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
 
 ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeContext& node) {
     FRONT_END_GENERAL_CHECK(node.get_input_size() == 3, "RegexSplitWithOffsets expects 3 inputs");
-    ov::OutputVector inputs = pre_translate_string_tensor_input(node, 0);
+    ov::OutputVector inputs = pre_translate_string_tensor_input(node.get_input(0));
     auto delim_regex_pattern = node.get_input(1).get_node()->input_value(2);    // use u8 part of packed string tensor as we are expecting a scalar string: TODO: verify it is really there
     inputs.push_back(delim_regex_pattern);
     auto outputs = std::make_shared<RegexSplit>(inputs)->outputs();
     auto flatten_string_tensor = post_translate_string_tensor_output({outputs[2], outputs[3], outputs[4]});
     return { post_translate_ragged_tensor_output({outputs[0], outputs[1], flatten_string_tensor}) };
+}
+
+
+
+void WordpieceTokenizer::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+    check_string_input(this, 5);
+    set_ragged_output(this, 0, get_input_partial_shape(0), element::i32);
+}
+
+bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    auto vocab_begins = inputs[5].data<const int32_t>();
+    auto vocab_ends   = inputs[6].data<const int32_t>();
+    auto vocab_chars  = inputs[7].data<const uint8_t>();
+
+    OPENVINO_ASSERT(inputs.size() == 9, "Too few inputs passed to WordpieceTokenizer, it means it is not converted properly or it is not used in the supported pattern");
+
+    auto unk_token_id  = *inputs[8].data<const int32_t>();
+#if 0
+    // TODO: Complete implementation
+#else
+    // Stub implementation that transforms each input string to its length duplicating element if the length is odd
+    {
+        std::cout << "[ DEBUG ] WordpieceTokenizer\n";
+        std::cout << "[ DEBUG ]     vocab size: " << inputs[5].get_size() << "\n";
+        std::cout << "[ DEBUG ]     unk_token_id: " << unk_token_id << "\n";
+
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+        const size_t num_elems = inputs[0].get_size();
+
+        const size_t num_parts = inputs[2].get_size();
+        size_t new_num_parts = num_parts;
+        // Count number of output elements
+        for(size_t i = 0; i < num_parts; ++i) {
+            auto length = ends[i] - begins[i];
+            new_num_parts += length % 2;
+        }
+
+        outputs[2].set_shape({new_num_parts});
+
+        // Get pointers in the output tensors
+        auto new_begins = outputs[0].data<int32_t>();
+        auto new_ends   = outputs[1].data<int32_t>();
+        auto new_elems  = outputs[2].data<int32_t>();
+        int32_t offset = 0;
+
+        for(size_t j = 0; j < num_elems; ++j) {
+            new_begins[j] = offset;
+
+            for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+
+                auto length = ends[i] - begins[i];
+                new_elems[offset++] = length;
+
+                if(length % 2) {
+                    new_elems[offset++] = length;
+                }
+            }
+
+            new_ends[j] = offset;
+        }
+
+        OPENVINO_ASSERT(offset == outputs[2].get_size(), "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+        return true;
+    }
+    // End of stub implementation
+#endif
+}
+
+
+ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::NodeContext& node) {
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 2, "WordpieceTokenizeWithOffsets expects 2 inputs");
+    ov::OutputVector inputs = pre_translate_ragged_string_tensor_input(node.get_input(0));
+
+    #if USE_STRING_TENSORS
+    // It may seem enough to call pre_translate_string_tensor_input that will override Parameter element
+    // type in case if string tensors are not used.
+    // But a Parameter is still required to be overridden even if string tensors are used because in TF model
+    // it is represented not as a string tensor, but as a resource with hash table for lookup that we cannot interpret
+    // and have to replace by 1D string tensor.
+    override_parameter(node.get_input(1).get_node_shared_ptr(), element::string, PartialShape{Dimension()});
+    #endif
+
+    auto vocab = pre_translate_string_tensor_input(node.get_input(1));
+    inputs.insert(inputs.end(), vocab.begin(), vocab.end());
+    // FIXME: Cannot set real value for unk_token_id from attributes because it is not known in this operation
+    // TODO: Set other attributes.
+    auto wp_tokenizer = std::make_shared<WordpieceTokenizer>(
+        inputs,
+        node.get_attribute<std::string>("suffix_indicator"),
+        node.get_attribute<long>("max_bytes_per_word")
+    );
+    return { post_translate_ragged_tensor_output(wp_tokenizer->outputs()) };
+}
+
+
+ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext& node) {
+    FRONT_END_GENERAL_CHECK(node.get_input_size() == 3, "LookupTableFindV2 expects 3 inputs");
+
+    // Check if this node is used in a combination with already converted WordpieceTokenizeWithOffsets
+    auto wp_tokenizer_outputs = pre_translate_ragged_tensor_input(node.get_input(1));
+    auto wp_tokenizer = dynamic_cast<WordpieceTokenizer*>(wp_tokenizer_outputs[0].get_node());
+    OPENVINO_ASSERT(wp_tokenizer, "Conversion of LookupTableFindV2 without coupled WordpieceTokenizer is not yet supported");
+
+    // TODO: Check vocab matching for LookupTableFindV2 and WordpieceTokenizer
+
+    // TODO: Check if overflow really happens in real models due to i64 to i32 conversion
+    auto unk_token_id = std::make_shared<opset10::Convert>(node.get_input(2), element::i32);
+
+    auto wp_tokenizer_inputs = wp_tokenizer->input_values();
+    wp_tokenizer_inputs.push_back(unk_token_id);
+    std::cerr << "Added extra input, total number of inputs is " << wp_tokenizer_inputs.size() << "\n";
+
+    auto new_wp_tokenizer = wp_tokenizer->clone_with_new_inputs(wp_tokenizer_inputs);
+    return { post_translate_ragged_tensor_output(new_wp_tokenizer->outputs()) };
 }
 
 
