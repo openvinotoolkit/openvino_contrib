@@ -45,6 +45,8 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
         convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), output_size, max_threads_per_block, levels};
 }
 
+bool FakeQuantizeOp::IsCudaGraphCompatible() const { return true; }
+
 void FakeQuantizeOp::Execute(const InferenceRequestContext &context,
                              Inputs inputTensors,
                              Outputs outputTensors,

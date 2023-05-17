@@ -44,6 +44,8 @@ void ResultOp::Execute(const InferenceRequestContext& context,
     context.getThreadContext().stream().download(tensor->data(), inputs[0], tensor->get_byte_size());
 }
 
+bool ResultOp::IsCudaGraphCompatible() const { return true; }
+
 std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
                                                               const std::string& resultName) {
     if (auto found = rtInfo.find(RtInfo::CUDA_FUSED_NAMES_MAPPING); found != rtInfo.end()) {

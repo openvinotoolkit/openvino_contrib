@@ -103,6 +103,8 @@ void StridedSliceOp::Execute(const InferenceRequestContext& context,
                   outputs[0].get());
 }
 
+bool StridedSliceOp::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest StridedSliceOp::GetWorkBufferRequest() const {
     return {{size_bytes(src_matrix_sizes_),
              size_bytes(dst_matrix_sizes_),

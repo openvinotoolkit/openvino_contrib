@@ -55,6 +55,8 @@ void ConvertOp::Execute(const InferenceRequestContext& context,
     (*convert_kernel_)(stream.get(), outputs[0].get(), inputs[0].get());
 }
 
+bool ConvertOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(ConvertOp, Convert);
 
 }  // namespace nvidia_gpu

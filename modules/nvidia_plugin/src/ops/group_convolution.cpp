@@ -25,6 +25,8 @@ void GroupConvolutionOp::Execute(const InferenceRequestContext &context,
     convolution_.Execute(context, inputTensors, outputTensors, buffers);
 }
 
+bool GroupConvolutionOp::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest GroupConvolutionOp::GetWorkBufferRequest() const { return convolution_.GetWorkBufferRequest(); }
 
 OPERATION_REGISTER(GroupConvolutionOp, GroupConvolution);

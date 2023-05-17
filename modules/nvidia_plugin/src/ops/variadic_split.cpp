@@ -199,6 +199,8 @@ void VariadicSplitOp::Execute(const InferenceRequestContext& context,
                               static_cast<const void*>(axis_offset_sizes.get()));
 }
 
+bool VariadicSplitOp::IsCudaGraphCompatible() const { return false; }
+
 OPERATION_REGISTER(VariadicSplitOp, VariadicSplit);
 }  // namespace nvidia_gpu
 }  // namespace ov

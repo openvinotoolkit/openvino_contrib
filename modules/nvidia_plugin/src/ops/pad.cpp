@@ -58,6 +58,8 @@ void PadOp::Execute(const InferenceRequestContext& context,
             inputTensors[InputIndex::kPadValue].get());
 }
 
+bool PadOp::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest PadOp::GetWorkBufferRequest() const {
     auto rank = src_shape_.size();
     return {{rank * sizeof(std::size_t), rank * sizeof(std::size_t)}, {}};

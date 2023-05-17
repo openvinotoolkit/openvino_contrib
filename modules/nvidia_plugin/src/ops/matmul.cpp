@@ -226,6 +226,8 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
                                             CUBLAS_GEMM_DEFAULT));
 }
 
+bool MatMulOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(MatMulOp, MatMul);
 }  // namespace nvidia_gpu
 }  // namespace ov

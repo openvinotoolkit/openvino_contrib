@@ -95,6 +95,8 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                                 outputs[ArgIndices::output].get()));
 }
 
+bool FusedConvolutionCuDnn::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest FusedConvolutionCuDnn::GetWorkBufferRequest() const {
     if (conv_descs_->Algo().memory != 0)
         return {{}, {conv_descs_->Algo().memory}};

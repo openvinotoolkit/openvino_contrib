@@ -42,6 +42,11 @@ void ConvBackpropDataOp<T>::Execute(const InferenceRequestContext& context,
                                                 outputs[ConvBackpropDataOp::ArgIndices::dinput].get()));
 }
 
+template <typename T>
+bool ConvBackpropDataOp<T>::IsCudaGraphCompatible() const {
+    return true;
+}
+
 OPERATION_REGISTER(ConvolutionBackpropDataOp, ConvolutionBackpropData);
 OPERATION_REGISTER(GroupConvolutionBackpropDataOp, GroupConvolutionBackpropData);
 

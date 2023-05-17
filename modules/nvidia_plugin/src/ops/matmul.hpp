@@ -18,15 +18,19 @@ namespace nvidia_gpu {
 class MatMulOp : public OperationCuBlas {
 public:
     using NodeOp = ov::op::v0::MatMul;
+
     template <typename TOperation>
     MatMulOp(const CreationContext& context,
              const TOperation& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
     int GetBatchCount() const { return batch_count_; }
 

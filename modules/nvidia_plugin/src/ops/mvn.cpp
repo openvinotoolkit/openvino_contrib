@@ -99,6 +99,8 @@ void MvnOp::Execute(const InferenceRequestContext& context,
                        {tensor_desc_, outputTensors[0]});
 }
 
+bool MvnOp::IsCudaGraphCompatible() const { return true; }
+
 void MvnOp::Context::reduceMean(ConstTensor input, Tensor output) {
     context.getThreadContext().dnnHandle().reduceTensor(op.reduce_mean_desc_,
                                                         op.getReduceWorkspaceBuffer(workbuffers),

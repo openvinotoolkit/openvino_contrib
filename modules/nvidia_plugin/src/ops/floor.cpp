@@ -42,6 +42,8 @@ void FloorOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(stream.get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
+bool FloorOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(FloorOp, Floor);
 
 }  // namespace nvidia_gpu

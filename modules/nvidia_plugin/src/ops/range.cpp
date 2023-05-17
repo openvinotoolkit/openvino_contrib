@@ -64,6 +64,8 @@ void RangeOp::Execute(const InferenceRequestContext& context,
                   outputs[OUTPUT_INDX].get());
 }
 
+bool RangeOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(RangeOp, Range);
 }  // namespace nvidia_gpu
 }  // namespace ov

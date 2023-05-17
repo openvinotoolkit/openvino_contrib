@@ -154,6 +154,8 @@ void InterpolateNearestOp::Execute(const InferenceRequestContext& context,
                     dst);
 }
 
+bool InterpolateNearestOp::IsCudaGraphCompatible() const { return true; }
+
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {
     return sizeof(T) * v.size();

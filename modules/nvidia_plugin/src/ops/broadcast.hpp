@@ -27,6 +27,8 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     std::vector<WorkbufferRequest::size_in_bytes_t> immutable_buffer_sizes_;
     std::unique_ptr<NumpyBroadcastParams> broadcast_params_;

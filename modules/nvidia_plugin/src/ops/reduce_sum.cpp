@@ -58,6 +58,8 @@ void ReduceSumOp::Execute(const InferenceRequestContext& context,
                                                         outputTensors[0]);
 }
 
+bool ReduceSumOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(ReduceSumOp, ReduceSum);
 }  // namespace nvidia_gpu
 }  // namespace ov

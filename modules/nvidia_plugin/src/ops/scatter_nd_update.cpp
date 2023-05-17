@@ -100,6 +100,8 @@ void ScatterNDUpdateOp::Execute(const InferenceRequestContext& context,
                outputs[0].get());
 }
 
+bool ScatterNDUpdateOp::IsCudaGraphCompatible() const { return true; }
+
 template <typename T>
 static auto size_in_bytes(const std::vector<T>& v) noexcept {
     return sizeof(T) * v.size();
