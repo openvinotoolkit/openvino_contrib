@@ -1083,7 +1083,7 @@ ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext&
 
     auto wp_tokenizer_inputs = wp_tokenizer->input_values();
     wp_tokenizer_inputs.push_back(unk_token_id);
-    std::cerr << "Added extra input, total number of inputs is " << wp_tokenizer_inputs.size() << "\n";
+    //std::cerr << "Added extra input, total number of inputs is " << wp_tokenizer_inputs.size() << "\n";
 
     auto new_wp_tokenizer = wp_tokenizer->clone_with_new_inputs(wp_tokenizer_inputs);
     return { post_translate_ragged_tensor_output(new_wp_tokenizer->outputs()) };
