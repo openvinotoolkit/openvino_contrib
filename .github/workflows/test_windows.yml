@@ -203,7 +203,7 @@ jobs:
           $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
           $compress = @{
             Path = $file
-            CompressionLevel = "Fastest"
+            CompressionLevel = "Optimal"
             DestinationPath = "${{ env.BUILD_DIR }}/openvino_package.zip"
           }
           Compress-Archive @compress
@@ -211,7 +211,7 @@ jobs:
           $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}\tests"
           $compress = @{
             Path = $file
-            CompressionLevel = "Fastest"
+            CompressionLevel = "Optimal"
             DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
           }
           Compress-Archive @compress
