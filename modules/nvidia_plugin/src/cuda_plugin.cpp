@@ -19,12 +19,7 @@
 #include "openvino/runtime/properties.hpp"
 #include "threading/ie_executor_manager.hpp"
 #include "transformations/rt_info/fused_names_attribute.hpp"
-#include "transformer/nodes/concat_optimized.hpp"
-#include "transformer/nodes/fully_connected.hpp"
-#include "transformer/nodes/fused_convolution.hpp"
-#include "transformer/nodes/fused_convolution_backprop_data.hpp"
-#include "transformer/nodes/lstm_sequence_optimized.hpp"
-#include "cpp_interfaces/interface/ie_internal_plugin_config.hpp"
+#include "openvino/util/file_util.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -111,17 +106,11 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
         model_stream.read(weights.data<char>(), data_size);
     }
 
-    // Register operation itself, required to be read from IR
-    const std::vector<ov::Extension::Ptr> extensions = {
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::ConcatOptimized>>(),
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FullyConnected>>(),
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedConvBackpropData>>(),
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedConvolution>>(),
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::FusedGroupConvolution>>(),
-        std::make_shared<ov::OpExtension<ov::nvidia_gpu::nodes::LSTMSequenceOptimized>>()};
-
     ov::Core core;
-    core.add_extension(extensions);
+    auto abs_lib_path = ov::util::path_join({
+        ov::util::get_ov_lib_path(),
+        ov::util::from_file_path(ov::util::get_compiled_plugin_path("openvino_nvidia_gpu_plugin"))});
+    core.add_extension(abs_lib_path);
     auto model = core.read_model(xml_string, weights);
 
     auto full_config = get_full_config(properties);

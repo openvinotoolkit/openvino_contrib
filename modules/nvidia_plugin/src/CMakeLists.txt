@@ -14,7 +14,7 @@ file(GLOB_RECURSE
 	CONFIGURE_DEPENDS
 	${SOURCE_MASKS}
 )
-list(REMOVE_ITEM SOURCES cuda_create_plugin.cpp)
+list(REMOVE_ITEM SOURCES cuda_create_plugin.cpp cuda_create_extensions.cpp)
 list(FILTER SOURCES EXCLUDE REGEX "^ops/examples/.*$")
 file(GLOB_RECURSE
 	HEADERS
@@ -25,12 +25,12 @@ file(GLOB_RECURSE
 set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
 
 add_library(${OBJ_NAME} STATIC ${SOURCES})
-target_compile_definitions(${OBJ_NAME} PRIVATE IMPLEMENT_INFERENCE_ENGINE_PLUGIN)
+target_compile_definitions(${OBJ_NAME} PRIVATE IMPLEMENT_INFERENCE_ENGINE_PLUGIN IMPLEMENT_OPENVINO_EXTENSION_API)
 
 # Adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
-              SOURCES ${HEADERS} cuda_create_plugin.cpp
+              SOURCES ${HEADERS} cuda_create_plugin.cpp cuda_create_extensions.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 
