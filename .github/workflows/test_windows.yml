@@ -273,107 +273,107 @@ jobs:
       # Python tests
       #
 
-      - name: Install Python wheels
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
+      # - name: Install Python wheels
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
+      # - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
+      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
 
-      - name: Python API 2.0 Tests
-        if: ${{ always() }}
-        run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
-          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
+      # - name: Python API 2.0 Tests
+      #   if: ${{ always() }}
+      #   run: |
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+      #     $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
+      #     python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
+      #       --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
+      #       --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
-              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      # - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+      #     python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
+      #         --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
-      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
-        env:
-          TEST_DEVICE: CPU
+      # - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "test_tf_UnaryOps.py::TestUnaryOps::test_unary_op_mish[ ie_device:CPU - precision:FP32 - params:{'shape': [10, 12]} ]" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
-        env:
-          TEST_DEVICE: CPU
+      # - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "test_tf_UnaryOps.py::TestUnaryOps::test_unary_op_mish[ ie_device:CPU - precision:FP32 - params:{'shape': [10, 12]} ]" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
+      #     python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+      #     $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: TensorFlow 2 Layer Tests - TF FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
-        env:
-          TEST_DEVICE: CPU
+      # - name: TensorFlow 2 Layer Tests - TF FE
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: TensorFlow 1 Layer Tests - Legacy FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
+      # - name: TensorFlow 1 Layer Tests - Legacy FE
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
 
-      - name: TensorFlow 2 Layer Tests - Legacy FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
-              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
-        env:
-          TEST_DEVICE: CPU
+      # - name: TensorFlow 2 Layer Tests - Legacy FE
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
+      #         --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: TensorFlow Lite Layer Tests - TFL FE # 2 fail with "RuntimeError: Check 'number_axes == end_number_axes' failed at C:\a\openvino_contrib\openvino_contrib\openvino\src\core\shape_inference\include\strided_slice_shape_inference.hpp:77:" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753 
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
-        env:
-          TEST_DEVICE: CPU
+      # - name: TensorFlow Lite Layer Tests - TFL FE # 2 fail with "RuntimeError: Check 'number_axes == end_number_axes' failed at C:\a\openvino_contrib\openvino_contrib\openvino\src\core\shape_inference\include\strided_slice_shape_inference.hpp:77:" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753 
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
-        env:
-          TEST_DEVICE: CPU
+      # - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
+      #   env:
+      #     TEST_DEVICE: CPU
 
-      - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
+      # - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      #   if: ${{ always() }}
+      #   run: |
+      #     python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+      #     $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+      #     & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       #
       # C++ tests
@@ -500,7 +500,214 @@ jobs:
       #   if: ${{ always() }}
       #   run: rm -fr ${{ env.OPENVINO_REPO }} ${{ env.OPENVINO_CONTRIB_REPO }} ${{ env.DATA_PATH }} ${{ env.BUILD_DIR }}
 
-  CXX_Tests:
+  Python_Unit_Tests:
+    needs: Build
+    if: ${{ always() }}
+    defaults:
+      run:
+        shell: pwsh
+    strategy:
+      fail-fast: false
+    runs-on: ['windows-latest']
+    env:
+      OPENVINO_REPO: "${{ github.workspace }}\\openvino"
+      OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib_repo"
+      INSTALL_DIR: "${{ github.workspace }}\\install"
+      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+      SAMPLES_INSTALL_DIR: "${{ github.workspace }}\\install\\samples"
+      LAYER_TESTS_INSTALL_DIR: "${{ github.workspace }}\\install\\tests\\layer_tests"
+      BUILD_DIR: "${{ github.workspace }}\\build"
+      DATA_PATH: "${{ github.workspace }}\\testdata"
+      MODELS_PATH: "${{ github.workspace }}\\testdata"
+      PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
+      SETUPVARS: "${{ github.workspace }}\\install\\setupvars.bat"
+
+    steps:
+      - name: Create Directories
+        run: |
+          mkdir ${{ env.INSTALL_DIR }}
+          mkdir ${{ env.INSTALL_TEST_DIR }}
+      
+      - name: Download OpenVINO package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_package
+          path: ${{ env.INSTALL_DIR }}
+
+      - name: Download OpenVINO tests package
+        uses: actions/download-artifact@v3
+        with:
+          name: openvino_tests
+          path: ${{ env.INSTALL_TEST_DIR }}
+
+      - name: Extract OpenVINO packages
+        run: |
+          pushd ${{ env.INSTALL_DIR }}
+            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+          popd
+
+          pushd ${{ env.INSTALL_TEST_DIR }}
+            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+          popd
+      
+      - name: Check extraction
+        run: |
+          ls "${{ github.workspace }}"
+          ls "${{ env.INSTALL_DIR }}"
+          ls "${{ env.INSTALL_TEST_DIR }}"
+      
+      - name: Clone OpenVINO & OpenVINO Contrib
+        run: |
+          git clone https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }} && cd ${{ env.OPENVINO_REPO }} && git submodule update --init --recursive
+
+          # TODO: rm when scheduled on actual branches
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule update
+          
+          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+
+      - name: Clone testdata for C API tests
+        run: |
+          git clone https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
+          cd ${{ env.DATA_PATH }} && git lfs pull
+      
+      - uses: actions/setup-python@v4
+        id: cp39
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
+
+      - name: Install python dependencies
+        run: |
+          # For Python API
+          python3 -m pip install Scons
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
+          
+          # For running Python API tests
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+          
+          # For running ONNX frontend unit tests
+          python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
+          
+          # For running TensorFlow frontend unit tests
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          
+          # For running Paddle frontend unit tests
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
+
+      - name: Install MO dependencies
+        run: |
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+      
+      - name: Install Python wheels
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
+
+      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
+
+      - name: Python API 2.0 Tests
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
+          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
+            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
+            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
+
+      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
+              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+
+      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "test_tf_UnaryOps.py::TestUnaryOps::test_unary_op_mish[ ie_device:CPU - precision:FP32 - params:{'shape': [10, 12]} ]" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 2 Layer Tests - TF FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow 1 Layer Tests - Legacy FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
+
+      - name: TensorFlow 2 Layer Tests - Legacy FE
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
+              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
+        env:
+          TEST_DEVICE: CPU
+
+      - name: TensorFlow Lite Layer Tests - TFL FE # 2 fail with "RuntimeError: Check 'number_axes == end_number_axes' failed at C:\a\openvino_contrib\openvino_contrib\openvino\src\core\shape_inference\include\strided_slice_shape_inference.hpp:77:" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753 
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
+        env:
+          TEST_DEVICE: CPU
+
+      - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+        if: ${{ always() }}
+        run: |
+          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
+
+  CXX_Unit_Tests:
     needs: Build
     if: ${{ always() }}
     defaults:
@@ -664,7 +871,7 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
 
-  CPU_Tests:
+  CPU_Functional_Tests:
     needs: Build
     if: ${{ always() }}
     defaults:
@@ -716,7 +923,7 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
-  # GPU_Tests:  # fails due to missing driver? in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167
+  # GPU_Functional_Tests:  # fails due to missing driver? in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167
   #   needs: Build
   #   if: ${{ always() }}
   #   defaults:
