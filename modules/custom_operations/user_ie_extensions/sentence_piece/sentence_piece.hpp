@@ -44,7 +44,7 @@ public:
 
 private:
 
-    std::string m_mode;
+    std::string m_mode = "begins_ends";
 };
 
 
@@ -119,7 +119,7 @@ public:
 
 private:
 
-    std::string m_mode;
+    std::string m_mode = "begins_ends";
 };
 
 
@@ -161,7 +161,7 @@ ov::frontend::NamedOutputVector translate_sentencepiece_tokenizer(const ov::fron
 
 class OPENVINO_API CaseFold  : public ov::op::Op {
 public:
-    OPENVINO_OP("CaseFold ");
+    OPENVINO_OP("CaseFold");
 
     CaseFold () = default;
 
@@ -196,7 +196,7 @@ public:
 
     NormalizeUnicode () = default;
 
-    NormalizeUnicode(const ov::OutputVector& arguments, const std::string& normalization_form) :
+    NormalizeUnicode(const ov::OutputVector& arguments, const std::string& normalization_form = "NFD") :
         ov::op::Op(arguments),
         m_normalization_form(normalization_form) {
         constructor_validate_and_infer_types();
@@ -221,7 +221,7 @@ public:
 
 private:
 
-    std::string m_normalization_form;
+    std::string m_normalization_form = "NFD";
 };
 
 ov::OutputVector translate_normalize_utf8(const ov::frontend::NodeContext& node);
@@ -290,8 +290,8 @@ public:
 
 private:
 
-    std::string m_behaviour;
-    bool m_invert;
+    std::string m_behaviour = "removed";
+    bool m_invert = false;
 };
 
 ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeContext& node);
@@ -329,8 +329,8 @@ public:
 
 private:
 
-    std::string m_suffix_indicator;
-    int m_max_bytes_per_word;   // TODO: Why do we need to limit it in this way? Can it be done outside the op as preprocessing of the input?
+    std::string m_suffix_indicator = "##";
+    int m_max_bytes_per_word = 100;   // TODO: Can it be done outside the op as preprocessing of the input?
 };
 
 ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::NodeContext& node);
