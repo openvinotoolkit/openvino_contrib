@@ -9,7 +9,7 @@ std::ostream& operator<<(std::ostream& s, const nvidia_gpu::nodes::ActivationMod
     return s << as_string(type);
 }
 template <>
-OPENVINO_API EnumNames<nvidia_gpu::nodes::ActivationMode>&
+EnumNames<nvidia_gpu::nodes::ActivationMode>&
 EnumNames<nvidia_gpu::nodes::ActivationMode>::get() {
     static auto enum_names = EnumNames<nvidia_gpu::nodes::ActivationMode>(
         "nvidia_gpu::nodes::ActivationMode",

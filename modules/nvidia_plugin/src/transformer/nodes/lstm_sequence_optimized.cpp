@@ -200,7 +200,7 @@ std::ostream& operator<<(std::ostream& s, const nvidia_gpu::nodes::LSTMSequenceO
     return s << as_string(type);
 }
 template <>
-OPENVINO_API EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>&
+EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>&
 EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>::get() {
     static auto enum_names = EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(
         "nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat",

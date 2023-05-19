@@ -25,7 +25,7 @@ using namespace ov::nvidia_gpu;
 
 Plugin::Plugin() {
     set_device_name("NVIDIA");
-    for (size_t i = 0; i < CUDA::Device::count(); ++i) {
+    for (int i = 0; i < CUDA::Device::count(); ++i) {
         CUDA::Device device{i};
         const size_t num_concurrent_streams = max_concurrent_streams(device);
         device_thread_pool_[std::to_string(i)] = std::make_shared<CudaThreadPool>(device, num_concurrent_streams);

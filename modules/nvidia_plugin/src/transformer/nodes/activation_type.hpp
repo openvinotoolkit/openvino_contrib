@@ -19,7 +19,7 @@ enum class ActivationMode { SIGMOID, RELU, TANH, CLIPPED_RELU, ELU, SWISH, NO_AC
 }  // namespace ov::nvidia_gpu::nodes
 namespace ov {
 template <>
-class OPENVINO_API AttributeAdapter<nvidia_gpu::nodes::ActivationMode>
+class AttributeAdapter<nvidia_gpu::nodes::ActivationMode>
     : public EnumAttributeAdapterBase<nvidia_gpu::nodes::ActivationMode> {
 public:
     AttributeAdapter(nvidia_gpu::nodes::ActivationMode& value): EnumAttributeAdapterBase<nvidia_gpu::nodes::ActivationMode>(value) {}

@@ -50,7 +50,7 @@ Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCoun
 void Profiler::process_events() {
     if (!perf_count_ || infer_count_ == 0) return;
     constexpr float ms2us = 1000.0f;
-    auto time_per_infer_ms = [this](float timing) {
+    auto time_per_infer_ms = [this, ms2us](float timing) {
         return std::chrono::microseconds(static_cast<long long>(ms2us * timing / infer_count_));
     };
 

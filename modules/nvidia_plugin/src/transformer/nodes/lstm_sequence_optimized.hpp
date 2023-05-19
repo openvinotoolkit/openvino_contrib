@@ -48,7 +48,7 @@ private:
 
 namespace ov {
 template <>
-class OPENVINO_API AttributeAdapter<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>
+class AttributeAdapter<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>
     : public EnumAttributeAdapterBase<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat> {
 public:
     AttributeAdapter(nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat& value): EnumAttributeAdapterBase<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(value) {}
