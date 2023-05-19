@@ -76,11 +76,8 @@ jobs:
       #
 
       - uses: actions/setup-python@v4
-        id: cp39
         with:
-          python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: '**/requirements*.txt'
+          python-version: '3.11'
 
       - name: Install python dependencies
         run: |
@@ -340,11 +337,8 @@ jobs:
           cd ${{ env.DATA_PATH }} && git lfs pull
       
       - uses: actions/setup-python@v4
-        id: cp39
         with:
-          python-version: '3.9'
-          cache: 'pip'
-          cache-dependency-path: '**/requirements*.txt'
+          python-version: '3.11'
 
       - name: Install python dependencies
         run: |
@@ -747,7 +741,7 @@ jobs:
 
   #     - uses: actions/setup-python@v4
   #       with:
-  #         python-version: '3.9'
+  #         python-version: '3.11'
       
   #     - name: Intel GPU plugin func tests
   #       shell: cmd
