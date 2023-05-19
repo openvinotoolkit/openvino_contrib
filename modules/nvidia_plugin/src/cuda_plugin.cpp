@@ -19,7 +19,6 @@
 #include "openvino/runtime/properties.hpp"
 #include "threading/ie_executor_manager.hpp"
 #include "transformations/rt_info/fused_names_attribute.hpp"
-#include "openvino/util/file_util.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -106,12 +105,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
         model_stream.read(weights.data<char>(), data_size);
     }
 
-    ov::Core core;
-    auto abs_lib_path = ov::util::path_join({
-        ov::util::get_ov_lib_path(),
-        ov::util::from_file_path(ov::util::get_compiled_plugin_path("openvino_nvidia_gpu_plugin"))});
-    core.add_extension(abs_lib_path);
-    auto model = core.read_model(xml_string, weights);
+    auto model = get_core()->read_model(xml_string, weights);
 
     auto full_config = get_full_config(properties);
     auto wait_executor = get_stream_executor(full_config);
