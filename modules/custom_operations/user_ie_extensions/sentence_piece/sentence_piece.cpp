@@ -8,6 +8,10 @@
 #include "openvino/op/util/framework_node.hpp"
 #include "openvino/opsets/opset10.hpp"
 
+#include "fast_tokenizer/normalizers/normalizers.h"
+#include "fast_tokenizer/models/models.h"
+#include "fast_tokenizer/pretokenizers/pretokenizers.h"
+
 // TODO: Replace shape_size(t.get_shape()) by t.get_size(), where t is ov::Tensor
 
 #ifndef OPENVINO_ELEMENT_STRING_SUPPORTED
@@ -683,6 +687,43 @@ bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& input
     auto ends   = inputs[1].data<const int32_t>();
     auto chars  = inputs[2].data<const uint8_t>();
 
+#if 1
+    // Set output shapes
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    const size_t num_elements = inputs[0].get_size();
+
+    // TODO: Provide more accurate heuristics to estimate output shape
+    const size_t new_len = 2*inputs[2].get_size();
+
+    outputs[2].set_shape(Shape{new_len});
+
+    // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+    // and only number of elements in the original tensors matter
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_chars  = outputs[2].data<uint8_t>();
+    int32_t char_offset = 0;
+
+    for(size_t i = 0; i < num_elements; ++i) {
+        new_begins[i] = char_offset;
+
+        using namespace paddlenlp::fast_tokenizer;
+        normalizers::NormalizedString str(std::string(chars + begins[i], chars + ends[i]));
+
+        // Do the job
+        str.Lowercase();
+
+        const std::string& new_str = str.GetStr();
+        std::copy(new_str.data(), new_str.data() + new_str.length(), new_chars + char_offset);
+        char_offset += new_str.length();
+        new_ends[i] = char_offset;
+    }
+    std::cerr << "hey\n";
+    return true;
+#else
     // Stub implementation that transforms each input string "X" to "CaseFold(X)" for debugging purposes
     {
         // Set output shapes
@@ -712,6 +753,7 @@ bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& input
         return true;
     }
     // End of stub implementation
+#endif
 }
 
 
