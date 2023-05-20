@@ -336,5 +336,34 @@ private:
 ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::NodeContext& node);
 ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext& node);
 
+// Takes a ragged tensor with one ragged right-most dimension and produces a normal tensor
+class OPENVINO_API RaggedToDense : public ov::op::Op {
+public:
+    OPENVINO_OP("RaggedToDense");
+
+    RaggedToDense () = default;
+
+    RaggedToDense(const ov::OutputVector& arguments) :
+        ov::op::Op(arguments) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<RaggedToDense>(inputs);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+};
+
 ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node);
 ov::OutputVector translate_const(const ov::frontend::NodeContext& node);
