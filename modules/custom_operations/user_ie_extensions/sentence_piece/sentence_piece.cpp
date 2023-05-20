@@ -721,7 +721,6 @@ bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& input
         char_offset += new_str.length();
         new_ends[i] = char_offset;
     }
-    std::cerr << "hey\n";
     return true;
 #else
     // Stub implementation that transforms each input string "X" to "CaseFold(X)" for debugging purposes
