@@ -376,6 +376,8 @@ jobs:
       - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
         if: ${{ always() }}
         run: |
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
@@ -386,6 +388,8 @@ jobs:
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
@@ -396,6 +400,8 @@ jobs:
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
@@ -404,6 +410,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -415,6 +423,8 @@ jobs:
           # need to install TF here, otherwise TF overwrites ONNX's version of protobuf
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
           $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -424,6 +434,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -433,6 +445,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xmlTEST
 
       - name: TensorFlow 2 Layer Tests - Legacy FE
@@ -440,6 +454,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
               --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xmlTEST -k "sigmoid"
         env:
@@ -450,6 +466,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -459,6 +477,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xmlTEST
         env:
           TEST_DEVICE: CPU
@@ -468,6 +488,8 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
+          $env:PYTHONPATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PYTHONPATH"
+          $env:PATH="C:\hostedtoolcache\windows\Python\3.9.13\x64\lib\site-packages\openvino\libs;$env:PATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
   CXX_Unit_Tests:
@@ -545,9 +567,7 @@ jobs:
         shell: cmd
         if: ${{ always() }}
         run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
 
       - name: IR frontend tests
         shell: cmd
