@@ -335,7 +335,7 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      - name: ONNX frontend tests
+      - name: ONNX frontend tests # fails with "(core dumped)" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932182. Not enough memory?
         if: ${{ always() }}
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
@@ -555,7 +555,7 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-      - name: Model Optimizer UT # "AttributeError: module 'numpy' has no attribute 'bool'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4809367271/jobs/8560513477
+      - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
@@ -611,7 +611,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow Lite Layer Tests - TFL FE
+      - name: TensorFlow Lite Layer Tests - TFL FE # fails with "Check 'number_axes == end_number_axes' failed" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932315
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -620,7 +620,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: MO Python API Tests
+      - name: MO Python API Tests # fails with "No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932315
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -629,7 +629,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4796517925/jobs/8532367004
+      - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932315
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt

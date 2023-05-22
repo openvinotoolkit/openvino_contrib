@@ -77,7 +77,7 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install python dependencies
         run: |
@@ -338,7 +338,7 @@ jobs:
       
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install python dependencies
         run: |
@@ -542,6 +542,7 @@ jobs:
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
 
       - name: OpenVINO Conditional compilation tests
+        shell: cmd
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
@@ -579,11 +580,10 @@ jobs:
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
+        shell: cmd
         if: ${{ always() }}
         run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 `
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
 
       - name: Transformations Tests
         shell: cmd
@@ -681,7 +681,7 @@ jobs:
           ls "${{ env.INSTALL_DIR }}"
           ls "${{ env.INSTALL_TEST_DIR }}"
       
-      - name: Intel CPU plugin func tests  # fail with "Unexpected application crash with code: 22. Program will aborted." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8937444946 + problems for HETERO
+      - name: Intel CPU plugin func tests
         shell: cmd
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
