@@ -7,6 +7,7 @@
 
 #include <fmt/format.h>
 
+#include "openvino/openvino.hpp"
 #include "openvino/pass/manager.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/disable_decompression_convert_constant_folding.hpp"
@@ -39,7 +40,7 @@
 using namespace ov::nvidia_gpu;
 
 void GraphTransformer::transform(const CUDA::Device& device,
-                                 const std::shared_ptr<ov::Model>& model,
+                                 std::shared_ptr<ov::Model>& model,
                                  const Configuration& config) const {
     auto inference_precision = config.get_inference_precision();
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
@@ -51,6 +52,9 @@ void GraphTransformer::transform(const CUDA::Device& device,
     auto downscale_precision = [&]() -> bool {
         return isHalfSupported(device) && inference_precision == ov::element::f16;
     };
+
+    bool convert_called = false;
+
     auto passConfig = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager manager{passConfig};
 
@@ -80,10 +84,12 @@ void GraphTransformer::transform(const CUDA::Device& device,
     manager.register_pass<ov::pass::ReshapePRelu>();
     manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
     if (upscale_precision()) {
+        convert_called = true;
         manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);
     } else {
         if (downscale_precision()) {
-            manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f32, ov::element::f16);
+            convert_called = true;
+            manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f32, ov::element::f16, type_to_fuse_map{}, true);
         }
     }
     manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
@@ -129,7 +135,52 @@ void GraphTransformer::transform(const CUDA::Device& device,
     manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
 
+    // WA for ConvertPrecision which doesn't keep original precisions (CVS-111453)
+    // Store original precisions for inputs and outputs
+    // And restore them after transformations if ConvertPrecision was called
+    std::map<size_t, ov::element::Type> input_direct;
+    std::map<size_t, ov::element::Type> input_preprocess;
+    std::map<size_t, ov::element::Type> output_postprocess;
+    if (convert_called) {
+        for (size_t i = 0; i < model->inputs().size(); i++) {
+            auto input = model->input(i);
+            auto target_inputs = input.get_target_inputs();
+            if (all_of(target_inputs.begin(), target_inputs.end(),
+                [&] (const Input<Node>& i) {return ov::op::util::is_output(i.get_node());})) {
+                input_direct[i] = input.get_element_type();
+            } else {
+                input_preprocess[i] = input.get_element_type();
+            }
+        }
+        for (size_t i = 0; i < model->get_output_size(); i++) {
+            auto output = model->output(i);
+            if (!ov::op::util::is_parameter(output.get_node())) {
+                output_postprocess[i] = output.get_element_type();
+            }
+        }
+    }
+
     manager.run_passes(model);
+
+    if (convert_called) {
+        for (auto& item : input_direct) {
+            auto node = model->input(item.first).get_node_shared_ptr();
+            if (auto param = ov::as_type_ptr<ov::op::v0::Parameter>(node)) {
+                param->set_element_type(item.second);
+                param->validate_and_infer_types();
+            }
+        }
+        auto preprocessor = ov::preprocess::PrePostProcessor(model);
+        for (auto& item : input_preprocess) {
+            auto& in = preprocessor.input(item.first);
+            in.tensor().set_element_type(item.second);
+        }
+        for (auto& item : output_postprocess) {
+            auto& out = preprocessor.output(item.first);
+            out.tensor().set_element_type(item.second);
+        }
+        model = preprocessor.build();
+    }
 
     [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();

@@ -36,7 +36,7 @@ protected:
         auto params = this->GetParam();
         auto netPrecision = std::get<1>(std::get<0>(params));
         if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-            this->threshold = 600;
+            this->threshold = 0.5;
             this->infinity_value = std::numeric_limits<std::uint16_t>::max();
         }
     }
@@ -56,7 +56,7 @@ protected:
         auto params = this->GetParam();
         auto netPrecision = std::get<1>(std::get<0>(params));
         if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-            this->threshold = 500;
+            this->threshold = 0.5;
             this->infinity_value = std::numeric_limits<std::uint16_t>::max();
         }
     }

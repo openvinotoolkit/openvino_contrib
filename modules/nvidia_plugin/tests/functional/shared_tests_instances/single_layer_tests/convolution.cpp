@@ -18,13 +18,6 @@ class ConvolutionLayerThresholdTest : public FiniteComparer<ConvolutionLayerTest
 protected:
     void SetUp() override {
         ConvolutionLayerTest::SetUp();
-
-        auto params = this->GetParam();
-        auto netPrecision = std::get<1>(params);
-        if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-            this->threshold = 500;
-            this->infinity_value = std::numeric_limits<std::uint16_t>::max();
-        }
     }
 };
 

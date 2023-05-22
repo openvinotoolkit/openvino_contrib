@@ -28,7 +28,7 @@ public:
       *        transformations are being applied to the original graph.
       */
     void transform(const CUDA::Device& device,
-                   const std::shared_ptr<ov::Model>& model,
+                   std::shared_ptr<ov::Model>& model,
                    const Configuration& config) const;
 };
 
