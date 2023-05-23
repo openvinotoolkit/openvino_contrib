@@ -1,5 +1,5 @@
-// Copyright (C) 20182023 Intel Corporation
-// SPDXLicenseIdentifier: Apache2.0
+// Copyright (C) 2018-2023 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
 //
 #include <fmt/format.h>
 
