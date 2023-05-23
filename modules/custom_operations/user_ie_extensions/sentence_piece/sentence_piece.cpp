@@ -1154,11 +1154,81 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     auto vocab_ends   = inputs[6].data<const int32_t>();
     auto vocab_chars  = inputs[7].data<const uint8_t>();
 
+    auto vocab_size = inputs[5].get_size();
+
     OPENVINO_ASSERT(inputs.size() == 9, "Too few inputs passed to WordpieceTokenizer, it means it is not converted properly or it is not used in the supported pattern");
 
     auto unk_token_id  = *inputs[8].data<const int32_t>();
-#if 0
-    // TODO: Complete implementation
+    //std::cerr << "[ WordpieceTokenizer ] unk_token_id = " << unk_token_id << "\n";
+
+#if 1
+
+    // Set output shapes
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    const size_t num_elems = inputs[0].get_size();
+
+    //const size_t num_parts = inputs[2].get_size();
+    //size_t new_num_parts = num_parts;
+
+    // FIXME: Not accurate estimation as there is theoretical possibility for re-use the same symbol area
+    // to represent different elements in ragged tensor
+    outputs[2].set_shape({inputs[4].get_size()});
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_elems  = outputs[2].data<int32_t>();
+    int32_t offset = 0;
+
+    using namespace paddlenlp::fast_tokenizer;
+
+    std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
+    core::Vocab vocab;
+    std::string unk_token;
+    if(unk_token_id < 0)
+        unk_token_id += vocab_size;
+    for(size_t id = 0; id < vocab_size; ++id) {
+        auto token = std::string(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[token] = int32_t(id); // TODO: Check range
+        if(id == unk_token_id)
+            unk_token = token;
+    }
+
+    std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
+    std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
+    std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
+
+    auto tokenizer = models::FastWordPiece(vocab, unk_token, m_max_bytes_per_word, m_suffix_indicator, true);   // FIXME: why true?
+
+    std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
+
+
+    for(size_t j = 0; j < num_elems; ++j) {
+        new_begins[j] = offset;
+
+        for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+
+            auto str = std::string(chars + begins[i], chars + ends[i]);
+            std::vector<core::Token> results = tokenizer.Tokenize(str);
+
+            for (const core::Token& token : results) {
+                //std::cout << "[ WordpieceTokenizer ]     id: " << token.id_ << ", value: " << token.value_
+                //          << ", offset: (" << token.offset_.first << ", "
+                //          << token.offset_.second << ")." << std::endl;
+                OPENVINO_ASSERT(offset < outputs[2].get_size());
+                new_elems[offset++] = token.id_;
+            };
+        }
+
+        new_ends[j] = offset;
+    }
+
+    outputs[2].set_shape({offset});
+
+    OPENVINO_ASSERT(offset == outputs[2].get_size(), "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+    return true;
+
 #else
     // Stub implementation that transforms each input string to its length duplicating element if the length is odd
     {
