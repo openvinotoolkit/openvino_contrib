@@ -687,7 +687,7 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
-  # GPU_Functional_Tests:  # fails due to missing driver? (or absence of the GPU) in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167
+  # GPU_Functional_Tests:  # fails due to missing driver? (or absence of the GPU)
   #   needs: Build
   #   if: ${{ always() }}
   #   defaults:
