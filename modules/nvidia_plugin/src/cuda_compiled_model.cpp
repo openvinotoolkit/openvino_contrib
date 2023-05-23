@@ -292,13 +292,10 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
                                                       METRIC_KEY(SUPPORTED_CONFIG_KEYS),
                                                       METRIC_KEY(OPTIMAL_NUMBER_OF_INFER_REQUESTS)});
     } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_CONFIG_KEYS) == name) {
-        std::vector<std::string> configKeys = {CONFIG_KEY(DEVICE_ID),
-                                               CONFIG_KEY(PERF_COUNT),
-                                               CONFIG_KEY(CPU_THROUGHPUT_STREAMS),
-                                               NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS)};
-        auto streamExecutorConfigKeys = InferenceEngine::IStreamsExecutor::Config{}.SupportedKeys();
-        for (auto&& configKey : streamExecutorConfigKeys) {
-            configKeys.emplace_back(configKey);
+        std::vector<std::string> configKeys = {};
+        auto config_properties = config_.get_rw_properties();
+        for (auto&& key : config_properties) {
+            configKeys.emplace_back(key);
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
     } else if (ov::model_name == name) {

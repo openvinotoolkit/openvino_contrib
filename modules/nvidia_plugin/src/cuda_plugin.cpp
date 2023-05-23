@@ -220,11 +220,11 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
     } else if (ov::caching_properties == name) {
         return decltype(ov::caching_properties)::value_type{Configuration::get_caching_properties()};
     } else if (ov::available_devices == name) {
-        std::vector<std::string> availableDevices = {};
+        std::vector<std::string> available_devices = {};
         for (size_t i = 0; i < CUDA::Device::count(); ++i) {
-            availableDevices.push_back(fmt::format("{}.{}", get_device_name(), i));
+            available_devices.push_back(std::to_string(i));
         }
-        return decltype(ov::available_devices)::value_type{availableDevices};
+        return decltype(ov::available_devices)::value_type{available_devices};
     } else if (ov::device::uuid == name) {
         CUDA::Device device{full_config.get_device_id()};
         const auto& props = device.props();
