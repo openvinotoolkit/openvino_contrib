@@ -5,11 +5,11 @@ OpenVINO™ NVIDIA GPU plugin is developed in order to enable deep neural networ
 The plugin uses custom kernels and [cuBLAS, cuDNN, cuTENSOR libraries\*] as a backend.
 
 ## Supported Platforms
-OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platforms: 
+OpenVINO™ NVIDIA GPU plugin is supported and validated on the following platforms:
 
-OS                     | GPU
----------------------- | ----------------------
-Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000
+OS                     | GPU                   | Driver               |
+---------------------- | --------------------- |--------------------- |
+Ubuntu* 20.04 (64-bit) | NVIDIA Quadro RTX 4000| 520.61.05            |
 
 ## Distribution
 OpenVINO™ NVIDIA GPU plugin is not included into Intel® Distribution of OpenVINO™. To use the plugin, it should be built from source code.
@@ -32,13 +32,13 @@ sudo apt-get update
 sudo apt-get install clang-8 clang++8
 ```
 
-2. Install **NVIDIA 460** version of driver from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
-3. Install **CUDA 11.2** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
+2. Install suitable **NVIDIA driver** from [NVIDIA download drivers](http://www.nvidia.com/Download/index.aspx?lang=en-us)
+3. Install **CUDA 11.8** from [How to install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/index.html)
    
    Do not forget to add `<path_to_cuda>/bin/` in **PATH** variable for example `export PATH="<path_to_cuda>/bin:$PATH"`    
 
-4. Install **cuDNN 8.1.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
-5. Install **cuTENSOR 1.3.0** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
+4. Install **cuDNN 8.6.0** from [How to install cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html)
+5. Install **cuTENSOR 1.6.1** from [How to install cuTENSOR](https://docs.nvidia.com/cuda/cutensor/getting_started.html#installation-and-compilation)
 
 ### Build with cmake
 
@@ -48,12 +48,11 @@ Afterwards plugin build procedure is as following:
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
+git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
-git checkout develop
 ```
 3. Prepare a build folder:
 ```bash
@@ -61,7 +60,7 @@ mkdir build && cd build
 ```
 4. Build plugin
 
-    First of all, switch OpenVINO™ to tag _2022.1.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
+    First of all, switch OpenVINO™ to tag _2022.3.0_ and then build it according the instruction [How to build](https://github.com/openvinotoolkit/openvino/wiki#how-to-build)
 
     Then build CUDA Plugin with one of 2 options:
 - Using `build.sh`
@@ -72,20 +71,20 @@ mkdir build && cd build
   export OPENVINO_CONTRIB=<OpenVINOContrib packages source directory>
   export OPENVINO_BUILD_PATH=<OpenVINO build directory>
   ```
-  
-  Then run one of the following commands: 
+
+  Then run one of the following commands:
   ```bash
   # Run cmake configuration (if necessary) and then build
   ../build.sh --build
-  
+
   # Run cmake configuration
   ../build.sh --setup
-  
+
   # For old build delete old configuration, generate new one and then build
   ../build.sh --rebuild
   ```
 - Using _OpenVINODeveloperPackage_
-  
+
   Run the following command:
   ```bash
   cmake -DOpenVINODeveloperPackage_DIR=<path to OpenVINO package build folder> -DCMAKE_BUILD_TYPE=Release ..
@@ -98,21 +97,20 @@ If python available the CUDA Plugin could be compiled with setup.py script as fo
 
 1. Clone `openvino_contrib` repository:
 ```bash
-git clone --recurse-submodules --single-branch --branch=master https://github.com/openvinotoolkit/openvino_contrib.git 
+git clone --recurse-submodules --single-branch --branch=2022.3.0 https://github.com/openvinotoolkit/openvino_contrib.git
 ```
 2. Go to plugin directory:
 ```bash
 cd openvino_contrib/modules/nvidia_plugin
-git checkout develop
 ```
 3. Setup `CUDACXX` environment variable to point to the CUDA _nvcc_ compiler like the next (use yours path)
 ```bash
-export CUDACXX=/usr/local/cuda-11.2/bin/nvcc
+export CUDACXX=/usr/local/cuda-11.8/bin/nvcc
 ```
 
 4. Add the path to the cuda libraries to the `LD_LIBRARY_PATH` environment variable like the next (use yours path)
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/bin/nvcc
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.8/bin/nvcc
 ```
 
 5. Run setup.py build command as follows.
@@ -156,13 +154,13 @@ In order to build openvino_nvidia_gpu_plugin in docker, follow the steps:
 
 1. Enter the docker container:
 ```bash
-docker run --gpus all -it openvino/cudaplugin-2022.1 bin/bash
+docker run --gpus all -it openvino/cudaplugin-2022.3 bin/bash
 ```
 2. Build the OpenVINO and openvino_nvidia_gpu_plugin according the steps described in [## How to build](#how-to-build),
    except 3), 4), 5) steps (this packages already installed in image)
 3. Commit all your changes in container:
 ```bash
-docker commit openvino/cudaplugin-2022.1 <name of new image>
+docker commit openvino/cudaplugin-2022.3 <name of new image>
 ```
 
 ## Supported Configuration Parameters
@@ -200,7 +198,7 @@ The plugin supports IRv10 and higher. The list of supported layers and its limit
 * I8 - Not supported
 * I16 - Not supported
 
-## Supported Output Precision 
+## Supported Output Precision
 * FP32 – Supported
 * FP16 - Not supported
 
@@ -216,8 +214,8 @@ By contributing to the project, you agree to the license and copyright terms the
 and release your contribution under these terms.
 
 ## How to Contribute
-We welcome community contributions to `openvino_contrib` repository. 
-If you have an idea how to improve the modules, please share it with us. 
+We welcome community contributions to `openvino_contrib` repository.
+If you have an idea how to improve the modules, please share it with us.
 All guidelines for contributing to the repository can be found [here](../../CONTRIBUTING.md).
 
 ---
