@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <functional>
+
 #include "normalizer.h"
 #include "sentence_piece.hpp"
 
@@ -350,6 +352,7 @@ bool StringTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
     auto num_output_elements = 4*(1 + 1 + num_elements) + num_chars;
     outputs[0].set_shape(Shape{num_output_elements});
 
+    // FIXME: Do the repacking, otherwise cannot handle string tensors with gaps between strings
     //auto begins = inputs[0].data<const int32_t>();    // this is not needed as no repacking happens in this version of code
     auto ends   = inputs[1].data<const int32_t>();
     auto chars  = inputs[2].data<const uint8_t>();
@@ -683,27 +686,19 @@ NamedOutputVector translate_sentencepiece_tokenizer(const NodeContext& node) {
     return named_results;
 }
 
-
-void CaseFold::validate_and_infer_types() {
-    check_string_input(this, 0);
-    set_string_output(this, 0, get_input_partial_shape(0));
-}
-
-bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+bool evaluate_normalization_helper (ov::TensorVector& outputs, const ov::TensorVector& inputs, std::function<std::string(const std::string&)> normalizer) {
     auto begins = inputs[0].data<const int32_t>();
     auto ends   = inputs[1].data<const int32_t>();
     auto chars  = inputs[2].data<const uint8_t>();
 
-#if 1
     // Set output shapes
     outputs[0].set_shape(inputs[0].get_shape());
     outputs[1].set_shape(inputs[1].get_shape());
     const size_t num_elements = inputs[0].get_size();
 
-    // TODO: Provide more accurate heuristics to estimate output shape
-    const size_t new_len = 2*inputs[2].get_size();
-
-    outputs[2].set_shape(Shape{new_len});
+    // TODO: How to avoid copying from this temporary buffer?
+    // TODO: It can be possible to collect output symbols directly in the output tensor memory if `normalizer` has reasonable estimation for the final size.
+    std::deque<uint8_t> buffer;
 
     // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
     // and only number of elements in the original tensors matter
@@ -711,27 +706,46 @@ bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& input
     // Get pointers in the output tensors
     auto new_begins = outputs[0].data<int32_t>();
     auto new_ends   = outputs[1].data<int32_t>();
-    auto new_chars  = outputs[2].data<uint8_t>();
-    int32_t char_offset = 0;
 
     for(size_t i = 0; i < num_elements; ++i) {
-        new_begins[i] = char_offset;
-
-        using namespace paddlenlp::fast_tokenizer;
-        normalizers::NormalizedString str(std::string(chars + begins[i], chars + ends[i]));
-
-        // Do the job
-        str.Lowercase();
-
-        const std::string& new_str = str.GetStr();
-        std::copy(new_str.data(), new_str.data() + new_str.length(), new_chars + char_offset);
-        char_offset += new_str.length();
-        new_ends[i] = char_offset;
+        new_begins[i] = buffer.size();
+        std::string new_str = normalizer(std::string(chars + begins[i], chars + ends[i]));
+        buffer.insert(buffer.end(), new_str.begin(), new_str.end());
+        new_ends[i] = buffer.size();
     }
+
+    // Copy collected symbols to the target output tensor
+
+    outputs[2].set_shape(Shape{buffer.size()});
+    auto new_chars  = outputs[2].data<uint8_t>();
+    std::copy(buffer.begin(), buffer.end(), new_chars);
+
     return true;
+}
+
+
+void CaseFold::validate_and_infer_types() {
+    check_string_input(this, 0);
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool CaseFold::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+#if 1
+
+    return evaluate_normalization_helper(
+        outputs, inputs,
+        [](const std::string& str) {
+            using namespace paddlenlp::fast_tokenizer;
+            return normalizers::NormalizedString(str).Lowercase().GetStr();
+        });
+
 #else
     // Stub implementation that transforms each input string "X" to "CaseFold(X)" for debugging purposes
     {
+        auto begins = inputs[0].data<const int32_t>();
+        auto ends   = inputs[1].data<const int32_t>();
+        auto chars  = inputs[2].data<const uint8_t>();
+
         // Set output shapes
         outputs[0].set_shape(inputs[0].get_shape());
         outputs[1].set_shape(inputs[1].get_shape());
@@ -769,21 +783,37 @@ ov::OutputVector translate_case_fold_utf8(const ov::frontend::NodeContext& node)
         pre_translate_string_tensor_input(node.get_input(0)))->outputs()) };
 }
 
+namespace {
+using namespace paddlenlp::fast_tokenizer::normalizers;
+using NormalizersMap = std::map<std::string, std::function<std::string(const std::string&)>>;
+
+const NormalizersMap normalizers = {
+    {"NFD", [](const std::string& str) { return NormalizedString(str).NFD().GetStr(); }},
+    {"NFC", [](const std::string& str) { return NormalizedString(str).NFC().GetStr(); }},
+    {"NFKD", [](const std::string& str) { return NormalizedString(str).NFKD().GetStr(); }},
+    {"NFKC", [](const std::string& str) { return NormalizedString(str).NFKC().GetStr(); }},
+};
+
+}
 
 
 void NormalizeUnicode::validate_and_infer_types() {
     check_string_input(this, 0);
+    OPENVINO_ASSERT(normalizers.find(m_normalization_form) != normalizers.end(), "NormalizeUnicode doesn't know normalization form " + m_normalization_form);
     set_string_output(this, 0, get_input_partial_shape(0));
 }
 
 bool NormalizeUnicode::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+#if 1
+
+    return evaluate_normalization_helper(outputs, inputs, normalizers.at(m_normalization_form));
+
+#else
+
     auto begins = inputs[0].data<const int32_t>();
     auto ends   = inputs[1].data<const int32_t>();
     auto chars  = inputs[2].data<const uint8_t>();
 
-#if 0
-    // TODO: Complete implementation
-#else
     // Stub implementation that transforms each input string "X" to "NormalizeUnicode(X, normalization_form)" for debugging purposes
     {
         // Set output shapes
@@ -833,20 +863,29 @@ void RegexNormalization::validate_and_infer_types() {
 }
 
 bool RegexNormalization::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    auto begins = inputs[0].data<const int32_t>();
-    auto ends   = inputs[1].data<const int32_t>();
-    auto chars  = inputs[2].data<const uint8_t>();
-
     auto search_pattern_buf  = inputs[3].data<const uint8_t>();
     auto replace_pattern_buf  = inputs[4].data<const uint8_t>();
     auto search_pattern = absl::string_view((const char*)search_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
     auto replace_pattern = absl::string_view((const char*)replace_pattern_buf, shape_size(inputs[4].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
-#if 0
-    // TODO: Complete implementation
+#if 1
+
+    using namespace paddlenlp::fast_tokenizer::normalizers;
+    re2::RE2 search_pattern_re(search_pattern);
+
+    return evaluate_normalization_helper(
+        outputs, inputs,
+        [&replace_pattern, &search_pattern_re](const std::string& str) {
+            return NormalizedString(str).Replace(search_pattern_re, std::string(replace_pattern)).GetStr();
+    });
+
 #else
     // Stub implementation that transforms each input string "X" to "RegexNormalization(X, search_pattern, replace_pattern)" for debugging purposes
     {
+        auto begins = inputs[0].data<const int32_t>();
+        auto ends   = inputs[1].data<const int32_t>();
+        auto chars  = inputs[2].data<const uint8_t>();
+
         // Set output shapes
         outputs[0].set_shape(inputs[0].get_shape());
         outputs[1].set_shape(inputs[1].get_shape());
@@ -887,6 +926,8 @@ std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeCont
     // FIXME: using space to pad the value to work-around CPU issue with empty constants
     auto value = node.get_attribute<std::string>(name) + " ";
 
+    // TODO: How to translate attribute `replace_global`?
+
     #if USE_STRING_TENSORS
     return std::make_shared<Constant>(element::string, {}, value);
     #else
@@ -904,10 +945,23 @@ ov::OutputVector translate_static_regex_replace(const ov::frontend::NodeContext&
 }
 
 
+namespace {
+
+using paddlenlp::fast_tokenizer::core::SplitMode;
+const std::map<std::string, SplitMode> split_modes = {
+    {"removed", SplitMode::REMOVED},
+    {"isolated", SplitMode::ISOLATED},
+    {"merged_with_previous", SplitMode::MERGED_WITH_PREVIOUS},
+    {"merged_with_next", SplitMode::MERGED_WITH_NEXT},
+};
+
+}
+
 
 void RegexSplit::validate_and_infer_types() {
     check_string_input(this, 0);
     check_string_scalar_input(this, 3);
+    OPENVINO_ASSERT(split_modes.find(m_behaviour) != split_modes.end(), "RegexSplit doesn't support unknown split mode: " + m_behaviour);
     set_ragged_string_output(this, 0, get_input_partial_shape(0));
 }
 
@@ -919,7 +973,74 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     auto split_pattern_buf  = inputs[3].data<const uint8_t>();
     auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
-#if 0
+#if 1
+
+    // Set output shapes
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+
+    const size_t num_elements = inputs[0].get_size();
+    const size_t num_chars = inputs[2].get_size();
+
+    // TODO: Better estimations for max size?
+    // Assume we cannot have empty parts, so the number of parts cannot be bigger than the number of symbols
+    outputs[2].set_shape(Shape{num_chars});
+    outputs[3].set_shape(Shape{num_chars});
+
+    // Assume we cannot introduce new symbols to output, only existing can be distributed (with gaps)
+
+    // TODO: Can we just route input tensor directly to the output outside evaluate when graph is being constructed?
+    outputs[4] = inputs[2];  // TODO: Does it really work?
+
+    // If line above doesn't work, do this instead:
+    //outputs[4].set_shape(Shape{num_chars});
+    //inputs[2].copy_to(outputs[4]);
+
+    // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+    // and only number of elements in the original tensors matter
+
+    // Get pointers in the output tensors
+    auto new_ragged_begins = outputs[0].data<int32_t>();
+    auto new_ragged_ends   = outputs[1].data<int32_t>();
+    auto new_begins = outputs[2].data<int32_t>();
+    auto new_ends   = outputs[3].data<int32_t>();
+    int32_t ragged_offset = 0;
+
+    using namespace paddlenlp::fast_tokenizer;
+
+    auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
+
+    for(size_t i = 0; i < num_elements; ++i) {
+        auto old_str = std::string(chars + begins[i], chars + ends[i]);
+        //std::cerr << "[ RegexSplit ] old_str: " << old_str << "\n";
+        paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(old_str);
+        pretokenizer(&pretokenized);
+        size_t num_splits = pretokenized.GetSplitsSize();
+
+        new_ragged_begins[i] = ragged_offset;
+
+        for (size_t j = 0; j < num_splits; ++j) {
+            auto split = pretokenized.GetSplit(j);
+            //const auto& value = split.normalized_.GetStr();
+            auto offset = split.normalized_.GetOrginalOffset();
+            //std::cerr << "[ RegexSplit ]     split part: " << value << "\n";
+            //std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+            new_begins[ragged_offset] = begins[i] + offset.first;
+            new_ends[ragged_offset] = begins[i] + offset.second;
+
+            ++ragged_offset;
+        };
+
+        new_ragged_ends[i] = ragged_offset;
+    }
+
+    // Fix real shape based on collected results
+    outputs[2].set_shape({ragged_offset});
+    outputs[3].set_shape({ragged_offset});
+    //outputs[4].set_shape({char_offset});
+
+    return true;
+
     // TODO: Complete implementation
 #else
     // Stub implementation that transforms each input string "X" to multiple "RegexSplit(X, split_pattern) = part(X)" for debugging purposes
@@ -1009,6 +1130,7 @@ ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeCont
     ov::OutputVector inputs = pre_translate_string_tensor_input(node.get_input(0));
     auto delim_regex_pattern = node.get_input(1).get_node()->input_value(2);    // use u8 part of packed string tensor as we are expecting a scalar string: TODO: verify it is really there
     inputs.push_back(delim_regex_pattern);
+    // TODO: Use node.get_input(2) with keep_delim_regex_pattern, most likely it should be handled in another RegexSplit with `isolated` behaviour
     auto outputs = std::make_shared<RegexSplit>(inputs)->outputs();
     auto flatten_string_tensor = post_translate_string_tensor_output({outputs[2], outputs[3], outputs[4]});
     return { post_translate_ragged_tensor_output({outputs[0], outputs[1], flatten_string_tensor}) };
