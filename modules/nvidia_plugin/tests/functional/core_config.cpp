@@ -3,5 +3,14 @@
 //
 
 #include "functional_test_utils/core_config.hpp"
+#include "shared_test_classes/base/ov_subgraph.hpp"
 
 void CoreConfiguration(LayerTestsUtils::LayerTestsCommon* test) {}
+
+namespace ov {
+namespace test {
+
+void core_configuration(ov::test::SubgraphBaseTest* test) {}
+
+}  // namespace test
+}  // namespace ov
