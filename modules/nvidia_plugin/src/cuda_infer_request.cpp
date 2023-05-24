@@ -43,7 +43,7 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(), *compiled_model->graph_},
+      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(), compiled_model->get_execution_graph()},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
       use_cuda_graph_{compiled_model->get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
     create_infer_request();
@@ -118,6 +118,7 @@ void CudaInferRequest::infer_preprocess() {
     }
     // Allocate host output tensors
     OPENVINO_ASSERT(get_outputs().size() == output_tensors_.size());
+    OPENVINO_ASSERT(get_outputs().size() == get_nvidia_model()->model_->get_results().size());
     for (size_t i = 0; i < get_outputs().size(); i++) {
         const auto& result = get_nvidia_model()->model_->get_results()[i];
         if (result->get_output_partial_shape(0).is_dynamic()) {
@@ -142,7 +143,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         auto compiled_model = get_nvidia_model();
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
-        auto& graph = *compiled_model->graph_;
+        auto& graph = compiled_model->get_execution_graph();
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
                                                     output_tensors_,
@@ -176,6 +177,7 @@ void CudaInferRequest::infer_postprocess() {
     profiler_.start_stage();
 
     OPENVINO_ASSERT(get_outputs().size() == output_tensors_.size());
+    OPENVINO_ASSERT(get_outputs().size() == get_nvidia_model()->model_->get_results().size());
     for (size_t i = 0; i < get_outputs().size(); i++) {
         const auto& result = get_nvidia_model()->model_->get_results()[i];
         auto host_tensor = *output_tensors_[i].get();
@@ -198,7 +200,7 @@ void CudaInferRequest::infer_postprocess() {
 
 void CudaInferRequest::cancel() {
     cancellation_token_.Cancel();
-    get_nvidia_model()->memory_pool_->Interrupt();
+    get_nvidia_model()->get_memory_pool()->Interrupt();
 }
 
 void CudaInferRequest::infer() {

@@ -26,8 +26,8 @@ namespace nvidia_gpu {
 class Plugin;
 
 /**
- * @class ExecutableNetwork
- * @brief Interface of executable network
+ * @class CompiledModel
+ * @brief Implementation of compiled model
  */
 class CompiledModel : public ov::ICompiledModel {
 public:
@@ -53,11 +53,14 @@ public:
 
     ov::Any get_property(const std::string& name) const override;
 
+    const ExecGraph& get_execution_graph() const;
+
+    const std::shared_ptr<MemoryPool>& get_memory_pool() const;
+
 protected:
     std::shared_ptr<ov::ISyncInferRequest> create_sync_infer_request() const override;
 
 private:
-    friend class ::ExecNetworkTest;
     friend class CudaInferRequest;
     void compile_model(const std::shared_ptr<const ov::Model>& model);
     void init_executor();

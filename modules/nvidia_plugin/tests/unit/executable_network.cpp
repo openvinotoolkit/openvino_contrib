@@ -44,13 +44,13 @@ public:
         return result.str();
     }
     auto GetExecSequence(const std::shared_ptr<CompiledModel>& compiled_model) {
-        const auto& graph = *compiled_model->graph_;
+        const auto& graph = compiled_model->get_execution_graph();
         std::vector<OperationBase::Ptr> execSequence{};
         execSequence.insert(execSequence.end(), graph.exec_sequence_.begin(), graph.exec_sequence_.end());
         return execSequence;
     }
     const auto& GetMemoryManagerPool(const std::shared_ptr<CompiledModel>& compiled_model) {
-        return compiled_model->memory_pool_;
+        return compiled_model->get_memory_pool();
     }
 
     std::shared_ptr<ov::Model> function_;

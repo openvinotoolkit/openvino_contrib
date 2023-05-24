@@ -53,8 +53,6 @@ void GraphTransformer::transform(const CUDA::Device& device,
         return isHalfSupported(device) && inference_precision == ov::element::f16;
     };
 
-    bool convert_called = false;
-
     auto passConfig = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager manager{passConfig};
 
@@ -82,15 +80,19 @@ void GraphTransformer::transform(const CUDA::Device& device,
     manager.register_pass<ov::pass::InitNodeInfo>();
     manager.register_pass<ov::pass::CommonOptimizations>();
     manager.register_pass<ov::pass::ReshapePRelu>();
-    manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
+    // Do we actually need this transformations in plugin?
+    // Having duplicated results seems to be rare case in real world.
+    // But currently it affects the following places:
+    // 1. HETERO plugin creates separate Result operation for each subset of inputs
+    //    if subset belongs to other subgraph - it should be fixed, if we
+    //    want to avoid extra output processing (CVS-111877)
+    // 2. CudaInferRequest implementation relies on number of outputs of original model
+    // 3. WA for ConvertPrecision - will removed after fixing CVS-111453
+    // manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
     if (upscale_precision()) {
-        convert_called = true;
         manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f16, ov::element::f32);
-    } else {
-        if (downscale_precision()) {
-            convert_called = true;
-            manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f32, ov::element::f16, type_to_fuse_map{}, true);
-        }
+    } else if (downscale_precision()) {
+        manager.register_pass<ov::pass::ConvertPrecision>(ov::element::f32, ov::element::f16, type_to_fuse_map{}, true);
     }
     manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
     manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(passConfig);
@@ -141,46 +143,42 @@ void GraphTransformer::transform(const CUDA::Device& device,
     std::map<size_t, ov::element::Type> input_direct;
     std::map<size_t, ov::element::Type> input_preprocess;
     std::map<size_t, ov::element::Type> output_postprocess;
-    if (convert_called) {
-        for (size_t i = 0; i < model->inputs().size(); i++) {
-            auto input = model->input(i);
-            auto target_inputs = input.get_target_inputs();
-            if (all_of(target_inputs.begin(), target_inputs.end(),
-                [&] (const Input<Node>& i) {return ov::op::util::is_output(i.get_node());})) {
-                input_direct[i] = input.get_element_type();
-            } else {
-                input_preprocess[i] = input.get_element_type();
-            }
+    for (size_t i = 0; i < model->inputs().size(); i++) {
+        auto input = model->input(i);
+        auto target_inputs = input.get_target_inputs();
+        if (all_of(target_inputs.begin(), target_inputs.end(),
+            [&] (const Input<Node>& i) {return ov::op::util::is_output(i.get_node());})) {
+            input_direct[i] = input.get_element_type();
+        } else {
+            input_preprocess[i] = input.get_element_type();
         }
-        for (size_t i = 0; i < model->get_output_size(); i++) {
-            auto output = model->output(i);
-            if (!ov::op::util::is_parameter(output.get_node())) {
-                output_postprocess[i] = output.get_element_type();
-            }
+    }
+    for (size_t i = 0; i < model->get_output_size(); i++) {
+        auto output = model->output(i);
+        if (!ov::op::util::is_parameter(output.get_node())) {
+            output_postprocess[i] = output.get_element_type();
         }
     }
 
     manager.run_passes(model);
 
-    if (convert_called) {
-        for (auto& item : input_direct) {
-            auto node = model->input(item.first).get_node_shared_ptr();
-            if (auto param = ov::as_type_ptr<ov::op::v0::Parameter>(node)) {
-                param->set_element_type(item.second);
-                param->validate_and_infer_types();
-            }
+    for (auto& item : input_direct) {
+        auto node = model->input(item.first).get_node_shared_ptr();
+        if (auto param = ov::as_type_ptr<ov::op::v0::Parameter>(node)) {
+            param->set_element_type(item.second);
+            param->validate_and_infer_types();
         }
-        auto preprocessor = ov::preprocess::PrePostProcessor(model);
-        for (auto& item : input_preprocess) {
-            auto& in = preprocessor.input(item.first);
-            in.tensor().set_element_type(item.second);
-        }
-        for (auto& item : output_postprocess) {
-            auto& out = preprocessor.output(item.first);
-            out.tensor().set_element_type(item.second);
-        }
-        model = preprocessor.build();
     }
+    auto preprocessor = ov::preprocess::PrePostProcessor(model);
+    for (auto& item : input_preprocess) {
+        auto& in = preprocessor.input(item.first);
+        in.tensor().set_element_type(item.second);
+    }
+    for (auto& item : output_postprocess) {
+        auto& out = preprocessor.output(item.first);
+        out.tensor().set_element_type(item.second);
+    }
+    model = preprocessor.build();
 
     [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();

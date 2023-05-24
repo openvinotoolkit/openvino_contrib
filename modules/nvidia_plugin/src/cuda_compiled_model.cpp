@@ -375,5 +375,12 @@ void CompiledModel::export_model(std::ostream& model_stream) const {
     model_stream.write(reinterpret_cast<char*>(&weights[0]), data_size);
 }
 
+const ExecGraph& CompiledModel::get_execution_graph() const {
+    return *graph_;
+}
+
+const std::shared_ptr<MemoryPool>& CompiledModel::get_memory_pool() const {
+    return memory_pool_;
+}
 }  // namespace nvidia_gpu
 }  // namespace ov

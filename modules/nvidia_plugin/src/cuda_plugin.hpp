@@ -49,7 +49,7 @@ public:
     std::shared_ptr<ov::IRemoteContext> get_default_context(const ov::AnyMap& remote_properties) const override;
 
 private:
-    friend class ExecutableNetwork;
+    friend class CompiledModel;
     friend class CudaInferRequest;
 
     enum class cuda_attribute { name };
