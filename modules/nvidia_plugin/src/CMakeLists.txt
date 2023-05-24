@@ -32,6 +32,10 @@ ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp
               SKIP_INSTALL # ATTENTION: uncomment to install component
+              DEFAULT_CONFIG
+                DEVICE_ALIAS:GPU
+                DEVICE_PRIORITY:1
+                DEVICE_FALLBACK:Intel_GPU
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 
 # Enable support of CC for the plugin
