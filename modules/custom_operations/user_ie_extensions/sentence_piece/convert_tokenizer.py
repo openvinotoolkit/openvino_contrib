@@ -22,7 +22,7 @@ def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> Token
     raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")
 
 
-def apply_tokenizer(model: Model, tokenizer: Model) -> Model:
+def connect_tokenizer(model: Model, tokenizer: Model) -> Model:
     assert len(model.inputs) == len(tokenizer.outputs)
 
     # need to check if the inputs are aligned:
@@ -36,4 +36,4 @@ def apply_tokenizer(model: Model, tokenizer: Model) -> Model:
         for target in model_input.get_target_inputs():
             target.replace_source_output(tokenizer_output)
 
-    return Model(model.outputs, tokenizer.inputs, name=model.name)
+    return Model(model.outputs, tokenizer.inputs)
