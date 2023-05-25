@@ -39,7 +39,7 @@ jobs:
       fail-fast: false
     runs-on: ['self-hosted', 'linux', 'coverage']
     container:
-      image: akashchi/ubuntu:latest
+      image: akashchi/ubuntu:python_311
       volumes:
         - /home/devuser/actions-runner/_work:/sources_cache
       options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
@@ -245,7 +245,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     container:
-      image: akashchi/ubuntu:latest
+      image: akashchi/ubuntu:python_311
     env:
       OPENVINO_REPO: /github/openvino
       OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
@@ -432,7 +432,7 @@ jobs:
       fail-fast: false
     runs-on: ['self-hosted', 'linux', 'coverage']
     container:
-      image: akashchi/ubuntu:latest
+      image: akashchi/ubuntu:python_311
       volumes:
         - /home/devuser/actions-runner/_work:/sources_cache
       options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
@@ -649,7 +649,7 @@ jobs:
       fail-fast: false
     runs-on: ubuntu-latest
     container:
-      image: akashchi/ubuntu:latest
+      image: akashchi/ubuntu:python_311
     env:
       INSTALL_DIR: /openvino/install
       INSTALL_TEST_DIR: /openvino/install/tests
@@ -695,7 +695,7 @@ jobs:
         shell: bash
     runs-on: ['self-hosted', 'linux', 'coverage']
     container:
-      image: akashchi/ubuntu:latest
+      image: akashchi/ubuntu:python_311
       options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
     env:
       INSTALL_DIR: /github/install
