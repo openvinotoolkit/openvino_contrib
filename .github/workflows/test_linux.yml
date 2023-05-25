@@ -338,7 +338,7 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      - name: ONNX frontend tests # fails with "(core dumped)" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932182. Not enough memory?
+      - name: ONNX frontend tests  # fails with "(core dumped)" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932182. Not enough memory?
         if: ${{ always() }}
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
