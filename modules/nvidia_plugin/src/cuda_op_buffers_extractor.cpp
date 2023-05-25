@@ -168,7 +168,7 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         mutable_buffers_.erase(bufferId);
     }
 
-    unsigned totalSize = 0;
+    size_t totalSize = 0;
     for (const auto& t : mergedTensors) {
         auto& tensor = tensor_names_.at(t.first);
         tensor->SetParent(parentTensor, totalSize);
