@@ -142,7 +142,7 @@ jobs:
             -DENABLE_TESTS=ON `
             -DENABLE_PYTHON=ON `
             -DENABLE_WHEEL=ON `
-            -DENABLE_INTEL_GNA=ON `
+            -DENABLE_INTEL_GNA=OFF `
             -DENABLE_HETERO=ON `
             -DENABLE_OV_PADDLE_FRONTEND=ON `
             -DENABLE_OV_PYTORCH_FRONTEND=ON `
