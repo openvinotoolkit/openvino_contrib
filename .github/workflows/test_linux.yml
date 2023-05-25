@@ -430,12 +430,13 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-    runs-on: ['self-hosted', 'linux', 'coverage']
+    # runs-on: ['self-hosted', 'linux', 'coverage']
+    runs-on: ubuntu-latest
     container:
       image: akashchi/ubuntu:python_311
-      volumes:
-        - /home/devuser/actions-runner/_work:/sources_cache
-      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
+      # volumes:
+      #   - /home/devuser/actions-runner/_work:/sources_cache
+      # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
     env:
       OPENVINO_REPO: /github/openvino
       OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
@@ -459,28 +460,23 @@ jobs:
           mkdir -p /github
           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
       
-      - name: Check Volumes
-        run: |
-          ls -la /sources_cache
+      # - name: Check Volumes
+      #   run: |
+      #     ls -la /sources_cache
       
-      - name: Add Reference Repository Folders as Safe
-        run: |
-          git config --global --add safe.directory '*'
+      # - name: Add Reference Repository Folders as Safe
+      #   run: |
+      #     git config --global --add safe.directory '*'
       
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
+          cd /github && git clone --recurse-submodules https://github.com/akashchi/openvino.git
 
           # TODO: rm when scheduled on actual branches
           cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule update
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-
-      - name: Clone testdata for C API tests
-        run: |
-          cd /github && git clone https://github.com/openvinotoolkit/testdata.git
-          cd ${{ env.DATA_PATH }} && git lfs pull
+          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
 
       #
       # Dependencies
