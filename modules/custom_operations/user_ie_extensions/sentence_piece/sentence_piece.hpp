@@ -290,7 +290,7 @@ public:
 
 private:
 
-    std::string m_behaviour = "removed";
+    std::string m_behaviour = "remove";
     bool m_invert = false;
 };
 

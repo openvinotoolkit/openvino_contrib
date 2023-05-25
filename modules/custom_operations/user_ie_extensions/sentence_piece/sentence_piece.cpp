@@ -949,10 +949,10 @@ namespace {
 
 using paddlenlp::fast_tokenizer::core::SplitMode;
 const std::map<std::string, SplitMode> split_modes = {
-    {"removed", SplitMode::REMOVED},
-    {"isolated", SplitMode::ISOLATED},
-    {"merged_with_previous", SplitMode::MERGED_WITH_PREVIOUS},
-    {"merged_with_next", SplitMode::MERGED_WITH_NEXT},
+    {"remove", SplitMode::REMOVED},
+    {"isolate", SplitMode::ISOLATED},
+    {"merge_with_previous", SplitMode::MERGED_WITH_PREVIOUS},
+    {"merge_with_next", SplitMode::MERGED_WITH_NEXT},
 };
 
 }
