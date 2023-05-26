@@ -139,20 +139,12 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
+            -DENABLE_ONEDNN_FOR_GPU=OFF `
+            -DBUILD_SHARED_LIBS=OFF `
             -DENABLE_DATA=ON `
             -DENABLE_TESTS=ON `
             -DENABLE_PYTHON=ON `
-            -DENABLE_WHEEL=ON `
-            -DENABLE_INTEL_GNA=OFF `
-            -DENABLE_HETERO=ON `
-            -DENABLE_OV_PADDLE_FRONTEND=ON `
-            -DENABLE_OV_PYTORCH_FRONTEND=ON `
-            -DENABLE_OV_TF_FRONTEND=ON `
-            -DENABLE_OV_TF_LITE_FRONTEND=ON `
-            -DENABLE_OV_ONNX_FRONTEND=ON `
             -DBUILD_nvidia_plugin=OFF `
-            -DENABLE_ONEDNN_FOR_GPU=OFF `
-            -DENABLE_INTEL_GPU_DEFAULT=OFF `
             -DCMAKE_BUILD_TYPE=Release `
             -DENABLE_FASTER_BUILD=ON `
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
