@@ -62,6 +62,7 @@ jobs:
 
           # TODO: rm when scheduled on actual branches
           cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule update
+          cd ${{ env.OPENVINO_REPO }} && git rev-parse HEAD
           
           # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
           git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
