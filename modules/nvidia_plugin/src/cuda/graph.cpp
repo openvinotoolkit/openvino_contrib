@@ -3,7 +3,7 @@
 //
 
 #include "graph.hpp"
-#include <ie_common.h>
+#include "openvino/core/except.hpp"
 #include <fmt/format.h>
 
 namespace CUDA {
@@ -43,7 +43,7 @@ Handle(cudaGraphInstantiate, cudaGraphExecDestroy, g.get(), static_cast<cudaGrap
 }
 #if !defined(NDEBUG) || defined(_DEBUG)
 catch (std::exception &e) {
-    throw InferenceEngine::GeneralError { fmt::format("{}: {}", e.what(), errorMsg_) };
+    OPENVINO_THROW(fmt::format("{}: {}", e.what(), errorMsg_));
 }
 #endif
 // clang-format on
