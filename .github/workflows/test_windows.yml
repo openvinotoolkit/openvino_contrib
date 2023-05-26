@@ -140,7 +140,7 @@ jobs:
             -DENABLE_CPPLINT=OFF `
             -DENABLE_NCC_STYLE=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
-            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_SHARED_LIBS=ON `
             -DENABLE_DATA=ON `
             -DENABLE_TESTS=ON `
             -DENABLE_PYTHON=ON `
