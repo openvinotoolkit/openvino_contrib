@@ -196,6 +196,13 @@ jobs:
           popd
           
           echo "::endgroup::"
+        
+      - name: Check Log Files
+        if: ${{ always() }}
+        run: |
+          ls -la ${{ env.BUILD_DIR }}
+          cat ${{ env.BUILD_DIR }}/CMakeFiles/CMakeOutput.log
+          cat ${{ env.BUILD_DIR }}/CMakeFiles/CMakeError.log
 
       - name: Build cpp samples
         run: ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples.sh -i ${{ env.INSTALL_DIR }} -b ${{ env.BUILD_DIR }}/cpp_samples
