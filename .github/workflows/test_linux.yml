@@ -66,7 +66,7 @@ jobs:
           cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
 
           # TODO: rm when scheduled on actual branches
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule update
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
           cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
@@ -473,7 +473,7 @@ jobs:
           cd /github && git clone --recurse-submodules https://github.com/akashchi/openvino.git
 
           # TODO: rm when scheduled on actual branches
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/off-api-validation && git submodule update
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
           cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
