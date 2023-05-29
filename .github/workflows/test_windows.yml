@@ -252,7 +252,7 @@ jobs:
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
-      - name: nGraph and IE Python Bindings Tests # 6 fails with "AssertionError: assert <Type: 'int32_t32'> == <Type: 'int64_t64'>" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: nGraph and IE Python Bindings Tests
         if: ${{ always() }}
         run: |
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
@@ -271,14 +271,14 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
       
-      - name: Model Optimizer UT # fails with "SyntaxError: 'yield' inside list comprehension" in MxNet, and "AttributeError: module 'numpy' has no attribute 'float'." in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
       
-      - name: PyTorch Layer Tests  # fails with "Windows fatal exception: access violation" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: PyTorch Layer Tests
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -287,7 +287,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow 1 Layer Tests - TF FE  # 1 fails with "test_tf_UnaryOps.py::TestUnaryOps::test_unary_op_mish[ ie_device:CPU - precision:FP32 - params:{'shape': [10, 12]} ]" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: TensorFlow 1 Layer Tests - TF FE
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -324,7 +324,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: TensorFlow Lite Layer Tests - TFL FE # 2 fail with "RuntimeError: Check 'number_axes == end_number_axes' failed at C:\a\openvino_contrib\openvino_contrib\openvino\src\core\shape_inference\include\strided_slice_shape_inference.hpp:77:" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753 
+      - name: TensorFlow Lite Layer Tests - TFL FE
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -333,7 +333,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: MO Python API Tests # fails with "ModuleNotFoundError: No module named 'openvino.test_utils'" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: MO Python API Tests
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
@@ -342,7 +342,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: Python Frontend tests  # 1 fails with "RuntimeError: Unable to find test_builtin_extensions" in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: Python Frontend tests
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
