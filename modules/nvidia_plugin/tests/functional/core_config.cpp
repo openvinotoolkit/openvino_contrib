@@ -5,6 +5,8 @@
 #include "functional_test_utils/core_config.hpp"
 #include "shared_test_classes/base/ov_subgraph.hpp"
 
+#include "cuda_test_constants.hpp"
+
 void CoreConfiguration(LayerTestsUtils::LayerTestsCommon* test) {}
 
 namespace ov {
