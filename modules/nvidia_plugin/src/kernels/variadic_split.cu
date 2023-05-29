@@ -91,7 +91,7 @@ void VariadicSplit::operator()(cudaStream_t stream,
         case Type_t::u64:
             return call<uint64_t>(stream, src, dst, splitIdxs, axisSizes, axisOffsetSizes);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
                             static_cast<Type_t>(element_type_)));

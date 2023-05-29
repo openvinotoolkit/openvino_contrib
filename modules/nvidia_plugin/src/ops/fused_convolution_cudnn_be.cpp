@@ -226,7 +226,7 @@ FusedConvolutionCuDnnBE::FusedConvolutionCuDnnBE(const CreationContext& context,
     // addPlans(cudnnTensorFormat_t::CUDNN_TENSOR_NHWC, tensor_element_type);
 
     if (plans.empty()) {
-        throwIEException("No available plans for backend version of fused convolution !!");
+        throw_ov_exception("No available plans for backend version of fused convolution !!");
     }
 
     std::shared_ptr<CUDA::DnnBEExecutionPlan> plan;
@@ -242,18 +242,18 @@ FusedConvolutionCuDnnBE::FusedConvolutionCuDnnBE(const CreationContext& context,
 
 std::shared_ptr<CUDA::DnnBEExecutionPlan> FusedConvolutionCuDnnBE::performBenchmarks(
     const CUDA::DnnHandle& dnnHandle, std::vector<std::shared_ptr<CUDA::DnnBEExecutionPlan>>& plans) {
-    auto input = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.conv_.element_type_}.size() *
-                                                      ngraph::shape_size(params_.conv_.input_shape_));
-    auto filter = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.conv_.element_type_}.size() *
-                                                       ngraph::shape_size(params_.conv_.filter_shape_));
-    auto output = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.conv_.element_type_}.size() *
-                                                       ngraph::shape_size(params_.conv_.output_shape_));
-    auto bias = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.conv_.element_type_}.size() *
-                                                     ngraph::shape_size(params_.bias_shape_));
+    auto input = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.conv_.element_type_}.size() *
+                                                      ov::shape_size(params_.conv_.input_shape_));
+    auto filter = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.conv_.element_type_}.size() *
+                                                       ov::shape_size(params_.conv_.filter_shape_));
+    auto output = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.conv_.element_type_}.size() *
+                                                       ov::shape_size(params_.conv_.output_shape_));
+    auto bias = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.conv_.element_type_}.size() *
+                                                     ov::shape_size(params_.bias_shape_));
     std::optional<CUDA::DefaultAllocation> add;
     if (params_.add_shape_) {
-        add = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.conv_.element_type_}.size() *
-                                                   ngraph::shape_size(params_.add_shape_.value()));
+        add = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.conv_.element_type_}.size() *
+                                                   ov::shape_size(params_.add_shape_.value()));
     }
     auto variantPackBuilder = CUDA::DnnBEVariantPackBuilder();
     if (params_.add_shape_) {
@@ -274,7 +274,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> FusedConvolutionCuDnnBE::performBenchm
 WorkbufferRequest FusedConvolutionCuDnnBE::GetWorkBufferRequest() const {
     OPENVINO_ASSERT(engine_config_, "Node name: ", GetName());
     if (workspace_size_ < 0) {
-        ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
+        ov::nvidia_gpu::throw_ov_exception(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
     const size_t size = std::max(static_cast<int64_t>(0), workspace_size_);
     if (size > 0) {
@@ -330,12 +330,12 @@ void FusedConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
 std::shared_ptr<CUDA::DnnBETensorDescriptor> FusedConvolutionCuDnnBE::MakeTensorDescriptor(
     int64_t id,
     cudnnDataType_t element_type,
-    const ngraph::Shape& shape,
+    const ov::Shape& shape,
     const cudnnTensorFormat_t format,
     bool isVirtual) {
     const int nbDims = shape.size();
     if (nbDims < 4 || nbDims > 5) {
-        ov::nvidia_gpu::throwIEException(
+        ov::nvidia_gpu::throw_ov_exception(
             fmt::format("Unexpected number of dimensions for Convolution input/output: {}", nbDims));
     }
 

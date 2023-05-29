@@ -160,7 +160,7 @@ void ConstModePad::operator()(cudaStream_t stream,
             callKernel<std::uint8_t>(stream, src, dst, begin, srcShape, dstShape, padValue);
             break;
         default:
-            throwIEException(fmt::format("Index element type = {} is not supported by Pad operation !", dtype_));
+            throw_ov_exception(fmt::format("Index element type = {} is not supported by Pad operation !", dtype_));
     }
 }
 

@@ -5,8 +5,8 @@
 #pragma once
 
 #include <array>
-#include <ngraph/ops.hpp>
-#include <ngraph/type/element_type.hpp>
+
+#include "openvino/op/op.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 

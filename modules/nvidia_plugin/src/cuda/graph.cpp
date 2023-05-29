@@ -43,7 +43,7 @@ Handle(cudaGraphInstantiate, cudaGraphExecDestroy, g.get(), static_cast<cudaGrap
 }
 #if !defined(NDEBUG) || defined(_DEBUG)
 catch (std::exception &e) {
-    OPENVINO_THROW(fmt::format("{}: {}", e.what(), errorMsg_));
+    OPENVINO_THROW(e.what(), ": ", errorMsg_);
 }
 #endif
 // clang-format on

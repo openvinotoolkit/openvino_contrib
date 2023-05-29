@@ -80,14 +80,14 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     if (!argTypesSupported(in0.type_, in1.type_, out.type_)) {
         // See https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor for
         // supported argument types.
-        throwIEException(fmt::format(
+        throw_ov_exception(fmt::format(
             "CuDnnTensorOpBase: unsupported argument types: ({},{}) -> {}", in0.type_, in1.type_, out.type_));
     }
     const auto& in_partial_shape0 = node->get_input_partial_shape(0);
     const auto& in_partial_shape1 = node->get_input_partial_shape(1);
     const auto& out_partial_shape = node->get_output_partial_shape(0);
     if (in0.shape_.size() > max_supported_shape_size || in1.shape_.size() > max_supported_shape_size) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Currently max supported shape size for CuDnnTensorOpBase operation "
                         "is: {} {} {}",
                         max_supported_shape_size,
@@ -95,7 +95,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
                         in_partial_shape1));
     }
     if (out.shape_ != in0.shape_ && out.shape_ != in1.shape_) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Currently at least one of the input shapes: {}, {} of "
                         "CuDnnTensorOpBase operation should be"
                         "equal to the output shape: {}",
@@ -115,7 +115,7 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
             } else if (in1.array_[i] == 1) {
                 has_1_broadcasts = true;
             } else {
-                throwIEException(fmt::format(
+                throw_ov_exception(fmt::format(
                     "Unsupported shapes for CuDnnTensorOpBase operation: {} {}", in_partial_shape0, in_partial_shape1));
             }
         }
@@ -125,11 +125,11 @@ CuDnnTensorOpBase::CuDnnTensorOpBase(const CreationContext& context,
     if (has_0_broadcasts || has_1_broadcasts) {
         auto broadcast_spec = node->get_autob();
         if (!(broadcast_spec == ov::op::AutoBroadcastType::NUMPY)) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Unsupported broadcast type for CuDnnTensorOpBase operation: {}", broadcast_spec.m_type));
         }
         if (has_0_broadcasts && has_1_broadcasts) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Currently CuDnnTensorOpBase operation supports "
                             "broadcasting only in one "
                             "of two input shapes: {} {}",

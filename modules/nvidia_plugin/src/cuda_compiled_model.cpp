@@ -56,14 +56,12 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
         compile_model(model);
         init_executor();  // creates thread-based executor using for async requests
         benchmark_optimal_number_of_requests();
-    } catch (const ov::Exception&) {
-        throw;
-    } catch (const InferenceEngine::Exception&) {
-        throw;
+    } catch (const ov::Exception& e) {
+        OPENVINO_THROW(e.what());
     } catch (const std::exception& e) {
-        throwIEException(fmt::format("Standard exception from compilation library: {}", e.what()));
+        OPENVINO_THROW("Standard exception from compilation library: ", e.what());
     } catch (...) {
-        throwIEException("Generic exception is thrown");
+        OPENVINO_THROW("Generic exception is thrown");
     }
 }
 
@@ -73,10 +71,10 @@ void CompiledModel::init_executor() {
     config_.streams_executor_config_.set_property({ ov::num_streams(ov::streams::Num(memory_pool_->Size())) });
     auto streams_executor_config = ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
     streams_executor_config._name = nv_task_executor_name;
-    // As Inference Engine CPU Streams Executor creates some additional therads
+    // As OpenVINO CPU Streams Executor creates some additional threads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
-    // So Inference Engone provides exec    utors cache.
+    // So OpenVINO provides executors cache.
     set_task_executor(get_plugin()->get_executor_manager()->get_idle_cpu_streams_executor(streams_executor_config));
     set_callback_executor(get_plugin()->get_executor_manager()->get_idle_cpu_streams_executor({nv_callback_executor_name}));
 }
@@ -91,18 +89,20 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     GraphTransformer transformer;
     // Clone model
     model_ = ov::clone_model(*model);
-    // Apply transformations pipeline
-    transformer.transform(device, model_, config_);
+    if (!loaded_from_cache_) {
+        // Apply transformations pipeline
+        transformer.transform(device, model_, config_);
+    }
     // Generate backend specific blob mappings. For example Inference Engine uses not ov::Result nodes friendly name
     // as inference request output names but the name of the layer before.
-    for (auto&& result : model_->get_results()) {
+    for (auto& result : model_->get_results()) {
         // TODO: Try to figure out why sometimes result_index >= device_function->get_results().size()
         const auto& result_index = model_->get_result_index(result->input_value(0));
         for (const auto& outputName : ResultOp::GetOutputTensorName(*result)) {
             output_index_.emplace(outputName, result_index);
         }
     }
-    for (auto&& parameter : model_->get_parameters()) {
+    for (const auto& parameter : model_->get_parameters()) {
         const auto& parameter_index = model_->get_parameter_index(parameter);
         input_index_.emplace(ParameterOp::GetInputTensorName(*parameter), parameter_index);
     }
@@ -123,8 +123,7 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
 }
 
 void CompiledModel::benchmark_optimal_number_of_requests() {
-    const auto throughputStreams = config_.get(ov::num_streams.name()).as<std::string>();
-    if (throughputStreams != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
+    if (!config_.auto_streams_detection_required()) {
         return;
     }
 
@@ -178,15 +177,15 @@ void CompiledModel::benchmark_optimal_number_of_requests() {
             optimalBenchmarkResult = benchmark;
         }
     }
-    fmt::print("Optimal number infer-requests = {}\n", optimalBenchmarkResult.numberOfInferRequests);
+    //fmt::print("Optimal number infer-requests = {}\n", optimalBenchmarkResult.numberOfInferRequests);
     if (optimalBenchmarkResult.numberOfInferRequests < numMemManagers) {
         memory_pool_->Resize(optimalBenchmarkResult.numberOfInferRequests);
-        fmt::print(
-            "Resize MemoryManagerPool from {} to {}\n", numMemManagers, optimalBenchmarkResult.numberOfInferRequests);
+        //fmt::print(
+        //    "Resize MemoryManagerPool from {} to {}\n", numMemManagers, optimalBenchmarkResult.numberOfInferRequests);
     }
-    auto duration = Time::now() - start;
-    auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-    fmt::print("Time of benchmark for optimal number infer-requests = {} ms\n", durationMs.count());
+    [[maybe_unused]] auto duration = Time::now() - start;
+    [[maybe_unused]] auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    //fmt::print("Time of benchmark for optimal number infer-requests = {} ms\n", durationMs.count());
 }
 
 unsigned int CompiledModel::run_benchmark_for(const int numInfers,
@@ -216,22 +215,22 @@ unsigned int CompiledModel::run_benchmark_for(const int numInfers,
     return fps;
 }
 
-std::size_t CompiledModel::get_optimal_number_of_streams(std::size_t const_blob_size,
-                                                         std::size_t memory_blob_size) const {
+size_t CompiledModel::get_optimal_number_of_streams(size_t const_blob_size,
+                                                    size_t memory_blob_size) const {
     if (memory_blob_size == 0) {
         return 0;
     }
     CUDA::Device device{config_.get_device_id()};
     device.setCurrent();
-    std::size_t free;
-    [[maybe_unused]] std::size_t total;
+    size_t free;
+    [[maybe_unused]] size_t total;
     throwIfError(cudaMemGetInfo(&free, &total));
-    const std::size_t max_streams_supported = max_concurrent_streams(device);
+    const size_t max_streams_supported = max_concurrent_streams(device);
     const auto available_infer_requests = (free - const_blob_size) / memory_blob_size;
     if (0 == available_infer_requests) {
-        throwIEException("Not enough memory even for single InferRequest !!");
+        throw_ov_exception("Not enough memory even for single InferRequest !!");
     }
-    const std::size_t num_streams = config_.get_optimal_number_of_streams();
+    const size_t num_streams = config_.get_optimal_number_of_streams();
     return std::min({max_streams_supported, available_infer_requests, num_streams});
 }
 
@@ -245,12 +244,18 @@ std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
     return std::make_shared<MemoryPool>(num_streams, memory_model);
 }
 
-std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_request() const {
-    auto internal_request = create_sync_infer_request();
-    return std::make_shared<CudaAsyncInferRequest>(std::static_pointer_cast<CudaInferRequest>(std::move(internal_request)),
-                                                   get_task_executor(),
-                                                   cuda_stream_executor_,
-                                                   get_callback_executor());
+std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_benchmark_sync_infer_request() {
+    return std::make_shared<CudaInferRequest>(
+        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})));
+}
+
+std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_request() {
+    auto internal_request = create_benchmark_sync_infer_request();
+    return std::make_shared<CudaAsyncInferRequest>(
+        std::static_pointer_cast<CudaInferRequest>(std::move(internal_request)),
+        get_task_executor(),
+        cuda_stream_executor_,
+        get_callback_executor());
 }
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
@@ -260,13 +265,11 @@ std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request(
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_infer_request() const {
     auto internal_request = create_sync_infer_request();
-    auto async_infer_request = std::make_shared<CudaAsyncInferRequest>(
+    return std::make_shared<CudaAsyncInferRequest>(
         std::static_pointer_cast<CudaInferRequest>(internal_request),
         get_task_executor(),
         cuda_stream_executor_,
         get_callback_executor());
-
-    return async_infer_request;
 }
 
 void CompiledModel::set_property(const ov::AnyMap& properties) {
@@ -282,8 +285,9 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         supported_properties.push_back(
             ov::PropertyName(ov::optimal_number_of_infer_requests.name(), PropertyMutability::RO));
         supported_properties.push_back(ov::PropertyName(ov::loaded_from_cache.name(), PropertyMutability::RO));
-        auto config_properties = config_.get_rw_properties();
-        supported_properties.insert(supported_properties.end(), config_properties.begin(), config_properties.end());
+        auto rw_properties = config_.get_rw_properties();
+        for (auto& rw_property : rw_properties)
+            supported_properties.emplace_back(ov::PropertyName(rw_property, PropertyMutability::RO));
         return decltype(ov::supported_properties)::value_type{supported_properties};
     } else if (EXEC_NETWORK_METRIC_KEY(SUPPORTED_METRICS) == name) {
         IE_SET_METRIC_RETURN(SUPPORTED_METRICS,
@@ -354,14 +358,13 @@ void CompiledModel::export_model(std::ostream& model_stream) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CompiledModel::export_model");
 
     std::stringstream xml_file, bin_file;
-    auto& rt_info = model_->get_rt_info();
     int64_t version = 11;
-    if (rt_info.count("version")) {
-        version = rt_info.at("version").as<int64_t>();
+    if (model_->has_rt_info("version")) {
+        version = model_->get_rt_info<int64_t>("version");
     }
 
     ov::pass::Serialize serializer(xml_file, bin_file, static_cast<ov::pass::Serialize::Version>(version));
-    serializer.run_on_model(ov::clone_model(*model_));
+    serializer.run_on_model(model_);
 
     auto weights = bin_file.str();
     auto model = xml_file.str();

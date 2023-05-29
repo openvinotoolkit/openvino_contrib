@@ -85,7 +85,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
                                                                      add_desc,
                                                                      activation_desc);
         } catch (const std::exception& e) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("unsupported `{}` node: Failed to create "
                             "FusedConvolutionCuDnnDecomposed impl: {}",
                             node->get_type_info().name,
@@ -110,7 +110,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
             e.what());
     }
 
-    throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedConvolution);

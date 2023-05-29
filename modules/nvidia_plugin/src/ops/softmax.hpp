@@ -8,8 +8,6 @@
 
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
 
 namespace ov {

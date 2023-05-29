@@ -62,7 +62,7 @@ void CudaThreadPool::stop_thread_pool() noexcept {
 
 const ThreadContext& CudaThreadPool::get_thread_context() {
     if (!contextPtr) {
-        throwIEException(
+        throw_ov_exception(
             "Call get_thread_context() not from ThreadPool owned thread is not "
             "allowed !!");
     }

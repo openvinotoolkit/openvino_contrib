@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "cuda_graph_transformer.hpp"
 
 #include <fmt/format.h>
 
 #include "openvino/openvino.hpp"
 #include "openvino/pass/manager.hpp"
+#include "openvino/op/gru_sequence.hpp"
+#include "openvino/op/rnn_sequence.hpp"
+#include "openvino/op/lstm_sequence.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/disable_decompression_convert_constant_folding.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
@@ -26,7 +29,6 @@
 #include "cuda_fullyconnected_transformation.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
-#include "nvidia/nvidia_config.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/common_optimizations/convert_compression_only_to_legacy.hpp"
@@ -35,7 +37,6 @@
 #include "transformations/op_conversions/convert_subtract.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
-#include "ngraph/opsets/opset10.hpp"
 
 using namespace ov::nvidia_gpu;
 
@@ -44,7 +45,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
                                  const Configuration& config) const {
     auto inference_precision = config.get_inference_precision();
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
-        throwIEException("Inference precision f16 is not supported by device!");
+        throw_ov_exception("Inference precision f16 is not supported by device!");
     }
     auto upscale_precision = [&]() -> bool {
         return !isHalfSupported(device) || inference_precision == ov::element::f32;
@@ -140,15 +141,15 @@ void GraphTransformer::transform(const CUDA::Device& device,
 
         // Sequences supported by the plugin shouldn't be converted to TensorIterator.
         auto is_sequence_primitive_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
-            if (std::dynamic_pointer_cast<const ngraph::opset10::RNNSequence>(node)) {
+            if (std::dynamic_pointer_cast<const ov::op::v5::RNNSequence>(node)) {
                 return false;
-            } else if (const auto &gru_seq = std::dynamic_pointer_cast<const ngraph::opset10::GRUSequence>(node)) {
+            } else if (const auto &gru_seq = std::dynamic_pointer_cast<const ov::op::v5::GRUSequence>(node)) {
                 return (gru_seq->get_clip() == 0.0f &&
                         gru_seq->get_activations() == std::vector<std::string>{"sigmoid", "tanh"} &&
                         (gru_seq->get_input_size() != 1 || gru_seq->get_hidden_size() != 1) &&
                         (gru_seq->get_direction() != ov::op::RecurrentSequenceDirection::REVERSE) &&
                         (gru_seq->get_direction() != ov::op::RecurrentSequenceDirection::BIDIRECTIONAL));
-            } else if (const auto &lstm_seq = std::dynamic_pointer_cast<const ngraph::opset10::LSTMSequence>(node)) {
+            } else if (const auto &lstm_seq = std::dynamic_pointer_cast<const ov::op::v5::LSTMSequence>(node)) {
                 return (lstm_seq->get_clip() == 0.0f &&
                         lstm_seq->get_activations() == std::vector<std::string>{"sigmoid", "tanh", "tanh"} &&
                         lstm_seq->get_activations_alpha() == std::vector<float>{1.0f, 1.0f, 1.0f} &&

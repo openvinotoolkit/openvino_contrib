@@ -70,7 +70,7 @@ void Insert::operator()(const cudaStream_t stream, const void* src, void* dst, c
         case Type_t::u64:
             return call<uint64_t>(stream, src, dst, start);
         default:
-            throwIEException(fmt::format("Input element type = {} is not supported by Split operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Split operation !!",
                                          static_cast<Type_t>(element_type_)));
     }
 }

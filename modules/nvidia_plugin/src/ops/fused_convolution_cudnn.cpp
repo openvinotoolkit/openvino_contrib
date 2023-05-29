@@ -114,7 +114,7 @@ void FusedConvolutionCuDnn::ThrowIfShouldDecompose() const {
     throwIfError(::cudnnGetActivationDescriptor(activation_desc_->get(), &mode, &prop, &coef));
     if (mode == CUDNN_ACTIVATION_IDENTITY &&
         conv_descs_->Algo().algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-        throwIEException(
+        throw_ov_exception(
             "ov::nvidia_gpu::FusedConvolutionCuDnn: CUDNN_ACTIVATION_IDENTITY can't be used with "
             "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
     }

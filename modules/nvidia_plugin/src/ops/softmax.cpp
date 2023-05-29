@@ -9,7 +9,6 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
 
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
@@ -142,7 +141,7 @@ void SoftmaxOp::mapRankAxis(const ov::Shape& shape, int axis) {
             OPENVINO_ASSERT(prod(d0, d1) * d2 * d3 < maxint);
             break;
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Unsupported combination of tensor rank ({}) and axis attribute ({})", rank, axis));
     }
 }
@@ -169,7 +168,7 @@ SoftmaxOp::SoftmaxOp(const CreationContext& context,
     : OperationCuDnn{context, node, move(inputIds), move(outputIds)},
       type_{convertDataType<cudnnDataType_t>(node.input(0).get_element_type())} {
     if (!isTypeSupported(type_)) {
-        throwIEException(fmt::format("SoftmaxOp: unsupported argument type: {}", toString(type_)));
+        throw_ov_exception(fmt::format("SoftmaxOp: unsupported argument type: {}", toString(type_)));
     }
     const int axis = node.get_axis();
     mapRankAxis(node.input(0).get_shape(), axis);

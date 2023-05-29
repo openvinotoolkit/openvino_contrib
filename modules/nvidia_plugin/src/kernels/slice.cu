@@ -69,7 +69,7 @@ void Slice::operator()(cudaStream_t stream, const void *src, void *dst, const si
         case Type_t::u64:
             return call<uint64_t>(stream, src, dst, start);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Slice operation "
                             "!!",
                             static_cast<Type_t>(element_type_)));

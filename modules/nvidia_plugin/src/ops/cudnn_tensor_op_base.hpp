@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/node.hpp>
 
 namespace ov {
 namespace nvidia_gpu {

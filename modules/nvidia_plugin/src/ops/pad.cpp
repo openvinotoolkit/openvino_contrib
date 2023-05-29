@@ -4,20 +4,20 @@
 #include "pad.hpp"
 
 #include <cstddef>
-#include <cuda/runtime.hpp>
-#include <cuda_operation_registry.hpp>
-#include <openvino/core/except.hpp>
 #include <memory>
-#include <ngraph/validation_util.hpp>
 
 #include "converters.hpp"
+#include "cuda/runtime.hpp"
+#include "cuda_operation_registry.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/op/constant.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 static bool isNCHWConvolutionPadding(const PadOp::NodeOp& node) {
-    auto padsBegin = ov::get_constant_from_source(node.input_value(1));
-    auto padsEnd = ov::get_constant_from_source(node.input_value(2));
+    auto padsBegin = ov::as_type_ptr<op::v0::Constant>(node.input_value(1).get_node_shared_ptr());
+    auto padsEnd = ov::as_type_ptr<op::v0::Constant>(node.input_value(2).get_node_shared_ptr());
     const auto padsBeginCoord = padsBegin->cast_vector<size_t>();
     const auto padsEndCoord = padsEnd->cast_vector<size_t>();
     return node.get_input_shape(0).size() == 4 && padsBeginCoord[0] == 0 && padsBeginCoord[1] == 0 &&

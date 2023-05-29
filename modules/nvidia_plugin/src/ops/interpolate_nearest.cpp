@@ -5,10 +5,8 @@
 
 #include <fmt/format.h>
 
+#include "openvino/op/constant.hpp"
 #include "cuda_operation_registry.hpp"
-#include "ngraph/op/constant.hpp"
-#include "ngraph/shape.hpp"
-#include "ngraph/validation_util.hpp"
 #include "ops/converters.hpp"
 
 namespace ov {
@@ -19,10 +17,10 @@ namespace {
 std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::NodeOp& node) {
     // for calculation scale for nearest mode see
     // https://docs.openvino.ai/2021.1/openvino_docs_ops_image_Interpolate_4.html
-    const auto scales = ngraph::get_constant_from_source(node.input_value(2))->cast_vector<float>();
+    const auto scales = ov::as_type_ptr<op::v0::Constant>(node.input_value(2).get_node_shared_ptr())->cast_vector<float>();
     std::vector<int64_t> axis;
     if (node.inputs().size() > 3) {
-        axis = ngraph::get_constant_from_source(node.input_value(3))->cast_vector<int64_t>();
+        axis = ov::as_type_ptr<op::v0::Constant>(node.input_value(3).get_node_shared_ptr())->cast_vector<int64_t>();
     } else {
         axis.resize(node.get_input_partial_shape(0).rank().get_length());
         std::iota(axis.begin(), axis.end(), 0);
@@ -82,24 +80,24 @@ bool canApplyUpscaleOptimizing(const InterpolateNearestOp::NodeOp& node, const s
 void checkLimitations(const InterpolateNearestOp::NodeOp& node) {
     using namespace ov::op::v4;
     if (node.get_input_shape(0).size() != 4u) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported shape rank {}. InterpolateNearestOp operation supports only 4d tensor",
                         node.get_input_shape(0).size()));
     }
     if (node.get_attrs().antialias != false) {
-        throwIEException(fmt::format(
+        throw_ov_exception(fmt::format(
             "Unsupported antialias mode ({}). InterpolateNearestOp operation supports only antialias set({})",
             node.get_attrs().antialias,
             false));
     }
     if (!std::all_of(
             node.get_attrs().pads_begin.cbegin(), node.get_attrs().pads_begin.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported begin pads. InterpolateNearestOp operation supports all pads are equal 0"));
     }
     if (!std::all_of(
             node.get_attrs().pads_end.cbegin(), node.get_attrs().pads_end.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported end pads. InterpolateNearestOp operation supports all pads are equal 0"));
     }
 }
@@ -111,8 +109,8 @@ InterpolateNearestOp::InterpolateNearestOp(const CreationContext& context,
                                            IndexCollection&& inputIds,
                                            IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
-      in_strides_{ngraph::row_major_strides(node.get_input_shape(0))},
-      out_strides_{ngraph::row_major_strides(node.get_output_shape(0))},
+      in_strides_{ov::row_major_strides(node.get_input_shape(0))},
+      out_strides_{ov::row_major_strides(node.get_output_shape(0))},
       scales_{getScalesVector(node)},
       in_shape_{node.get_input_shape(0)},
       out_shape_{node.get_output_shape(0)},

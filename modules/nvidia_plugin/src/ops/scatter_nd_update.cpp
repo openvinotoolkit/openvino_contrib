@@ -6,8 +6,6 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/scatter_nd_update.hpp>
 
 #include "converters.hpp"
@@ -28,7 +26,7 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
-            throwIEException(fmt::format("Params element type = {} is not supported by ScatterNDUpdate operation!",
+            throw_ov_exception(fmt::format("Params element type = {} is not supported by ScatterNDUpdate operation!",
                                          static_cast<ov::element::Type_t>(input_type)));
     }
 
@@ -39,7 +37,7 @@ ScatterNDUpdateOp::ScatterNDUpdateOp(const CreationContext& context,
 
     const ov::element::Type_t indices_type = node.get_input_element_type(1);
     if (indices_type != ov::element::Type_t::i64 && indices_type != ov::element::Type_t::i32) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Params index type = {} is not supported by ScatterNDUpdate operation!", indices_type));
     }
 

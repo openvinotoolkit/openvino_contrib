@@ -12,15 +12,15 @@ namespace ov {
 namespace nvidia_gpu {
 namespace {
 template <typename T>
-[[gnu::cold, noreturn]] void throwException(const std::string& msg,
-                                            const std::experimental::source_location& location) {
+[[gnu::cold, noreturn]] void throw_exception(const std::string& msg,
+                                             const std::experimental::source_location& location) {
     throw T{fmt::format("{}:{}({}): {}", location.file_name(), location.line(), location.function_name(), msg)};
 }
 }  // namespace
 
-[[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
-                                              const std::experimental::source_location& location) {
-    throwException<ov::Exception>(msg, location);
+[[gnu::cold, noreturn]] void throw_ov_exception(const std::string& msg,
+                                                const std::experimental::source_location& location) {
+    throw_exception<ov::Exception>(msg, location);
 }
 
 [[gnu::cold]] void logError(const std::string& /*msg*/, const std::experimental::source_location& /*location*/) {

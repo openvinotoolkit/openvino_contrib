@@ -5,7 +5,7 @@
 #include <utility>
 #include <memory>
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
 #include "exec_graph_info.hpp"

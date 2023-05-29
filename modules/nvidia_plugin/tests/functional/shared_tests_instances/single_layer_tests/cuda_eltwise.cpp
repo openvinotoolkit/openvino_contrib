@@ -103,7 +103,7 @@ void replace(InferenceEngine::Blob::Ptr& blob,
             replace<InferenceEngine::Precision::U64>(blob, old_value, new_value, is_integer);
             break;
         default:
-            ov::nvidia_gpu::throwIEException(fmt::format("replace(): Unsupported type: {}", precision.name()));
+            ov::nvidia_gpu::throw_ov_exception(fmt::format("replace(): Unsupported type: {}", precision.name()));
     }
 }
 

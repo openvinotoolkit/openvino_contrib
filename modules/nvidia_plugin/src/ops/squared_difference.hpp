@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/squared_difference.hpp>
+#include "openvino/op/squared_difference.hpp"
 
 #include "elementwise_binary.hpp"
 #include "kernels/squared_difference.hpp"

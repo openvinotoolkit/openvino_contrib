@@ -20,8 +20,6 @@
 #include "cuda_compiled_model.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
-#include "ie_ngraph_utils.hpp"
-#include "ngraph/util.hpp"
 #include "nvidia/properties.hpp"
 
 namespace ov {
@@ -199,7 +197,7 @@ void CudaInferRequest::infer_postprocess() {
 }
 
 void CudaInferRequest::cancel() {
-    cancellation_token_.Cancel();
+    cancellation_token_.cancel();
     get_nvidia_model()->get_memory_pool()->Interrupt();
 }
 

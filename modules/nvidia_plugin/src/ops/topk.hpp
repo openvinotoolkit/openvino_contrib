@@ -9,9 +9,6 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <kernels/topk.hpp>
-#include <ngraph/op/topk.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 
 namespace ov {
 namespace nvidia_gpu {

@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "cuda_operation_base.hpp"
-
-#include <ngraph/node.hpp>
 #include <utility>
 
+#include "cuda_operation_base.hpp"
 namespace ov {
 namespace nvidia_gpu {
 

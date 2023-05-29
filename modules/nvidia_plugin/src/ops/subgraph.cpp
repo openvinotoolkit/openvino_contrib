@@ -53,7 +53,7 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
     for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
         const auto& node = orderedNodes[node_idx];
         if (!OperationRegistry::getInstance().hasOperation(node)) {
-            throwIEException(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
+            throw_ov_exception(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
                                          node->get_name(),
                                          node->description()));
         }

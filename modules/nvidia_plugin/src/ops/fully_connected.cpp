@@ -7,7 +7,6 @@
 #include <cuda/blas.hpp>
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
 #include <openvino/op/matmul.hpp>
 #include <utility>
 

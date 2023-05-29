@@ -29,7 +29,7 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
     OPENVINO_ASSERT(node.get_output_size() == 1, "Node name: ", GetName());
 
     if (std::find(supported_types.begin(), supported_types.end(), data_type_) == supported_types.end()) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ov::nvidia_gpu::ActivationForwardCuDnnOpBase: unsupported data type: {}", toString(data_type_)));
     }
 
@@ -38,7 +38,7 @@ ActivationForwardCuDnnOpBase::ActivationForwardCuDnnOpBase(std::unique_ptr<CUDA:
 
     const auto in_shape_size = node.get_input_shape(0).size();
     if (in_shape_size > max_shape_size) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ov::nvidia_gpu::ActivationForwardCuDnnOpBase: in_shape_size > max_shape_size: in_shape_size = {}, "
                         "max_shape_size = {}",
                         in_shape_size,

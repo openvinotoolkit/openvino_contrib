@@ -7,7 +7,6 @@
 #include <fenv.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/node.hpp>
 
 #include "converters.hpp"
 
@@ -28,7 +27,7 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
           NumpyBroadcastParams::create(node.get_input_shape(OUTPUT_LOW), node.get_output_shape(0))},
       out_high_broadcast_params_{
           NumpyBroadcastParams::create(node.get_input_shape(OUTPUT_HIGH), node.get_output_shape(0))} {
-    const ngraph::element::Type element_type{node.get_input_element_type(0)};
+    const ov::element::Type element_type{node.get_input_element_type(0)};
     const std::size_t levels = node.get_levels();
 
     OPENVINO_ASSERT(levels > 1U, "Node name: ", GetName());
@@ -39,7 +38,7 @@ FakeQuantizeOp::FakeQuantizeOp(const CreationContext &context,
     out_low_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
     out_high_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
 
-    const size_t output_size = ngraph::shape_size(node.get_output_shape(0));
+    const size_t output_size = ov::shape_size(node.get_output_shape(0));
     const auto max_threads_per_block = static_cast<unsigned>(context.device().props().maxThreadsPerBlock);
 
     kernel_ = kernel::FakeQuantize{

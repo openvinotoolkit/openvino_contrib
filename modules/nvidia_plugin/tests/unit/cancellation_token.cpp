@@ -16,12 +16,12 @@ class CancellationTokenTest : public testing::Test {
 
 TEST_F(CancellationTokenTest, Cancel_No_Throw) {
     CancellationToken token{};
-    ASSERT_NO_THROW(token.Cancel());
+    ASSERT_NO_THROW(token.cancel());
 }
 
 TEST_F(CancellationTokenTest, Cancel_No_Throw_Callback) {
     bool is_cancelled = false;
     CancellationToken token{[&is_cancelled] { is_cancelled = true; }};
-    ASSERT_NO_THROW(token.Cancel());
+    ASSERT_NO_THROW(token.cancel());
     ASSERT_TRUE(is_cancelled);
 }

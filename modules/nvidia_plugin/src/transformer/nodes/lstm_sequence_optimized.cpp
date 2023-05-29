@@ -4,7 +4,6 @@
 
 #include "lstm_sequence_optimized.hpp"
 
-#include <ngraph/op/util/recurrent_sequence.hpp>
 #include <openvino/core/except.hpp>
 
 namespace ov::nvidia_gpu::nodes {

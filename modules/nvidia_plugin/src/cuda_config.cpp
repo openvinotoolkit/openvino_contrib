@@ -80,18 +80,18 @@ void Configuration::update_device_id(const ov::AnyMap& config) {
             const std::string device_id_prefix = match[1].str();
             const std::string device_id_value = match[2].str();
             if (!device_id_prefix.empty() && "NVIDIA." != device_id_prefix) {
-                throwIEException(
+                throw_ov_exception(
                     fmt::format("Prefix for deviceId should be 'NVIDIA.' (user deviceId = {}). "
                                 "For example: NVIDIA.0, NVIDIA.1 and etc.",
                                 value));
             }
             device_id = std::stoi(device_id_value);
             if (device_id < 0) {
-                throwIEException(fmt::format(
+                throw_ov_exception(fmt::format(
                     "Device ID {} is not supported. Index should be >= 0 (user index = {})", value, device_id));
             }
         } else {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Device ID {} is not supported. Supported deviceIds: 0, 1, 2, NVIDIA.0, NVIDIA.1, "
                             "NVIDIA.2 and etc.",
                             value));
@@ -103,17 +103,21 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
     return inference_precision;
 }
 
+bool Configuration::auto_streams_detection_required() const noexcept {
+    return ((ov::hint::PerformanceMode::THROUGHPUT == performance_mode) && (num_streams <= 0)) ||
+            (num_streams == ov::streams::AUTO);
+}
+
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
     // Default number for latency mode
     uint32_t optimal_number_of_streams = 1;
-    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode || num_streams == ov::streams::AUTO) {
+    if (auto_streams_detection_required()) {
         // If user is planning to use number of requests which is lower than reasonable range of streams
         // there is no sense to create more
         optimal_number_of_streams = (hint_num_requests > 0) ?
             std::min(hint_num_requests, reasonable_limit_of_streams)
             : reasonable_limit_of_streams;
-    }
-    if (num_streams > 0) {
+    } else if (num_streams > 0) {
         optimal_number_of_streams = num_streams;
     }
     return optimal_number_of_streams;
@@ -141,7 +145,7 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
                 try {
                     num_streams = value.as<ov::streams::Num>();
                 } catch (...) {
-                    throwIEException(
+                    throw_ov_exception(
                         fmt::format("NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
                                     "is not a number !!",
                                     value.as<std::string>()));
@@ -168,7 +172,7 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
                 ov::element::undefined, ov::element::f16, ov::element::f32,
             };
             if (supported_types.count(element_type) == 0) {
-                throwIEException(fmt::format("Inference precision {} is not supported by plugin", value.as<std::string>()));
+                throw_ov_exception(fmt::format("Inference precision {} is not supported by plugin", value.as<std::string>()));
             }
             inference_precision = element_type;
         } else if (ov::hint::performance_mode == key) {
@@ -176,7 +180,7 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
         } else if (ov::hint::execution_mode == key) {
             execution_mode = value.as<ov::hint::ExecutionMode>();
         } else if (throwOnUnsupported) {
-            throwIEException(key);
+            throw_ov_exception(key);
         }
     }
 }

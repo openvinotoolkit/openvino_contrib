@@ -23,7 +23,7 @@ auto assertToThrow(F&& f,
                    const std::experimental::source_location& loc = std::experimental::source_location::current()) {
     bool success = false;
     std::forward<F>(f)(success);
-    if (!success) ov::nvidia_gpu::throwIEException("pathetic google test failed in non-void function", loc);
+    if (!success) ov::nvidia_gpu::throw_ov_exception("pathetic google test failed in non-void function", loc);
 }
 
 #define TASSERT_TRUE(condition)                \

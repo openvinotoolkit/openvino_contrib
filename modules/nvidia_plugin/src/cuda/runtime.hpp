@@ -16,7 +16,7 @@
 inline void throwIfError(
     cudaError_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != cudaSuccess) ov::nvidia_gpu::throwIEException(cudaGetErrorString(err), location);
+    if (err != cudaSuccess) ov::nvidia_gpu::throw_ov_exception(cudaGetErrorString(err), location);
 }
 
 inline void logIfError(

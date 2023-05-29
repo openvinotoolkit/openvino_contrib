@@ -5,13 +5,9 @@
 #pragma once
 
 #include <array>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/convolution.hpp>
 
 #include "activation_type.hpp"
-#include "ngraph/attribute_adapter.hpp"
-#include "ngraph/ngraph_visibility.hpp"
-#include "ngraph/type.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 
@@ -48,7 +44,6 @@ public:
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
 
     void validate_and_infer_types() override;
-    void conv_validate_and_infer_types();
     void infer_conv_backprop_output_spatial_shape(const std::vector<ov::Dimension>& input_data_shape,
                                                   const std::vector<ov::Dimension>& filters_shape,
                                                   const ov::Strides& strides,

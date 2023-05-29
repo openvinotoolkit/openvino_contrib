@@ -79,7 +79,7 @@ void Concat::operator()(const cudaStream_t stream, const void* chunks, const voi
         case Type_t::u64:
             return Call<uint64_t>(stream, chunks, src, dst);
         default:
-            throwIEException(fmt::format("Input element type = {} is not supported by Split operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Split operation !!",
                                          static_cast<Type_t>(element_type_)));
     }
 }

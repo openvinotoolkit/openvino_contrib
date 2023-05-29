@@ -5,7 +5,6 @@
 #include "comparison.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/core/except.hpp>
 
 #include "converters.hpp"

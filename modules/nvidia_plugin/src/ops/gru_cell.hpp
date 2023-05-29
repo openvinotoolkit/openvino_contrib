@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/node.hpp>
 
 #include "rnn_components/rnn_components.hpp"
 #include "rnn_components/rnn_cudnn_components.hpp"

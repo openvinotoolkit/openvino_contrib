@@ -20,7 +20,7 @@ MultiplyCudaOp::MultiplyCudaOp(const CreationContext& context,
         case ov::op::AutoBroadcastType::NUMPY:
             break;
         default:
-            throwIEException(fmt::format("MultiplyCudaOp: unsupported broadcast type: {}", broatcast_type));
+            throw_ov_exception(fmt::format("MultiplyCudaOp: unsupported broadcast type: {}", broatcast_type));
     }
 }
 

@@ -8,7 +8,6 @@
 
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
 
 namespace ov {
 namespace nvidia_gpu {

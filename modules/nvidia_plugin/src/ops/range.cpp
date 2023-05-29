@@ -7,8 +7,9 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/validation_util.hpp>
-#include <openvino/op/range.hpp>
+
+#include "openvino/op/constant.hpp"
+#include "openvino/op/range.hpp"
 
 #include "converters.hpp"
 #include "kernels/details/cuda_type_traits.hpp"
@@ -25,12 +26,11 @@ RangeOp::RangeOp(const CreationContext& context,
                  IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)),
       output_size_(shape_size(node.get_output_shape(OUTPUT_INDX))) {
-    using namespace ngraph;
-    if (get_constant_from_source(node.get_input_node_shared_ptr(START_INDX)) == nullptr ||
-        get_constant_from_source(node.get_input_node_shared_ptr(STOP_INDX)) == nullptr ||
-        get_constant_from_source(node.get_input_node_shared_ptr(STEP_INDX)) == nullptr) {
+    if (ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(START_INDX)) == nullptr ||
+        ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(STOP_INDX)) == nullptr ||
+        ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(STEP_INDX)) == nullptr) {
         // TODO: Implement the dynamic shapes support for the Range operation
-        throwIEException("The dynamic shape is not supported for Range operation. All Range inputs must be constants.");
+        throw_ov_exception("The dynamic shape is not supported for Range operation. All Range inputs must be constants.");
     }
     auto inputStart_type = node.get_input_element_type(START_INDX);
     auto inputStop_type = node.get_input_element_type(STOP_INDX);

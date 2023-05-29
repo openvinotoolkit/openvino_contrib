@@ -18,7 +18,7 @@
 #include "cuda_inference_request_context.hpp"
 #include "memory_manager/cuda_workbuffers.hpp"
 
-namespace ngraph {
+namespace ov {
 
 class Node;
 

@@ -8,17 +8,13 @@
 #include <cuda_operation_base.hpp>
 #include <memory_manager/cuda_memory_manager.hpp>
 #include <memory_manager/cuda_memory_pool.hpp>
-#include <ngraph/op/util/sub_graph_base.hpp>
-
-class ExecNetworkTest;
+#include "openvino/op/util/sub_graph_base.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 class SubGraph : public OperationBase {
 public:
-    friend class ::ExecNetworkTest;
-
     virtual ~SubGraph() = 0;
 
     void Execute(const InferenceRequestContext& context,
@@ -45,7 +41,7 @@ protected:
              const SubGraphOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
-    SubGraph(const CreationContext& context, const std::shared_ptr<const ngraph::Function>& function);
+    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
 
     WorkbufferRequest GetWorkBufferRequest() const override;
 

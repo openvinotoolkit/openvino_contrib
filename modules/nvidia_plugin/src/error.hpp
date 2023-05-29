@@ -9,7 +9,7 @@
 
 namespace ov {
 namespace nvidia_gpu {
-[[gnu::cold, noreturn]] void throwIEException(
+[[gnu::cold, noreturn]] void throw_ov_exception(
     const std::string& msg,
     const std::experimental::source_location& location = std::experimental::source_location::current());
 [[gnu::cold]] void logError(

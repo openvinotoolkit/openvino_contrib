@@ -26,7 +26,7 @@ public:
     /**
      * Set token status as cancelled
      */
-    void Cancel() {
+    void cancel() {
         if (cancel_callback_) {
             cancel_callback_();
         };

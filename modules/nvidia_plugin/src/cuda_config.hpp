@@ -47,6 +47,7 @@ struct Configuration {
     int get_device_id() const { return device_id; };
     ov::element::Type get_inference_precision() const noexcept;
     uint32_t get_optimal_number_of_streams() const noexcept;
+    bool auto_streams_detection_required() const noexcept;
 
     // Plugin configuration parameters
     static constexpr uint32_t reasonable_limit_of_streams = 10;

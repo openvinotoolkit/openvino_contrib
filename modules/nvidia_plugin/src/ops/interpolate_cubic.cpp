@@ -15,19 +15,19 @@ namespace {
 
 void checkLimitations(const InterpolateCubicOp::NodeOp& node) {
     if (node.get_input_shape(0).size() > kernel::InterpolateCubic::MAX_SHAPE_RANK) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported shape rank {}. InterpolateCubicOp operation supports up to {} dimensions.",
                         node.get_input_shape(0).size(),
                         kernel::InterpolateCubic::MAX_SHAPE_RANK));
     }
     if (!std::all_of(
             node.get_attrs().pads_begin.cbegin(), node.get_attrs().pads_begin.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported begin pads. InterpolateCubicOp operation supports all pads equal to 0."));
     }
     if (!std::all_of(
             node.get_attrs().pads_end.cbegin(), node.get_attrs().pads_end.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported end pads. InterpolateCubicOp operation supports all pads equal to 0."));
     }
 }

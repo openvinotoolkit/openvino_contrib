@@ -127,7 +127,7 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
     [&](std::shared_ptr<ov::Model>& model) {
             transformer_.transform(CUDA::Device{full_config.get_device_id()}, model, full_config);
         },
-    [&](const std::shared_ptr<ngraph::Node>& op) {
+    [&](const std::shared_ptr<ov::Node>& op) {
         return is_operation_supported(op, full_config);
     });
 

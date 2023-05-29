@@ -7,8 +7,6 @@
 #include <type_traits>
 
 #include "activation_type.hpp"
-#include "ngraph/node.hpp"
-#include "ngraph/shape.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/op/convolution.hpp"
 #include "openvino/op/group_conv.hpp"

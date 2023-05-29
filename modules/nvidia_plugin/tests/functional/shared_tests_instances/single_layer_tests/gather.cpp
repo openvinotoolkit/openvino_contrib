@@ -85,7 +85,7 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
     const auto axis = test_params.axis_;
     const unsigned normalized_axis = axis >= 0 ? axis : axis + params_shape_size;
     if (normalized_axis >= params_shape_size) {
-        ov::nvidia_gpu::throwIEException(
+        ov::nvidia_gpu::throw_ov_exception(
             fmt::format("normalized_axis >= params_shape_size: {} >= {}", normalized_axis, params_shape_size));
     }
     std::uniform_int_distribution<T> distr(0, test_params.params_shape_[normalized_axis] - 1);

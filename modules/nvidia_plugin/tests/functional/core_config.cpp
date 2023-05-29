@@ -16,6 +16,6 @@ void CoreConfiguration(LayerTestsUtils::LayerTestsCommon* test) {
     }
 
     // Set inference_precision hint to run fp32 model in fp32 runtime precision as default plugin execution precision may vary
-    std::map<std::string, std::string> config = {{"INFERENCE_PRECISION_HINT", hint.get_type_name()}};
+    std::map<std::string, std::string> config = {{ov::hint::inference_precision.name(), hint.get_type_name()}};
     core->SetConfig(config, CommonTestUtils::DEVICE_NVIDIA);
 }

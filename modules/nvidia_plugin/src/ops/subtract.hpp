@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/subtract.hpp>
+#include "openvino/op/subtract.hpp"
 
 #include "elementwise_binary.hpp"
 #include "kernels/subtract.hpp"

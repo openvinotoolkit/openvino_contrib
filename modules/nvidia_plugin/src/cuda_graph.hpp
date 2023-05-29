@@ -6,15 +6,11 @@
 
 #include <ops/subgraph.hpp>
 
-class ExecNetworkTest;
-
 namespace ov {
 namespace nvidia_gpu {
 
 class ExecGraph final : public SubGraph {
 public:
-    friend class ::ExecNetworkTest;
-
     ExecGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
     ~ExecGraph() override = default;
 

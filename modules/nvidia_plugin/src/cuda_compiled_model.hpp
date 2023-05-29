@@ -18,8 +18,6 @@
 #include "memory_manager/model/cuda_memory_model.hpp"
 #include "ops/subgraph.hpp"
 
-class ExecNetworkTest;
-
 namespace ov {
 namespace nvidia_gpu {
 
@@ -31,8 +29,6 @@ class Plugin;
  */
 class CompiledModel : public ov::ICompiledModel {
 public:
-    friend class Plugin;
-
     CompiledModel(const std::shared_ptr<const ov::Model>& model,
                   const Configuration& cfg,
                   const std::shared_ptr<ov::threading::ITaskExecutor>& wait_executor,
@@ -62,10 +58,12 @@ protected:
 
 private:
     friend class CudaInferRequest;
+    friend class Plugin;
     void compile_model(const std::shared_ptr<const ov::Model>& model);
     void init_executor();
     std::size_t get_optimal_number_of_streams(std::size_t const_blob_size, std::size_t memory_blob_size) const;
-    std::shared_ptr<ov::IAsyncInferRequest> create_benchmark_infer_request() const;
+    std::shared_ptr<ov::ISyncInferRequest> create_benchmark_sync_infer_request();
+    std::shared_ptr<ov::IAsyncInferRequest> create_benchmark_infer_request();
     std::shared_ptr<MemoryPool> create_memory_pool();
     void benchmark_optimal_number_of_requests();
     unsigned int run_benchmark_for(int numInfers, std::mutex& mtx, std::condition_variable& cond_var);

@@ -7,7 +7,7 @@
 #include <openvino/core/except.hpp>
 #include <openvino/op/convert.hpp>
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 
 using namespace ov::pass::pattern;

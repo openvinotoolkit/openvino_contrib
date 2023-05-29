@@ -9,8 +9,6 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <kernels/concat.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/concat.hpp>
 
 namespace ov {
