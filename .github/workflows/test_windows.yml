@@ -357,7 +357,7 @@ jobs:
         shell: pwsh
     strategy:
       fail-fast: false
-    runs-on: ['windows-latest']
+    runs-on: 'windows-latest'
     env:
       OPENVINO_REPO: "${{ github.workspace }}\\openvino"
       OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib_repo"
