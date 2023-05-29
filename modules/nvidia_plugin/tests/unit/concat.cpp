@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
@@ -68,8 +69,9 @@ struct ConcatTest : testing::Test {
         CancellationToken token{};
         ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};

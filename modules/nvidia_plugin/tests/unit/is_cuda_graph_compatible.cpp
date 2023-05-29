@@ -91,8 +91,9 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         Profiler profiler{false, graph};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
 
         // Generate input
         std::vector<ElementType> input(inSize);
@@ -169,8 +170,9 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         Profiler profiler{false, graph};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
 
         // Generate inputs
         std::vector<ElementType> input1(inSize1);

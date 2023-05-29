@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
@@ -64,8 +65,9 @@ TEST_F(ReluTest, canExecuteSync) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

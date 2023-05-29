@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <iomanip>
@@ -80,8 +81,9 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;

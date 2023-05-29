@@ -10,6 +10,7 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_creation_context.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_graph.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
@@ -2671,8 +2672,9 @@ struct ClampBenchmark : testing::Test {
         ov::nvidia_gpu::CancellationToken token{};
         ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
         ov::nvidia_gpu::Profiler profiler{false, graph};
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
         ov::nvidia_gpu::InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;

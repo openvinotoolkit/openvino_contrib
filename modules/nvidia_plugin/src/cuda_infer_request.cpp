@@ -142,6 +142,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
         auto& graph = compiled_model->get_execution_graph();
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
                                                     output_tensors_,
@@ -149,8 +150,8 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    is_benchmark_mode_,
-                                                    use_cuda_graph_};
+                                                    cudaGraphContext,
+                                                    is_benchmark_mode_};
         graph.Run(inferRequestContext, memory);
         profiler_.stop_stage(Profiler::StartPipeline);
     } catch (...) {

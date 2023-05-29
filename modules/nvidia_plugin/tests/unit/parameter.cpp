@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
@@ -86,7 +87,9 @@ TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
     ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
-    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext,
+        token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
@@ -100,7 +103,9 @@ TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
     ov::nvidia_gpu::ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
-    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext,
+        token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
