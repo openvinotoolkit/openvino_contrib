@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
     strategy:
       fail-fast: false
-    runs-on: ['windows-latest-8-cores']
+    runs-on: 'windows-latest-8-cores'
     steps:
       - name: Create Directories
         run: |
