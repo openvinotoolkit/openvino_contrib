@@ -16,8 +16,9 @@ namespace ov {
 namespace nvidia_gpu {
 
 static bool isNCHWConvolutionPadding(const PadOp::NodeOp& node) {
-    auto padsBegin = ov::as_type_ptr<op::v0::Constant>(node.input_value(1).get_node_shared_ptr());
-    auto padsEnd = ov::as_type_ptr<op::v0::Constant>(node.input_value(2).get_node_shared_ptr());
+    auto padsBegin = ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(1));
+    auto padsEnd = ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(2));
+    OPENVINO_ASSERT(padsBegin && padsEnd, "Non-constant paddings are unsupported!");
     const auto padsBeginCoord = padsBegin->cast_vector<size_t>();
     const auto padsEndCoord = padsEnd->cast_vector<size_t>();
     return node.get_input_shape(0).size() == 4 && padsBeginCoord[0] == 0 && padsBeginCoord[1] == 0 &&
