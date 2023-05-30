@@ -142,6 +142,7 @@ jobs:
             -DENABLE_TESTS=ON \
             -DENABLE_PYTHON=ON \
             -DENABLE_WHEEL=ON \
+            -DBUILD_SHARED_LIBS=ON \
             -DENABLE_OV_ONNX_FRONTEND=ON \
             -DENABLE_FASTER_BUILD=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
@@ -568,6 +569,14 @@ jobs:
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           export LD_LIBRARY_PATH=${{ env.OPENVINO_REPO }}/temp/gna_03.05.00.1906/linux/x64:$LD_LIBRARY_PATH
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:${{ env.INSTALL_TEST_DIR }}:${{ env.INSTALL_DIR }}/python/python3.11:$PYTHONPATH
+
+          # TODO: figure out why they need to be reinstalled
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
           
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
@@ -637,7 +646,7 @@ jobs:
         env:
           TEST_DEVICE: CPU
 
-      - name: Python Frontend tests  # 'RuntimeError: Unable to find test_builtin_extensions' in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/5024678799/jobs/9010932315
+      - name: Python Frontend tests
         if: ${{ always() }}
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
