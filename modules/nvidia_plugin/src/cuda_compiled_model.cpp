@@ -88,7 +88,7 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     CUDA::Device device{config_.get_device_id()};
     GraphTransformer transformer;
     // Clone model
-    model_ = ov::clone_model(*model);
+    model_ = model->clone();
     if (!loaded_from_cache_) {
         // Apply transformations pipeline
         transformer.transform(device, model_, config_);
