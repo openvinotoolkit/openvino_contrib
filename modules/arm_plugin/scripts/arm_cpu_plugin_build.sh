@@ -74,11 +74,11 @@ checkSrcTree()
 
 
 #Prepare sources
-checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.5-openvino 4.x
-checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2022.1 releases/2022/1
+checkSrcTree $OPENCV_HOME https://github.com/opencv/opencv.git 4.5.5-openvino-2022.1.0 4.x
+checkSrcTree $OPENVINO_HOME https://github.com/openvinotoolkit/openvino.git 2022.1.0 releases/2022/1
 checkSrcTree $OPENVINO_CONTRIB https://github.com/openvinotoolkit/openvino_contrib.git 2022.1 releases/2022/1
 if [ "$WITH_OMZ_DEMO" = "ON" ]; then
-    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git 2022.1 releases/2022/1
+    checkSrcTree $OMZ_HOME https://github.com/openvinotoolkit/open_model_zoo.git 2022.1.0 releases/2022/1
 fi
 
 #cleanup package destination folder
@@ -133,7 +133,7 @@ cmake -DOpenCV_DIR=$STAGING_DIR/extras/opencv/cmake -DENABLE_OPENCV=OFF \
       -DENABLE_TESTS=ON -DENABLE_FUNCTIONAL_TESTS=ON -DENABLE_GAPI_TESTS=OFF \
       -DENABLE_DATA=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,-rpath-link,$STAGING_DIR/opencv/lib \
-      -DENABLE_MYRIAD=ON -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+      -DENABLE_INTEL_MYRIAD=ON -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
       -DTHREADING=SEQ -DENABLE_LTO=ON \
       -DCMAKE_TOOLCHAIN_FILE="$OPENVINO_HOME/cmake/$TOOLCHAIN_DEFS" \
       -DARM_COMPUTE_SCONS_JOBS=$BUILD_JOBS \
