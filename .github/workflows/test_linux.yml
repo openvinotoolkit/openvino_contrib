@@ -200,8 +200,6 @@ jobs:
           # cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           cmake -DCOMPONENT=python_wheels -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
 
-          cd ${{ env.BUILD_DIR }} && make -j 4 test_utils_api
-
           echo "::endgroup::"
           
           pushd ${{ env.INSTALL_DIR }}
