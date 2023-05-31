@@ -27,7 +27,6 @@ cudaGraph_t Graph::createNativeWithFlags(unsigned int flags) {
     return g;
 }
 
-// clang-format off
 GraphExec::GraphExec(const Graph &g)
 #if !defined(NDEBUG) || defined(_DEBUG)
 try
@@ -46,7 +45,6 @@ catch (std::exception &e) {
     OPENVINO_THROW(e.what(), ": ", errorMsg_);
 }
 #endif
-// clang-format on
 
 cudaGraphExecUpdateResult GraphExec::update(const Graph &g) {
     cudaGraphExecUpdateResult res;

@@ -11,7 +11,6 @@
 #include <openvino/op/add.hpp>
 #include <openvino/op/matmul.hpp>
 #include <ops/matmul.hpp>
-#include <transformer/nodes/fully_connected.hpp>
 
 using namespace ov::pass::pattern;
 

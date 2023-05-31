@@ -7,7 +7,7 @@
 
 #include <fmt/format.h>
 
-#include "openvino/openvino.hpp"
+#include "openvino/core/preprocess/pre_post_process.hpp"
 #include "openvino/pass/manager.hpp"
 #include "openvino/op/gru_sequence.hpp"
 #include "openvino/op/rnn_sequence.hpp"
@@ -61,7 +61,6 @@ void GraphTransformer::transform(const CUDA::Device& device,
     std::map<size_t, ov::element::Type> output_postprocess;
     for (size_t i = 0; i < model->inputs().size(); i++) {
         auto input = model->input(i);
-        auto target_inputs = input.get_target_inputs();
         input_preprocess[i] = input.get_element_type();
     }
     for (size_t i = 0; i < model->get_output_size(); i++) {

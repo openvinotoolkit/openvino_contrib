@@ -3,7 +3,6 @@
 //
 
 #include "openvino/cc/pass/itt.hpp"
-#include "openvino/core/except.hpp"
 #include "openvino/op/convert.hpp"
 #include "openvino/pass/manager.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
