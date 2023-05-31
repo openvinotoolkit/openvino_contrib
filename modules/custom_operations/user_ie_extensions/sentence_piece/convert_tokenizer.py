@@ -16,7 +16,7 @@ def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> Token
         from hf_parser import TransformersTokenizerPipelineParser
 
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):
-            return TransformersTokenizerPipelineParser(tokenizer_object).parse(number_of_inputs=number_of_inputs)
+            return TransformersTokenizerPipelineParser(tokenizer_object).parse(number_of_inputs=number_of_inputs).get_ov_subgraph()
 
 
     raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")
@@ -36,4 +36,6 @@ def connect_tokenizer(model: Model, tokenizer: Model) -> Model:
         for target in model_input.get_target_inputs():
             target.replace_source_output(tokenizer_output)
 
-    return Model(model.outputs, tokenizer.inputs)
+    connected_model = Model(model.outputs, tokenizer.get_parameters())
+    connected_model.validate_nodes_and_infer_types()
+    return connected_model

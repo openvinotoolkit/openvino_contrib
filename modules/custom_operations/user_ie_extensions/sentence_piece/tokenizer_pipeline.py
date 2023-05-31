@@ -425,16 +425,29 @@ class CombineSegmentsStep(PostTokenizationStep):
         number_of_sequence_inputs = sum(
             1 for input_ in self.inputs if isinstance(input_, Sequence)
         )
+        print('number_of_sequence_inputs:', number_of_sequence_inputs)
         if number_of_sequence_inputs != len(input_nodes)/3:
             raise UserInputError(
                 f"Number of input nodes: {len(input_nodes)}, must be equal to {number_of_sequence_inputs}"
             )
 
-        input_nodes_iter = iter(input_nodes)
-        op_inputs = [
-            next(input_nodes_iter) if isinstance(node, Sequence) else as_node(node.token_type_id)
-            for node in self.inputs
-        ]
+        op_inputs = []
+        i = 0
+
+        for node in self.inputs:
+            if isinstance(node, Sequence):
+                op_inputs += input_nodes[3*i:3*(i+1)]
+                i += 1
+            else:
+                # Put a scalar as a ragged tensor with scalar shape and a single element
+                op_inputs += make_constant_node(0, Type.i32).outputs()
+                op_inputs += make_constant_node(1, Type.i32).outputs()
+                print('token', node._token_id)
+                op_inputs.append(make_constant_node(np.array([node._token_id]), Type.i32).output(0))
+
+        op_inputs.append(make_constant_node(self.segment_ids, Type.i32).output(0))
+
+        print('op_inputs:', op_inputs)
 
         # FIXME: Disabled for now, no implementation
         # operation = string_ops.CombineSegments(
@@ -446,8 +459,11 @@ class CombineSegmentsStep(PostTokenizationStep):
         # return operation
 
         # Decomposed implementation
+
+        return core.make_node('CombineSegments', op_inputs).outputs()
         print(input_nodes)
         assert len(input_nodes) == 3, '[ TOKENIZER PIPELINE CONVERSION ] CombineSegments can be converted for a single ragged input tensor only, this is temporary limitation'
+        print('self.segment_ids:', self.segment_ids)
         # Make another ragged tensor with identical structure but with all values filled with self.segment_ids[0]
         segment_ids_output = [input_nodes[0], input_nodes[1], opset10.broadcast(make_constant_node(self.segment_ids[0], Type.i32), opset10.shape_of(input_nodes[2])).output(0)]
         print('[ TOKENIZER PIPELINE CONVERSION ] [ DEBUG ] CombineSegments outputs:', input_nodes + segment_ids_output)
