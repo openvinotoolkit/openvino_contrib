@@ -39,6 +39,7 @@ def pack_string(s):
 
 
 core = Core()
+# TODO: Use relative path
 core.add_extension("/home/slyalin/openvino-contrib/muse/modules/custom_operations/build/user_ie_extensions/libuser_ov_extensions.so")
 
 
