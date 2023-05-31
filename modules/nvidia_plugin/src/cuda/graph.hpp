@@ -30,9 +30,9 @@ class GraphExec: public Handle<cudaGraphExec_t> {
 public:
     GraphExec(const Graph& g);
 
-    cudaGraphExecUpdateResult update(const Graph& g);
+    cudaGraphExecUpdateResult update(const Graph& g) const;
 
-    void launch(const Stream& stream);
+    void launch(const Stream& stream) const;
 
 #if !defined(NDEBUG) || defined(_DEBUG)
 private:

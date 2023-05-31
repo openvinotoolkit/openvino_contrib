@@ -46,13 +46,13 @@ catch (std::exception &e) {
 }
 #endif
 
-cudaGraphExecUpdateResult GraphExec::update(const Graph &g) {
+cudaGraphExecUpdateResult GraphExec::update(const Graph &g) const {
     cudaGraphExecUpdateResult res;
     throwIfError(cudaGraphExecUpdate(get(), g.get(), nullptr, &res));
     return res;
 }
 
-void GraphExec::launch(const Stream &stream) {
+void GraphExec::launch(const Stream &stream) const {
     throwIfError(cudaGraphLaunch(get(), stream.get()));
 }
 
