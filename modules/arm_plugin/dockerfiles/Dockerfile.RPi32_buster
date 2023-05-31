@@ -75,7 +75,7 @@ RUN dpkg --add-architecture armhf && \
 RUN curl -O https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tar.xz && \
     tar -xf Python-3.7.9.tar.xz && \
     cd Python-3.7.9 && ./configure && make -j4 && make altinstall && \
-    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython
+    curl https://bootstrap.pypa.io/get-pip.py | python3.7 - --no-cache-dir pip==20.2.2 numpy==1.19.5 cython protobuf==3.20.*
 
 # Cross-compile Python3.7 for ARM
 RUN cd Python-3.7.9 && make distclean && \
