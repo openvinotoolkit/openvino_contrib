@@ -118,6 +118,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*HETERO(W|w)ithMULTI*.*)",
          // 106454, 106628
         R"(.*.*LoadNetworkToDefaultDeviceNoThrow.*)",
+        // Temporarily disable tests due to OPENVINO PR17667
+        R"(.*smoke_Simple_Interpolate_Nearest_2D_Scale_Param_Test.*)",
     };
 
 #ifdef _WIN32
