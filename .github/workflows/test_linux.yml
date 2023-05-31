@@ -177,22 +177,31 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Layer tests install"
+          
           cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests || exit 1
           cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release || exit 1
           cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          
           echo "::endgroup::"
 
           echo "::group::Samples tests install"
+          
           cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests || exit 1
           cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release || exit 1
           cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          
           echo "::endgroup::"
 
           echo "::group::CMake install"
+          
           # cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
           cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+          
           # cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
           cmake -DCOMPONENT=python_wheels -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+
+          cd ${{ env.BUILD_DIR }} && make -j 4 test_utils_api
+
           echo "::endgroup::"
           
           pushd ${{ env.INSTALL_DIR }}
@@ -495,7 +504,7 @@ jobs:
         run: |
           # For Python API
           python3 -m pip install --upgrade pip
-          python3 -m pip install Scons
+          # python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
           
