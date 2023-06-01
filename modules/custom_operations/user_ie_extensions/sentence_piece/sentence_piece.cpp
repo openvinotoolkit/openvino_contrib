@@ -392,14 +392,14 @@ bool RaggedTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVecto
     // Implementation for debuggin purposes: directly print ragged indices to std::cout and pass the base tensor with elements throug.
 
     auto input_shape = inputs[0].get_shape();
-    std::cout << "[ DEBUG ] RaggedTensorPack: shape = " << input_shape << "\n";
+    //std::cout << "[ DEBUG ] RaggedTensorPack: shape = " << input_shape << "\n";
     auto begins = inputs[0].data<const int32_t>();
     auto ends   = inputs[1].data<const int32_t>();
     auto num_elements = shape_size(input_shape);
 
-    for(size_t i = 0; i < num_elements; ++i) {
-        std::cout << "[ DEBUG ]     [" << i << "] " << begins[i] << ":" << ends[i] << " with size = " << ends[i] - begins[i] << "\n";
-    }
+    //for(size_t i = 0; i < num_elements; ++i) {
+    //std::cout << "[ DEBUG ]     [" << i << "] " << begins[i] << ":" << ends[i] << " with size = " << ends[i] - begins[i] << "\n";
+    //}
 
     inputs[2].copy_to(outputs[0]);
 
@@ -1183,7 +1183,7 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
 
     using namespace paddlenlp::fast_tokenizer;
 
-    std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
+    //std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
     core::Vocab vocab;
     std::string unk_token;
     if(unk_token_id < 0)
@@ -1195,13 +1195,13 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
             unk_token = token;
     }
 
-    std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
-    std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
-    std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
+    //std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
+    //std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
+    //std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
 
     auto tokenizer = models::FastWordPiece(vocab, unk_token, m_max_bytes_per_word, m_suffix_indicator, true);   // FIXME: why true?
 
-    std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
+    //std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
 
 
     for(size_t j = 0; j < num_elems; ++j) {
@@ -1427,7 +1427,7 @@ void CombineSegments::validate_and_infer_types() {
         OPENVINO_ASSERT(element::Type::merge(et, et, get_input_element_type(3*i + 1)));
     }
 
-    std::cerr << ps << '\n';
+    //std::cerr << ps << '\n';
 
     set_ragged_output(this, 0, ps, et);
     // TODO: Avoid emitting ragged indices for the second ragged tensor, they should be identical to the first output ragged tensor
@@ -1454,14 +1454,14 @@ bool CombineSegments::evaluate(ov::TensorVector& outputs, const ov::TensorVector
         begins.push_back(inputs[3*i + 0].data<const int32_t>());
         ends.push_back(inputs[3*i + 1].data<const int32_t>());
         nelems.push_back(inputs[3*i + 0].get_size());
-        std::cerr << "inputs[3*i + 0].get_size() = " << inputs[3*i + 0].get_size() << "\n";
+        //std::cerr << "inputs[3*i + 0].get_size() = " << inputs[3*i + 0].get_size() << "\n";
         elems.push_back(reinterpret_cast<const char*>(inputs[3*i + 2].data()));
         // TODO: Get rank from a tensor instead of partial_shape. This is a WA for CPU bug that gives 1D tensors instead of 0D tensors.
         if(get_input_partial_shape(3*i + 0).rank().get_length() > 0) {
             ps = inputs[3*i + 0].get_shape();
-            std::cerr << "updated\n";
+            //std::cerr << "updated\n";
         }
-        std::cerr << "ps = " << ps << "\nget_input_partial_shape(3*i) = " << get_input_partial_shape(3*i) << "\n";
+        //std::cerr << "ps = " << ps << "\nget_input_partial_shape(3*i) = " << get_input_partial_shape(3*i) << "\n";
         //OPENVINO_ASSERT(ps.merge_into(ps, get_input_partial_shape(3*i)));
         max_nelems = std::max(max_nelems, nelems.back());
     }
@@ -1470,7 +1470,7 @@ bool CombineSegments::evaluate(ov::TensorVector& outputs, const ov::TensorVector
     // This is only an estimation, not the exact output size, because ragged tensor may have gaps in the representation
 
     for(size_t i = 0; i < num_of_ragged; ++i) {
-        std::cerr << "max_nelems = " << max_nelems << "\n";
+        //std::cerr << "max_nelems = " << max_nelems << "\n";
         if(nelems[i] == 1) {
             flat_out_size += max_nelems * inputs[3*i + 2].get_size(); // broadcast
         } else {

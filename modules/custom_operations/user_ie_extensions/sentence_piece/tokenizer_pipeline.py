@@ -316,7 +316,7 @@ class TruncationStep(PostTokenizationStep):
         # operation.configure_mock(**{"outputs.return_value": [MagicMock() for _ in range(len(input_nodes))]})
         # return operation
         #print('[ TOKENIZER PIPELINE CONVERSION ] WARNING: Truncation is not applied because it is not implemented')
-        print('Trunc max_length:', self.max_length)
+        #print('Trunc max_length:', self.max_length)
         # FIXME: Truncation side (truncate_right) is ignored
         # TODO: Check if axis is the right-most dimension
         assert len(input_nodes) == 3, 'Only one input ragged tensor is supported as an input for TruncationStep'
@@ -432,7 +432,7 @@ class CombineSegmentsStep(PostTokenizationStep):
         number_of_sequence_inputs = sum(
             1 for input_ in self.inputs if isinstance(input_, Sequence)
         )
-        print('number_of_sequence_inputs:', number_of_sequence_inputs)
+        #print('number_of_sequence_inputs:', number_of_sequence_inputs)
         if number_of_sequence_inputs != len(input_nodes)/3:
             raise UserInputError(
                 f"Number of input nodes: {len(input_nodes)}, must be equal to {number_of_sequence_inputs}"
@@ -449,13 +449,13 @@ class CombineSegmentsStep(PostTokenizationStep):
                 # Put a scalar as a ragged tensor with scalar shape and a single element
                 op_inputs += make_constant_node(0, Type.i32).outputs()
                 op_inputs += make_constant_node(1, Type.i32).outputs()
-                print('Should be scalar:', op_inputs[-1])
-                print('token', node._token_id)
+                #print('Should be scalar:', op_inputs[-1])
+                #print('token', node._token_id)
                 op_inputs.append(make_constant_node(np.array([node._token_id]), Type.i32).output(0))
 
         op_inputs.append(make_constant_node(self.segment_ids, Type.i32).output(0))
 
-        print('op_inputs:', op_inputs)
+        #print('op_inputs:', op_inputs)
 
         # FIXME: Disabled for now, no implementation
         # operation = string_ops.CombineSegments(
@@ -506,10 +506,10 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         #max_len = opset10.reduce_max(lens)
         #padded_len =
         outputs = []
-        print(self.token)
-        print('max_length =', self.max_length)
-        print('ERRROR: SETTING MAX_LENGTH = 100')
-        print('ERROR: Ignoring pad token and set it to id = 0')
+        #print(self.token)
+        #print('max_length =', self.max_length)
+        #print('ERRROR: SETTING MAX_LENGTH = 100')
+        #print('ERROR: Ignoring pad token and set it to id = 0')
 
         if self.max_length == -1:
             # Calculate max_length as the maximum ragged length
@@ -520,9 +520,9 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         #if self.token_type_id == -1:
         #    self.token_type_id = 0
         for i in range(len(input_nodes)//3):
-            print(input_nodes[3*i:3*(i+1)])
-            print(as_node(self.max_length).outputs())
-            print(as_node(np.array(0, dtype=int)).outputs())
+            #print(input_nodes[3*i:3*(i+1)])
+            #print(as_node(self.max_length).outputs())
+            #print(as_node(np.array(0, dtype=int)).outputs())
             cur_outputs = core.make_node('RaggedToDense', input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()).outputs()
             outputs.append(cur_outputs[0])
             if i == 0:
@@ -576,10 +576,10 @@ class TokenizerPipeline:
 
         for input_node in input_nodes:
             input_node = core.make_node("StringTensorUnpack", input_node.outputs()).outputs()
-            print(input_node)
+            #print(input_node)
             for step in self.processing_steps:
                 input_node = step.get_ov_subgraph(input_node)
-                print('input_node:', input_node)
+                #print('input_node:', input_node)
             #ragged_tensor_pack = core.make_node("RaggedTensorPack", input_node)
             processing_pipelines_outputs += input_node
 
