@@ -315,8 +315,14 @@ class TruncationStep(PostTokenizationStep):
         # )
         # operation.configure_mock(**{"outputs.return_value": [MagicMock() for _ in range(len(input_nodes))]})
         # return operation
-        print('[ TOKENIZER PIPELINE CONVERSION ] WARNING: Truncation is not applied because it is not implemented')
-        return input_nodes
+        #print('[ TOKENIZER PIPELINE CONVERSION ] WARNING: Truncation is not applied because it is not implemented')
+        print('Trunc max_length:', self.max_length)
+        # FIXME: Truncation side (truncate_right) is ignored
+        # TODO: Check if axis is the right-most dimension
+        assert len(input_nodes) == 3, 'Only one input ragged tensor is supported as an input for TruncationStep'
+
+        max_length = opset10.minimum(opset10.subtract(input_nodes[1], input_nodes[0]), make_constant_node(self.max_length, Type.i32))
+        return [input_nodes[0], opset10.add(input_nodes[0], max_length).output(0), input_nodes[2]]
 
 
 @dataclass
@@ -443,6 +449,7 @@ class CombineSegmentsStep(PostTokenizationStep):
                 # Put a scalar as a ragged tensor with scalar shape and a single element
                 op_inputs += make_constant_node(0, Type.i32).outputs()
                 op_inputs += make_constant_node(1, Type.i32).outputs()
+                print('Should be scalar:', op_inputs[-1])
                 print('token', node._token_id)
                 op_inputs.append(make_constant_node(np.array([node._token_id]), Type.i32).output(0))
 
@@ -486,6 +493,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
             token=padding_dict["pad_token"],
             pad_right=padding_dict["direction"] == "Right",
             token_type_id=padding_dict["pad_type_id"],
+            # TODO: Initialize max_length
         )
 
     def get_ov_subgraph(self, input_nodes):
@@ -499,17 +507,23 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         #padded_len =
         outputs = []
         print(self.token)
-        print(self.max_length)
+        print('max_length =', self.max_length)
         print('ERRROR: SETTING MAX_LENGTH = 100')
         print('ERROR: Ignoring pad token and set it to id = 0')
-        self.max_length = 100
+
+        if self.max_length == -1:
+            # Calculate max_length as the maximum ragged length
+            max_length = opset10.reduce_max(opset10.subtract(input_nodes[1], input_nodes[0]), make_constant_node(0, Type.i32))
+        else:
+            max_length = make_constant_node(self.max_length, Type.i32)
+
         #if self.token_type_id == -1:
         #    self.token_type_id = 0
         for i in range(len(input_nodes)//3):
             print(input_nodes[3*i:3*(i+1)])
             print(as_node(self.max_length).outputs())
             print(as_node(np.array(0, dtype=int)).outputs())
-            cur_outputs = core.make_node('RaggedToDense', input_nodes[3*i:3*(i+1)] + make_constant_node(self.max_length, Type.i32).outputs() + make_constant_node(0, Type.i32).outputs()).outputs()
+            cur_outputs = core.make_node('RaggedToDense', input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()).outputs()
             outputs.append(cur_outputs[0])
             if i == 0:
                 mask = opset10.convert(cur_outputs[1], 'i32').output(0)  # TODO: Change RaggedToDense to generate mask of any type
