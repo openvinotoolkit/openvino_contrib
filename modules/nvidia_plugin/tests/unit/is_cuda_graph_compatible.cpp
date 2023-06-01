@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <cuda/graph.hpp>
-#include <cuda_executable_network.hpp>
+#include <cuda_compiled_model.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <openvino/op/parameter.hpp>
@@ -89,7 +89,7 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         CancellationToken token{};
         ExecGraph graph{creationContext, {}};
         Profiler profiler{false, graph};
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+        std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
@@ -167,7 +167,7 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         CancellationToken token{};
         ExecGraph graph{creationContext, {}};
         Profiler profiler{false, graph};
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+        std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
