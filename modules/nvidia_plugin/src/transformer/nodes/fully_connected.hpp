@@ -1,24 +1,27 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
 #include <array>
-#include <ngraph/ops.hpp>
-#include <ngraph/type/element_type.hpp>
+
+#include "openvino/op/op.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 
 class FullyConnected : public ov::op::Op {
 public:
+    OPENVINO_OP("FullyConnected", "nvidia_gpu");
+
+    FullyConnected() = default;
+    ~FullyConnected() = default;
+
     FullyConnected(const ov::Output<Node>& A,
                    const ov::Output<Node>& B,
                    const ov::Output<Node>& C,
                    const bool& transpose_a,
                    const bool& transpose_b);
-
-    OPENVINO_OP("FullyConnected", "nvidia_gpu");
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 

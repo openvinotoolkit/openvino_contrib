@@ -5,7 +5,6 @@
 #pragma once
 
 #include <atomic>
-#include <ngraph/node.hpp>
 #include <vector>
 
 #include "convolution_components/convolution_components.hpp"
@@ -41,7 +40,7 @@ private:
 
     static std::shared_ptr<CUDA::DnnBETensorDescriptor> MakeTensorDescriptor(int64_t id,
                                                                              cudnnDataType_t element_type,
-                                                                             const ngraph::Shape& shape);
+                                                                             const ov::Shape& shape);
 
 private:
     const Convolution::Details::ConvolutionParams params_;

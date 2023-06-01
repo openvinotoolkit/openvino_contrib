@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
-
 #include "convolution_components/convolution_cudnn_components.hpp"
 #include "cuda_operation_base.hpp"
 

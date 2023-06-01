@@ -6,7 +6,6 @@
 
 #include <cuda/runtime.hpp>
 #include <cuda_operation_base.hpp>
-#include <ngraph/type/element_type.hpp>
 
 #include "kernels/convert.hpp"
 

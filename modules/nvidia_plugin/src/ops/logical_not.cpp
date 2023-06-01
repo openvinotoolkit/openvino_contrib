@@ -4,7 +4,6 @@
 #include "logical_not.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/node.hpp>
 
 #include "converters.hpp"
 

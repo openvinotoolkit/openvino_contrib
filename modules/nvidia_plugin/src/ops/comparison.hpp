@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
-
 #include "cuda_operation_base.hpp"
 #include "kernels/comparison.hpp"
 

@@ -7,8 +7,6 @@
 #include <fmt/format.h>
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 
 #include "converters.hpp"
 #include "error.hpp"
@@ -27,7 +25,7 @@ ClampCudaOp::ClampCudaOp(const CreationContext& context,
     const auto& element_type = node.get_input_element_type(0);
     const auto& out_element_type = node.get_output_element_type(0);
     if (out_element_type != element_type) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ClampCudaOp: output type should be the same as input type, input type: {}, output type: {}",
                         element_type.get_type_name(),
                         out_element_type.get_type_name()));

@@ -78,7 +78,7 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
 
     auto plans = CUDA::getAllExecutionPlansFromHeuristics(graph, *dnnHandle);
     if (plans.empty()) {
-        throwIEException("cuDNN BE API: Unsupported convolution");
+        throw_ov_exception("cuDNN BE API: Unsupported convolution");
     }
 
     std::shared_ptr<CUDA::DnnBEExecutionPlan> plan;
@@ -94,12 +94,12 @@ ConvolutionCuDnnBE::ConvolutionCuDnnBE(const CreationContext& context,
 
 std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
     const CUDA::DnnHandle& dnnHandle, std::vector<std::shared_ptr<CUDA::DnnBEExecutionPlan>>& plans) {
-    auto input = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
-                                                      ngraph::shape_size(params_.input_shape_));
-    auto filter = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
-                                                       ngraph::shape_size(params_.filter_shape_));
-    auto output = CUDA::DefaultStream::stream().malloc(ngraph::element::Type{params_.element_type_}.size() *
-                                                       ngraph::shape_size(params_.output_shape_));
+    auto input = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.element_type_}.size() *
+                                                      ov::shape_size(params_.input_shape_));
+    auto filter = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.element_type_}.size() *
+                                                       ov::shape_size(params_.filter_shape_));
+    auto output = CUDA::DefaultStream::stream().malloc(ov::element::Type{params_.element_type_}.size() *
+                                                       ov::shape_size(params_.output_shape_));
     auto variantPackBuilder = CUDA::DnnBEVariantPackBuilder();
     std::array<int64_t, 3> uids = {DnnTensorID::input, DnnTensorID::filter, DnnTensorID::output};
     std::array<const void*, 3> data_ptrs = {input.get(), filter.get(), output.get()};
@@ -112,7 +112,7 @@ std::shared_ptr<CUDA::DnnBEExecutionPlan> ConvolutionCuDnnBE::performBenchmarks(
 WorkbufferRequest ConvolutionCuDnnBE::GetWorkBufferRequest() const {
     OPENVINO_ASSERT(engine_config_, "Node name: ", GetName());
     if (workspace_size_ < 0) {
-        ov::nvidia_gpu::throwIEException(fmt::format("Workspace Size Invalid = {}", workspace_size_));
+        ov::nvidia_gpu::throw_ov_exception(fmt::format("Workspace Size Invalid = {}", workspace_size_));
     }
     const size_t size = std::max(static_cast<int64_t>(0), workspace_size_);
     if (size > 0) {
@@ -150,16 +150,16 @@ void ConvolutionCuDnnBE::Execute(const InferenceRequestContext& context,
 
 std::shared_ptr<CUDA::DnnBETensorDescriptor> ConvolutionCuDnnBE::MakeTensorDescriptor(int64_t id,
                                                                                       cudnnDataType_t element_type,
-                                                                                      const ngraph::Shape& shape) {
+                                                                                      const ov::Shape& shape) {
     const int nbDims = shape.size();
     if (nbDims < 4 || nbDims > 5)
-        throwIEException(fmt::format("Unexpected number of dimensions for Convolution input/output: {}", nbDims));
+        throw_ov_exception(fmt::format("Unexpected number of dimensions for Convolution input/output: {}", nbDims));
 
     return CUDA::DnnBETensorDescriptorBuilder()
         .setUniqueId(id)
         .setDataType(element_type)
         .setShape(shape)
-        .setStrides(ngraph::row_major_strides(shape))
+        .setStrides(ov::row_major_strides(shape))
         .setAlignment(CUDA::memoryAlignment)
         .setIsVirtual(false)
         .build();

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "concat_transformation.hpp"
 
 #include <exec_graph_info.hpp>
+#include "openvino/core/rt_info.hpp"
+#include "openvino/op/concat.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
-#include <openvino/op/concat.hpp>
 
 #include "nodes/concat_optimized.hpp"
 

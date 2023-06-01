@@ -147,7 +147,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
     auto& cancellationToken = context.getCancellationToken();
     auto& profiler = context.getProfiler();
-    profiler.SetStream(stream);
+    profiler.set_stream(stream);
 
     // First iteration
     for (const auto inputIdx : invariant_inputs_) {
@@ -160,9 +160,8 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
     }
 
-    const auto& execSequence = profiler.CreateExecSequence(this);
+    const auto& execSequence = profiler.create_exec_sequence(this);
     for (int64_t iter = 0; iter < num_iterations_; ++iter) {
-        cancellationToken.Check();
 
         // Input mapping of ports
         for (auto& it : portmap_inputs_) {
@@ -176,7 +175,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
             auto inTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
             auto outTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
             auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-            op->Execute(context, inTensors, outTensors, workBuffers);
+            op->execute(context, inTensors, outTensors, workBuffers);
         }
 
         // Back-edge mapping

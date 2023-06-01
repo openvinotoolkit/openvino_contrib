@@ -1,23 +1,19 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-
 #include "cuda_async_infer_request.hpp"
-
-#include <threading/ie_cpu_streams_executor.hpp>
-
-#include "cuda_executable_network.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_thread_pool.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferRequest,
-                                             const InferenceEngine::ITaskExecutor::Ptr& cpuTaskExecutor,
-                                             const InferenceEngine::ITaskExecutor::Ptr& waitExecutor,
-                                             const InferenceEngine::ITaskExecutor::Ptr& callbackExecutor)
-    : AsyncInferRequestThreadSafeDefault(inferRequest, cpuTaskExecutor, callbackExecutor), _inferRequest(inferRequest) {
+CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& request,
+                                             const std::shared_ptr<ov::threading::ITaskExecutor>& task_executor,
+                                             const std::shared_ptr<ov::threading::ITaskExecutor>& wait_executor,
+                                             const std::shared_ptr<ov::threading::ITaskExecutor>& callback_executor)
+    : ov::IAsyncInferRequest(request, task_executor, callback_executor),
+      request_(request) {
     // In current implementation we have CPU only tasks and no needs in 2 executors
     // So, by default single stage pipeline is created.
     // This stage executes InferRequest::Infer() using cpuTaskExecutor.
@@ -25,38 +21,43 @@ CudaAsyncInferRequest::CudaAsyncInferRequest(const CudaInferRequest::Ptr& inferR
     // and waiting tasks. Waiting tasks can lock execution thread so they use separate threads from other executor.
     constexpr const auto remoteDevice = true;
 
-    auto cudaThreadPool = std::dynamic_pointer_cast<CudaThreadPool>(waitExecutor);
+    auto cuda_thread_pool = std::dynamic_pointer_cast<CudaThreadPool>(wait_executor);
     if (remoteDevice) {
-        _pipeline = {{cpuTaskExecutor,
+        m_pipeline = {{task_executor,
                       [this] {
-                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::Preprocessing");
-                          _inferRequest->inferPreprocess();
+                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::infer_preprocess");
+                          request_->infer_preprocess();
                       }},
-                     {waitExecutor,
-                      [this, cudaThreadPool] {
-                          auto& threadContext = cudaThreadPool->GetThreadContext();
+                     {wait_executor,
+                      [this, cuda_thread_pool] {
+                          auto& threadContext = cuda_thread_pool->get_thread_context();
                           {
-                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::StartPipeline");
-                              _inferRequest->startPipeline(threadContext);
+                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::start_pipeline");
+                              request_->start_pipeline(threadContext);
                           }
                           {
-                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::WaitPipeline");
-                              _inferRequest->waitPipeline(threadContext);
+                              OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::wait_pipeline");
+                              request_->wait_pipeline(threadContext);
                           }
                       }},
-                     {cpuTaskExecutor, [this] {
-                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::Postprocessing");
-                          _inferRequest->inferPostprocess();
+                     {task_executor, [this] {
+                          OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "CudaAsyncInferRequest::infer_postprocess");
+                          request_->infer_postprocess();
                       }}};
     }
 }
 
-void CudaAsyncInferRequest::Cancel() {
-    InferenceEngine::AsyncInferRequestThreadSafeDefault::Cancel();
-    _inferRequest->Cancel();
+CudaAsyncInferRequest::~CudaAsyncInferRequest() {
+    ov::IAsyncInferRequest::stop_and_wait();
 }
 
-void CudaAsyncInferRequest::Infer_ThreadUnsafe() { StartAsync_ThreadUnsafe(); }
+void CudaAsyncInferRequest::cancel() {
+    ov::IAsyncInferRequest::cancel();
+    request_->cancel();
+}
 
+void CudaAsyncInferRequest::infer_thread_unsafe() {
+    start_async_thread_unsafe();
+}
 }  // namespace nvidia_gpu
 }  // namespace ov

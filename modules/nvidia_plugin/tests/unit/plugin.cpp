@@ -5,23 +5,25 @@
 #include <gtest/gtest.h>
 
 #include <condition_variable>
-#include <cuda_executable_network.hpp>
-#include <cuda_operation_registry.hpp>
-#include <cuda_plugin.hpp>
 #include <memory>
-#include <ngraph/function.hpp>
+#include <random>
+#include <typeinfo>
+
+#include "cuda_compiled_model.hpp"
+#include "cuda_operation_registry.hpp"
+#include "cuda_plugin.hpp"
+
 #include <ngraph/node.hpp>
 #include <ops/parameter.hpp>
 #include <ops/result.hpp>
-#include <random>
+
 #include <threading/ie_executor_manager.hpp>
-#include <typeinfo>
+
 
 #include "nodes/parameter_stub_node.hpp"
 #include "nodes/result_stub_node.hpp"
 #include "test_networks.hpp"
 
-using namespace InferenceEngine;
 using namespace ov::nvidia_gpu;
 
 using devptr_t = DevicePointer<void*>;
@@ -38,45 +40,37 @@ public:
     Blob::Ptr inBlob;
     Blob::Ptr outBlob;
     InferenceEngine::BlobMap blobs;
-    std::shared_ptr<ngraph::Function> function_;
+    std::shared_ptr<ov::Model> function_;
 };
 
 TEST_F(PluginTest, LoadExecNetwork_Success) {
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
-    Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
-    ASSERT_NO_THROW(plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}}));
+    ASSERT_NO_THROW(plugin->compile_model(function_, {{ov::device::id.name(), "0"}}));
 }
 
 TEST_F(PluginTest, LoadExecNetwork_NegativeId_Failed) {
-    auto dummyFunction = std::make_shared<ngraph::Function>(ov::NodeVector{}, ov::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
-    Configuration cfg;
+    auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
-    ASSERT_THROW(plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "-1"}}),
-                 InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), "-1"}}),
+                 ov::Exception);
 }
 
 TEST_F(PluginTest, LoadExecNetwork_OutRangeId_Failed) {
-    auto dummyFunction = std::make_shared<ngraph::Function>(ov::NodeVector{}, ov::ParameterVector{});
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{dummyFunction};
-    Configuration cfg;
+    auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
     ASSERT_THROW(
-        plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), std::to_string(CUDA::Device::count())}}),
-        InferenceEngine::details::InferenceEngineException);
+        plugin->compile_model(dummyFunction, {{ov::device::id.name(), std::to_string(CUDA::Device::count())}}),
+        ov::Exception);
 }
 
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
-    Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});
+    auto execNetwork = plugin->compile_model(function_, {{ov::device::id.name(), "0"}});
     const int deviceId = 0;
     CUDA::Device device{deviceId};
-    auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, maxConcurrentStreams(device));
+    auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, max_concurrent_streams(device));
 
     std::unordered_set<std::thread::id> streams;
     std::mutex mtx;
@@ -107,13 +101,11 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_Success) {
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
-    Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});
+    auto compiled_model = plugin->compile_model(function_, {{ov::device::id.name(), "0"}});
     const int deviceId = 0;
     CUDA::Device device{deviceId};
-    const size_t numConcurrentStreams = maxConcurrentStreams(device);
+    const size_t numConcurrentStreams = max_concurrent_streams(device);
     auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
 
     std::unordered_set<std::thread::id> streams;
@@ -130,7 +122,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
                 std::lock_guard<std::mutex> lock{mtx};
                 numHandledJobs += 1;
                 streams.insert(streamId);
-                threadContexts.insert(&cpuStreamExecutor->GetThreadContext());
+                threadContexts.insert(&cpuStreamExecutor->get_thread_context());
             }
             condVar.notify_one();
         });
@@ -145,13 +137,11 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Success) {
 TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Heavy_Success) {
     using namespace std::chrono_literals;
 
-    auto dummyCNNNetwork = InferenceEngine::CNNNetwork{function_};
-    Configuration cfg;
     auto plugin = std::make_shared<Plugin>();
-    auto execNetwork = plugin->LoadExeNetworkImpl(dummyCNNNetwork, {{CONFIG_KEY(DEVICE_ID), "0"}});
+    auto compiled_model = plugin->compile_model(function_, {{ov::device::id.name(), "0"}});
     const int deviceId = 0;
     CUDA::Device device{deviceId};
-    const size_t numConcurrentStreams = maxConcurrentStreams(device);
+    const size_t numConcurrentStreams = max_concurrent_streams(device);
     auto cpuStreamExecutor = std::make_shared<CudaThreadPool>(device, numConcurrentStreams);
 
     std::unordered_set<std::thread::id> streams;
@@ -168,7 +158,7 @@ TEST_F(PluginTest, LoadExecNetwork_CudaThreadPool_AllJobs_Heavy_Success) {
                 std::lock_guard<std::mutex> lock{mtx};
                 numHandledJobs += 1;
                 streams.insert(streamId);
-                threadContexts.insert(&cpuStreamExecutor->GetThreadContext());
+                threadContexts.insert(&cpuStreamExecutor->get_thread_context());
             }
             condVar.notify_one();
         });

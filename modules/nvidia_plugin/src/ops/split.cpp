@@ -39,7 +39,7 @@ SplitOp::SplitOp(const CreationContext& context,
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
                             static_cast<ov::element::Type_t>(input_element_type)));

@@ -45,7 +45,7 @@ struct StridedSliceTest : testing::Test {
     CUDA::Allocation outAlloc = threadContext.stream().malloc(ouputBufferSize);
     std::vector<cdevptr_t> inputs{inAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     std::function<std::shared_ptr<ov::op::v1::StridedSlice>()> create_node = [this]() {
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});

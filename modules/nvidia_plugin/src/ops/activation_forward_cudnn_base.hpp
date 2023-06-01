@@ -9,7 +9,6 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_base.hpp>
 #include <initializer_list>
-#include <ngraph/node.hpp>
 
 namespace ov {
 namespace nvidia_gpu {

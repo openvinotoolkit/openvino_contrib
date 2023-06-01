@@ -7,7 +7,7 @@
 #include "components/numpy_broadcast_params.h"
 #include "cuda_operation_base.hpp"
 #include "kernels/broadcast.hpp"
-#include "ngraph/op/broadcast.hpp"
+#include "openvino/op/broadcast.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

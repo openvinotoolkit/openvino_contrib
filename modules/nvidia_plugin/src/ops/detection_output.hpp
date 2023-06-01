@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
 #include <openvino/op/detection_output.hpp>
 
 #include "cuda_operation_base.hpp"

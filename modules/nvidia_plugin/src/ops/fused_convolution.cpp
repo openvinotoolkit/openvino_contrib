@@ -13,7 +13,7 @@
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
 #include "fused_convolution_cudnn_decomposed.hpp"
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 #ifdef ENABLE_CUDNN_BACKEND_API
 #include "fused_convolution_cudnn_be.hpp"
 #endif  // ENABLE_CUDNN_BACKEND_API
@@ -85,7 +85,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
                                                                      add_desc,
                                                                      activation_desc);
         } catch (const std::exception& e) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("unsupported `{}` node: Failed to create "
                             "FusedConvolutionCuDnnDecomposed impl: {}",
                             node->get_type_info().name,
@@ -110,7 +110,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
             e.what());
     }
 
-    throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedConvolution);

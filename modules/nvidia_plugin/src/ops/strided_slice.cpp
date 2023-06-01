@@ -6,11 +6,12 @@
 
 #include <fmt/format.h>
 
+#include "openvino/core/axis_set.hpp"
+
 #include <cuda_operation_registry.hpp>
 #include <openvino/op/constant.hpp>
 
 #include "converters.hpp"
-#include "ngraph/axis_set.hpp"
 #include "strided_slice.hpp"
 
 namespace ov {
@@ -51,7 +52,7 @@ StridedSliceOp::StridedSliceOp(const CreationContext& context,
       element_type_{stridedSliceOp.get_input_element_type(0)} {
     for (size_t i = 1; i < stridedSliceOp.inputs().size(); i++) {
         if (stridedSliceOp.input(i).get_element_type() != ov::element::Type_t::i64) {
-            throwIEException(fmt::format("Input precision {} is not supported by StridedSliceOp!",
+            throw_ov_exception(fmt::format("Input precision {} is not supported by StridedSliceOp!",
                                          stridedSliceOp.input(i).get_element_type().get_type_name()));
         }
     }

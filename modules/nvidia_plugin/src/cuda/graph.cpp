@@ -3,7 +3,7 @@
 //
 
 #include "graph.hpp"
-#include <ie_common.h>
+#include "openvino/core/except.hpp"
 #include <fmt/format.h>
 
 namespace CUDA {
@@ -27,7 +27,6 @@ cudaGraph_t Graph::createNativeWithFlags(unsigned int flags) {
     return g;
 }
 
-// clang-format off
 GraphExec::GraphExec(const Graph &g)
 #if !defined(NDEBUG) || defined(_DEBUG)
 try
@@ -43,10 +42,9 @@ Handle(cudaGraphInstantiate, cudaGraphExecDestroy, g.get(), static_cast<cudaGrap
 }
 #if !defined(NDEBUG) || defined(_DEBUG)
 catch (std::exception &e) {
-    throw InferenceEngine::GeneralError { fmt::format("{}: {}", e.what(), errorMsg_) };
+    OPENVINO_THROW(e.what(), ": ", errorMsg_);
 }
 #endif
-// clang-format on
 
 cudaGraphExecUpdateResult GraphExec::update(const Graph &g) {
     cudaGraphExecUpdateResult res;

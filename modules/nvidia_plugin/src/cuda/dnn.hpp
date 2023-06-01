@@ -7,7 +7,6 @@
 #include <cudnn.h>
 
 #include <functional>
-#include <ngraph/type/element_type.hpp>
 #include <optional>
 
 #include "constant_factory.hpp"
@@ -39,7 +38,7 @@ inline std::string cudnnGetErrorString(cudnnConvolutionFwdAlgo_t algo) {
 inline void throwIfError(
     cudnnStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cudnnGetErrorString(err), location);
+    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::throw_ov_exception(cudnnGetErrorString(err), location);
 }
 
 inline void logIfError(

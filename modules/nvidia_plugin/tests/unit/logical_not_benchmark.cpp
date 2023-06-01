@@ -33,7 +33,7 @@ struct LogicalNotBenchmark : testing::Test {
     CUDA::Allocation out_alloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{in_alloc};
     std::vector<devptr_t> outputs{out_alloc};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;

@@ -7,7 +7,7 @@
 #include "graph.cuh"
 #include <cuda/graph.hpp>
 #include <cuda/event.hpp>
-#include <ie_common.h>
+#include "openvino/core/except.hpp"
 #include <array>
 #include <gsl/gsl_util>
 
@@ -145,7 +145,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventUpdate) {
     exec.launch(stream);
     stream.synchronize();
     EXPECT_GT(event3.elapsedSince(event2), 0);
-    EXPECT_THROW(event1.elapsedSince(event0), InferenceEngine::GeneralError);
+    EXPECT_THROW(event1.elapsedSince(event0), ov::Exception);
 }
 
 } // annonymous namespace

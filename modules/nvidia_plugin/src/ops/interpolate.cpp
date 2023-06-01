@@ -12,14 +12,12 @@
 #include "interpolate_cubic.hpp"
 #include "interpolate_linear.hpp"
 #include "interpolate_nearest.hpp"
-#include "ngraph/shape.hpp"
-#include "ngraph/validation_util.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 static OperationBase::Ptr interpolateFactory(const CreationContext& context,
-                                             const std::shared_ptr<ngraph::Node>& in_node,
+                                             const std::shared_ptr<ov::Node>& in_node,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
     auto node = std::dynamic_pointer_cast<ov::op::v4::Interpolate>(in_node);
@@ -59,7 +57,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
             break;
     };
 
-    throwIEException(fmt::format("Interpolate node is not supported: {}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Interpolate node is not supported: {}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(interpolateFactory, Interpolate);

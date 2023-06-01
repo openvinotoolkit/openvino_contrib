@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "matmul_transformations.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
+#include "openvino/core/rt_info.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
-#include <openvino/op/matmul.hpp>
-#include <openvino/op/transpose.hpp>
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::pass::pattern;
 

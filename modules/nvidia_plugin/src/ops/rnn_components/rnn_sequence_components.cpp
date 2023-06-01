@@ -7,8 +7,6 @@
 #include <cuda/constant_factory.hpp>
 #include <ops/converters.hpp>
 
-#include "ngraph/shape.hpp"
-
 namespace ov::nvidia_gpu::RNN::Details {
 
 inline bool isTypeSupported(cudaDataType_t type) {
@@ -42,7 +40,7 @@ TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_ty
     OPENVINO_ASSERT(src_shape_.size() == src_mode_.size());
     OPENVINO_ASSERT(src_mode_.size() == dst_mode_.size());
     if (!isTypeSupported(element_type_)) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("TransposeTensorAdapterBase: unsupported argument type: {}", toString(element_type_)));
     }
 }
