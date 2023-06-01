@@ -12,6 +12,7 @@
 #include "openvino/op/gru_sequence.hpp"
 #include "openvino/op/rnn_sequence.hpp"
 #include "openvino/op/lstm_sequence.hpp"
+#include "openvino/op/util/op_types.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
 #include "transformations/convert_precision.hpp"
@@ -57,27 +58,42 @@ void GraphTransformer::transform(const CUDA::Device& device,
     // WA for ConvertPrecision which doesn't keep original precisions (CVS-111453)
     // Store original precisions for inputs and outputs
     // And restore them after transformations if ConvertPrecision was called
+    std::map<size_t, ov::element::Type> input_direct;
     std::map<size_t, ov::element::Type> input_preprocess;
     std::map<size_t, ov::element::Type> output_postprocess;
     for (size_t i = 0; i < model->inputs().size(); i++) {
         auto input = model->input(i);
-        input_preprocess[i] = input.get_element_type();
+        auto target_inputs = input.get_target_inputs();
+        // Avoid pre-processing for models wtih Parameter-Result only
+        if (all_of(target_inputs.begin(), target_inputs.end(),
+            [&] (const Input<Node>& i) {return ov::op::util::is_output(i.get_node());})) {
+            input_direct[i] = input.get_element_type();
+        } else {
+            input_preprocess[i] = input.get_element_type();
+        }
     }
     for (size_t i = 0; i < model->get_output_size(); i++) {
         auto output = model->output(i);
-        output_postprocess[i] = output.get_element_type();
+        if (!ov::op::util::is_parameter(output.get_node())) {
+            output_postprocess[i] = output.get_element_type();
+        }
     }
+
+    precisions_map fp_convert_precision_map = {
+        {ov::element::f64, ov::element::f32}
+    };
+    type_to_fuse_map empty_fuse_map = {};
+    if (upscale_precision()) {
+        fp_convert_precision_map.insert(std::make_pair(ov::element::f16, ov::element::f32));
+    } else if (downscale_precision()) {
+        fp_convert_precision_map.insert(std::make_pair(ov::element::f32, ov::element::f16));
+    }
+
     auto pass_config = std::make_shared<ov::pass::PassConfig>();
     ov::pass::Manager common_manager{pass_config};
 
     pass_config->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     pass_config->disable<ov::pass::MVN6Decomposition>();
-    if (upscale_precision()) {
-        // Allow FP16 Converts to be folded and FP16 constants to be upgraded to FP32 data type
-        pass_config->disable<ov::pass::DisableDecompressionConvertConstantFolding>();
-        pass_config->disable<ov::pass::ConvertCompressedOnlyToLegacy>();
-    }
-
     // NOTE: Elementwise decompositions are now disabled because generally their straightforward versions
     // are executed faster on CUDA/cuDNN.
     // However this is not valid for the case with broadcasting of very large shapes (e.g. {{1024, 1024, 384, 2}, {1}})
@@ -92,6 +108,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
     common_manager.register_pass<ov::pass::InitNodeInfo>();
+    common_manager.register_pass<ov::pass::ConvertPrecision>(fp_convert_precision_map, empty_fuse_map, true);
     common_manager.register_pass<ov::pass::CommonOptimizations>();
     common_manager.register_pass<ov::pass::ReshapePRelu>();
     // Do we actually need this transformations in plugin?
@@ -103,19 +120,16 @@ void GraphTransformer::transform(const CUDA::Device& device,
     // 2. CudaInferRequest implementation relies on number of outputs of original model
     // 3. WA for ConvertPrecision - will removed after fixing CVS-111453
     // common_manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
-    precisions_map fp_convert_precision_map = {
-        {ov::element::f64, ov::element::f32}
-    };
-    type_to_fuse_map empty_fuse_map = {};
-    if (upscale_precision()) {
-        fp_convert_precision_map.insert(std::make_pair(ov::element::f16, ov::element::f32));
-    } else if (downscale_precision()) {
-        fp_convert_precision_map.insert(std::make_pair(ov::element::f32, ov::element::f16));
-    }
-    common_manager.register_pass<ov::pass::ConvertPrecision>(fp_convert_precision_map, empty_fuse_map, true);
     common_manager.run_passes(model);
 
     auto preprocessor = ov::preprocess::PrePostProcessor(model);
+    for (auto& item : input_direct) {
+        auto node = model->input(item.first).get_node_shared_ptr();
+        if (auto param = ov::as_type_ptr<ov::op::v0::Parameter>(node)) {
+            param->set_element_type(item.second);
+            param->validate_and_infer_types();
+        }
+    }
     for (auto& item : input_preprocess) {
         auto& in = preprocessor.input(item.first);
         in.tensor().set_element_type(item.second);
