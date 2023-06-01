@@ -139,18 +139,18 @@ jobs:
           
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
-            -DENABLE_NCC_STYLE=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
-            -DBUILD_SHARED_LIBS=ON `
-            -DENABLE_DATA=ON `
-            -DENABLE_TESTS=ON `
-            -DENABLE_PYTHON=ON `
-            -DBUILD_nvidia_plugin=OFF `
-            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
             -DENABLE_FASTER_BUILD=ON `
+            -DENABLE_TESTS=ON `
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
             -DENABLE_STRICT_DEPENDENCIES=OFF `
+            -DENABLE_PYTHON=ON `
+            -DENABLE_DATA=ON `
+            -DBUILD_nvidia_plugin=OFF `
             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
+            -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}\modules `
+            -DCMAKE_BUILD_TYPE=Release `
             -S ${{ env.OPENVINO_REPO }} `
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
