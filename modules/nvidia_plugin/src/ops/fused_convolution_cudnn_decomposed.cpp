@@ -85,6 +85,8 @@ void FusedConvolutionCuDnnDecomposed::Execute(const InferenceRequestContext& con
     }
 }
 
+bool FusedConvolutionCuDnnDecomposed::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest FusedConvolutionCuDnnDecomposed::GetWorkBufferRequest() const {
     if (conv_descs_->Algo().memory != 0) {
         return {{}, {conv_descs_->Algo().memory}};

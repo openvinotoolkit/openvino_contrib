@@ -9,6 +9,16 @@
 
 namespace ov::nvidia_gpu::RNN::Details {
 
+bool isRNNSequenceCudaGraphCompatible(const CUDA::Device& device) {
+    const auto computeCompatabilityVersion = 10 * device.props().major + device.props().minor;
+    const auto isDeviceSupported = computeCompatabilityVersion > 61;
+
+    const auto cudnnVersion = ::cudnnGetVersion();
+    const auto isCudnnSupported = cudnnVersion != 8500 && cudnnVersion != 8600;
+
+    return isDeviceSupported || isCudnnSupported;
+}
+
 inline bool isTypeSupported(cudaDataType_t type) {
     switch (type) {
         case CUDA_R_16F:

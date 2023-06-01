@@ -90,6 +90,8 @@ public:
         }
     }
 
+    bool IsCudaGraphCompatible() const override { return true; }
+
 private:
     std::optional<TKernel> kernel_;
 };

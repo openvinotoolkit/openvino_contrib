@@ -35,6 +35,8 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
     throwIfError(cudaPeekAtLastError());
 }
 
+bool LogicalNotOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 
 }  // namespace nvidia_gpu

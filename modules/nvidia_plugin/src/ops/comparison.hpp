@@ -18,6 +18,8 @@ public:
                IndexCollection&& outputIds,
                kernel::Comparison::Op_t operation_type);
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     void calculateOffsets();
     void Execute(const InferenceRequestContext& context,

@@ -59,5 +59,7 @@ void ActivationForwardCuDnnOpBase::Execute(const InferenceRequestContext& contex
                                                              outputTensors[0].get());
 }
 
+bool ActivationForwardCuDnnOpBase::IsCudaGraphCompatible() const { return true; }
+
 }  // namespace nvidia_gpu
 }  // namespace ov

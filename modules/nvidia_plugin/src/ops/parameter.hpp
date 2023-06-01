@@ -16,10 +16,13 @@ public:
                 const ov::Node& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
     static std::string GetInputTensorName(const ov::Node& node);
 
 private:

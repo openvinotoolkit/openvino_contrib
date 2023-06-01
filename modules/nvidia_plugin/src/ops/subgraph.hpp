@@ -21,6 +21,9 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
+
     const MemoryManager& memoryManager() const { return *memory_manager_; }
 
     const std::vector<OperationBase::Ptr>& getParams() const;

@@ -25,10 +25,13 @@ public:
                                  const ov::Node& node,
                                  IndexCollection&& inputIds,
                                  IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers&) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 protected:
     std::unique_ptr<CUDA::DnnActivationDescriptor> op_desc_;

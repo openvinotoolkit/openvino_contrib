@@ -18,10 +18,14 @@ public:
              const NodeOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
+
     static std::vector<std::string> GetOutputTensorName(const ov::op::v0::Result& node);
 
 private:

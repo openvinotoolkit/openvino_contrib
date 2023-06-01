@@ -166,6 +166,8 @@ void CuDnnTensorOpBase::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
+bool CuDnnTensorOpBase::IsCudaGraphCompatible() const { return true; }
+
 CuDnnTensorOpBase::IoParams::IoParams(const ov::Node& node, const Type& io_type, int index)
     : type_(convertDataType<cudnnDataType_t>(io_type == Type::INPUT ? node.get_input_element_type(index)
                                                                     : node.get_output_element_type(index))),

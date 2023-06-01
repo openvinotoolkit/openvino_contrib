@@ -59,6 +59,8 @@ public:
                    static_cast<void*>(outputTensors[0].get()));
     }
 
+    bool IsCudaGraphCompatible() const override { return true; }
+
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override {
         in0_broadcast_params_->initWorkbuffers(buffers);
         in1_broadcast_params_->initWorkbuffers(buffers);

@@ -28,6 +28,8 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers&) override;
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     size_t immutableWbSize() const { return concat_kernel_.value().immutableWbSize(); }
     size_t mutableWbSize() const { return concat_kernel_.value().mutableWbSize(); }

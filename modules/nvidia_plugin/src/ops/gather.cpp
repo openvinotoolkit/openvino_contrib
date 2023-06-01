@@ -182,6 +182,8 @@ void GatherOp::Execute(const InferenceRequestContext& context,
                       outputs[0].get());
 }
 
+bool GatherOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(GatherOp, Gather);
 }  // namespace nvidia_gpu
 }  // namespace ov

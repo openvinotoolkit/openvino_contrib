@@ -51,5 +51,7 @@ void ClampCudaOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(context.getThreadContext().stream().get(), inputTensors[0].get(), outputTensors[0].get());
 }
 
+bool ClampCudaOp::IsCudaGraphCompatible() const { return true; }
+
 }  // namespace nvidia_gpu
 }  // namespace ov

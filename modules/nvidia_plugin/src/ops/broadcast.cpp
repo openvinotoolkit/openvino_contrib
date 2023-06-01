@@ -65,6 +65,8 @@ void BroadcastOp::Execute(const InferenceRequestContext& context,
     (*kernel_)(stream, inputs[0].get(), broadcast_params_->mapper(workbuffers.immutable_buffers), outputs[0].get());
 }
 
+bool BroadcastOp::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest BroadcastOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
 
 void BroadcastOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
