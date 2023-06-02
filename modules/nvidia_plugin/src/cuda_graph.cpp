@@ -16,5 +16,9 @@ void ExecGraph::Run(const InferenceRequestContext& context, const DeviceMemBlock
     SubGraph::Execute(context, {}, {}, workbuffers);
 }
 
+const SubGraph& ExecGraph::GetSubGraph() const {
+    return *this;
+}
+
 }  // namespace nvidia_gpu
 }  // namespace ov

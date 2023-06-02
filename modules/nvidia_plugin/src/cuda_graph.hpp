@@ -9,12 +9,19 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class ExecGraph final : public SubGraph {
+struct ITopologyRunner {
+    virtual void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const = 0;
+    virtual const SubGraph& GetSubGraph() const = 0;
+    virtual ~ITopologyRunner() = default;
+};
+
+class ExecGraph final : public SubGraph, public ITopologyRunner {
 public:
     ExecGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
     ~ExecGraph() override = default;
 
-    void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
+    void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
+    const SubGraph& GetSubGraph() const override;
 };
 
 }  // namespace nvidia_gpu

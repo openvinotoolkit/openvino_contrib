@@ -49,7 +49,7 @@ public:
 
     ov::Any get_property(const std::string& name) const override;
 
-    const ExecGraph& get_execution_graph() const;
+    const ITopologyRunner& get_execution_graph() const;
 
     const std::shared_ptr<MemoryPool>& get_memory_pool() const;
 
@@ -74,7 +74,7 @@ private:
     std::shared_ptr<ov::Model> model_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;
-    std::unique_ptr<ExecGraph> graph_;
+    std::unique_ptr<ITopologyRunner> graph_;
     std::shared_ptr<MemoryPool> memory_pool_;
     const bool loaded_from_cache_;
 };
