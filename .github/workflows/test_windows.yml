@@ -140,7 +140,7 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
-            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_SHARED_LIBS=ON `
             -DENABLE_FASTER_BUILD=ON `
             -DENABLE_TESTS=ON `
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
@@ -428,7 +428,6 @@ jobs:
       - name: Install python dependencies
         run: |
           # For Python API
-          python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
           
