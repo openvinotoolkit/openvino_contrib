@@ -1,6 +1,6 @@
-package tests.compatibility;
+package org.intel.openvino;
 
-import org.intel.openvino.compatibility.*;
+import org.intel.openvino.*;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;
@@ -9,19 +9,19 @@ import org.junit.runner.Description;
 import java.nio.file.Paths;
 
 @Ignore
-public class IETest {
+public class OVTest {
     String modelXml;
     String modelBin;
     static String device;
 
-    public IETest() {
+    public OVTest() {
         try {
-            System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
+            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
             try {
-                IECore.loadNativeLibs();
+                Core.loadNativeLibs();
             } catch (Exception ex) {
-                System.err.println("Failed to load Inference Engine library\n" + ex);
+                System.err.println("Failed to load OpenVINO library\n" + ex);
                 System.exit(1);
             }
         }

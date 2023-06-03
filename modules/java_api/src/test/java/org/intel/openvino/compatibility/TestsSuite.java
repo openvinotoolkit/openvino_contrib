@@ -1,4 +1,4 @@
-package tests.compatibility;
+package org.intel.openvino.compatibility;
 
 import junit.framework.TestSuite;
 

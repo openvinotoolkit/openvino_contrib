@@ -1,4 +1,4 @@
-package tests.compatibility;
+package org.intel.openvino.compatibility;
 
 import static org.junit.Assert.*;
 

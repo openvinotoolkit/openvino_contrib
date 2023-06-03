@@ -1,4 +1,4 @@
-package tests;
+package org.intel.openvino;
 
 import junit.framework.TestSuite;
 
