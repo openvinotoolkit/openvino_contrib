@@ -45,6 +45,7 @@ jobs:
       #   - /home/devuser/actions-runner/_work:/sources_cache
       # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
       options: --privileged
+    timeout-minutes: 5
     steps:
       - name: Create Root
         run: |
@@ -61,7 +62,7 @@ jobs:
       
       - name: Mount Share
         run: |
-          dmesg | tail
+          dmesg -w
           apt update
           apt install -y cifs-utils
           mkdir -p $MNT_PATH
@@ -75,12 +76,6 @@ jobs:
           FILE_SHARE_NAME: 'caches'
           MNT_ROOT: '/mount'
           MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
-      
-      - name: Dmesg
-        if: ${{ always() }}
-        run: |
-          dmesg | tail
-          dmesg -w
       
       # - name: Clone OpenVINO & OpenVINO Contrib
       #   run: |
