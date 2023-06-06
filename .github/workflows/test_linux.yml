@@ -62,11 +62,10 @@ jobs:
       
       - name: Mount Share
         run: |
-          dmesg -w
           apt update
           apt install -y cifs-utils
           mkdir -p $MNT_PATH
-          mount -t cifs //${STORAGE_ACCOUNT_NAME}.file.core.windows.net/${FILE_SHARE_NAME}/ $MNT_PATH/ -o username=$STORAGE_ACCOUNT_NAME,password=$STORAGE_ACCOUNT_KEY,serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)
+          mount -t cifs //${STORAGE_ACCOUNT_NAME}.file.core.windows.net/${FILE_SHARE_NAME}/ $MNT_PATH/ -o username=$STORAGE_ACCOUNT_NAME,password=${{ secrets.AZURE_CACHES_STORAGE_ACCOUNT_KEY }},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)
 
           ls -laR ${MNT_PATH}
         env:
@@ -76,6 +75,12 @@ jobs:
           FILE_SHARE_NAME: 'caches'
           MNT_ROOT: '/mount'
           MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
+      
+      - name: Mount Logs
+        if: ${{ always() }}
+        run: |
+          dmesg | tail
+          dmesg -w
       
       # - name: Clone OpenVINO & OpenVINO Contrib
       #   run: |
