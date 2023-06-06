@@ -1,47 +1,47 @@
-# name: Test CUDA
-# on:
-#   push:
-#     paths:
-#       - 'modules/nvidia_plugin/**'
-#   pull_request:
-#     paths:
-#       - 'modules/nvidia_plugin/**'
-# jobs:
-#   build:
-#     runs-on: lohika-ci
-#     steps:
-#     - name: fetch openvino master branch
-#       run: git -C ~/runner/openvino pull origin master
-#     - name: checkout openvino submodules
-#       run: git -C ~/runner/openvino submodule update --init --recursive
-#     - name: checkout openvino_contrib master branch
-#       run: git -C ~/runner/openvino_contrib checkout master
-#     - name: fetch openvino_contrib master branch
-#       run: git -C ~/runner/openvino_contrib pull origin master
-#     - name: delete openvino_contrib temporary branch
-#       run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
-#     - name: fetch openvino_contrib
-#       run: git -C ~/runner/openvino_contrib fetch origin $GITHUB_REF:temporary-ci-branch
-#     - name: checkout openvino_contrib
-#       run: git -C ~/runner/openvino_contrib checkout temporary-ci-branch
-#     - name: format openvino_contrib
-#       run: cd ~/runner/openvino_contrib && ./modules/nvidia_plugin/utils/check.sh
-#     - name: cmake
-#       run: env -C ~/runner ./configrelease.sh
-#     - name: ninja
-#       run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/buildrelease -v CudaFuncTests CudaUnitTests benchmark_app' | make -j`nproc` -f-
-#     - name: functional tests
-#       run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
-#     - name: unit tests
-#       run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaUnitTests
-#     - name: networks regression
-#       run: source ~/runner/sanitizer-env.sh; ~/runner/run_all_models.sh
-#     - name: cmake 440
-#       run: ~/docker/e440.sh ./configrelease-440.sh
-#     - name: ninja 440
-#       run: ~/docker/e440.sh ./buildrelease-440.sh CudaUnitTests
-#     - name: unit tests 440
-#       run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaUnitTests
-# # many functional tests use missing operations, just skip everything for now
-# #    - name: functional tests
-# #      run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
+name: Test CUDA
+on:
+  push:
+    paths:
+      - 'modules/nvidia_plugin/**'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**'
+jobs:
+  build:
+    runs-on: lohika-ci
+    steps:
+    - name: fetch openvino master branch
+      run: git -C ~/runner/openvino pull origin master
+    - name: checkout openvino submodules
+      run: git -C ~/runner/openvino submodule update --init --recursive
+    - name: checkout openvino_contrib master branch
+      run: git -C ~/runner/openvino_contrib checkout master
+    - name: fetch openvino_contrib master branch
+      run: git -C ~/runner/openvino_contrib pull origin master
+    - name: delete openvino_contrib temporary branch
+      run: git -C ~/runner/openvino_contrib branch -D temporary-ci-branch | echo 1
+    - name: fetch openvino_contrib
+      run: git -C ~/runner/openvino_contrib fetch origin $GITHUB_REF:temporary-ci-branch
+    - name: checkout openvino_contrib
+      run: git -C ~/runner/openvino_contrib checkout temporary-ci-branch
+    - name: format openvino_contrib
+      run: cd ~/runner/openvino_contrib && ./modules/nvidia_plugin/utils/check.sh
+    - name: cmake
+      run: env -C ~/runner ./configrelease.sh
+    - name: ninja
+      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/buildrelease -v CudaFuncTests CudaUnitTests benchmark_app' | make -j`nproc` -f-
+    - name: functional tests
+      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
+    - name: unit tests
+      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaUnitTests
+    - name: networks regression
+      run: source ~/runner/sanitizer-env.sh; ~/runner/run_all_models.sh
+    - name: cmake 440
+      run: ~/docker/e440.sh ./configrelease-440.sh
+    - name: ninja 440
+      run: ~/docker/e440.sh ./buildrelease-440.sh CudaUnitTests
+    - name: unit tests 440
+      run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaUnitTests
+# many functional tests use missing operations, just skip everything for now
+#    - name: functional tests
+#      run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*

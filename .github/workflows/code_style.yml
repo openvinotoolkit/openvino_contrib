@@ -1,21 +1,21 @@
-# name: Code Style
-# on:
-#   push:
-#     paths:
-#       - 'modules/java_api/**'
-#   pull_request:
-#     paths:
-#       - '.github/workflows/code_style.yml'
-#       - 'modules/java_api/**'
+name: Code Style
+on:
+  push:
+    paths:
+      - 'modules/java_api/**'
+  pull_request:
+    paths:
+      - '.github/workflows/code_style.yml'
+      - 'modules/java_api/**'
 
-# jobs:
-#   Java:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v3
+jobs:
+  Java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-#       - name: Fix code java style
-#         uses: axel-op/googlejavaformat-action@v3
-#         with:
-#           args: "--set-exit-if-changed -a -i"
-#           commit-message: "[github actions] Apply google-java-format code style fixes"
+      - name: Fix code java style
+        uses: axel-op/googlejavaformat-action@v3
+        with:
+          args: "--set-exit-if-changed -a -i"
+          commit-message: "[github actions] Apply google-java-format code style fixes"
