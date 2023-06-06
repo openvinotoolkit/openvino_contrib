@@ -65,8 +65,7 @@ jobs:
           apt update
           apt install -y cifs-utils
           mkdir -p $MNT_PATH
-          mount -t cifs //gacaches.file.core.windows.net/caches ${MNT_PATH}/ -o username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks
-          #,uid=$(id -u),gid=$(id -g)
+          mount -t cifs //gacaches.file.core.windows.net/caches ${MNT_PATH}/ -o username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g) || dmesg | tail
           # echo "Hello world" > $MNT_PATH/hello_file.txt
           # dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
           ls -laR ${MNT_PATH}
