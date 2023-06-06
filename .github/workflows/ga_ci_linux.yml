@@ -35,7 +35,7 @@ jobs:
   Build:
     defaults:
       run:
-        shell: bash -x
+        shell: bash
     strategy:
       fail-fast: false
     # runs-on: ['self-hosted', 'linux', 'coverage']
