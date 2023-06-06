@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest-16-cores
     steps:
       - name: Mount Share But Without Container
-      - run: |
+        run: |
           sudo apt update
           sudo apt install -y cifs-utils
 
