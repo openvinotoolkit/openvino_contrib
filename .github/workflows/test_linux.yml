@@ -61,12 +61,12 @@ jobs:
       
       - name: Mount Share
         run: |
+          dmesg | tail
           apt update
           apt install -y cifs-utils
           mkdir -p $MNT_PATH
           mount -t cifs //${STORAGE_ACCOUNT_NAME}.file.core.windows.net/${FILE_SHARE_NAME}/ $MNT_PATH/ -o username=$STORAGE_ACCOUNT_NAME,password=$STORAGE_ACCOUNT_KEY,serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)
-          # echo "Hello world" > $MNT_PATH/hello_file.txt
-          # dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
+
           ls -laR ${MNT_PATH}
         env:
           RESOURCE_GROUP_NAME: 'GithubActions'
