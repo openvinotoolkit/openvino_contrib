@@ -31,6 +31,28 @@ env:
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
+  
+  mount-azure-drive:
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - run: |
+          sudo apt update
+          sudo apt install -y cifs-utils
+
+          sudo mkdir -p $MNT_PATH
+          sudo mount -t cifs //${STORAGE_ACCOUNT_NAME}.file.core.windows.net/${FILE_SHARE_NAME}/ $MNT_PATH/ -o username=$STORAGE_ACCOUNT_NAME,password=$STORAGE_ACCOUNT_KEY,serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)
+
+          echo "Hello world" > $MNT_PATH/hello_file.txt
+          dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
+          ls -laR ${MNT_PATH}
+        env:
+          RESOURCE_GROUP_NAME: 'GithubActions'
+          STORAGE_ACCOUNT_NAME: 'gacaches'
+          STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_CACHES_STORAGE_ACCOUNT_KEY }}
+          FILE_SHARE_NAME: 'caches'
+          MNT_ROOT: '/mount'
+          MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
+  
   Build:
     defaults:
       run:
@@ -76,11 +98,11 @@ jobs:
           MNT_ROOT: '/mount'
           MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
       
-      - name: Mount Logs
-        if: ${{ always() }}
-        run: |
-          dmesg | tail
-          dmesg -w
+      # - name: Mount Logs
+      #   if: ${{ always() }}
+      #   run: |
+      #     dmesg | tail
+      #     dmesg -w
       
       # - name: Clone OpenVINO & OpenVINO Contrib
       #   run: |
