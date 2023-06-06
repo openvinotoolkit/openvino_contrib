@@ -10,6 +10,14 @@ package org.intel.openvino;
  */
 public class InputModelInfo extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     public InputModelInfo(long addr) {
         super(addr);
     }

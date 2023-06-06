@@ -9,6 +9,15 @@ package org.intel.openvino;
  * <p>It can throw exceptions safely for the application, where it is properly handled.
  */
 public class Tensor extends Wrapper {
+
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     public Tensor(long addr) {
         super(addr);
     }

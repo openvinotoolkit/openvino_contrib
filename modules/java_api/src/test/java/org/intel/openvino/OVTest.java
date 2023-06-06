@@ -15,16 +15,6 @@ public class OVTest {
     static String device;
 
     public OVTest() {
-        try {
-            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
-        } catch (UnsatisfiedLinkError e) {
-            try {
-                Core.loadNativeLibs();
-            } catch (Exception ex) {
-                System.err.println("Failed to load OpenVINO library\n" + ex);
-                System.exit(1);
-            }
-        }
 
         device = System.getProperty("device");
         if (device == null || device.isEmpty()) {

@@ -11,6 +11,14 @@ package org.intel.openvino;
  */
 public class CompiledModel extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     protected CompiledModel(long addr) {
         super(addr);
     }

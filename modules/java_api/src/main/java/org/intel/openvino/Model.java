@@ -8,6 +8,14 @@ import java.util.ArrayList;
 /** A user-defined model */
 public class Model extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     protected Model(long addr) {
         super(addr);
     }

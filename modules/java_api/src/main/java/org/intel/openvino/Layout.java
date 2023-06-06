@@ -34,6 +34,14 @@ package org.intel.openvino;
  */
 public class Layout extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     public Layout(String str) {
         super(GetLayout(str));
     }

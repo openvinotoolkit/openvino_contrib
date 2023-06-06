@@ -5,6 +5,15 @@ package org.intel.openvino;
 
 /** This is a class of infer request that can be run in asynchronous or synchronous manners. */
 public class InferRequest extends Wrapper {
+
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     private boolean isReleased = false;
 
     protected InferRequest(long addr) {

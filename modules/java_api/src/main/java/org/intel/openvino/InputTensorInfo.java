@@ -11,6 +11,14 @@ package org.intel.openvino;
  */
 public class InputTensorInfo extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     public InputTensorInfo(long addr) {
         super(addr);
     }

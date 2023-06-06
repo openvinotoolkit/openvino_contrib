@@ -6,6 +6,14 @@ package org.intel.openvino;
 /** This class represents an object to work with different types. */
 public class Any extends Wrapper {
 
+    static {
+        try {
+            Class.forName("org.intel.openvino.NativeLibrary");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load OpenVINO native libraries");
+        }
+    }
+
     public Any(long addr) {
         super(addr);
     }
