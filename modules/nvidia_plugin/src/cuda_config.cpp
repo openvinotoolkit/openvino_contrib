@@ -14,14 +14,6 @@
 
 using namespace ov::nvidia_gpu;
 
-namespace internal {
-/**
- * @brief Defines if NVIDIA Plugin should use CUDA graphs for performance acceleration
- */
-static constexpr ov::Property<bool, ov::PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
-
-}  // namespace internal
-
 Configuration::Configuration() {}
 
 std::vector<ov::PropertyName> Configuration::get_ro_properties() {
@@ -35,7 +27,7 @@ std::vector<ov::PropertyName> Configuration::get_ro_properties() {
         ov::PropertyName{ov::device::architecture.name(), ov::PropertyMutability::RO},
         ov::PropertyName{ov::device::capabilities.name(), ov::PropertyMutability::RO},
         ov::PropertyName{ov::device::full_name.name(), ov::PropertyMutability::RO},
-        ov::PropertyName{ov::device::uuid.name(), ov::PropertyMutability::RO}
+        ov::PropertyName{ov::device::uuid.name(), ov::PropertyMutability::RO},
     };
     return ro_properties;
 }
@@ -78,30 +70,28 @@ std::vector<ov::PropertyName> Configuration::get_caching_properties() {
     return caching_properties;
 }
 
-void Configuration::update_device_id(const ConfigMap& config) {
+void Configuration::update_device_id(const ov::AnyMap& config) {
     auto it = config.find(ov::device::id.name());
-    if (it == config.end())
-        it = config.find(CONFIG_KEY(DEVICE_ID));
     if (it != config.end()) {
-        auto value = it->second;
+        auto value = it->second.as<std::string>();
         std::smatch match;
         std::regex re_device_id(R"((NVIDIA\.)?(\d+))");
         if (std::regex_match(value, match, re_device_id)) {
             const std::string device_id_prefix = match[1].str();
             const std::string device_id_value = match[2].str();
             if (!device_id_prefix.empty() && "NVIDIA." != device_id_prefix) {
-                throwIEException(
+                throw_ov_exception(
                     fmt::format("Prefix for deviceId should be 'NVIDIA.' (user deviceId = {}). "
                                 "For example: NVIDIA.0, NVIDIA.1 and etc.",
                                 value));
             }
-            deviceId = std::stoi(device_id_value);
-            if (deviceId < 0) {
-                throwIEException(fmt::format(
-                    "Device ID {} is not supported. Index should be >= 0 (user index = {})", value, deviceId));
+            device_id = std::stoi(device_id_value);
+            if (device_id < 0) {
+                throw_ov_exception(fmt::format(
+                    "Device ID {} is not supported. Index should be >= 0 (user index = {})", value, device_id));
             }
         } else {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Device ID {} is not supported. Supported deviceIds: 0, 1, 2, NVIDIA.0, NVIDIA.1, "
                             "NVIDIA.2 and etc.",
                             value));
@@ -111,38 +101,37 @@ void Configuration::update_device_id(const ConfigMap& config) {
 
 ov::element::Type Configuration::get_inference_precision() const noexcept {
     return inference_precision;
-    /*
-    Uncomment this code to switch to f16 by default
-    if (inference_precision != ov::element::undefined)
-        return inference_precision;
-    if (execution_mode == ov::hint::ExecutionMode::PERFORMANCE) {
-        if (isHalfSupported(CUDA::Device(deviceId))) {
-            return ov::element::f16;
-        }
-    }
-    return ov::element::f32; */
+}
+
+bool Configuration::auto_streams_detection_required() const noexcept {
+    return ((ov::hint::PerformanceMode::THROUGHPUT == performance_mode) && (num_streams <= 0)) ||
+            (num_streams == ov::streams::AUTO);
 }
 
 uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
     // Default number for latency mode
     uint32_t optimal_number_of_streams = 1;
-    if (ov::hint::PerformanceMode::THROUGHPUT == performance_mode) {
+    if (auto_streams_detection_required()) {
         // If user is planning to use number of requests which is lower than reasonable range of streams
         // there is no sense to create more
         optimal_number_of_streams = (hint_num_requests > 0) ?
             std::min(hint_num_requests, reasonable_limit_of_streams)
             : reasonable_limit_of_streams;
-    }
-    if (num_streams > 0) {
+    } else if (num_streams > 0) {
         optimal_number_of_streams = num_streams;
     }
     return optimal_number_of_streams;
 }
 
-Configuration::Configuration(const ConfigMap& config, const Configuration& defaultCfg, bool throwOnUnsupported) {
+bool Configuration::is_stream_executor_property(const std::string& name) const {
+    auto stream_executor_properties = streams_executor_config_.get_property(
+        ov::supported_properties.name()).as<std::vector<std::string>>();
+    return (stream_executor_properties.end() !=
+        std::find(std::begin(stream_executor_properties), std::end(stream_executor_properties), name));
+}
+
+Configuration::Configuration(const ov::AnyMap& config, const Configuration& defaultCfg, bool throwOnUnsupported) {
     *this = defaultCfg;
-    // If plugin needs to use InferenceEngine::StreamsExecutor it should be able to process its configuration
-    auto streamExecutorConfigKeys = streams_executor_config_.SupportedKeys();
     // Update device id first
     update_device_id(config);
     for (auto&& c : config) {
@@ -150,63 +139,60 @@ Configuration::Configuration(const ConfigMap& config, const Configuration& defau
         const auto& value = c.second;
 
         if (ov::num_streams == key) {
-            num_streams = ov::util::from_string(value, ov::num_streams);
+            num_streams = value.as<ov::streams::Num>();
         } if (NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) == key) {
             if (value != NVIDIA_CONFIG_VALUE(THROUGHPUT_AUTO)) {
                 try {
-                    num_streams = ov::streams::Num(std::stoi(value));
+                    num_streams = value.as<ov::streams::Num>();
                 } catch (...) {
-                    throwIEException(
+                    throw_ov_exception(
                         fmt::format("NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS) = {} "
                                     "is not a number !!",
-                                    value));
+                                    value.as<std::string>()));
                 }
             } else {
                 num_streams = ov::streams::AUTO;
             }
-        } else if (ov::device::id == key || CONFIG_KEY(DEVICE_ID) == key) {
+        } else if (ov::device::id == key) {
             // Device id is updated already
             continue;
-        } else if (streamExecutorConfigKeys.end() !=
-                   std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), key)) {
-            streams_executor_config_.SetConfig(key, value);
-        } else if (ov::nvidia_gpu::operation_benchmark == key || NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK) == key) {
-            operation_benchmark = ov::util::from_string(value, ov::nvidia_gpu::operation_benchmark);
+        } else if (is_stream_executor_property(key)) {
+            streams_executor_config_.set_property(key, value);
+        } else if (ov::nvidia_gpu::operation_benchmark == key) {
+            operation_benchmark = value.as<bool>();
         } else if (internal::use_cuda_graph == key) {
-            use_cuda_graph = ov::util::from_string(value, internal::use_cuda_graph);
+            use_cuda_graph = value.as<bool>();
         } else if (ov::enable_profiling == key) {
-            is_profiling_enabled = ov::util::from_string(value, ov::enable_profiling);
+            is_profiling_enabled = value.as<bool>();
         } else if (ov::hint::num_requests == key) {
-            hint_num_requests = ov::util::from_string(value, ov::hint::num_requests);
+            hint_num_requests = value.as<uint32_t>();
         } else if (ov::hint::inference_precision == key) {
-            auto element_type = ov::util::from_string(value, ov::hint::inference_precision);
+            auto element_type = value.as<ov::element::Type>();
             const std::set<ov::element::Type> supported_types = {
                 ov::element::undefined, ov::element::f16, ov::element::f32,
             };
             if (supported_types.count(element_type) == 0) {
-                throwIEException(fmt::format("Inference precision {} is not supported by plugin", value));
+                throw_ov_exception(fmt::format("Inference precision {} is not supported by plugin", value.as<std::string>()));
             }
             inference_precision = element_type;
         } else if (ov::hint::performance_mode == key) {
-            performance_mode = ov::util::from_string(value, ov::hint::performance_mode);
+            performance_mode = value.as<ov::hint::PerformanceMode>();
         } else if (ov::hint::execution_mode == key) {
-            execution_mode = ov::util::from_string(value, ov::hint::execution_mode);
+            execution_mode = value.as<ov::hint::ExecutionMode>();
         } else if (throwOnUnsupported) {
-            throwNotFound(key);
+            throw_ov_exception(key);
         }
     }
 }
 
-InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
-    auto streamExecutorConfigKeys = streams_executor_config_.SupportedKeys();
-    if ((streamExecutorConfigKeys.end() !=
-         std::find(std::begin(streamExecutorConfigKeys), std::end(streamExecutorConfigKeys), name))) {
-        return streams_executor_config_.GetConfig(name);
-    } else if (name == ov::device::id || name == CONFIG_KEY(DEVICE_ID)) {
-        return {std::to_string(deviceId)};
-    } else if (name == ov::enable_profiling || name == CONFIG_KEY(PERF_COUNT)) {
+ov::Any Configuration::get(const std::string& name) const {
+    if (is_stream_executor_property(name)) {
+        return streams_executor_config_.get_property(name);
+    } else if (name == ov::device::id) {
+        return {std::to_string(device_id)};
+    } else if (name == ov::enable_profiling) {
         return is_profiling_enabled;
-    } else if (name == ov::nvidia_gpu::operation_benchmark || name == NVIDIA_CONFIG_KEY(OPERATION_BENCHMARK)) {
+    } else if (name == ov::nvidia_gpu::operation_benchmark) {
         return operation_benchmark;
     } else if (name == internal::use_cuda_graph) {
         return use_cuda_graph;
@@ -227,6 +213,6 @@ InferenceEngine::Parameter Configuration::Get(const std::string& name) const {
     } else if (name == ov::hint::execution_mode) {
         return execution_mode;
     } else {
-        throwNotFound(name);
+        OPENVINO_THROW("Property was not found: ", name);
     }
 }

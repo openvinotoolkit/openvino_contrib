@@ -126,7 +126,7 @@ struct PoolingTest : testing::Test {
     std::vector<CUDA::DevicePointer<void*>> outputs;
     Blob::Ptr blob;
     InferenceEngine::BlobMap blobs;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 };
 

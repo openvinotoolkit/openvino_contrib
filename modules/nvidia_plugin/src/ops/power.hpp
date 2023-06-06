@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/power.hpp>
+#include <openvino/op/power.hpp>
 
 #include "elementwise_binary.hpp"
 #include "kernels/power.hpp"

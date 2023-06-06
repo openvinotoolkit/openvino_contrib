@@ -5,7 +5,6 @@
 #pragma once
 
 #include "openvino/pass/graph_rewrite.hpp"
-#include <ngraph/pass/pass.hpp>
 
 namespace ov::nvidia_gpu::pass {
 

@@ -126,7 +126,7 @@ void FakeQuantize::operator()(const cudaStream_t stream,
                                 levels_1,
                                 out);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by FakeQuatizer operation !!", element_type_));
     }
 }

@@ -17,13 +17,6 @@ class GroupConvolutionLayerThresholdTest : public FiniteComparer<GroupConvolutio
 protected:
     void SetUp() override {
         GroupConvolutionLayerTest::SetUp();
-
-        auto params = this->GetParam();
-        auto netPrecision = std::get<1>(params);
-        if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-            this->threshold = 500;
-            this->infinity_value = std::numeric_limits<std::uint16_t>::max();
-        }
     }
 };
 

@@ -14,7 +14,7 @@ namespace nvidia_gpu {
 namespace kernel {
 
 inline static void throwTypeNotSupported(Type_t element_type) {
-    throwIEException(fmt::format("Element type = {} is not supported.", element_type));
+    throw_ov_exception(fmt::format("Element type = {} is not supported.", element_type));
 }
 
 template <typename ElementTypes>

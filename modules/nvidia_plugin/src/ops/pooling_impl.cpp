@@ -8,7 +8,6 @@
 
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/type/element_type.hpp>
 
 #include "converters.hpp"
 #include "cuda/constant_factory.hpp"
@@ -66,7 +65,7 @@ PoolingImpl::PoolingImpl(const ov::op::v1::MaxPool& node)
 
     const auto type = convertDataType<cudnnDataType_t>(node.get_element_type());
     if (!isTypeSupported(type)) {
-        throwIEException(fmt::format("PoolingImpl: unsupported argument type: {}", toString(type)));
+        throw_ov_exception(fmt::format("PoolingImpl: unsupported argument type: {}", toString(type)));
     }
     input_tensor_descriptor_.set(type,
                                  dims_,
@@ -153,7 +152,7 @@ std::vector<int> PoolingImpl::paddings_from_ngraph(const ov::Shape& pads_begin,
         if (begin == end) {
             return;
         }
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Error: cuDNN pooling ops support only symmetric padding "
                         "(begin==end), while given: begin {}"
                         ", end {} for spatial axis {}",

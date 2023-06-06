@@ -39,7 +39,7 @@ inline std::string cublasGetErrorString(cublasStatus_t status) {
 inline void throwIfError(
     cublasStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUBLAS_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cublasGetErrorString(err), location);
+    if (err != CUBLAS_STATUS_SUCCESS) ov::nvidia_gpu::throw_ov_exception(cublasGetErrorString(err), location);
 }
 
 inline void logIfError(

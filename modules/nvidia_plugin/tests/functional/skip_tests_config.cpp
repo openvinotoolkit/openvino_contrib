@@ -34,7 +34,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*smoke_BehaviorTests.*OVExecGraphImportExportTest.ieImportExportedFunction.*)",
         // TODO: Round with f16 is not supported
         R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.*readFromV10IR.*)",
-
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i8|u8).*)",
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i16|u16).*)",
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i64|u64).*)",
@@ -118,6 +117,18 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*HETERO(W|w)ithMULTI*.*)",
          // 106454, 106628
         R"(.*.*LoadNetworkToDefaultDeviceNoThrow.*)",
+        // Plugin version was changed to ov::Version
+        R"(.*VersionTest.*pluginCurrentVersionIsCorrect.*)",
+        // New plugin API doesn't support changes of pre-processing
+        R"(.*InferRequestPreprocessTest.*SetPreProcessToInputInfo.*)",
+        R"(.*InferRequestPreprocessTest.*SetPreProcessToInferRequest.*)",
+        // New plugin work with tensors, so it means that blob in old API can have different pointers
+        R"(.*InferRequestIOBBlobTest.*secondCallGetInputDoNotReAllocateData.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetOutputDoNotReAllocateData.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetInputAfterInferSync.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetOutputAfterInferSync.*)",
+        // Old API cannot deallocate tensor
+        R"(.*InferRequestIOBBlobTest.*canProcessDeallocatedOutputBlobAfterGetAndSetBlob.*)",
     };
 
 #ifdef _WIN32

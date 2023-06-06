@@ -9,7 +9,6 @@
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
 #include <kernels/convert.hpp>
-#include <ngraph/node.hpp>
 #include <utility>
 
 #include "converters.hpp"
@@ -29,7 +28,7 @@ ConvertOp::ConvertOp(const CreationContext& context,
     OPENVINO_ASSERT(
         output_element_type >= Type_t::boolean && output_element_type <= Type_t::u64, "Node name: ", GetName());
     if (input_element_type == Type_t::u1 || output_element_type == Type_t::u1)
-        throwIEException("Unsupported data type : Type_t::u1");
+        throw_ov_exception("Unsupported data type : Type_t::u1");
     auto input_shape = node->get_input_shape(0);
     auto output_shape = node->get_output_shape(0);
     const unsigned size = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<size_t>());
@@ -55,6 +54,8 @@ void ConvertOp::Execute(const InferenceRequestContext& context,
     auto& stream = threadContext.stream();
     (*convert_kernel_)(stream.get(), outputs[0].get(), inputs[0].get());
 }
+
+bool ConvertOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(ConvertOp, Convert);
 

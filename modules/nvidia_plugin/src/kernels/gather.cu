@@ -154,7 +154,7 @@ void Gather::operator()(const cudaStream_t stream,
         case Type_t::i32:
             return CallByDataType<int32_t>(stream, is_benchmark_mode, src_dict, src_index, dst_data);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Index element type = {} is not supported by Gather operation !!", indices_type_));
     }
 }
@@ -195,7 +195,7 @@ void Gather::CallByDataType(const cudaStream_t stream,
         case Type_t::u64:
             return Call<uint64_t, IndexType>(stream, is_benchmark_mode, src_dict, src_index, dst_data);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Index element type = {} is not supported by Gather operation !!", indices_type_));
     }
 }
@@ -264,7 +264,7 @@ void Gather::Call(const cudaStream_t stream,
     // TODO: find a way to handle an error raised in a kernel (assertion or trap) properly in CUDA Plugin
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        throwIEException(cudaGetErrorString(err));
+        throw_ov_exception(cudaGetErrorString(err));
     }
 }
 

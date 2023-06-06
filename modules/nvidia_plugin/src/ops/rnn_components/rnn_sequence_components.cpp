@@ -7,9 +7,17 @@
 #include <cuda/constant_factory.hpp>
 #include <ops/converters.hpp>
 
-#include "ngraph/shape.hpp"
-
 namespace ov::nvidia_gpu::RNN::Details {
+
+bool isRNNSequenceCudaGraphCompatible(const CUDA::Device& device) {
+    const auto computeCompatabilityVersion = 10 * device.props().major + device.props().minor;
+    const auto isDeviceSupported = computeCompatabilityVersion > 61;
+
+    const auto cudnnVersion = ::cudnnGetVersion();
+    const auto isCudnnSupported = cudnnVersion != 8500 && cudnnVersion != 8600;
+
+    return isDeviceSupported || isCudnnSupported;
+}
 
 inline bool isTypeSupported(cudaDataType_t type) {
     switch (type) {
@@ -42,7 +50,7 @@ TransposeTensorAdapterBase::TransposeTensorAdapterBase(cudaDataType_t element_ty
     OPENVINO_ASSERT(src_shape_.size() == src_mode_.size());
     OPENVINO_ASSERT(src_mode_.size() == dst_mode_.size());
     if (!isTypeSupported(element_type_)) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("TransposeTensorAdapterBase: unsupported argument type: {}", toString(element_type_)));
     }
 }

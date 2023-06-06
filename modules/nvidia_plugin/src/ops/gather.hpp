@@ -16,10 +16,13 @@ public:
              const ov::Node& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     std::optional<kernel::Gather> gather_kernel_;

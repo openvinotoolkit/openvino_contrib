@@ -5,19 +5,20 @@
 #pragma once
 
 #include <array>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/convolution.hpp>
 
-#include "cuda_plugin_custom_node_types.hpp"
-#include "ngraph/attribute_adapter.hpp"
-#include "ngraph/ngraph_visibility.hpp"
-#include "ngraph/type.hpp"
+#include "activation_type.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 
 // TODO: Try to use BasicFusedConvolution or derive from ov::op::v1::ConvolutionBackpropData
 class FusedConvBackpropData : public ov::op::Op {
 public:
+    OPENVINO_OP("FusedConvBackpropData", "nvidia_gpu");
+
+    FusedConvBackpropData() = default;
+    ~FusedConvBackpropData() = default;
+
     explicit FusedConvBackpropData(const ov::Output<Node>& data_batch,
                                    const ov::Output<Node>& filters,
                                    const ov::Output<Node>& add,
@@ -38,14 +39,11 @@ public:
                                    const ov::op::PadType& auto_pad,
                                    const ov::CoordinateDiff& output_padding);
 
-    OPENVINO_OP("FusedConvBackpropData", "nvidia_gpu");
-
     bool visit_attributes(ov::AttributeVisitor& visitor) override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
 
     void validate_and_infer_types() override;
-    void conv_validate_and_infer_types();
     void infer_conv_backprop_output_spatial_shape(const std::vector<ov::Dimension>& input_data_shape,
                                                   const std::vector<ov::Dimension>& filters_shape,
                                                   const ov::Strides& strides,
@@ -71,8 +69,6 @@ private:
     ov::Strides dilations_;
     ov::op::PadType auto_pad_;
     ov::CoordinateDiff output_padding_;
-    ov::Shape add_shape_;
-    ov::element::Type add_type_;
 };
 
 }  // namespace ov::nvidia_gpu::nodes

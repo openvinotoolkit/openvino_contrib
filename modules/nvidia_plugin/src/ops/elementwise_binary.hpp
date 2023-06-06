@@ -30,14 +30,14 @@ public:
         const bool types_are_expected =
             (element_type == node.get_input_element_type(0)) && (element_type == node.get_input_element_type(1));
         if (!types_are_expected) {
-            throwIEException("Element types combination is not supported");
+            throw_ov_exception("Element types combination is not supported");
         }
 
         in0_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
         in1_broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
 
         const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
-        const size_t out_num_elements = ngraph::shape_size(node.get_output_shape(0));
+        const size_t out_num_elements = ov::shape_size(node.get_output_shape(0));
         kernel_ =
             Kernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), out_num_elements, max_threads_per_block};
     }
@@ -58,6 +58,8 @@ public:
                    in1_broadcast_params_->mapper(workbuffers.immutable_buffers),
                    static_cast<void*>(outputTensors[0].get()));
     }
+
+    bool IsCudaGraphCompatible() const override { return true; }
 
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override {
         in0_broadcast_params_->initWorkbuffers(buffers);

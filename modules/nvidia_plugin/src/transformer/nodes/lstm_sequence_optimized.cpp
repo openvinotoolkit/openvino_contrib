@@ -1,10 +1,9 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "lstm_sequence_optimized.hpp"
 
-#include <ngraph/op/util/recurrent_sequence.hpp>
 #include <openvino/core/except.hpp>
 
 namespace ov::nvidia_gpu::nodes {
@@ -60,6 +59,12 @@ std::shared_ptr<ov::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ov:
     } else {
         OPENVINO_THROW("Incorrect number of new arguments");
     }
+}
+
+bool LSTMSequenceOptimized::visit_attributes(AttributeVisitor& visitor) {
+    ov::op::v5::LSTMSequence::visit_attributes(visitor);
+    visitor.on_attribute("major_format", m_major_format);
+    return true;
 }
 
 void LSTMSequenceOptimized::validate_and_infer_types() {
@@ -187,3 +192,19 @@ void LSTMSequenceOptimized::validate_and_infer_types() {
 }
 
 }  // namespace ov::nvidia_gpu::nodes
+
+
+namespace ov {
+std::ostream& operator<<(std::ostream& s, const nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat& type) {
+    return s << as_string(type);
+}
+template <>
+EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>&
+EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>::get() {
+    static auto enum_names = EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(
+        "nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat",
+        {{"batch_major", nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat::BatchMajor},
+         {"sequence_major", nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat::SequenceMajor}});
+    return enum_names;
+}
+} // namespace ov

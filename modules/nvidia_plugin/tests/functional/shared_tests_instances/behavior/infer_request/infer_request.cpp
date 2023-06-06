@@ -76,7 +76,7 @@ inline std::pair<size_t, size_t> getTensorHeightWidth(const InferenceEngine::Ten
         // Regardless of layout, dimensions are stored in fixed order
         return std::make_pair(dims.back(), dims.at(size - 2));
     } else {
-        ov::nvidia_gpu::throwIEException("Tensor does not have height and width dimensions");
+        ov::nvidia_gpu::throw_ov_exception("Tensor does not have height and width dimensions");
     }
 }
 
@@ -214,7 +214,7 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
             } else if (item.second->getPrecision() == InferenceEngine::Precision::I32) {
                 fillBlobImInfo<int32_t>(inputBlob, batchSize, image_size);
             } else {
-                ov::nvidia_gpu::throwIEException("Input precision is not supported for image info!");
+                ov::nvidia_gpu::throw_ov_exception("Input precision is not supported for image info!");
             }
             continue;
         }
@@ -234,7 +234,7 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
         } else if (item.second->getPrecision() == InferenceEngine::Precision::I16) {
             fillBlobRandom<int16_t>(inputBlob, Randomize<int16_t>{});
         } else {
-            ov::nvidia_gpu::throwIEException(fmt::format("Input precision is not supported for {}", item.first));
+            ov::nvidia_gpu::throw_ov_exception(fmt::format("Input precision is not supported for {}", item.first));
         }
     }
 }

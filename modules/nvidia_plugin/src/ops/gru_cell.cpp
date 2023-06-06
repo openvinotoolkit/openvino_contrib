@@ -61,6 +61,8 @@ void GRUCellOp::Execute(const InferenceRequestContext& context,
                                                       nullptr);
 }
 
+bool GRUCellOp::IsCudaGraphCompatible() const { return true; }
+
 void GRUCellOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1 || buffers.size() == 2, "Node name: ", GetName());
 

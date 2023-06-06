@@ -20,7 +20,7 @@ namespace {
 struct ConvertTest : testing::Test {
     ov::nvidia_gpu::ThreadContext threadContext{CUDA::Device{}};
     const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 
     auto create_operation(ov::element::Type_t input, ov::element::Type_t output) {

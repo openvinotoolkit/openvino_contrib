@@ -168,7 +168,7 @@ void StridedSliceKernelOp::operator()(const cudaStream_t stream,
         case Type_t::u8:
             return callKernels<uint8_t>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
         default:
-            throwIEException(fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by StridedSlice operation !!",
                                          element_type_));
     }
 }

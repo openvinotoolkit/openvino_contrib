@@ -33,7 +33,7 @@ struct MinMaxSwitch {
 
     template <typename T>
     void default_(T t, const EWClamp&, cudaStream_t, const void*, void*, double, double) const {
-        throwIEException(fmt::format("Element type = {} is not supported.", t));
+        throw_ov_exception(fmt::format("Element type = {} is not supported.", t));
     }
 };
 

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/maximum.hpp>
+#include "openvino/op/maximum.hpp"
 
 #include "elementwise_binary.hpp"
 #include "kernels/maximum.hpp"

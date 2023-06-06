@@ -55,7 +55,7 @@ std::vector<int64_t> getSplitLengths(ov::op::v0::Constant* node) {
         case ov::element::Type_t::u64:
             return getSplitLengths<uint64_t>(node);
         default: {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("split_lengths element type = {} is not supported by VariadicSplit operation "
                             "!!",
                             static_cast<ov::element::Type_t>(node->get_element_type())));
@@ -84,7 +84,7 @@ VariadicSplitOp::VariadicSplitOp(const CreationContext& context,
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by VariadicSplit operation "
                             "!!",
                             static_cast<ov::element::Type_t>(input_element_type)));
@@ -198,6 +198,8 @@ void VariadicSplitOp::Execute(const InferenceRequestContext& context,
                               static_cast<const void*>(all_num_splits.get()),
                               static_cast<const void*>(axis_offset_sizes.get()));
 }
+
+bool VariadicSplitOp::IsCudaGraphCompatible() const { return false; }
 
 OPERATION_REGISTER(VariadicSplitOp, VariadicSplit);
 }  // namespace nvidia_gpu

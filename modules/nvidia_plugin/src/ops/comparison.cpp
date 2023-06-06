@@ -5,7 +5,6 @@
 #include "comparison.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/core/except.hpp>
 
 #include "converters.hpp"
@@ -84,6 +83,8 @@ Comparison::Comparison(const CreationContext& context,
                                  num_blocks,
                                  threads_per_block};
 }
+
+bool Comparison::IsCudaGraphCompatible() const { return true; }
 
 void Comparison::Execute(const InferenceRequestContext& context,
                          Inputs inputs,

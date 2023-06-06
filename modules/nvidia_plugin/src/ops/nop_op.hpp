@@ -38,6 +38,8 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override {}
+
+    bool IsCudaGraphCompatible() const override { return true; }
 };
 
 }  // namespace nvidia_gpu

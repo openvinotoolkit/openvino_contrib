@@ -5,7 +5,7 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/op/prelu.hpp>
+#include "openvino/op/prelu.hpp"
 
 #include "elementwise_binary.hpp"
 #include "kernels/prelu.hpp"

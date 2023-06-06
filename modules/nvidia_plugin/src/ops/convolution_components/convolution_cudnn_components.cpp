@@ -9,7 +9,6 @@
 
 #include <cuda_config.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/util.hpp>
 #include <nvidia/nvidia_config.hpp>
 #include <ops/converters.hpp>
 
@@ -20,7 +19,7 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::Convo
       groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.padding_before_ != params.padding_after_) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Asymmetric padding is not supported: padding_before: "
                         "{}, padding_after: {}",
                         params.padding_before_,
@@ -131,7 +130,7 @@ void ConvolutionDescriptorsCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -171,7 +170,7 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -215,7 +214,7 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle,
             if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -250,7 +249,7 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
       groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.pads_begin_ != params.pads_end_) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Asymmetric padding is not supported: padding_before: "
                         "{}, padding_after: {}",
                         params.pads_begin_,
@@ -361,7 +360,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::GetAlgo(const CUDA::DnnHandle& dnnH
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -406,7 +405,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnn
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -455,7 +454,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnn
             if (FindAlgoForConvDataType(dnnHandle, filterPtr, dInPtr, dOutPtr, workspace, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
