@@ -32,6 +32,25 @@ env:
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
+  TestShare:
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Mount Share But Without Container
+        run: |
+          sudo apt update
+          sudo apt install -y cifs-utils
+          sudo mkdir -p $MNT_PATH
+          sudo mount -t cifs //gacaches.file.core.windows.net/caches ${MNT_PATH}/ -o username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g),vers=3.0 || dmesg | tail
+          # echo "Hello world" > $MNT_PATH/hello_file.txt
+          # dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
+          ls -laR ${MNT_PATH}
+        env:
+          RESOURCE_GROUP_NAME: 'GithubActions'
+          STORAGE_ACCOUNT_NAME: 'gacaches'
+          STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_CACHES_STORAGE_ACCOUNT_KEY }}
+          FILE_SHARE_NAME: 'caches'
+          MNT_ROOT: '/mount'
+          MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
   Build:
     defaults:
       run:
