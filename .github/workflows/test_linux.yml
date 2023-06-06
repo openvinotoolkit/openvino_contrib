@@ -76,6 +76,12 @@ jobs:
           MNT_ROOT: '/mount'
           MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
       
+      - name: Dmesg
+        if: ${{ always() }}
+        run: |
+          dmesg | tail
+          dmesg -w
+      
       # - name: Clone OpenVINO & OpenVINO Contrib
       #   run: |
       #     cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
