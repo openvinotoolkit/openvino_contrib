@@ -44,7 +44,7 @@ jobs:
       # volumes:
       #   - /home/devuser/actions-runner/_work:/sources_cache
       # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
-      options: --priviliged
+      options: --privileged
     steps:
       - name: Create Root
         run: |
