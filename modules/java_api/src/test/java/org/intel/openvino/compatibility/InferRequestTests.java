@@ -2,7 +2,6 @@ package org.intel.openvino.compatibility;
 
 import static org.junit.Assert.*;
 
-import org.intel.openvino.compatibility.*;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;

@@ -1,6 +1,5 @@
 package org.intel.openvino.compatibility;
 
-import org.intel.openvino.compatibility.*;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;

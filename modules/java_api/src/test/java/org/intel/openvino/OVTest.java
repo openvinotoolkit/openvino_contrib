@@ -1,6 +1,5 @@
 package org.intel.openvino;
 
-import org.intel.openvino.*;
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;

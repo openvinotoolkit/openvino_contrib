@@ -2,7 +2,6 @@ package org.intel.openvino.compatibility;
 
 import junit.framework.TestSuite;
 
-import org.intel.openvino.compatibility.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.AllTests;
 

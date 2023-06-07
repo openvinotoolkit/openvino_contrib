@@ -2,7 +2,6 @@ package org.intel.openvino;
 
 import static org.junit.Assert.*;
 
-import org.intel.openvino.*;
 import org.junit.Test;
 
 public class TensorTests extends OVTest {
