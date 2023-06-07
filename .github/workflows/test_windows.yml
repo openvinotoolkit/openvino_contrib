@@ -136,7 +136,7 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
-            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_SHARED_LIBS=OFF `
             -DENABLE_FASTER_BUILD=ON `
             -DENABLE_TESTS=ON `
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
@@ -157,22 +157,27 @@ jobs:
           # echo "::group::Clean ccache stats"
           # ccache --zero-stats --show-config
           # echo "::endgroup::"
+          
           echo "::group::Cmake build logs"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
           echo "::endgroup::"
+          
           # echo "::group::Show ccache stats"
           # ccache --show-stats
           # echo "::endgroup::"
+          
           echo "::group::Layer tests install"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
+          
           echo "::group::Samples tests install"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           echo "::endgroup::"
+          
           echo "::group::CMake install"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
