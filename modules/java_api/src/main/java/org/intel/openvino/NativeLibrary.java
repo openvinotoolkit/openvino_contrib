@@ -5,10 +5,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.util.logging.Logger;
 
-/**
- *  A utility class to load the OpenVINO native libraries required
- *  for the OpenVINO Runtime API.
- */
+/** A utility class to load the OpenVINO native libraries required for the OpenVINO Runtime API. */
 public final class NativeLibrary {
 
     private static final Logger logger = Logger.getLogger(NativeLibrary.class.getName());
