@@ -10,8 +10,13 @@ namespace CUDA {
 
 class Event : public Handle<cudaEvent_t> {
 public:
+    enum RecordMode : unsigned int {
+        Default = cudaEventRecordDefault,
+        External = cudaEventRecordExternal,
+    };
+
     Event() : Handle((static_cast<__host__ cudaError_t (*)(cudaEvent_t* event)>(cudaEventCreate)), cudaEventDestroy) {}
-    auto& record(const Stream& stream, unsigned int flags = cudaEventRecordDefault) {
+    auto& record(const Stream& stream, RecordMode flags = RecordMode::Default) {
         throwIfError(cudaEventRecordWithFlags(get(), stream.get(), flags));
         return *this;
     }
