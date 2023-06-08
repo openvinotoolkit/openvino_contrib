@@ -4,6 +4,8 @@
 
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda/graph.hpp"
+#include "cuda/event.hpp"
+#include "cuda_profiler.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -23,6 +25,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
     CUDA::GraphCapture capture{context.getThreadContext().stream()};
     {
         auto scope = capture.getScope();
+        context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
         SubGraph::Execute(context, {}, {}, workbuffers);
@@ -39,6 +42,7 @@ void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context,
     CUDA::GraphCapture capture{context.getThreadContext().stream()};
     {
         auto scope = capture.getScope();
+        context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
         SubGraph::Execute(context, {}, {}, workbuffers);
