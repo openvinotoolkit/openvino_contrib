@@ -6,7 +6,6 @@ import numpy as np
 from PIL import Image
 import torch
 import openvino.runtime as ov
-from openvino.tools import mo
 
 import tomeov
 from diffusers import StableDiffusionPipeline, DDPMScheduler

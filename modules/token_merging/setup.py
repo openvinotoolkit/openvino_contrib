@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 EXTRAS_REQUIRE = {
-    "tests": ["onnx", "onnxruntime", "accelerate", "diffusers", "openvino", "optimum", "optimum-intel", "timm"],
+    "tests": ["onnx", "onnxruntime", "accelerate", "diffusers", "openvino", "optimum", "optimum-intel", "open-clip-torch","timm", "pytest"],
 }
 
 setup(
@@ -10,7 +10,7 @@ setup(
     author="Alexander Kozlov",
     url="https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/token_merging",
     description="Token Merging for OpenVINO",
-    install_requires=["torch==1.13.1+cpu", "torchvision==0.14.1+cpu"],
+    install_requires=["torch~=1.13.1", "torchvision~=0.14.1"],
     dependency_links=["https://download.pytorch.org/whl/cpu"],
     extras_require=EXTRAS_REQUIRE,
     packages=find_packages(exclude=("examples", "build")),
