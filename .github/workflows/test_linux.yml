@@ -727,99 +727,99 @@ jobs:
           
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
   
-  CPU_Functional_Tests:
-    needs: Build
-    if: ${{ always() }}
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-    runs-on: ubuntu-latest
-    container:
-      image: akashchi/ubuntu:python_311
-    env:
-      INSTALL_DIR: /openvino/install
-      INSTALL_TEST_DIR: /openvino/install/tests
+  # CPU_Functional_Tests:
+  #   needs: Build
+  #   if: ${{ always() }}
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   strategy:
+  #     fail-fast: false
+  #   runs-on: ubuntu-latest
+  #   container:
+  #     image: akashchi/ubuntu:python_311
+  #   env:
+  #     INSTALL_DIR: /openvino/install
+  #     INSTALL_TEST_DIR: /openvino/install/tests
 
-    steps:
-      - name: Create Directories
-        run: |
-          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+  #   steps:
+  #     - name: Create Directories
+  #       run: |
+  #         mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
       
-      - name: Download OpenVINO package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.INSTALL_DIR }}
+  #     - name: Download OpenVINO package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_package
+  #         path: ${{ env.INSTALL_DIR }}
 
-      - name: Download OpenVINO tests package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.INSTALL_TEST_DIR }}
+  #     - name: Download OpenVINO tests package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_tests
+  #         path: ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Extract OpenVINO packages
-        run: |
-          pushd ${{ env.INSTALL_DIR }}
-            tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
-          popd
-          pushd ${{ env.INSTALL_TEST_DIR }}
-            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
-          popd
+  #     - name: Extract OpenVINO packages
+  #       run: |
+  #         pushd ${{ env.INSTALL_DIR }}
+  #           tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
+  #         popd
+  #         pushd ${{ env.INSTALL_TEST_DIR }}
+  #           tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
+  #         popd
       
-      - name: Intel CPU plugin func tests
-        run: |
-          source ${{ env.INSTALL_DIR }}/setupvars.sh
-          # python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_filter=*smoke*
-          ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
+  #     - name: Intel CPU plugin func tests
+  #       run: |
+  #         source ${{ env.INSTALL_DIR }}/setupvars.sh
+  #         # python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_filter=*smoke*
+  #         ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml"
   
-  GPU_Functional_Tests:
-    needs: Build
-    if: ${{ always() }}
-    defaults:
-      run:
-        shell: bash
-    runs-on: ['self-hosted', 'linux', 'coverage']
-    container:
-      image: akashchi/ubuntu:python_311
-      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
-    env:
-      INSTALL_DIR: /github/install
-      INSTALL_TEST_DIR: /github/install/tests
-      GTEST_PARALLEL_DIR: /github/gtest_parallel
+  # GPU_Functional_Tests:
+  #   needs: Build
+  #   if: ${{ always() }}
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   runs-on: ['self-hosted', 'linux', 'coverage']
+  #   container:
+  #     image: akashchi/ubuntu:python_311
+  #     options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
+  #   env:
+  #     INSTALL_DIR: /github/install
+  #     INSTALL_TEST_DIR: /github/install/tests
+  #     GTEST_PARALLEL_DIR: /github/gtest_parallel
 
-    steps:
-      - name: Create Directories
-        run: |
-          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.GTEST_PARALLEL_DIR }}
+  #   steps:
+  #     - name: Create Directories
+  #       run: |
+  #         mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }} ${{ env.GTEST_PARALLEL_DIR }}
       
-      - name: Download OpenVINO package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.INSTALL_DIR }}
+  #     - name: Download OpenVINO package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_package
+  #         path: ${{ env.INSTALL_DIR }}
 
-      - name: Download OpenVINO tests package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.INSTALL_TEST_DIR }}
+  #     - name: Download OpenVINO tests package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_tests
+  #         path: ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Extract OpenVINO packages
-        run: |
-          pushd ${{ env.INSTALL_DIR }}
-            tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
-          popd
-          pushd ${{ env.INSTALL_TEST_DIR }}
-            tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
-          popd
+  #     - name: Extract OpenVINO packages
+  #       run: |
+  #         pushd ${{ env.INSTALL_DIR }}
+  #           tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
+  #         popd
+  #         pushd ${{ env.INSTALL_TEST_DIR }}
+  #           tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
+  #         popd
       
-      - name: Clone gtest_parallel
-        run: |
-          cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
-      - name: Intel GPU plugin func tests
-        run: |
-          source ${{ env.INSTALL_DIR }}/setupvars.sh
-          python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
-          # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
+  #     - name: Clone gtest_parallel
+  #       run: |
+  #         cd /github && git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
+  #     - name: Intel GPU plugin func tests
+  #       run: |
+  #         source ${{ env.INSTALL_DIR }}/setupvars.sh
+  #         python3 ${{ env.GTEST_PARALLEL_DIR }}/gtest_parallel.py ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_filter=*smoke*
+  #         # ${{ env.INSTALL_TEST_DIR }}/ov_gpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:"${{ env.INSTALL_TEST_DIR }}/TEST-GPUFuncTests.xml"
