@@ -41,7 +41,7 @@ jobs:
           sudo apt install -y cifs-utils
 
           sudo mkdir -p $MNT_PATH
-          sudo mount -t cifs //${STORAGE_ACCOUNT_NAME}.file.core.windows.net/${FILE_SHARE_NAME}/ $MNT_PATH/ -o "username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)" || sudo dmesg | tail
+          sudo mount -t cifs //gacaches.file.core.windows.net/caches/ $MNT_PATH/ -o "username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g)" || sudo dmesg | tail
 
           echo "Hello world" > $MNT_PATH/hello_file.txt
           dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
@@ -53,50 +53,50 @@ jobs:
           FILE_SHARE_NAME: 'caches'
           MNT_ROOT: '/mount'
           MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
-  Build:
-    defaults:
-      run:
-        shell: bash
-    strategy:
-      fail-fast: false
-    # runs-on: ['self-hosted', 'linux', 'coverage']
-    runs-on: ubuntu-latest-16-cores
-    container:
-      image: akashchi/ubuntu:python_311
-      # volumes:
-      #   - /home/devuser/actions-runner/_work:/sources_cache
-      # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
-      options: --privileged
-    steps:
-      - name: Create Root
-        run: |
-          mkdir -p /github
-          ls -la /github
+  # Build:
+  #   defaults:
+  #     run:
+  #       shell: bash
+  #   strategy:
+  #     fail-fast: false
+  #   # runs-on: ['self-hosted', 'linux', 'coverage']
+  #   runs-on: ubuntu-latest-16-cores
+  #   container:
+  #     image: akashchi/ubuntu:python_311
+  #     # volumes:
+  #     #   - /home/devuser/actions-runner/_work:/sources_cache
+  #     # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
+  #     options: --privileged
+  #   steps:
+  #     - name: Create Root
+  #       run: |
+  #         mkdir -p /github
+  #         ls -la /github
 
-      # - name: Check Volumes
-      #   run: |
-      #     ls -la /sources_cache
+  #     # - name: Check Volumes
+  #     #   run: |
+  #     #     ls -la /sources_cache
 
-      # - name: Add Reference Repository Folders as Safe
-      #   run: |
-      #     git config --global --add safe.directory '*'
+  #     # - name: Add Reference Repository Folders as Safe
+  #     #   run: |
+  #     #     git config --global --add safe.directory '*'
 
-      - name: Mount Share
-        run: |
-          apt update
-          apt install -y cifs-utils
-          mkdir -p $MNT_PATH
-          mount -t cifs //gacaches.file.core.windows.net/caches ${MNT_PATH}/ -o username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g),vers=3.0 || dmesg | tail
-          # echo "Hello world" > $MNT_PATH/hello_file.txt
-          # dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
-          ls -laR ${MNT_PATH}
-        env:
-          RESOURCE_GROUP_NAME: 'GithubActions'
-          STORAGE_ACCOUNT_NAME: 'gacaches'
-          STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_CACHES_STORAGE_ACCOUNT_KEY }}
-          FILE_SHARE_NAME: 'caches'
-          MNT_ROOT: '/mount'
-          MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
+  #     - name: Mount Share
+  #       run: |
+  #         apt update
+  #         apt install -y cifs-utils
+  #         mkdir -p $MNT_PATH
+  #         mount -t cifs //gacaches.file.core.windows.net/caches ${MNT_PATH}/ -o username=gacaches,password=${STORAGE_ACCOUNT_KEY},serverino,nosharesock,actimeo=30,mfsymlinks,uid=$(id -u),gid=$(id -g),vers=3.0 || dmesg | tail
+  #         # echo "Hello world" > $MNT_PATH/hello_file.txt
+  #         # dd if=/dev/urandom of=$MNT_PATH/testfile.bin bs=1M count=50
+  #         ls -laR ${MNT_PATH}
+  #       env:
+  #         RESOURCE_GROUP_NAME: 'GithubActions'
+  #         STORAGE_ACCOUNT_NAME: 'gacaches'
+  #         STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_CACHES_STORAGE_ACCOUNT_KEY }}
+  #         FILE_SHARE_NAME: 'caches'
+  #         MNT_ROOT: '/mount'
+  #         MNT_PATH: '$MNT_ROOT/$STORAGE_ACCOUNT_NAME/$FILE_SHARE_NAME'
 
       # - name: Clone OpenVINO & OpenVINO Contrib
       #   run: |
