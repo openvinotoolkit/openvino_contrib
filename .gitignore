@@ -3,3 +3,5 @@
 
 **/*.png
 **/*.jar
+
+__pycache__/
