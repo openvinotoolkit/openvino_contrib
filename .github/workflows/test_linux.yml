@@ -171,7 +171,7 @@ jobs:
         run: cmake -GNinja -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
       
       - name: Build Layer Tests
-        run: cmake ${{ env.BUILD_DIR }}/layer_tests --config Release
+        run: cmake --build ${{ env.BUILD_DIR }}/layer_tests --parallel --config Release
       
       - name: Install wheel packages
         run: cmake -DCOMPONENT=python_wheels -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
