@@ -5,7 +5,7 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include <cuda_graph.hpp>
+#include <cuda_eager_topology_runner.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
@@ -103,7 +103,7 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
-    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext,
@@ -120,7 +120,7 @@ TEST_F(ResultTest, canExecuteSync) {
 
 TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
-    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext,

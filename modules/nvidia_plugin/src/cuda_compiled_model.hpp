@@ -9,7 +9,7 @@
 
 #include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
-#include "cuda_graph.hpp"
+#include "cuda_eager_topology_runner.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
@@ -49,7 +49,7 @@ public:
 
     ov::Any get_property(const std::string& name) const override;
 
-    const ITopologyRunner& get_execution_graph() const;
+    const ITopologyRunner& get_topology_runner() const;
 
     const std::shared_ptr<MemoryPool>& get_memory_pool() const;
 
@@ -74,7 +74,7 @@ private:
     std::shared_ptr<ov::Model> model_;
     std::map<std::string, std::size_t> input_index_;
     std::map<std::string, std::size_t> output_index_;
-    std::unique_ptr<ITopologyRunner> graph_;
+    std::unique_ptr<ITopologyRunner> topology_runner_;
     std::shared_ptr<MemoryPool> memory_pool_;
     const bool loaded_from_cache_;
 };

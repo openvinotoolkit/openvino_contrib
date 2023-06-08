@@ -91,7 +91,7 @@ struct PoolingTest : testing::Test {
         CUDA::Device device{};
         const bool optimizeOption = false;
         CancellationToken token{};
-        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{

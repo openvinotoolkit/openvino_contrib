@@ -14,7 +14,7 @@
 #include <utils/perf_timing.hpp>
 #include <vector>
 
-#include "cuda_graph.hpp"
+#include "cuda_eager_topology_runner.hpp"
 #include "cuda_operation_base.hpp"
 
 namespace ov {

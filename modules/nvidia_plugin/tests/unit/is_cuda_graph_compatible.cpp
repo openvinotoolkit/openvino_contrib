@@ -87,7 +87,7 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        ExecGraph graph{creationContext, {}};
+        EagerTopologyRunner graph{creationContext, {}};
         Profiler profiler{false, graph};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
@@ -166,7 +166,7 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        ExecGraph graph{creationContext, {}};
+        EagerTopologyRunner graph{creationContext, {}};
         Profiler profiler{false, graph};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;

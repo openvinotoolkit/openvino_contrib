@@ -88,7 +88,7 @@ void fillArrayWithRandomData(std::vector<T>& v) {
 TEST_F(SelectTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
-    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
