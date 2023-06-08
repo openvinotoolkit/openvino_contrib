@@ -132,10 +132,8 @@ jobs:
             -GNinja \
             -DENABLE_CPPLINT=OFF \
             -DENABLE_NCC_STYLE=OFF \
-            -DENABLE_DATA=OFF \
             -DENABLE_TESTS=ON \
             -DENABLE_PYTHON=ON \
-            -DENABLE_WHEEL=ON \
             -DCMAKE_VERBOSE_MAKEFILE=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
@@ -178,7 +176,9 @@ jobs:
         run: cmake -DCOMPONENT=python_wheels -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
       
       - name: Install Layer Tests
-        run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
+        run: |
+          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          # cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
       
       - name: Install python wheels
         run: python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}/tools
@@ -237,7 +237,7 @@ jobs:
       #       tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/
       #     popd
 
-      - name: Pack Artefacts
+      - name: Pack Artifacts
         run: |
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
