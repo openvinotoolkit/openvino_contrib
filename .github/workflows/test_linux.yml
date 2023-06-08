@@ -94,6 +94,7 @@ jobs:
           python3 -m pip install Scons
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements_test.txt
           
           # For running Python API tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
@@ -185,6 +186,13 @@ jobs:
       - name: Install tests
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -DCOMPONENT=tests -P ${{ env.BUILD_DIR }}/cmake_install.cmake    
       
+      - name: Install OpenVINO
+        run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+      
+      - name: Check Directories
+        run: |
+          ls -alR ${{ env.INSTALL_DIR }}
+
       # - name: CMake build & install
       #   run: |
       #     echo "::group::Clean ccache stats"
