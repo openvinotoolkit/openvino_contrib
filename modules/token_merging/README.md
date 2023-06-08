@@ -1,6 +1,6 @@
 # Token Merging for Stable Diffusion running with OpenVINO
 
-This is an OpenVINO adoped version of Token Merging method. The method is applied to PyTorch model before exporting to OpenVINO representation. It can be also stacked with 8-bit quantization to achieve a higher inference speed. 
+This is an OpenVINO adopted version of Token Merging method. The method is applied to PyTorch model before exporting to OpenVINO representation. It can be also stacked with 8-bit quantization to achieve a higher inference speed. 
 The repository contains implementation for:
 - Stable Diffusion (HF Diffusers based models), see [example](https://github.com/huggingface/optimum-intel/tree/main/examples/openvino/stable-diffusion).
 - OpenCLIP, see [example](https://github.com/AlexKoff88/open_clip/blob/openvino_alt/tutorials/openvino/openvino_tome.ipynb).
