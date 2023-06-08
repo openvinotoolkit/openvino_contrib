@@ -35,7 +35,8 @@ jobs:
   mount-azure-drive:
     runs-on: ubuntu-latest-16-cores
     steps:
-      - run: |
+      - name: Mount
+        run: |
           sudo apt update
           sudo apt install -y cifs-utils
 
@@ -69,10 +70,10 @@ jobs:
 #       options: --privileged
 #     timeout-minutes: 5
 #     steps:
-#       - name: Create Root
-#         run: |
-#           mkdir -p /github
-#           ls -la /github
+    #   - name: Create Root
+    #     run: |
+    #       mkdir -p /github
+    #       ls -la /github
       
 #       # - name: Check Volumes
 #       #   run: |
