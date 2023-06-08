@@ -177,8 +177,8 @@ jobs:
       
       - name: Install Layer Tests
         run: |
-          cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          # cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
+          # cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+          cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
       
       - name: Install python wheels
         run: python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}/tools
@@ -188,6 +188,15 @@ jobs:
       
       - name: Install OpenVINO
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+      
+      - name: CMake Samples Tests
+        run: cmake -GNinja -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+      
+      - name: Build Samples Tests
+        run: cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+      
+      - name: Install Samples Tests
+        run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
       
       - name: Check Directories
         run: |
