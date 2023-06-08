@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2022 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from .import_utils import (
     is_diffusers_available,
     is_openclip_available,

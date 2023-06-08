@@ -1,3 +1,6 @@
+# Copyright (C) 2018-2022 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from setuptools import find_packages, setup
 
 EXTRAS_REQUIRE = {
