@@ -90,7 +90,7 @@ struct PoolingTest : testing::Test {
         CUDA::Device device{};
         const bool optimizeOption = false;
         CancellationToken token{};
-        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
@@ -126,7 +126,7 @@ struct PoolingTest : testing::Test {
     std::vector<CUDA::DevicePointer<void*>> outputs;
     Blob::Ptr blob;
     InferenceEngine::BlobMap blobs;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 };
 

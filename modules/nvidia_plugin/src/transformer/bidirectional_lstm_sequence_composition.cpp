@@ -6,8 +6,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <gsl/span_ext>
-#include <ngraph/pass/constant_folding.hpp>
-#include <ngraph/rt_info.hpp>
+#include <openvino/pass/constant_folding.hpp>
 #include <openvino/core/except.hpp>
 #include <openvino/op/concat.hpp>
 #include <openvino/op/lstm_sequence.hpp>
@@ -22,7 +21,8 @@
 #include <transformer/nodes/lstm_sequence_optimized.hpp>
 
 #include "cuda_rt_info.hpp"
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
+#include "openvino/core/rt_info.hpp"
 #include "openvino/pass/manager.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 

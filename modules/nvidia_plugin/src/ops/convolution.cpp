@@ -38,7 +38,7 @@ static OperationBase::Ptr convolutionFactory(const CreationContext& context,
     } catch (const std::exception& e) {
         exception_msg << "Failed to create ConvolutionCuDnn impl: " << e.what();
     }
-    throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(convolutionFactory, Convolution);

@@ -20,7 +20,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 /**
- * @brief Defines if optimization should be run for CUDA libraries
+ * @brief Defines if benchmarks should be run to determine fastest algorithms for some operations (e.g. Convolution)
  */
 static constexpr Property<bool, PropertyMutability::RW> operation_benchmark{"NVIDIA_OPERATION_BENCHMARK"};
 

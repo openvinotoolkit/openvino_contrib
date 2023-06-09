@@ -20,8 +20,8 @@ static void uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, const std:
     stream.upload(buffer, v.data(), size_in_bytes(v));
 }
 
-std::unique_ptr<NumpyBroadcastParams> NumpyBroadcastParams::create(const ngraph::Shape& in_shape,
-                                                                   const ngraph::Shape& out_shape) {
+std::unique_ptr<NumpyBroadcastParams> NumpyBroadcastParams::create(const ov::Shape& in_shape,
+                                                                   const ov::Shape& out_shape) {
     if (in_shape == out_shape) {
         return std::make_unique<NumpyBroadcastParamsIdentity>();
     } else {
@@ -29,16 +29,16 @@ std::unique_ptr<NumpyBroadcastParams> NumpyBroadcastParams::create(const ngraph:
     }
 }
 
-NumpyBroadcastParamsImpl::NumpyBroadcastParamsImpl(const ngraph::Shape& in_shape, const ngraph::Shape& out_shape)
-    : shape_rank_{out_shape.size()}, dst_strides_{ngraph::row_major_strides(out_shape)} {
-    ngraph::Shape broadcasted_shape{in_shape};
+NumpyBroadcastParamsImpl::NumpyBroadcastParamsImpl(const ov::Shape& in_shape, const ov::Shape& out_shape)
+    : shape_rank_{out_shape.size()}, dst_strides_{ov::row_major_strides(out_shape)} {
+    ov::Shape broadcasted_shape{in_shape};
     OPENVINO_ASSERT(broadcasted_shape.size() <= shape_rank_);
     while (broadcasted_shape.size() < shape_rank_) {
         broadcasted_shape.insert(broadcasted_shape.begin(), 1);
     }
     OPENVINO_ASSERT(broadcasted_shape.size() == shape_rank_);
 
-    src_strides_ = ngraph::row_major_strides(broadcasted_shape);
+    src_strides_ = ov::row_major_strides(broadcasted_shape);
 
     for (size_t i = 0; i < shape_rank_; ++i) {
         auto in_dim = broadcasted_shape.at(i);

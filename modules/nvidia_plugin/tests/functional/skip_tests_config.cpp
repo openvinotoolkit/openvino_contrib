@@ -34,7 +34,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*smoke_BehaviorTests.*OVExecGraphImportExportTest.ieImportExportedFunction.*)",
         // TODO: Round with f16 is not supported
         R"(.*smoke_Hetero_BehaviorTests.*OVExecGraphImportExportTest.*readFromV10IR.*)",
-
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i8|u8).*)",
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i16|u16).*)",
         R"(.*importExportedIENetworkParameterResultOnly.*elementType=(i64|u64).*)",
@@ -113,14 +112,23 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*GroupConvolutionBias(Add|AddAdd)ActivationLayerTest.*IS=\(2\.16\.12\.6\).*K\(3\.3\).*S\(1\.1\).*PB\(0\.3\).*PE\(0\.3\).*D=\(1\.1\).*O=(8|32).*G=2.*AP=explicit.*netPRC=FP16*.*)",
         // 101751, 101746, 101747, 101748, 101755
         R"(.*(d|D)ynamic*.*)",
-        // 101753
-        R"(.*TensorIteratorDisabledTransformationsTest*.*GRU_direction=reverse*.*)",
-        R"(.*GRUCellCommon_01*.*FP16*.*)",
         R"(.*smoke_Auto_BehaviorTests*.*)",
         R"(.*smoke_Multi_BehaviorTests*.*)",
         R"(.*HETERO(W|w)ithMULTI*.*)",
          // 106454, 106628
         R"(.*.*LoadNetworkToDefaultDeviceNoThrow.*)",
+        // Plugin version was changed to ov::Version
+        R"(.*VersionTest.*pluginCurrentVersionIsCorrect.*)",
+        // New plugin API doesn't support changes of pre-processing
+        R"(.*InferRequestPreprocessTest.*SetPreProcessToInputInfo.*)",
+        R"(.*InferRequestPreprocessTest.*SetPreProcessToInferRequest.*)",
+        // New plugin work with tensors, so it means that blob in old API can have different pointers
+        R"(.*InferRequestIOBBlobTest.*secondCallGetInputDoNotReAllocateData.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetOutputDoNotReAllocateData.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetInputAfterInferSync.*)",
+        R"(.*InferRequestIOBBlobTest.*secondCallGetOutputAfterInferSync.*)",
+        // Old API cannot deallocate tensor
+        R"(.*InferRequestIOBBlobTest.*canProcessDeallocatedOutputBlobAfterGetAndSetBlob.*)",
     };
 
 #ifdef _WIN32

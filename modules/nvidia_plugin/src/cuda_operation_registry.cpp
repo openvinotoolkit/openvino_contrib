@@ -4,8 +4,6 @@
 
 #include "cuda_operation_registry.hpp"
 
-#include <ngraph/node.hpp>
-
 namespace ov {
 namespace nvidia_gpu {
 

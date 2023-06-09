@@ -9,7 +9,6 @@
 #include <cuda/dnn.hpp>
 #include <cuda_operation_base.hpp>
 #include <initializer_list>
-#include <ngraph/node.hpp>
 
 namespace ov {
 namespace nvidia_gpu {
@@ -26,10 +25,13 @@ public:
                                  const ov::Node& node,
                                  IndexCollection&& inputIds,
                                  IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers&) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 protected:
     std::unique_ptr<CUDA::DnnActivationDescriptor> op_desc_;

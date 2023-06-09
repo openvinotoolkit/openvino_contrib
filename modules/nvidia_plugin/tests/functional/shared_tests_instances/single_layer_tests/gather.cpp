@@ -85,7 +85,7 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
     const auto axis = test_params.axis_;
     const unsigned normalized_axis = axis >= 0 ? axis : axis + params_shape_size;
     if (normalized_axis >= params_shape_size) {
-        ov::nvidia_gpu::throwIEException(
+        ov::nvidia_gpu::throw_ov_exception(
             fmt::format("normalized_axis >= params_shape_size: {} >= {}", normalized_axis, params_shape_size));
     }
     std::uniform_int_distribution<T> distr(0, test_params.params_shape_[normalized_axis] - 1);
@@ -357,7 +357,6 @@ INSTANTIATE_TEST_CASE_P(smoke_Gather_v8_12,
                                            ::testing::Values(smoke_12_ov_params_v8.output_layout_),
                                            ::testing::Values(smoke_12_ov_params_v8.device_)),
                         Gather8LayerTest::getTestCaseName);
-
 
 // ------------- Tacotron2 shapes -------------
 const GatherTestParams tacotron2_enc_params_v1_v7 = {{148, 512}, {1, 1000}};
@@ -691,9 +690,9 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};

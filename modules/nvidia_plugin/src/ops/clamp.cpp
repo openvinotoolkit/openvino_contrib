@@ -49,7 +49,7 @@ static OperationBase::Ptr clampFactory(const CreationContext& context,
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create ClampCudaOp implementation: " << e.what();
     }
-    throwIEException(fmt::format("Clamp node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Clamp node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(clampFactory, Clamp)

@@ -76,8 +76,8 @@ struct ResultTest : testing::Test {
         allocate();
         fillBlobRandom<uint8_t>(blob);
         blobsMapping[paramNode->get_friendly_name()] = 0;
-        blobs.push_back(std::make_shared<ngraph::HostTensor>(
-            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
+        blobs.push_back(std::make_shared<ov::Tensor>(
+            ov::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};
@@ -90,9 +90,9 @@ struct ResultTest : testing::Test {
     std::vector<cdevptr_t> inputs{inAlloc};
     IOperationExec::Outputs outputs;
     Blob::Ptr blob;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> blobs;
+    std::vector<std::shared_ptr<ov::Tensor>> blobs;
     std::map<std::string, std::size_t> blobsMapping;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 };
 
@@ -102,7 +102,7 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto mem = blob->as<MemoryBlob>()->rmap();
@@ -117,7 +117,7 @@ TEST_F(ResultTest, canExecuteSync) {
 
 TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();

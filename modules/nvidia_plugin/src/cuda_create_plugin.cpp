@@ -8,9 +8,8 @@ namespace ov {
 namespace nvidia_gpu {
 namespace {
 
-const InferenceEngine::Version version{{2, 1}, CI_BUILD_NUMBER, "openvino_nvidia_gpu_plugin"};
-
-IE_DEFINE_PLUGIN_CREATE_FUNCTION(Plugin, version)
+static const ov::Version version = {CI_BUILD_NUMBER, "openvino_nvidia_gpu_plugin"};
+OV_DEFINE_PLUGIN_CREATE_FUNCTION(Plugin, version)
 
 }  // namespace
 }  // namespace nvidia_gpu

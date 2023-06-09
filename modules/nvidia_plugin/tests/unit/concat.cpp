@@ -66,7 +66,7 @@ struct ConcatTest : testing::Test {
         auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
         ASSERT_TRUE(concatOp);
         CancellationToken token{};
-        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
         InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
@@ -108,7 +108,7 @@ struct ConcatTest : testing::Test {
     }
     ThreadContext threadContext{{}};
     std::array<Blob::Ptr, 3> blobs;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     size_t output_size{};
     ov::OutputVector params{};

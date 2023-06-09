@@ -3,7 +3,9 @@
 //
 
 #include <cuda/dnn.hpp>
-#include <ngraph/node.hpp>
+
+#include "openvino/core/node.hpp"
+#include "openvino/core/type/element_type.hpp"
 
 namespace CUDA {
 

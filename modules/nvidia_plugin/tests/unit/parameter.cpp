@@ -58,8 +58,8 @@ struct ParameterTest : testing::Test {
         allocate();
         fillBlobRandom<uint8_t>(blob);
         blobsMapping[node->get_friendly_name()] = 0;
-        blobs.push_back(std::make_shared<ngraph::HostTensor>(
-            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
+        blobs.push_back(std::make_shared<ov::Tensor>(
+            ov::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
     }
     void allocate() {
         TensorDesc desc{Precision::U8, {size}, Layout::C};
@@ -72,9 +72,9 @@ struct ParameterTest : testing::Test {
     IOperationExec::Inputs inputs;
     std::vector<devptr_t> outputs{outAlloc};
     Blob::Ptr blob;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> blobs;
+    std::vector<std::shared_ptr<ov::Tensor>> blobs;
     std::map<std::string, std::size_t> blobsMapping;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 };
 
@@ -84,7 +84,7 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     Profiler profiler{false, graph};
     InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();
@@ -98,7 +98,7 @@ TEST_F(ParameterTest, canExecuteSync) {
 
 TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     InferenceRequestContext context{blobs, blobsMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
     auto& stream = context.getThreadContext().stream();

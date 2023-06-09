@@ -11,8 +11,8 @@ namespace CUDA {
 class Event : public Handle<cudaEvent_t> {
 public:
     Event() : Handle((static_cast<__host__ cudaError_t (*)(cudaEvent_t* event)>(cudaEventCreate)), cudaEventDestroy) {}
-    auto& record(const Stream& stream) {
-        throwIfError(cudaEventRecord(get(), stream.get()));
+    auto& record(const Stream& stream, unsigned int flags = cudaEventRecordDefault) {
+        throwIfError(cudaEventRecordWithFlags(get(), stream.get(), flags));
         return *this;
     }
     auto&& record(const cudaStream_t& stream) {

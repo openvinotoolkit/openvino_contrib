@@ -102,6 +102,8 @@ void DetectionOutputOp::Execute(const InferenceRequestContext& context,
     }
 }
 
+bool DetectionOutputOp::IsCudaGraphCompatible() const { return true; }
+
 void DetectionOutputOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     kernel_.value().initSharedImmutableWorkbuffers(buffers);
 }

@@ -30,6 +30,8 @@ void MaxPoolOp::Execute(const InferenceRequestContext& context,
                   outputs[PoolingImpl::output_index].get());
 }
 
+bool MaxPoolOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(MaxPoolOp, MaxPool);
 
 }  // namespace nvidia_gpu

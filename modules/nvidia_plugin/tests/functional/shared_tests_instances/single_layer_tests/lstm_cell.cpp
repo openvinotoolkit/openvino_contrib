@@ -232,9 +232,9 @@ void testOneShape(const LSTMCellTestParams& params) {
     std::vector<CDevPtr> inputs{x_alloc, hi_alloc, ci_alloc, w_alloc, r_alloc, b_alloc};
     std::vector<DevPtr> outputs{ho_alloc, co_alloc};
 
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     ov::nvidia_gpu::InferenceRequestContext context{

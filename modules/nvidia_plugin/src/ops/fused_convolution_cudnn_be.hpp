@@ -5,7 +5,6 @@
 #pragma once
 
 #include <atomic>
-#include <ngraph/node.hpp>
 #include <vector>
 
 #include "convolution_components/convolution_components.hpp"
@@ -34,12 +33,14 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
 private:
     static std::shared_ptr<CUDA::DnnBETensorDescriptor> MakeTensorDescriptor(int64_t id,
                                                                              cudnnDataType_t element_type,
-                                                                             const ngraph::Shape& shape,
+                                                                             const ov::Shape& shape,
                                                                              const cudnnTensorFormat_t format,
                                                                              bool isVirtual = false);
     std::shared_ptr<CUDA::DnnBEExecutionPlan> performBenchmarks(

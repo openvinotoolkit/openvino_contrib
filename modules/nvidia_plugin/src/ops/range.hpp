@@ -26,6 +26,8 @@ public:
                  Outputs outputs,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     size_t output_size_;
     std::optional<kernel::RangeKernelOp> kernel_op_;

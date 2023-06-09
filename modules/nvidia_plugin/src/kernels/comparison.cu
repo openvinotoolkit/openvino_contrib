@@ -117,7 +117,7 @@ void Comparison::operator()(const cudaStream_t stream,
             return Call<uint64_t>(
                 op_type_, stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
         default:
-            throwIEException(fmt::format("Input element type = {} is not supported by Comparison operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Comparison operation !!",
                                          static_cast<Type_t>(element_type_)));
     }
 }
@@ -141,7 +141,7 @@ void Comparison::Call(Comparison::Op_t type,
                 stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
             break;
         default:
-            throwIEException(fmt::format("Input operation = {} is not supported by Comparison operation !!",
+            throw_ov_exception(fmt::format("Input operation = {} is not supported by Comparison operation !!",
                                          static_cast<Type_t>(type)));
     }
 }

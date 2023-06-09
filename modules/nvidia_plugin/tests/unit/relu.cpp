@@ -23,7 +23,7 @@ auto assertToThrow(F&& f,
                    const std::experimental::source_location& loc = std::experimental::source_location::current()) {
     bool success = false;
     std::forward<F>(f)(success);
-    if (!success) ov::nvidia_gpu::throwIEException("pathetic google test failed in non-void function", loc);
+    if (!success) ov::nvidia_gpu::throw_ov_exception("pathetic google test failed in non-void function", loc);
 }
 
 #define TASSERT_TRUE(condition)                \
@@ -42,7 +42,7 @@ struct ReluTest : testing::Test {
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         CUDA::Device device{};
@@ -62,7 +62,7 @@ struct ReluTest : testing::Test {
 
 TEST_F(ReluTest, canExecuteSync) {
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
     ov::nvidia_gpu::InferenceRequestContext context{
         emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};

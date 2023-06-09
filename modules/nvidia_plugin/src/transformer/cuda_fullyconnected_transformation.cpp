@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "cuda_fullyconnected_transformation.hpp"
 
 #include <exec_graph_info.hpp>
+#include "openvino/core/rt_info.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
 #include <openvino/op/add.hpp>
 #include <openvino/op/matmul.hpp>
 #include <ops/matmul.hpp>
-#include <transformer/nodes/fully_connected.hpp>
 
 using namespace ov::pass::pattern;
 

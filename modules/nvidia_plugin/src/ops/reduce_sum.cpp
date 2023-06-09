@@ -28,7 +28,7 @@ cudnnDataType_t reduceCompType(const ov::Node& node) {
         case switchCase(CUDNN_DATA_DOUBLE, CUDNN_DATA_DOUBLE):
             return CUDNN_DATA_DOUBLE;
         default:
-            throwIEException(fmt::format("ov::nvidia_gpu::reduceCompType(): Unsupported data types: in0 = {}, in1 = {}",
+            throw_ov_exception(fmt::format("ov::nvidia_gpu::reduceCompType(): Unsupported data types: in0 = {}, in1 = {}",
                                          toString(in_type),
                                          toString(out_type)));
     }
@@ -57,6 +57,8 @@ void ReduceSumOp::Execute(const InferenceRequestContext& context,
                                                         c_desc_,
                                                         outputTensors[0]);
 }
+
+bool ReduceSumOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(ReduceSumOp, ReduceSum);
 }  // namespace nvidia_gpu

@@ -10,7 +10,6 @@
 #include <memory_manager/model/cuda_immutable_memory_model_builder.hpp>
 #include <memory_manager/model/cuda_memory_model.hpp>
 #include <memory_manager/model/cuda_memory_model_builder.hpp>
-#include <ngraph/node.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>

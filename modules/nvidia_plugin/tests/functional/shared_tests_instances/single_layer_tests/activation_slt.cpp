@@ -2084,7 +2084,7 @@ using AutogenClampParams = std::pair<
 // In:     (1, 128, 1, 1)
 // Out:    (1, 128, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid357' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid357,
@@ -2105,7 +2105,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 2, 2)
 // Out:    (1, 128, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid329' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid329,
@@ -2126,7 +2126,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 3, 3)
 // Out:    (1, 128, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid306' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid324' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid306,
@@ -2147,7 +2147,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 5, 5)
 // Out:    (1, 128, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid301' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid301,
@@ -2168,7 +2168,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 1280, 10, 10)
 // Out:    (1, 1280, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid265' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 1280, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid265,
@@ -2189,7 +2189,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 144, 38, 38)
 // Out:    (1, 144, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid57' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 144, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid57,
@@ -2210,7 +2210,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 144, 75, 75)
 // Out:    (1, 144, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid37' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid42' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid52' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 144, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid37,
@@ -2231,7 +2231,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 192, 19, 19)
 // Out:    (1, 192, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid101' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 192, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid101,
@@ -2252,7 +2252,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 192, 38, 38)
 // Out:    (1, 192, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid66' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid71' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid81' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid86' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid96' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 192, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid66,
@@ -2273,7 +2273,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 10, 10)
 // Out:    (1, 256, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid278' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid278,
@@ -2294,7 +2294,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 2, 2)
 // Out:    (1, 256, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid334' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid334,
@@ -2315,7 +2315,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 3, 3)
 // Out:    (1, 256, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid311' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid311,
@@ -2336,7 +2336,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 5, 5)
 // Out:    (1, 256, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid283' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid283,
@@ -2357,7 +2357,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 32, 150, 150)
 // Out:    (1, 32, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid14' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid9' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 32, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid14,
@@ -2378,7 +2378,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 384, 19, 19)
 // Out:    (1, 384, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid110' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid115' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid125' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid130' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid140' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid145' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid155' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid160' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 384, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid110,
@@ -2399,7 +2399,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 512, 5, 5)
 // Out:    (1, 512, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid288' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 512, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid288,
@@ -2420,7 +2420,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 512, 50, 86)
 // Out:    (1, 512, 50, 86)
 // Operators: 'mask_rcnn_inception_v2_coco:opid277' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params = 
+const AutogenClampParams autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 512, 50, 86}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_mask_rcnn_inception_v2_coco_opid277,
@@ -2441,7 +2441,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 576, 10, 10)
 // Out:    (1, 576, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid212' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 576, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid212,
@@ -2462,7 +2462,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 576, 19, 19)
 // Out:    (1, 576, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid169' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid174' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid184' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid189' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid199' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 576, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid169,
@@ -2483,7 +2483,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 64, 1, 1)
 // Out:    (1, 64, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid352' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 64, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid352,
@@ -2504,7 +2504,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 64, 2, 2)
 // Out:    (1, 64, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid347' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 64, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid347,
@@ -2525,7 +2525,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 96, 150, 150)
 // Out:    (1, 96, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid23' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 96, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid23,
@@ -2546,7 +2546,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 96, 75, 75)
 // Out:    (1, 96, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid28' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 96, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid28,
@@ -2567,7 +2567,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 960, 10, 10)
 // Out:    (1, 960, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid221' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid226' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid236' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid241' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid251' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid256' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 960, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid221,
@@ -2666,10 +2666,10 @@ struct ClampBenchmark : testing::Test {
         std::vector<CDevPtr> inputs{inAlloc};
         std::vector<DevPtr> outputs{outAlloc};
 
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+        std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CancellationToken token{};
-        ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+        ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
         ov::nvidia_gpu::Profiler profiler{false, graph};
         ov::nvidia_gpu::InferenceRequestContext context{
             emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
@@ -2696,7 +2696,7 @@ struct ClampBenchmark : testing::Test {
                             wbRequest.immutable_sizes[1] == minMaxSizeBytes);
 
             ov::nvidia_gpu::IOperationExec::Buffers initBuffers{static_cast<DevPtr>(maxAlloc),
-                                                            static_cast<DevPtr>(minAlloc)};
+                                                                static_cast<DevPtr>(minAlloc)};
             operation->InitSharedImmutableWorkbuffers(initBuffers);
 
             workbuffers.immutable_buffers.emplace_back(static_cast<CDevPtr>(maxAlloc));

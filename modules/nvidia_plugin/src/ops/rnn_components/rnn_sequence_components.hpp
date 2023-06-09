@@ -11,6 +11,14 @@
 namespace ov::nvidia_gpu::RNN::Details {
 
 /**
+ * Checks if LSTM/GRU Sequence is supported by the combination of cuDNN runtime and device compute capability
+ * cuDNN v8.5.0/v8.6.0 on GTX1080 (compute capabiltiy 6.1) doesn't work properly with stream capturing
+ * @param device CUDA device to check
+ * @returns true if the combination supported and false if it isn't
+ */
+bool isRNNSequenceCudaGraphCompatible(const CUDA::Device& device);
+
+/**
  * Base class for `TransposeInputTensorAdapter` and `TransposeOutputTensorAdapter`
  *
  * TODO: Consider to refactor using `TransposeOp` using aggregation or by creating

@@ -100,7 +100,7 @@ constexpr void I420ColorConvert<Conversion>::case_(cudaStream_t stream, Args&&..
 template <ColorConversion Conversion>
 template <typename T, typename... Args>
 void I420ColorConvert<Conversion>::default_(T t, cudaStream_t, Args&&...) const noexcept {
-    throwIEException(fmt::format("Element type = {} is not supported by I420ColorConvert operation.", t));
+    throw_ov_exception(fmt::format("Element type = {} is not supported by I420ColorConvert operation.", t));
 }
 
 template <ColorConversion Conversion>

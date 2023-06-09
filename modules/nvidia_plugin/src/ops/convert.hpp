@@ -6,7 +6,6 @@
 
 #include <cuda/runtime.hpp>
 #include <cuda_operation_base.hpp>
-#include <ngraph/type/element_type.hpp>
 
 #include "kernels/convert.hpp"
 
@@ -19,10 +18,14 @@ public:
               const std::shared_ptr<ov::Node>& node,
               IndexCollection&& inputIds,
               IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
+
     using Type_t = ov::element::Type_t;
     using convert_t = void (*)(
         const CUDA::Stream&, size_t, CUDA::DevicePointer<void*>, CUDA::DevicePointer<const void*>, unsigned, unsigned);

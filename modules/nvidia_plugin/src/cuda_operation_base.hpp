@@ -18,7 +18,7 @@
 #include "cuda_inference_request_context.hpp"
 #include "memory_manager/cuda_workbuffers.hpp"
 
-namespace ngraph {
+namespace ov {
 
 class Node;
 
@@ -42,6 +42,7 @@ public:
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
+    virtual bool IsCudaGraphCompatible() const = 0;
     virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
     virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
     virtual const WorkbufferIds& GetWorkbufferIds() const = 0;
@@ -61,6 +62,7 @@ public:
     virtual const std::string_view& GetCategory() const = 0;
     virtual const std::string& GetName() const = 0;
     virtual const std::string& GetTypeName() const = 0;
+    virtual const ov::element::Type& GetRuntimePrecision() const = 0;
     virtual gsl::span<const TensorID> GetInputIds() const = 0;
     virtual gsl::span<const TensorID> GetOutputIds() const = 0;
 };
@@ -74,6 +76,8 @@ public:
                   const ov::Node& node,
                   IndexCollection&& inputIds,
                   IndexCollection&& outputIds);
+
+    bool IsCudaGraphCompatible() const override { return false; }
 
     WorkbufferRequest GetWorkBufferRequest() const override {
         return {};  // Most operators do not need workbuffers
@@ -93,6 +97,7 @@ public:
     const std::string_view& GetCategory() const override { return Category::CUDA; }
     const std::string& GetName() const override { return node_name_; }
     const std::string& GetTypeName() const override { return type_name_; }
+    const ov::element::Type& GetRuntimePrecision() const override { return runtime_precision_; }
     gsl::span<const TensorID> GetInputIds() const override { return input_ids_; }
     gsl::span<const TensorID> GetOutputIds() const override { return output_ids_; }
     const WorkbufferIds& GetWorkbufferIds() const override { return workbuffer_ids_; }
@@ -104,6 +109,7 @@ public:
 protected:
     std::string node_name_;
     std::string type_name_;
+    ov::element::Type runtime_precision_ = ov::element::undefined;
     const IndexCollection input_ids_;
     const IndexCollection output_ids_;
     WorkbufferIds workbuffer_ids_;

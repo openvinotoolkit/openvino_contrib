@@ -26,6 +26,7 @@ public:
                  Outputs outputs,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
