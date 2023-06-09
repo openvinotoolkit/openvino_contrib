@@ -37,7 +37,7 @@ class CudaInferRequest : public ov::ISyncInferRequest  {
 public:
     using Ptr = std::shared_ptr<CudaInferRequest>;
 
-    explicit CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model);
+    explicit CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model, bool use_cuda_graph = false);
     ~CudaInferRequest() = default;
 
     void infer() override;

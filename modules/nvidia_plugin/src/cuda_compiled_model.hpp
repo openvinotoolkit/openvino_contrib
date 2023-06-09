@@ -77,6 +77,7 @@ private:
     std::unique_ptr<ITopologyRunner> topology_runner_;
     std::shared_ptr<MemoryPool> memory_pool_;
     const bool loaded_from_cache_;
+    bool use_cuda_graph_;
 };
 
 }  // namespace nvidia_gpu

@@ -38,13 +38,13 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 }
 }  // namespace
 
-CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
+CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model, bool use_cuda_graph)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
           compiled_model->get_topology_runner().GetSubGraph()},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{compiled_model->get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
+      use_cuda_graph_{use_cuda_graph} {
     create_infer_request();
 }
 
