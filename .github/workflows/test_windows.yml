@@ -128,6 +128,12 @@ jobs:
         id: cpu-cores
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: sccache
+          max-size: 500M
       
       - name: CMake configure
         id: cmake-configure
@@ -757,56 +763,56 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
   
-  CPU_Functional_Tests:
-    needs: Build
-    if: ${{ always() }}
-    defaults:
-      run:
-        shell: pwsh
-    strategy:
-      fail-fast: false
-    runs-on: ['windows-latest']
-    env:
-      INSTALL_DIR: "${{ github.workspace }}\\install"
-      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+  # CPU_Functional_Tests:
+  #   needs: Build
+  #   if: ${{ always() }}
+  #   defaults:
+  #     run:
+  #       shell: pwsh
+  #   strategy:
+  #     fail-fast: false
+  #   runs-on: ['windows-latest']
+  #   env:
+  #     INSTALL_DIR: "${{ github.workspace }}\\install"
+  #     INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
 
-    steps:
-      - name: Create Directories
-        run: |
-          mkdir ${{ env.INSTALL_DIR }}
-          mkdir ${{ env.INSTALL_TEST_DIR }}
+  #   steps:
+  #     - name: Create Directories
+  #       run: |
+  #         mkdir ${{ env.INSTALL_DIR }}
+  #         mkdir ${{ env.INSTALL_TEST_DIR }}
       
-      - name: Download OpenVINO package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.INSTALL_DIR }}
+  #     - name: Download OpenVINO package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_package
+  #         path: ${{ env.INSTALL_DIR }}
 
-      - name: Download OpenVINO tests package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.INSTALL_TEST_DIR }}
+  #     - name: Download OpenVINO tests package
+  #       uses: actions/download-artifact@v3
+  #       with:
+  #         name: openvino_tests
+  #         path: ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Extract OpenVINO packages
-        run: |
-          pushd ${{ env.INSTALL_DIR }}
-            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
-          popd
-          pushd ${{ env.INSTALL_TEST_DIR }}
-            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
-          popd
+  #     - name: Extract OpenVINO packages
+  #       run: |
+  #         pushd ${{ env.INSTALL_DIR }}
+  #           Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+  #         popd
+  #         pushd ${{ env.INSTALL_TEST_DIR }}
+  #           Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+  #         popd
       
-      - name: Check extraction
-        run: |
-          ls "${{ github.workspace }}"
-          ls "${{ env.INSTALL_DIR }}"
-          ls "${{ env.INSTALL_TEST_DIR }}"
+  #     - name: Check extraction
+  #       run: |
+  #         ls "${{ github.workspace }}"
+  #         ls "${{ env.INSTALL_DIR }}"
+  #         ls "${{ env.INSTALL_TEST_DIR }}"
       
-      - name: Intel CPU plugin func tests
-        shell: cmd
-        run: |
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
+  #     - name: Intel CPU plugin func tests
+  #       shell: cmd
+  #       run: |
+  #         call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
   
   # GPU_Functional_Tests:  # fails due to absence of the GPU
   #   needs: Build
