@@ -143,7 +143,6 @@ jobs:
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF `
             -DENABLE_STRICT_DEPENDENCIES=OFF `
             -DENABLE_PYTHON=ON `
-            -DENABLE_DATA=ON `
             -DBUILD_nvidia_plugin=OFF `
             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}\modules `
@@ -152,42 +151,94 @@ jobs:
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
       
-      - name: CMake build & install
+      - name: Build
         run: |
-          $ErrorActionPreference = "Stop"
-          # echo "::group::Clean ccache stats"
-          # ccache --zero-stats --show-config
-          # echo "::endgroup::"
-          
-          echo "::group::Cmake build logs"
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
-          echo "::endgroup::"
+      
+      - name: Install
+        run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
+      
+      - name: Install Wheels
+        run: python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}\tools
+      
+      - name: CMake Samples Tests
+        run: |
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake ` 
+          -S ${{ env.OPENVINO_REPO }}/tests/samples_tests `
+          -B ${{ env.BUILD_DIR }}/samples_tests
+      
+      - name: Install Samples Tests
+        run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
+      
+      - name: Install Tests
+        run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -DCOMPONENT=tests -P ${{ env.BUILD_DIR }}\cmake_install.cmake
+      
+      - name: Cmake Layer Tests
+        run: |
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake ` 
+          -S ${{ env.OPENVINO_REPO }}/tests/layer_tests `
+          -B ${{ env.BUILD_DIR }}/layer_tests
+      
+      - name: Build Layer Tests
+        run: cmake --build ${{ env.BUILD_DIR }}/layer_tests --parallel --config Release
+      
+      - name: Install Layer Tests
+        run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
+
+      # - name: CMake build & install
+      #   run: |
+      #     $ErrorActionPreference = "Stop"
+      #     # echo "::group::Clean ccache stats"
+      #     # ccache --zero-stats --show-config
+      #     # echo "::endgroup::"
           
-          # echo "::group::Show ccache stats"
-          # ccache --show-stats
-          # echo "::endgroup::"
+      #     echo "::group::Cmake build logs"
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+      #     echo "::endgroup::"
           
-          echo "::group::Layer tests install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          echo "::endgroup::"
+      #     # echo "::group::Show ccache stats"
+      #     # ccache --show-stats
+      #     # echo "::endgroup::"
           
-          echo "::group::Samples tests install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          echo "::endgroup::"
+      #     echo "::group::Layer tests install"
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+      #     echo "::endgroup::"
           
-          echo "::group::CMake install"
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+      #     echo "::group::Samples tests install"
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
+      #     echo "::endgroup::"
           
-          echo "::endgroup::"
-          echo "::group::Archive Artifacts"
-          # TODO: figure out tar archiving
+      #     echo "::group::CMake install"
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
+      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
           
+      #     echo "::endgroup::"
+      #     echo "::group::Archive Artifacts"
+      #     # TODO: figure out tar archiving
+          
+      #     $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
+      #     $compress = @{
+      #       Path = $file
+      #       CompressionLevel = "Optimal"
+      #       DestinationPath = "${{ env.BUILD_DIR }}/openvino_package.zip"
+      #     }
+      #     Compress-Archive @compress
+      #     $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}\tests"
+      #     $compress = @{
+      #       Path = $file
+      #       CompressionLevel = "Optimal"
+      #       DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
+      #     }
+      #     Compress-Archive @compress
+      #     echo "::endgroup::"
+
+      - name: Pack Artifacts
+        run: |
           $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
           $compress = @{
             Path = $file
@@ -195,6 +246,7 @@ jobs:
             DestinationPath = "${{ env.BUILD_DIR }}/openvino_package.zip"
           }
           Compress-Archive @compress
+          
           $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}\tests"
           $compress = @{
             Path = $file
@@ -202,7 +254,6 @@ jobs:
             DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
           }
           Compress-Archive @compress
-          echo "::endgroup::"
       
       # - name: Build cpp samples  # cannot be built as VS 2019 is required in *build_samples*.bat
       #   run: |

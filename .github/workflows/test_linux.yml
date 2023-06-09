@@ -42,7 +42,6 @@ jobs:
       image: akashchi/ubuntu:python_311
       volumes:
         - /home/devuser/actions-runner/_work:/sources_cache
-      options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
     steps:
       - name: Create Root
         run: |
@@ -494,7 +493,6 @@ jobs:
       image: akashchi/ubuntu:python_311
       # volumes:
       #   - /home/devuser/actions-runner/_work:/sources_cache
-      # options: --device /dev/dri --device-cgroup-rule="c 189:* rmw"
     env:
       OPENVINO_REPO: /github/openvino
       OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
