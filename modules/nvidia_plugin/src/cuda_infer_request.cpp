@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
 #include "nvidia/properties.hpp"
@@ -44,7 +45,8 @@ CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& c
       profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
           compiled_model->get_topology_runner().GetSubGraph()},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{use_cuda_graph} {
+      use_cuda_graph_{use_cuda_graph},
+      cudaGraphContext_{use_cuda_graph} {
     create_infer_request();
 }
 
@@ -143,7 +145,6 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
         auto& topology_runner = compiled_model->get_topology_runner();
-        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
                                                     output_tensors_,
@@ -151,8 +152,15 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    cudaGraphContext,
+                                                    cudaGraphContext_,
                                                     is_benchmark_mode_};
+        if (use_cuda_graph_) {
+            auto& cuda_graph_topology_runner = dynamic_cast<const CudaGraphTopologyRunner&>(topology_runner);
+            if (cudaGraphContext_.graphExec_)
+                cuda_graph_topology_runner.UpdateCapture(inferRequestContext, memory);
+            else
+                cuda_graph_topology_runner.Capture(inferRequestContext, memory);
+        }
         topology_runner.Run(inferRequestContext, memory);
         profiler_.stop_stage(Profiler::StartPipeline);
     } catch (...) {

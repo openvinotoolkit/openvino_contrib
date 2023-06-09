@@ -66,6 +66,7 @@ private:
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;
     bool is_benchmark_mode_;
     bool use_cuda_graph_;
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext_;
 };
 // ! [infer_request:header]
 

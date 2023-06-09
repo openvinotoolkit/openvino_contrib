@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
@@ -118,7 +119,17 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     const bool opBenchOption = config_.get(ov::nvidia_gpu::operation_benchmark.name()).as<bool>();
     const auto creationContext = CreationContext{device, opBenchOption};
 
-    topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
+    if (use_cuda_graph_) {
+        try {
+            topology_runner_ = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
+            // TODO: Add CudaGraphTopologyRunner validation
+        } catch (const CudaGraphTopologyRunner::CudaGraphIncompatible&) {
+            topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
+            use_cuda_graph_ = false;
+        }
+    } else {
+        topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
+    }
 
     memory_pool_ = create_memory_pool();
 }
@@ -247,7 +258,7 @@ std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_benchmark_sync_infer_request() {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})));
+        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})), use_cuda_graph_);
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_request() {
@@ -261,7 +272,7 @@ std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_re
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(shared_from_this()));
+        std::static_pointer_cast<const CompiledModel>(shared_from_this()), use_cuda_graph_);
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_infer_request() const {
