@@ -14,16 +14,6 @@ public class IETest {
     static String device;
 
     public IETest() {
-        try {
-            System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
-        } catch (UnsatisfiedLinkError e) {
-            try {
-                IECore.loadNativeLibs();
-            } catch (Exception ex) {
-                System.err.println("Failed to load Inference Engine library\n" + ex);
-                System.exit(1);
-            }
-        }
 
         device = System.getProperty("device");
         if (device == null || device.isEmpty()) {
