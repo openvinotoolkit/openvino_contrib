@@ -6,14 +6,6 @@ package org.intel.openvino;
 /** A handle for one of a node's outputs. */
 public class Output extends Wrapper {
 
-    static {
-        try {
-            Class.forName("org.intel.openvino.NativeLibrary");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load OpenVINO native libraries");
-        }
-    }
-
     public Output(long addr) {
         super(addr);
     }

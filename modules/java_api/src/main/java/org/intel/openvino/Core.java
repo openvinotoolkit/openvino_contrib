@@ -18,14 +18,6 @@ public class Core extends Wrapper {
     public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
     private static final Logger logger = Logger.getLogger(Core.class.getName());
 
-    static {
-        try {
-            Class.forName("org.intel.openvino.NativeLibrary");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load OpenVINO native libraries");
-        }
-    }
-
     public Core() {
         super(GetCore());
     }

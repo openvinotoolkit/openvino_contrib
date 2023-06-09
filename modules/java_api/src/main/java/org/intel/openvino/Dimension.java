@@ -9,14 +9,6 @@ package org.intel.openvino;
  */
 public class Dimension extends Wrapper {
 
-    static {
-        try {
-            Class.forName("org.intel.openvino.NativeLibrary");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load OpenVINO native libraries");
-        }
-    }
-
     protected Dimension(long addr) {
         super(addr);
     }
