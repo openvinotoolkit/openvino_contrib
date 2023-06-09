@@ -12,8 +12,8 @@ env:
   # CCACHE_MAXSIZE: '10G'
   CMAKE_GENERATOR: 'Ninja'
   # CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
-  # CMAKE_CXX_COMPILER_LAUNCHER: ccache
-  # CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: sccache
+  CMAKE_C_COMPILER_LAUNCHER: sccache
   SCCACHE_GHA_ENABLED: 'true'
   OPENVINO_REPO: "${{ github.workspace }}\\openvino"
   OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib_repo"
@@ -139,7 +139,7 @@ jobs:
         id: cmake-configure
         run: |
           echo "::group::CMake configure"
-          
+
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
@@ -169,9 +169,7 @@ jobs:
       
       - name: CMake Samples Tests
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake ` 
-          -S ${{ env.OPENVINO_REPO }}/tests/samples_tests `
-          -B ${{ env.BUILD_DIR }}/samples_tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
       
       - name: Install Samples Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
@@ -181,9 +179,7 @@ jobs:
       
       - name: Cmake Layer Tests
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake ` 
-          -S ${{ env.OPENVINO_REPO }}/tests/layer_tests `
-          -B ${{ env.BUILD_DIR }}/layer_tests
+          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
       
       - name: Build Layer Tests
         run: cmake --build ${{ env.BUILD_DIR }}/layer_tests --parallel --config Release
