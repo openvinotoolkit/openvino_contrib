@@ -126,6 +126,9 @@ jobs:
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
 
+      - name: Clear CCACHE
+        run: ccache --clear
+
       - name: CMake configure
         id: cmake-configure
         run: |
