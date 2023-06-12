@@ -58,12 +58,15 @@ jobs:
       
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
+
           # TODO: rm when scheduled on actual branches
+          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
+          cd /github && git clone --recurse-submodules https://github.com/akashchi/openvino.git
           cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
           
           mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
       
       - name: Clone testdata for C API tests
         run: |
@@ -143,8 +146,6 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_LINKER_LAUNCHER=ccache \
             -DCMAKE_C_LINKER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER=clang \
             -DENABLE_SYSTEM_SNAPPY=ON \
             -DENABLE_SYSTEM_TBB=ON \
             -DBUILD_nvidia_plugin=OFF \
