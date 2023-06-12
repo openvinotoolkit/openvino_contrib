@@ -137,7 +137,6 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DENABLE_ONEDNN_FOR_GPU=OFF \
             -DENABLE_OV_ONNX_FRONTEND=ON \
-            -DENABLE_FASTER_BUILD=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
             -DENABLE_STRICT_DEPENDENCIES=OFF \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -357,7 +356,7 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
-      # - name: ONNX frontend tests # Present in the "Build" job due to the fact that these test require build directory
+      # - name: ONNX frontend tests # Present in the "Build" job due to the fact that these tests require build directory
       #   if: ${{ always() }}
       #   run: |
       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
