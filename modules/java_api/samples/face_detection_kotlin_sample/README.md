@@ -1,4 +1,4 @@
-1. All steps as for java samples buld
+1. All steps as for java samples build
 2. To compile:
 ```bash
 kotlinc -cp ".:${OpenCV_DIR}/bin/opencv-460.jar:${OV_JAVA_DIR}/java_api.jar"  hello.kt -include-runtime -d hello.jar

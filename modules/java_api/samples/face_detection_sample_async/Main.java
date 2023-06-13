@@ -15,7 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /*
-This demo uses DEPRICATED OpenVINO Java API!
+This demo uses DEPRECATED OpenVINO Java API!
 
 This is async face detection java sample.
 

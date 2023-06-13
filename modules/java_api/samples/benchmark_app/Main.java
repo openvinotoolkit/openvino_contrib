@@ -7,7 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Vector;
 
-// This demo uses DEPRICATED OpenVINO Java API!
+// This demo uses DEPRECATED OpenVINO Java API!
 
 public class Main {
 
