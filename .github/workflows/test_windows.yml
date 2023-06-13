@@ -129,11 +129,11 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          variant: sccache
-          max-size: 1000M
+      # - name: ccache
+      #   uses: hendrikmuhs/ccache-action@v1.2
+      #   with:
+      #     variant: sccache
+      #     max-size: 1000M
       
       - name: CMake configure
         id: cmake-configure
@@ -185,58 +185,6 @@ jobs:
       
       - name: Install Layer Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
-
-      # - name: CMake build & install
-      #   run: |
-      #     $ErrorActionPreference = "Stop"
-      #     # echo "::group::Clean ccache stats"
-      #     # ccache --zero-stats --show-config
-      #     # echo "::endgroup::"
-          
-      #     echo "::group::Cmake build logs"
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
-      #     echo "::endgroup::"
-          
-      #     # echo "::group::Show ccache stats"
-      #     # ccache --show-stats
-      #     # echo "::endgroup::"
-          
-      #     echo "::group::Layer tests install"
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/layer_tests --config Release
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-      #     echo "::endgroup::"
-          
-      #     echo "::group::Samples tests install"
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }}/samples_tests --config Release
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }}/samples_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-      #     echo "::endgroup::"
-          
-      #     echo "::group::CMake install"
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }}
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component python_wheels
-      #     & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --install ${{ env.BUILD_DIR }} --strip --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          
-      #     echo "::endgroup::"
-      #     echo "::group::Archive Artifacts"
-      #     # TODO: figure out tar archiving
-          
-      #     $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
-      #     $compress = @{
-      #       Path = $file
-      #       CompressionLevel = "Optimal"
-      #       DestinationPath = "${{ env.BUILD_DIR }}/openvino_package.zip"
-      #     }
-      #     Compress-Archive @compress
-      #     $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}\tests"
-      #     $compress = @{
-      #       Path = $file
-      #       CompressionLevel = "Optimal"
-      #       DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
-      #     }
-      #     Compress-Archive @compress
-      #     echo "::endgroup::"
 
       - name: Pack Artifacts
         if: ${{ always() }}
@@ -767,6 +715,12 @@ jobs:
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
+
+      - name: AutoBatch FuncTests
+        shell: cmd
+        if: ${{ always() }}
+        run: |
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_auto_batch_func_tests --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ov_auto_batch_func_tests.xml
   
   # CPU_Functional_Tests:
   #   needs: Build
