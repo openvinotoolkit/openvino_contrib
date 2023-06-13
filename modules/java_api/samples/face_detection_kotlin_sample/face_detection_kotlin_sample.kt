@@ -30,7 +30,6 @@ object Main {
             System.err.println("Failed to load OpenCV library\n$e")
             exitProcess(1)
         }
-        Core.loadNativeLibs()
 
         val parser = ArgumentParser("This is face detection sample")
         parser.addArgument("-i", "path to image")

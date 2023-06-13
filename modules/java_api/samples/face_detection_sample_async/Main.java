@@ -66,12 +66,6 @@ public class Main {
             System.err.println("Failed to load OpenCV library\n" + e);
             System.exit(1);
         }
-        try {
-            System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
-        } catch (UnsatisfiedLinkError e) {
-            System.err.println("Failed to load Inference Engine library\n" + e);
-            System.exit(1);
-        }
 
         ArgumentParser parser = new ArgumentParser("This is async face detection sample");
         parser.addArgument("-i", "path to video");

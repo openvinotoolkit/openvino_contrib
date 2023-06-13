@@ -163,13 +163,6 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        try {
-            System.loadLibrary(IECore.NATIVE_LIBRARY_NAME);
-        } catch (UnsatisfiedLinkError e) {
-            System.err.println("Failed to load Inference Engine library\n" + e);
-            System.exit(1);
-        }
-
         // ----------------- 1. Parsing and validating input arguments -----------------
         nextStep("Parsing and validating input arguments");
 

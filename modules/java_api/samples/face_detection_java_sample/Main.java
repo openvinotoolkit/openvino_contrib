@@ -25,7 +25,6 @@ public class Main {
             System.err.println("Failed to load OpenCV library\n" + e);
             System.exit(1);
         }
-        Core.loadNativeLibs();
 
         ArgumentParser parser = new ArgumentParser("This is face detection sample");
         parser.addArgument("-i", "path to image");

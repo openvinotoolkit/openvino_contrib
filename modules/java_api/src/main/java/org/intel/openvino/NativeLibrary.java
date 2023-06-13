@@ -8,11 +8,12 @@ import java.util.logging.Logger;
 /** A utility class to load the OpenVINO native libraries required for the OpenVINO Runtime API. */
 public final class NativeLibrary {
 
+    public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
     private static final Logger logger = Logger.getLogger(NativeLibrary.class.getName());
 
     static {
         try {
-            System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
+            System.loadLibrary(NATIVE_LIBRARY_NAME);
         } catch (UnsatisfiedLinkError e) {
             try {
                 loadNativeLibs();
@@ -50,7 +51,8 @@ public final class NativeLibrary {
         InputStream resources_list = null;
         try {
             // Get a list of all native resources (libraries, plugins and other files).
-            resources_list = Core.class.getClassLoader().getResourceAsStream("resources_list.txt");
+            resources_list =
+                    NativeLibrary.class.getClassLoader().getResourceAsStream("resources_list.txt");
             BufferedReader r = new BufferedReader(new InputStreamReader(resources_list));
 
             // Create a temporal folder to unpack native files.
@@ -70,7 +72,7 @@ public final class NativeLibrary {
                     throw new IOException("Invalid file path: " + file);
                 }
 
-                URL url = Core.class.getClassLoader().getResource(file);
+                URL url = NativeLibrary.class.getClassLoader().getResource(file);
                 if (url == null) {
                     logger.warning("Resource not found: " + file);
                     continue;

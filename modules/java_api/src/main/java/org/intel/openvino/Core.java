@@ -15,7 +15,6 @@ import java.util.logging.Logger;
  */
 public class Core extends Wrapper {
 
-    public static final String NATIVE_LIBRARY_NAME = "inference_engine_java_api";
     private static final Logger logger = Logger.getLogger(Core.class.getName());
 
     public Core() {
