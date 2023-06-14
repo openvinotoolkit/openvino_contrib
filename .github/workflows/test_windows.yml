@@ -230,122 +230,6 @@ jobs:
           name: openvino_tests
           path: ${{ env.BUILD_DIR }}/openvino_tests.zip
 
-      - name: Install Python wheels
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}\tools
-
-      - name: nGraph and IE Python Bindings Tests
-        if: ${{ always() }}
-        run: |
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/pyngraph ${{ env.PYTHON_STATIC_ARGS }} `
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
-
-      - name: Python API 2.0 Tests
-        if: ${{ always() }}
-        run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          $env:PYTHONPATH="${{ env.INSTALL_TEST_DIR }};$env:PYTHONPATH"
-          python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} `
-            --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
-            --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
-
-      - name: Model Optimizer UT
-        if: ${{ always() }}
-        run: |
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat"
-          python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
-              --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
-
-      - name: PyTorch Layer Tests
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: TensorFlow 1 Layer Tests - TF FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_fe.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: TensorFlow 2 Layer Tests - TF FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.OPENVINO_REPO }}/tools/mo/;${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: TensorFlow 1 Layer Tests - Legacy FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xml
-
-      - name: TensorFlow 2 Layer Tests - Legacy FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py `
-              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xml -k "sigmoid"
-        env:
-          TEST_DEVICE: CPU
-
-      - name: TensorFlow Lite Layer Tests - TFL FE
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.OPENVINO_REPO }}/tools/mo/;$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: MO Python API Tests
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: Python Frontend tests
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          
-          $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
-          
-          & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
-  
   Python_Unit_Tests:
     needs: Build
     if: ${{ always() }}
@@ -719,7 +603,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: ${{ always() }}
         with:
-          name: test-results-python
+          name: test-results-cpp
           path: ${{ env.INSTALL_TEST_DIR }}/TEST*.xml
   
   CPU_Functional_Tests:
