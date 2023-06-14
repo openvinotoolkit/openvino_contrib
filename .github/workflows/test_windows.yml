@@ -152,7 +152,6 @@ jobs:
             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}\modules `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON `
             -S ${{ env.OPENVINO_REPO }} `
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
