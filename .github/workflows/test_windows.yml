@@ -152,6 +152,7 @@ jobs:
             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}\modules `
             -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON `
             -S ${{ env.OPENVINO_REPO }} `
             -B ${{ env.BUILD_DIR }}
           echo "::endgroup::"
@@ -205,13 +206,13 @@ jobs:
           }
           Compress-Archive @compress
       
-      - name: Build cpp samples  # cannot be built as VS 2019 is required in *build_samples*.bat
+      - name: Build cpp samples
         if: ${{ always() }}
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.INSTALL_DIR }}
 
-      - name: Build c samples # cannot be built as VS 2019 is required. in https://github.com/openvinotoolkit/openvino_contrib/actions/runs/4989571167/jobs/8933731753
+      - name: Build c samples
         if: ${{ always() }}
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
