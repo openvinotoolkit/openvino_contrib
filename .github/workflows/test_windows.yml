@@ -11,8 +11,8 @@ env:
   CMAKE_BUILD_TYPE: 'Release'
   # CCACHE_MAXSIZE: '10G'
   CMAKE_GENERATOR: 'Ninja'
-#  CMAKE_CXX_COMPILER_LAUNCHER: ccache
-#  CMAKE_C_COMPILER_LAUNCHER: ccache
+  #  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  #  CMAKE_C_COMPILER_LAUNCHER: ccache
   OPENVINO_REPO: "${{ github.workspace }}\\openvino"
   OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib_repo"
   INSTALL_DIR: "${{ github.workspace }}\\install"
@@ -24,10 +24,10 @@ env:
   MODELS_PATH: "${{ github.workspace }}\\testdata"
   OV_TEMP: "${{ github.workspace }}\\openvino_temp"
   TOOLS_DIRECTORY: "${{ github.workspace }}\\tools"
-#  CCACHE_DIR: /sources_cache/build_cache
-#  OPENVINO_REFERENCE: /sources_cache/openvino.reference
-#  OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
-#  SUBMODULES_REFERENCE: /sources_cache/submodules.reference
+  #  CCACHE_DIR: /sources_cache/build_cache
+  #  OPENVINO_REFERENCE: /sources_cache/openvino.reference
+  #  OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
+  #  SUBMODULES_REFERENCE: /sources_cache/submodules.reference
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
       - name: Create Directories
         run: |
           mkdir ${{ env.TOOLS_DIRECTORY }}
-      
+
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
           # TODO: adapt when scheduled on actual branches
@@ -49,7 +49,7 @@ jobs:
           cd ${{ env.OPENVINO_REPO }} && git rev-parse HEAD
           
           git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-      
+
       - name: Clone testdata for C API tests
         run: |
           git clone https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
@@ -83,7 +83,7 @@ jobs:
           
           # For running Paddle frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
-      
+
       - name: Install MO dependencies
         run: |
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
@@ -92,12 +92,12 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-      
+
       - name: Install build dependencies
         run: |
           choco install --no-progress ninja
           choco install --no-progress shellcheck
-      
+
       - name: Get tools versions
         run: |
           python3 --version
@@ -117,7 +117,7 @@ jobs:
       #   with:
       #     variant: sccache
       #     max-size: 1000M
-      
+
       - name: CMake configure
         id: cmake-configure
         run: |
@@ -139,30 +139,30 @@ jobs:
       - name: Build
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
-      
+
       - name: Install
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
-      
+
       - name: Install Wheels
         run: python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}\tools
-      
+
       - name: CMake Samples Tests
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
-      
+
       - name: Install Samples Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
-      
+
       - name: Install Tests
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -DCOMPONENT=tests -P ${{ env.BUILD_DIR }}\cmake_install.cmake
-      
+
       - name: Cmake Layer Tests
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
-      
+
       - name: Build Layer Tests
         run: cmake --build ${{ env.BUILD_DIR }}/layer_tests --parallel --config Release
-      
+
       - name: Install Layer Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
 
@@ -184,7 +184,7 @@ jobs:
             DestinationPath = "${{ env.BUILD_DIR }}/openvino_tests.zip"
           }
           Compress-Archive @compress
-      
+
       - name: Build cpp samples
         if: ${{ always() }}
         run: |
@@ -215,7 +215,7 @@ jobs:
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
-      
+
       - name: Upload openvino package
         if: ${{ always() }}
         uses: actions/upload-artifact@v3
@@ -229,12 +229,12 @@ jobs:
         with:
           name: openvino_tests
           path: ${{ env.BUILD_DIR }}/openvino_tests.zip
-      
+
       - name: Install Python wheels
         if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}\tools
-      
+
       - name: nGraph and IE Python Bindings Tests
         if: ${{ always() }}
         run: |
@@ -242,7 +242,7 @@ jobs:
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
-      
+
       - name: Python API 2.0 Tests
         if: ${{ always() }}
         run: |
@@ -253,14 +253,14 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
-      
+
       - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
-      
+
       - name: PyTorch Layer Tests
         if: ${{ always() }}
         run: |
@@ -302,7 +302,7 @@ jobs:
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
           
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xml
-      
+
       - name: TensorFlow 2 Layer Tests - Legacy FE
         if: ${{ always() }}
         run: |
@@ -370,7 +370,7 @@ jobs:
         run: |
           mkdir ${{ env.INSTALL_DIR }}
           mkdir ${{ env.INSTALL_TEST_DIR }}
-      
+
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
         with:
@@ -391,13 +391,13 @@ jobs:
           pushd ${{ env.INSTALL_TEST_DIR }}
             Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
           popd
-      
+
       - name: Check extraction
         run: |
           ls "${{ github.workspace }}"
           ls "${{ env.INSTALL_DIR }}"
           ls "${{ env.INSTALL_TEST_DIR }}"
-      
+
       - name: Clone OpenVINO & OpenVINO Contrib
         run: |
           # TODO: adapt when scheduled on actual branches
@@ -410,7 +410,7 @@ jobs:
         run: |
           git clone https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
           cd ${{ env.DATA_PATH }} && git lfs pull
-      
+
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
@@ -434,7 +434,7 @@ jobs:
           
           # For running Paddle frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
-      
+
       - name: Install MO dependencies
         run: |
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
@@ -443,12 +443,12 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-      
+
       - name: Install Python wheels
         if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
-      
+
       - name: nGraph and IE Python Bindings Tests
         if: ${{ always() }}
         run: |
@@ -456,7 +456,7 @@ jobs:
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyngraph/tests/test_onnx/test_backend.py
-      
+
       - name: Python API 2.0 Tests
         if: ${{ always() }}
         run: |
@@ -467,14 +467,14 @@ jobs:
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py `
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
-      
+
       - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests `
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
-      
+
       - name: PyTorch Layer Tests
         if: ${{ always() }}
         run: |
@@ -508,7 +508,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xml
-      
+
       - name: TensorFlow 2 Layer Tests - Legacy FE
         if: ${{ always() }}
         run: |
@@ -543,7 +543,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           $env:PYTHONPATH="${{ env.LAYER_TESTS_INSTALL_DIR }};$env:PYTHONPATH"
           & "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
-      
+
       - name: Upload Test Results
         uses: actions/upload-artifact@v3
         if: ${{ always() }}
@@ -567,7 +567,7 @@ jobs:
         run: |
           mkdir ${{ env.INSTALL_DIR }}
           mkdir ${{ env.INSTALL_TEST_DIR }}
-      
+
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
         with:
@@ -588,121 +588,121 @@ jobs:
           pushd ${{ env.INSTALL_TEST_DIR }}
             Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
           popd
-      
+
       - name: Check extraction
         run: |
           ls "${{ github.workspace }}"
           ls "${{ env.INSTALL_DIR }}"
           ls "${{ env.INSTALL_TEST_DIR }}"
-      
+
       - name: OpenVINO Core unit tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
-      
+
       - name: OpenVINO Inference functional tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
-      
+
       - name: OpenVINO Inference unit tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml
-      
+
       - name: Low Precision Transformations Tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
-      
+
       - name: OpenVINO Conditional compilation tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
-      
+
       - name: IR frontend tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
       
-#      - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
-#        shell: cmd
-#        if: ${{ always() }}
-#        run: |
-#          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
+      #      - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
+      #        shell: cmd
+      #        if: ${{ always() }}
+      #        run: |
+      #          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
       # - name: ONNX frontend tests # Present in the "Build" job due to the fact that these tests require build directory
       #   shell: cmd
       #   if: ${{ always() }}
       #   run: |
       #     call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
-      
+
       - name: TensorFlow Common tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
-      
+
       - name: TensorFlow frontend tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
-      
+
       - name: TensorFlow Lite frontend tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
-      
+
       - name: Transformations Tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_transformations_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-Transformations.xml
-      
+
       - name: Common test utils tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/commonUtilsTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-commonUtilsTests.xml
-      
+
       - name: CPU plugin unit tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
       
-#      - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
-#        shell: cmd
-#        if: ${{ always() }}
-#        run: |
-#          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
-      
+      #      - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
+      #        shell: cmd
+      #        if: ${{ always() }}
+      #        run: |
+      #          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
+
       - name: MULTI / AUTO plugin unit tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ieMultiPluginUnitTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-MultiAutoUnitTests.xml
-      
+
       - name: Template plugin tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
-      
+
       - name: Inference Engine C API tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/InferenceEngineCAPITests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceEngineCAPITests.xml
-      
+
       - name: OpenVINO C API tests
         shell: cmd
         if: ${{ always() }}
@@ -770,62 +770,62 @@ jobs:
         shell: cmd
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
-  
-  # GPU_Functional_Tests:  # fails due to absence of the GPU
-  #   needs: Build
-  #   if: ${{ always() }}
-  #   defaults:
-  #     run:
-  #       shell: pwsh
-  #   runs-on: 'windows-latest'
-  #   env:
-  #     INSTALL_DIR: "${{ github.workspace }}\\install"
-  #     INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
-  #     GTEST_PARALLEL_DIR: "${{ github.workspace }}\\gtest_parallel"
 
-  #   steps:
-  #     - name: Create Directories
-  #       run: |
-  #         mkdir ${{ env.INSTALL_DIR }}
-  #         mkdir ${{ env.INSTALL_TEST_DIR }}
-  #         mkdir ${{ env.GTEST_PARALLEL_DIR }}
+      # GPU_Functional_Tests:  # fails due to absence of the GPU
+      #   needs: Build
+      #   if: ${{ always() }}
+      #   defaults:
+      #     run:
+      #       shell: pwsh
+      #   runs-on: 'windows-latest'
+      #   env:
+      #     INSTALL_DIR: "${{ github.workspace }}\\install"
+      #     INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+      #     GTEST_PARALLEL_DIR: "${{ github.workspace }}\\gtest_parallel"
+
+      #   steps:
+      #     - name: Create Directories
+      #       run: |
+      #         mkdir ${{ env.INSTALL_DIR }}
+      #         mkdir ${{ env.INSTALL_TEST_DIR }}
+      #         mkdir ${{ env.GTEST_PARALLEL_DIR }}
       
-  #     - name: Download OpenVINO package
-  #       uses: actions/download-artifact@v3
-  #       with:
-  #         name: openvino_package
-  #         path: ${{ env.INSTALL_DIR }}
+      #     - name: Download OpenVINO package
+      #       uses: actions/download-artifact@v3
+      #       with:
+      #         name: openvino_package
+      #         path: ${{ env.INSTALL_DIR }}
 
-  #     - name: Download OpenVINO tests package
-  #       uses: actions/download-artifact@v3
-  #       with:
-  #         name: openvino_tests
-  #         path: ${{ env.INSTALL_TEST_DIR }}
+      #     - name: Download OpenVINO tests package
+      #       uses: actions/download-artifact@v3
+      #       with:
+      #         name: openvino_tests
+      #         path: ${{ env.INSTALL_TEST_DIR }}
 
-  #     - name: Extract OpenVINO packages
-  #       run: |
-  #         pushd ${{ env.INSTALL_DIR }}
-  #           Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
-  #         popd
+      #     - name: Extract OpenVINO packages
+      #       run: |
+      #         pushd ${{ env.INSTALL_DIR }}
+      #           Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+      #         popd
 
-  #         pushd ${{ env.INSTALL_TEST_DIR }}
-  #           Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
-  #         popd
+      #         pushd ${{ env.INSTALL_TEST_DIR }}
+      #           Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+      #         popd
       
-  #     - name: Check extraction
-  #       run: |
-  #         ls "${{ github.workspace }}"
-  #         ls "${{ env.INSTALL_DIR }}"
-  #         ls "${{ env.INSTALL_TEST_DIR }}"
+      #     - name: Check extraction
+      #       run: |
+      #         ls "${{ github.workspace }}"
+      #         ls "${{ env.INSTALL_DIR }}"
+      #         ls "${{ env.INSTALL_TEST_DIR }}"
       
-  #     - name: Clone gtest_parallel
-  #       run: |
-  #         git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
+      #     - name: Clone gtest_parallel
+      #       run: |
+      #         git clone https://github.com/google/gtest-parallel.git ${{ env.GTEST_PARALLEL_DIR }}
 
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.11'
-      
+      #     - uses: actions/setup-python@v4
+      #       with:
+      #         python-version: '3.11'
+
   #     - name: Intel GPU plugin func tests
   #       shell: cmd
   #       run: |
