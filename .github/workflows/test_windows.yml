@@ -200,7 +200,7 @@ jobs:
       - name: Samples tests
         if: ${{ always() }}
         run: |
-          python3 -m pip install -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
+          python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
           & "${{ env.INSTALL_DIR }}\\setupvars.bat"
           
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
