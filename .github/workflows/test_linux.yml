@@ -448,7 +448,6 @@ jobs:
   
   Python_Unit_Tests:
     needs: Build
-    if: ${{ always() }}
     defaults:
       run:
         shell: bash
