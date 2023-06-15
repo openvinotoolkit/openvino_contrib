@@ -259,7 +259,6 @@ jobs:
 
   CXX_Unit_Tests:
     needs: Build
-    if: ${{ always() }}
     defaults:
       run:
         shell: bash
@@ -690,8 +689,8 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: ubuntu-latest-16-cores
-#    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest-16-cores
+    runs-on: ubuntu-latest
     container:
       image: akashchi/ubuntu:python_311
     env:
