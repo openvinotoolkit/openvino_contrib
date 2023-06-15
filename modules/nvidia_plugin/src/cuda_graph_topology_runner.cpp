@@ -28,7 +28,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
         context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        SubGraph::Execute(context, {}, {}, workbuffers);
+        SubGraph::Capture(context, {}, {}, workbuffers);
     }
     context.getCudaGraphContext().graphExec_.emplace(capture.getGraph());
 }
@@ -45,7 +45,7 @@ void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context,
         context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        SubGraph::Execute(context, {}, {}, workbuffers);
+        SubGraph::Capture(context, {}, {}, workbuffers);
     }
     context.getCudaGraphContext().graphExec_.value().update(capture.getGraph());
 }

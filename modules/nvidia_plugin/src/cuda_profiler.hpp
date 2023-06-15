@@ -136,6 +136,17 @@ public:
         }
     }
 
+    template <typename... TArgs>
+    void capture(TArgs&&... args) const {
+        if (this->profiler_.perf_count_) {
+            timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+            exec_step_.Capture(std::forward<TArgs>(args)...);
+            timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        } else {
+            exec_step_.Capture(std::forward<TArgs>(args)...);
+        }
+    }
+
     /**
      * Adapter method for pointer of operation
      * @return Reference to ProfileExecStep

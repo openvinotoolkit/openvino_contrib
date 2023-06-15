@@ -42,6 +42,10 @@ public:
                          Inputs inputTensors,
                          Outputs outputTensors,
                          const Workbuffers& workbuffers) const = 0;
+    virtual void Capture(InferenceRequestContext& context,
+                         Inputs inputTensors,
+                         Outputs outputTensors,
+                         const Workbuffers& workbuffers) const = 0;
     virtual bool IsCudaGraphCompatible() const = 0;
     virtual void InitSharedImmutableWorkbuffers(const Buffers&) = 0;
     virtual WorkbufferRequest GetWorkBufferRequest() const = 0;
@@ -104,6 +108,12 @@ public:
     WorkbufferStatus SetWorkbufferIds(WorkbufferIds&& workbufferIds) override {
         workbuffer_ids_ = workbufferIds;
         return workbuffer_ids_.immutableIds.empty() ? WorkbufferStatus::NoInitNeeded : WorkbufferStatus::InitNeeded;
+    }
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override {
+        Execute(context, inputTensors, outputTensors, workbuffers);
     }
 
 protected:
