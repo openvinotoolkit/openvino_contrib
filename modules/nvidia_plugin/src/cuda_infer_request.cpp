@@ -45,8 +45,7 @@ CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& c
       profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
           compiled_model->get_topology_runner().GetSubGraph()},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{use_cuda_graph},
-      cudaGraphContext_{use_cuda_graph} {
+      use_cuda_graph_{use_cuda_graph} {
     create_infer_request();
 }
 
@@ -144,6 +143,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         auto compiled_model = get_nvidia_model();
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
+        auto& cudaGraphContext = memory.cudaGraphContext();
         auto& topology_runner = compiled_model->get_topology_runner();
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
@@ -152,11 +152,11 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    cudaGraphContext_,
+                                                    cudaGraphContext,
                                                     is_benchmark_mode_};
         if (use_cuda_graph_) {
             auto& cuda_graph_topology_runner = dynamic_cast<const CudaGraphTopologyRunner&>(topology_runner);
-            if (cudaGraphContext_.graphExec_)
+            if (cudaGraphContext.graphExec_)
                 cuda_graph_topology_runner.UpdateCapture(inferRequestContext, memory);
             else
                 cuda_graph_topology_runner.Capture(inferRequestContext, memory);

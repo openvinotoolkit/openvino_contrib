@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cuda_graph_context.hpp>
 #include <cuda/runtime.hpp>
 #include <gsl/pointers>
 
@@ -53,9 +54,14 @@ public:
 
     MemoryModel::Ptr memoryModel() const { return model_; }
 
+    CudaGraphContext& cudaGraphContext() {
+        return cuda_graph_context_;
+    }
+
 private:
     MemoryModel::Ptr model_;
     CUDA::DefaultAllocation device_mem_ptr_ = CUDA::DefaultStream::stream().malloc(model_->deviceMemoryBlockSize());
+    CudaGraphContext cuda_graph_context_;
 };
 
 }  // namespace nvidia_gpu

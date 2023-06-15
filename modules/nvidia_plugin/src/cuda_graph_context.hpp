@@ -10,9 +10,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 struct CudaGraphContext {
-    CudaGraphContext(bool useCudaGraph = false) : useCudaGraph_{useCudaGraph} {}
     std::optional<CUDA::GraphExec> graphExec_{};
-    bool useCudaGraph_;
 };
 
 } // namespace nvidia_gpu
