@@ -53,7 +53,8 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
       config_(std::move(cfg)),
       cuda_stream_executor_(std::move(wait_executor)),
       loaded_from_cache_(loaded_from_cache),
-      use_cuda_graph_{get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
+      use_cuda_graph_{get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>() &&
+    !get_property(ov::enable_profiling.name()).as<bool>()} {
     try {
         compile_model(model);
         init_executor();  // creates thread-based executor using for async requests
