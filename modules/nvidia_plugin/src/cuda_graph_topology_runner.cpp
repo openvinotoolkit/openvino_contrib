@@ -39,15 +39,12 @@ const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
 
 void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context,
                                             const DeviceMemBlock &memoryBlock) const {
-    CUDA::GraphCapture capture{context.getThreadContext().stream()};
-    {
-        auto scope = capture.getScope();
-        context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
-        Workbuffers workbuffers{};
-        workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        SubGraph::Capture(context, {}, {}, workbuffers);
-    }
-    context.getCudaGraphContext().graphExec_.value().update(capture.getGraph());
+    CudaGraphContext& graphContext = context.getCudaGraphContext();
+    for (auto& pair : graphContext.parameterNodes)
+        pair.second.update_src(graphContext.graphExec_.value(),
+                const_cast<const void*>(context.get_input_tensor(pair.first)->data()));
+    for (auto& pair : graphContext.resultNodes)
+        pair.second.update_dst(graphContext.graphExec_.value(), context.get_output_tensor(pair.first)->data());
 }
 
 }  // namespace nvidia_gpu
