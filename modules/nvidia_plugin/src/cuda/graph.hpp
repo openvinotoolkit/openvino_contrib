@@ -10,6 +10,7 @@
 namespace CUDA {
 
 class GraphCapture;
+class CaptureInfo;
 
 class Graph: public Handle<cudaGraph_t> {
 public:
@@ -69,6 +70,46 @@ private:
     cudaGraph_t cudaGraph_ {};
     cudaError_t capturedError_ {cudaSuccess};
     std::optional<Graph> graph_ {};
+};
+
+class UploadNode {
+    friend CaptureInfo;
+public:
+    void update_src(const GraphExec& exec, const void* src);
+    bool operator==(const UploadNode& rhs) const;
+private:
+    UploadNode(cudaGraphNode_t node, CUDA::DevicePointer<void*> dst, const void* src, std::size_t size);
+    cudaGraphNode_t node_;
+    CUDA::DevicePointer<void*> dst_;
+    const void* src_;
+    std::size_t size_;
+};
+
+class DownloadNode {
+    friend CaptureInfo;
+public:
+    void update_dst(const GraphExec& exec, void* dst);
+    bool operator==(const DownloadNode& rhs) const;
+private:
+    DownloadNode(cudaGraphNode_t node, void* dst, CUDA::DevicePointer<const void*> src, std::size_t size);
+    cudaGraphNode_t node_;
+    void* dst_;
+    CUDA::DevicePointer<const void*> src_;
+    std::size_t size_;
+};
+
+class CaptureInfo {
+public:
+    CaptureInfo(const Stream& capturedStream);
+    UploadNode addUploadNode(CUDA::DevicePointer<void*> dst, const void* src, std::size_t size);
+    DownloadNode addDownloadNode(void* dst, CUDA::DevicePointer<const void*> src, std::size_t size);
+
+private:
+    const Stream& stream_;
+    cudaGraph_t capturingGraph_;
+    cudaStreamCaptureStatus captureStatus_;
+    const cudaGraphNode_t* deps_;
+    size_t depCount_;
 };
 
 }// namespace CUDA

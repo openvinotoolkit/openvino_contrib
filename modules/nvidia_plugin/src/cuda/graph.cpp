@@ -84,4 +84,66 @@ const Graph& GraphCapture::getGraph() {
     return graph_.value();
 }
 
+CaptureInfo::CaptureInfo(const Stream &capturedStream) : stream_{capturedStream} {
+    throwIfError(cudaStreamGetCaptureInfo_v2(capturedStream.get(), &captureStatus_, nullptr,
+            &capturingGraph_, &deps_, &depCount_));
+}
+
+UploadNode CaptureInfo::addUploadNode(DevicePointer<void*> dst, const void *src, std::size_t size) {
+    cudaGraphNode_t newNode;
+    throwIfError(cudaGraphAddMemcpyNode1D(&newNode, capturingGraph_, deps_, depCount_,
+            dst.get(), src, size, cudaMemcpyHostToDevice));
+    throwIfError(cudaStreamUpdateCaptureDependencies(stream_.get(), &newNode, 1, 1));
+    return UploadNode{newNode, dst, src, size};
+}
+
+DownloadNode CaptureInfo::addDownloadNode(void *dst, DevicePointer<const void*> src,
+                                                       std::size_t size) {
+    cudaGraphNode_t newNode;
+    throwIfError(cudaGraphAddMemcpyNode1D(&newNode, capturingGraph_, deps_, depCount_,
+            dst, src.get(), size, cudaMemcpyDeviceToHost));
+    throwIfError(cudaStreamUpdateCaptureDependencies(stream_.get(), &newNode, 1, 1));
+    return DownloadNode{newNode, dst, src, size};
+}
+
+void UploadNode::update_src(const GraphExec& exec, const void *src) {
+    if (src_ != src) {
+        throwIfError(cudaGraphExecMemcpyNodeSetParams1D(exec.get(), node_,
+                dst_.get(), src, size_, cudaMemcpyHostToDevice));
+        src_ = src;
+    }
+}
+
+UploadNode::UploadNode(cudaGraphNode_t node, DevicePointer<void*> dst, const void *src,
+                       std::size_t size)
+    : node_{node},
+      dst_{dst},
+      src_{src},
+      size_{size} {
+}
+
+void DownloadNode::update_dst(const GraphExec& exec, void *dst) {
+    if (dst_ != dst) {
+        throwIfError(cudaGraphExecMemcpyNodeSetParams1D(exec.get(), node_,
+                dst, src_.get(), size_, cudaMemcpyDeviceToHost));
+        dst_ = dst;
+    }
+}
+
+DownloadNode::DownloadNode(cudaGraphNode_t node, void *dst, DevicePointer<const void*> src,
+                           std::size_t size)
+    : node_{node},
+      dst_{dst},
+      src_{src},
+      size_{size} {
+}
+
+bool UploadNode::operator ==(const UploadNode &rhs) const {
+    return size_ == rhs.size_ && src_ == rhs.src_ && dst_.get() == rhs.dst_.get() && node_ == rhs.node_;
+}
+
+bool DownloadNode::operator ==(const DownloadNode &rhs) const {
+    return size_ == rhs.size_ && src_.get() == rhs.src_.get() && dst_ == rhs.dst_ && node_ == rhs.node_;
+}
+
 } // namespace CUDA
