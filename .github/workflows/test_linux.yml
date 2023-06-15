@@ -565,8 +565,8 @@ jobs:
       - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
-          source ${{ env.INSTALL_DIR }}/setupvars.sh
-          export LD_LIBRARY_PATH=${{ env.OPENVINO_REPO }}/temp/gna_03.05.00.1906/linux/x64:$LD_LIBRARY_PATH
+          
+          export LD_LIBRARY_PATH=${{ env.OPENVINO_REPO }}/temp/gna_03.05.00.2116/linux/x64:$LD_LIBRARY_PATH
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:${{ env.INSTALL_TEST_DIR }}:${{ env.INSTALL_DIR }}/python/python3.11:$PYTHONPATH
           
           # TODO: figure out why they need to be reinstalled
@@ -684,11 +684,11 @@ jobs:
 
   CPU_Functional_Tests:
     needs: Build
-    if: ${{ always() }}
     defaults:
       run:
         shell: bash
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
+#    runs-on: ubuntu-latest
     container:
       image: akashchi/ubuntu:python_311
     env:
