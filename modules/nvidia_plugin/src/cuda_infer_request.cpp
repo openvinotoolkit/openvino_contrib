@@ -156,7 +156,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     is_benchmark_mode_};
         if (use_cuda_graph_) {
             auto& cuda_graph_topology_runner = dynamic_cast<const CudaGraphTopologyRunner&>(topology_runner);
-            if (cudaGraphContext.graphExec_)
+            if (cudaGraphContext.graphExec)
                 cuda_graph_topology_runner.UpdateCapture(inferRequestContext, memory);
             else
                 cuda_graph_topology_runner.Capture(inferRequestContext, memory);

@@ -17,7 +17,7 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
 }
 
 void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
-    context.getCudaGraphContext().graphExec_.value().launch(context.getThreadContext().stream());
+    context.getCudaGraphContext().graphExec.value().launch(context.getThreadContext().stream());
 }
 
 void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
@@ -30,7 +30,9 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
         SubGraph::Capture(context, {}, {}, workbuffers);
     }
-    context.getCudaGraphContext().graphExec_.emplace(capture.getGraph());
+    const auto& graph = capture.getGraph();
+    context.getCudaGraphContext().graph.emplace(graph);
+    context.getCudaGraphContext().graphExec.emplace(graph);
 }
 
 const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
@@ -41,10 +43,10 @@ void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context,
                                             const DeviceMemBlock &memoryBlock) const {
     CudaGraphContext& graphContext = context.getCudaGraphContext();
     for (auto& pair : graphContext.parameterNodes)
-        pair.second.update_src(graphContext.graphExec_.value(),
+        pair.second.update_src(graphContext.graphExec.value(),
                 const_cast<const void*>(context.get_input_tensor(pair.first)->data()));
     for (auto& pair : graphContext.resultNodes)
-        pair.second.update_dst(graphContext.graphExec_.value(), context.get_output_tensor(pair.first)->data());
+        pair.second.update_dst(graphContext.graphExec.value(), context.get_output_tensor(pair.first)->data());
 }
 
 }  // namespace nvidia_gpu
