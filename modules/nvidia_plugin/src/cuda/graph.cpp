@@ -58,7 +58,7 @@ void GraphExec::launch(const Stream &stream) const {
 
 GraphCapture::GraphCaptureScope::GraphCaptureScope(GraphCapture &graphCapture) :
         graphCapture_ { graphCapture } {
-    throwIfError(cudaStreamBeginCapture(graphCapture_.stream_.get(), cudaStreamCaptureModeGlobal));
+    throwIfError(cudaStreamBeginCapture(graphCapture_.stream_.get(), cudaStreamCaptureModeThreadLocal));
 }
 
 GraphCapture::GraphCaptureScope::~GraphCaptureScope() {
