@@ -130,6 +130,7 @@ jobs:
             -DENABLE_STRICT_DEPENDENCIES=OFF `
             -DENABLE_PYTHON=ON `
             -DBUILD_nvidia_plugin=OFF `
+            -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON `
             -DCUSTOM_OPERATIONS="calculate_grid;complex_mul;fft;grid_sample;sparse_conv;sparse_conv_transpose" `
             -DOPENVINO_EXTRA_MODULES=${{ env.OPENVINO_CONTRIB_REPO }}\modules `
             -DCMAKE_BUILD_TYPE=Release `
@@ -656,6 +657,12 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUFuncTests.xml
 
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        if: ${{ always() }}
+        with:
+          name: test-results-functional-cpu
+          path: ${{ env.INSTALL_TEST_DIR }}/TEST*.xml
       # GPU_Functional_Tests:  # fails due to absence of the GPU
       #   needs: Build
       #   if: ${{ always() }}
