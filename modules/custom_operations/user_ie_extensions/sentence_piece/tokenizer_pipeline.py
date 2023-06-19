@@ -4,6 +4,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import singledispatchmethod
+from itertools import chain
 from typing import List, Optional, Any, Dict
 from unittest.mock import MagicMock
 import weakref
@@ -40,7 +41,7 @@ def pack_string(s):
 
 core = Core()
 # TODO: Use relative path
-core.add_extension("/home/slyalin/openvino-contrib/muse/modules/custom_operations/build/user_ie_extensions/libuser_ov_extensions.so")
+core.add_extension("/home/apaniuko/python/openvino/bin/intel64/Debug/libuser_ov_extensions.so")
 
 
 class BasePipelineStep:
@@ -166,7 +167,11 @@ class RegexSplitStep(PreTokenizatinStep):
     behaviour: str = "Remove"
 
     @classmethod
-    def bert_splitter(cls) -> "RegexSplitStep":
+    def bert_whitespace_splitter(cls) -> "RegexSplitStep":
+        return cls(r"\s+")
+
+    @classmethod
+    def bert_keep_delimeters_splitter(cls) -> "RegexSplitStep":
         """Generates a step with a standard BERT regex.
 
         The source:
@@ -175,7 +180,6 @@ class RegexSplitStep(PreTokenizatinStep):
         return cls(
             "|".join(
                 [
-                    r"\s+",
                     r"|".join(
                         [
                             r"[!-/]",
@@ -199,11 +203,17 @@ class RegexSplitStep(PreTokenizatinStep):
                     ),
                 ],
             ),
+            invert=False,
+            behaviour="Isolate"
         )
 
     @classmethod
+    def bert_splitter(cls) -> List["RegexSplitStep"]:
+        return [cls.bert_whitespace_splitter(), cls.bert_keep_delimeters_splitter()]
+
+    @classmethod
     def whitespace_splitter(cls) -> "RegexSplitStep":
-        return cls(r"\w+|[^\w\s]+")
+        return cls(r"\w+|[^\w\s]+", invert=True)
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
@@ -276,6 +286,47 @@ class WordPieceTokenizationStep(TokenizationModelStep):
             {
                 "suffix_indicator": self.suffix_indicator,
                 "max_bytes_per_word": self.max_bytes_per_word,
+            }
+        ).outputs()
+
+
+@dataclass
+class BPETokenizationStep(TokenizationModelStep):
+    vocab: List[str] = field(repr=False)
+    merges: List[str] = field(repr=False)
+    unk_token: str = ""
+    fuse_unk: bool = False
+    suffix_indicator: str = ""
+    end_suffix: str = ""
+    byte_fallback: bool = False
+
+    @classmethod
+    def from_hf_json(cls, tokenizer_json: Dict[str, Any]) -> "BPETokenizationStep":
+        return cls(
+            unk_token=tokenizer_json["model"]["unk_token"] or "",
+            fuse_unk=tokenizer_json["model"]["fuse_unk"] or False,
+            suffix_indicator=tokenizer_json["model"]["continuing_subword_prefix"] or "",
+            end_suffix=tokenizer_json["model"]["end_of_word_suffix"] or "",
+            vocab=[token for token, index in sorted(tokenizer_json["model"]["vocab"].items(), key=lambda x: x[1])],
+            merges=tokenizer_json["model"]["merges"],
+        )
+
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        input_nodes.extend(
+            (
+                *self.create_string_constant_node(self.vocab).outputs(),
+                *self.create_string_constant_node(self.merges).outputs(),
+            )
+        )
+        return core.make_node(
+            "BPETokenizer",
+            input_nodes,
+            {
+                "unk_token": self.unk_token,
+                "fuse_unk": self.fuse_unk,
+                "suffix_indicator": self.suffix_indicator,
+                "end_suffix": self.end_suffix,
+                "byte_fallback": self.byte_fallback,
             }
         ).outputs()
 
@@ -561,8 +612,16 @@ class TokenizerPipeline:
         return self.steps[item]
 
     @property
-    def processing_steps(self) -> List[BasePipelineStep]:
-        return [step for step in self.steps if not isinstance(step, PostTokenizationStep)]
+    def normalization_steps(self) -> List[NormalizationStep]:
+        return [step for step in self.steps if isinstance(step, NormalizationStep)]
+
+    @property
+    def pretokenization_steps(self) -> List[PreTokenizatinStep]:
+        return [step for step in self.steps if isinstance(step, PreTokenizatinStep)]
+
+    @property
+    def tokenization_steps(self) -> List[TokenizationModelStep]:
+        return [step for step in self.steps if isinstance(step, TokenizationModelStep)]
 
     @property
     def post_tokenization_steps(self) -> List[PostTokenizationStep]:
@@ -576,11 +635,17 @@ class TokenizerPipeline:
 
         for input_node in input_nodes:
             input_node = core.make_node("StringTensorUnpack", input_node.outputs()).outputs()
-            #print(input_node)
-            for step in self.processing_steps:
+            for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
-                #print('input_node:', input_node)
-            #ragged_tensor_pack = core.make_node("RaggedTensorPack", input_node)
+
+            # batch_size = opset10.shape_of(input_node[0])
+            # ragged_begins = opset10.range(as_node(0), batch_size, as_node(1)).outputs()
+            # ragged_ends = opset10.range(as_node(1), opset10.add(batch_size, as_node(1)).outputs(), as_node(1))
+            # input_node = [ragged_begins, ragged_ends] + input_node
+
+            for step in chain(self.pretokenization_steps, self.tokenization_steps):
+                input_node = step.get_ov_subgraph(input_node)
+
             processing_pipelines_outputs += input_node
 
         return processing_pipelines_outputs

@@ -21,6 +21,7 @@ from tokenizer_pipeline import (
     RegexSplitStep,
     WhitespaceSplitStep,
     WordPieceTokenizationStep,
+    BPETokenizationStep,
     TruncationStep,
     PaddingStep,
     CombineSegmentsStep,
@@ -127,6 +128,7 @@ class TransformersTokenizerPipelineParser:
         "WhitespaceSplit": lambda step_dict: WhitespaceSplitStep(),
         "Split": parse_split_step,
         "Punctuation": lambda step_dict: PunctuationSplitStep(step_dict["behavior"]),
+        "ByteLevel": lambda step_dict:  WhitespaceSplitStep(),  ## !!!FIX ME!!!
     }
 
     def parse_pre_tokenization_step(self, step_dict: Dict[str, Any]) -> None:
@@ -149,6 +151,9 @@ class TransformersTokenizerPipelineParser:
         if self.tokenizer_json["model"]["type"] == "WordPiece":
             self.pipeline.add_steps(WordPieceTokenizationStep.from_hf_json(self.tokenizer_json))
             self.pipeline.vocab = self.pipeline[-1].vocab
+        elif self.tokenizer_json["model"]["type"] == "BPE":
+            self.pipeline.add_steps(BPETokenizationStep.from_hf_json(self.tokenizer_json))
+            self.pipeline.vocab = self.pipeline[-1].vocab
         else:
             raise OVTypeError(f"Tokenizer type '{self.tokenizer_json['model']['type']}' is not supported")
 
@@ -164,6 +169,11 @@ class TransformersTokenizerPipelineParser:
             combine_segments_step = CombineSegmentsStep.from_hf_json_bert_postprocessor(
                 self.tokenizer_json, self.number_of_inputs
             )
+        elif self.tokenizer_json["post_processor"]["type"] == "ByteLevel":  # !!!FIX ME!!!
+            pass  # test BPETokenizer
+            self.add_truncation()
+            self.add_padding()
+            return
         else:
             raise OVTypeError(f"Post-processor type '{self.tokenizer_json['post_processor']['type']}' is not supported")
 
@@ -184,6 +194,7 @@ class TransformersTokenizerPipelineParser:
     def add_padding(self) -> None:
         if self.tokenizer_json["padding"] is not None:
             self.pipeline.add_steps(PaddingStep.from_hf_json(self.tokenizer_json))
-        else:
+            self.pipeline[-1].set_token_id(self.pipeline.vocab)
+        elif self.original_tokenizer.pad_token is not None:
             self.pipeline.add_steps(PaddingStep(token=self.original_tokenizer.pad_token))
-        self.pipeline[-1].set_token_id(self.pipeline.vocab)
+            self.pipeline[-1].set_token_id(self.pipeline.vocab)

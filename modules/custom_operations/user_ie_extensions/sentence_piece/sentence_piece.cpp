@@ -327,7 +327,7 @@ void set_ragged_output(Node* node, size_t output_index, const PartialShape& shap
 
 
 void StringTensorPack::validate_and_infer_types() {
-    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supporst only 'begins_ends' mode, but get " + m_mode);
+    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supports only 'begins_ends' mode, but get " + m_mode);
     check_string_input(this, 0);
     #if USE_STRING_TENSORS
     set_output_type(0, element::string, get_input_partial_shape(0));
@@ -959,85 +959,177 @@ const std::map<std::string, SplitMode> split_modes = {
 
 
 void RegexSplit::validate_and_infer_types() {
-    check_string_input(this, 0);
-    check_string_scalar_input(this, 3);
+//    check_string_input(this, 0);
+//    check_string_scalar_input(this, 3);
+//    check_ragged_string_input(this, 0);
+//    check_string_input(this, 5);
     OPENVINO_ASSERT(split_modes.find(m_behaviour) != split_modes.end(), "RegexSplit doesn't support unknown split mode: " + m_behaviour);
     set_ragged_string_output(this, 0, get_input_partial_shape(0));
 }
 
 bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    auto begins = inputs[0].data<const int32_t>();
-    auto ends   = inputs[1].data<const int32_t>();
-    auto chars  = inputs[2].data<const uint8_t>();
 
-    auto split_pattern_buf  = inputs[3].data<const uint8_t>();
-    auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+    if (inputs.size() < 5) {
+        auto begins = inputs[0].data<const int32_t>();
+        auto ends   = inputs[1].data<const int32_t>();
+        auto chars  = inputs[2].data<const uint8_t>();
 
+        ov::Tensor ragged_begins_tensor(ov::element::i32, inputs[0].get_shape());
+        ov::Tensor ragged_ends_tensor(ov::element::i32, inputs[0].get_shape());
+        auto ragged_begins = ragged_begins_tensor.data<int32_t>();
+        auto ragged_ends = ragged_ends_tensor.data<int32_t>();
+        for (int i=0; i < inputs[0].get_size(); ++i) {
+            ragged_begins[i] = i;
+            ragged_ends[i] = i + 1;
+        };
+
+        auto split_pattern_buf  = inputs[3].data<const uint8_t>();
+        auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+
+        const size_t num_elements = inputs[0].get_size();
+        const size_t num_chars = inputs[2].get_size();
+
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+
+        outputs[2].set_shape(Shape{num_chars});
+        outputs[3].set_shape(Shape{num_chars});
+
+        outputs[4] = inputs[2];  // TODO: Does it really work?
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_ragged_begins = outputs[0].data<int32_t>();
+        auto new_ragged_ends   = outputs[1].data<int32_t>();
+        auto new_begins = outputs[2].data<int32_t>();
+        auto new_ends   = outputs[3].data<int32_t>();
+        int32_t ragged_offset = 0;
+
+        using namespace paddlenlp::fast_tokenizer;
+        auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
+
+        std::cerr << "[ RegexSplit ] regex: " << std::string(split_pattern) << "\n";
+
+        for(size_t seq = 0; seq < num_elements; ++seq) {
+            for(size_t word = ragged_begins[seq]; word < ragged_ends[seq]; ++word) {
+
+                auto str = std::string(chars + begins[word], chars + ends[word]);
+                std::cerr << "[ RegexSplit ] old_str: " << str << "\n";
+                paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
+                pretokenizer(&pretokenized);
+                size_t num_splits = pretokenized.GetSplitsSize();
+
+                new_ragged_begins[seq] = ragged_offset;
+
+                for (size_t j = 0; j < num_splits; ++j) {
+                    auto split = pretokenized.GetSplit(j);
+                    const auto& value = split.normalized_.GetStr();
+                    auto offset = split.normalized_.GetOrginalOffset();
+                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
+                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+                    new_begins[ragged_offset] = begins[word] + offset.first;
+                    new_ends[ragged_offset] = begins[word] + offset.second;
+
+                    ++ragged_offset;
+                };
+            }
+
+            new_ragged_ends[seq] = ragged_offset;
+        }
+
+        // Fix real shape based on collected results
+        outputs[2].set_shape({ragged_offset});
+        outputs[3].set_shape({ragged_offset});
+    } else {
+        auto ragged_begins = inputs[0].data<const int32_t>();
+        auto ragged_ends   = inputs[1].data<const int32_t>();
+        auto begins = inputs[2].data<const int32_t>();
+        auto ends   = inputs[3].data<const int32_t>();
+        auto chars  = inputs[4].data<const uint8_t>();
+
+        auto split_pattern_buf  = inputs[5].data<const uint8_t>();
+        auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[5].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+
+        outputs[4] = inputs[4];
+        const size_t num_elements = inputs[2].get_size();
+        const size_t num_chars = inputs[4].get_size();
+
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+
+        outputs[2].set_shape(Shape{num_chars});
+        outputs[3].set_shape(Shape{num_chars});
+
+        outputs[4] = inputs[4];  // TODO: Does it really work?
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_ragged_begins = outputs[0].data<int32_t>();
+        auto new_ragged_ends   = outputs[1].data<int32_t>();
+        auto new_begins = outputs[2].data<int32_t>();
+        auto new_ends   = outputs[3].data<int32_t>();
+        int32_t ragged_offset = 0;
+
+        using namespace paddlenlp::fast_tokenizer;
+        auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
+
+        for(size_t seq = 0; seq < num_elements; ++seq) {
+            for(size_t word = ragged_begins[seq]; word < ragged_ends[seq]; ++word) {
+
+                auto str = std::string(chars + begins[word], chars + ends[word]);
+                std::cerr << "[ RegexSplit ] old_str: " << str << "\n";
+                paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
+                pretokenizer(&pretokenized);
+                size_t num_splits = pretokenized.GetSplitsSize();
+
+                new_ragged_begins[seq] = ragged_offset;
+
+                for (size_t j = 0; j < num_splits; ++j) {
+                    auto split = pretokenized.GetSplit(j);
+                    const auto& value = split.normalized_.GetStr();
+                    auto offset = split.normalized_.GetOrginalOffset();
+                    std::cerr << "[ RegexSplit ]     split part: " << value << "\n";
+                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+                    new_begins[ragged_offset] = begins[word] + offset.first;
+                    new_ends[ragged_offset] = begins[word] + offset.second;
+
+                    ++ragged_offset;
+                };
+            }
+
+            new_ragged_ends[seq] = ragged_offset;
+        }
+
+        // Fix real shape based on collected results
+        outputs[2].set_shape({ragged_offset});
+        outputs[3].set_shape({ragged_offset});
+    }
 #if 1
 
     // Set output shapes
-    outputs[0].set_shape(inputs[0].get_shape());
-    outputs[1].set_shape(inputs[1].get_shape());
-
-    const size_t num_elements = inputs[0].get_size();
-    const size_t num_chars = inputs[2].get_size();
+//    outputs[0].set_shape(inputs[0].get_shape());
+//    outputs[1].set_shape(inputs[1].get_shape());
+//
+//    const size_t num_elements = inputs[0].get_size();
+//    const size_t num_chars = inputs[2].get_size();
 
     // TODO: Better estimations for max size?
     // Assume we cannot have empty parts, so the number of parts cannot be bigger than the number of symbols
-    outputs[2].set_shape(Shape{num_chars});
-    outputs[3].set_shape(Shape{num_chars});
+//    outputs[2].set_shape(Shape{num_chars});
+//    outputs[3].set_shape(Shape{num_chars});
 
     // Assume we cannot introduce new symbols to output, only existing can be distributed (with gaps)
 
     // TODO: Can we just route input tensor directly to the output outside evaluate when graph is being constructed?
-    outputs[4] = inputs[2];  // TODO: Does it really work?
+//    outputs[4] = inputs[2];  // TODO: Does it really work?
 
     // If line above doesn't work, do this instead:
     //outputs[4].set_shape(Shape{num_chars});
     //inputs[2].copy_to(outputs[4]);
-
-    // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
-    // and only number of elements in the original tensors matter
-
-    // Get pointers in the output tensors
-    auto new_ragged_begins = outputs[0].data<int32_t>();
-    auto new_ragged_ends   = outputs[1].data<int32_t>();
-    auto new_begins = outputs[2].data<int32_t>();
-    auto new_ends   = outputs[3].data<int32_t>();
-    int32_t ragged_offset = 0;
-
-    using namespace paddlenlp::fast_tokenizer;
-
-    auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
-
-    for(size_t i = 0; i < num_elements; ++i) {
-        auto old_str = std::string(chars + begins[i], chars + ends[i]);
-        //std::cerr << "[ RegexSplit ] old_str: " << old_str << "\n";
-        paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(old_str);
-        pretokenizer(&pretokenized);
-        size_t num_splits = pretokenized.GetSplitsSize();
-
-        new_ragged_begins[i] = ragged_offset;
-
-        for (size_t j = 0; j < num_splits; ++j) {
-            auto split = pretokenized.GetSplit(j);
-            //const auto& value = split.normalized_.GetStr();
-            auto offset = split.normalized_.GetOrginalOffset();
-            //std::cerr << "[ RegexSplit ]     split part: " << value << "\n";
-            //std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
-            new_begins[ragged_offset] = begins[i] + offset.first;
-            new_ends[ragged_offset] = begins[i] + offset.second;
-
-            ++ragged_offset;
-        };
-
-        new_ragged_ends[i] = ragged_offset;
-    }
-
-    // Fix real shape based on collected results
-    outputs[2].set_shape({ragged_offset});
-    outputs[3].set_shape({ragged_offset});
-    //outputs[4].set_shape({char_offset});
 
     return true;
 
@@ -1304,6 +1396,181 @@ ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::N
         node.get_attribute<long>("max_bytes_per_word")
     );
     return { post_translate_ragged_tensor_output(wp_tokenizer->outputs()) };
+}
+
+
+void BPETokenizer::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+    check_string_input(this, 5);
+    check_string_input(this, 8);
+    set_ragged_output(this, 0, get_input_partial_shape(0), element::i32);
+}
+
+bool BPETokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    auto vocab_begins = inputs[5].data<const int32_t>();
+    auto vocab_ends   = inputs[6].data<const int32_t>();
+    auto vocab_chars  = inputs[7].data<const uint8_t>();
+
+    auto merges_begins = inputs[8].data<const int32_t>();
+    auto merges_ends   = inputs[9].data<const int32_t>();
+    auto merges_chars  = inputs[10].data<const uint8_t>();
+
+    auto vocab_size = inputs[5].get_size();
+    auto merges_size = inputs[8].get_size();
+
+    OPENVINO_ASSERT(inputs.size() == 11, "Too few inputs passed to BPETokenizer, it means it is not converted properly or it is not used in the supported pattern");
+
+#if 1
+    // Set output shapes
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    const size_t num_elems = inputs[0].get_size();
+
+    // FIXME: Not accurate estimation as there is theoretical possibility for re-use the same symbol area
+    // to represent different elements in ragged tensor
+    outputs[2].set_shape({inputs[4].get_size()});
+
+    using namespace paddlenlp::fast_tokenizer;
+
+    std::cerr << "[ BPETokenizer ] Start vocab reading\n";
+    core::Vocab vocab;
+    int32_t unk_token_id = -1;
+
+    std::cerr << "[ BPETokenizer ] Vocab size is " << vocab_size << "\n";
+
+    for(size_t id = 0; id < vocab_size; ++id) {
+        auto token = std::string(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[token] = int32_t(id); // TODO: Check range
+    }
+
+    std::cerr << "[ BPETokenizer ] Finish vocab reading\n";
+
+    std::cerr << "[ BPETokenizer ] Start merges reading\n";
+    std::cerr << "[ BPETokenizer ] Merges Size: " << merges_size << "\n";
+    core::Merges merges;
+    std::string delim = " ";
+
+
+    for(size_t id = 0; id < merges_size; ++id) {
+        auto merge = std::string(merges_chars + merges_begins[id], merges_chars + merges_ends[id]);
+        const int delim_pos = merge.find(delim);
+
+        std::pair<std::string, std::string> merge_pair = {
+            merge.substr(0, delim_pos), merge.substr(delim_pos + 1)
+        };
+        merges.emplace_back(merge_pair);
+    }
+
+    std::cerr << "[ BPETokenizer ] Finish merges reading\n";
+
+
+    std::cerr << "[ BPETokenizer ] Start tokenizer initialization\n";
+
+    std::vector<std::string> unk_token = {};
+    if (m_unk_token.size() > 0) {
+        unk_token.push_back(m_unk_token);
+    };
+    std::vector<std::string> suffix_indicator = {};
+    if (m_suffix_indicator.size() > 0) {
+        suffix_indicator.push_back(m_suffix_indicator);
+    };
+    std::vector<std::string> end_suffix = {};
+    if (m_end_suffix.size() > 0) {
+        end_suffix.push_back(m_end_suffix);
+    };
+
+    models::BPE tokenizer(vocab, merges, 10000 /* default cache size */, {} /* dropout - don't use dropout for inference */,
+                          unk_token, suffix_indicator, end_suffix, m_fuse_unk);
+
+    std::cerr << "[ BPETokenizer ] Finish tokenizer initialization\n";
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_elems  = outputs[2].data<int32_t>();
+    int32_t offset = 0;
+
+
+    for(size_t j = 0; j < num_elems; ++j) {
+        new_begins[j] = offset;
+        for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+            auto str = std::string(chars + begins[i], chars + ends[i]);
+
+            std::cerr << "Word: '" << str << "'\n";
+            std::vector<core::Token> results = tokenizer.Tokenize(str);
+
+            for (const core::Token& token : results) {
+                std::cout << "[ BPETokenizer ]     id: " << token.id_ << ", value: " << token.value_
+                          << ", offset: (" << token.offset_.first << ", "
+                          << token.offset_.second << ")." << std::endl;
+                OPENVINO_ASSERT(offset < outputs[2].get_size());
+                new_elems[offset++] = token.id_;
+            };
+        }
+
+        new_ends[j] = offset;
+    }
+
+    outputs[2].set_shape({offset});
+
+    OPENVINO_ASSERT(offset == outputs[2].get_size(), "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+    return true;
+
+#else
+    // Stub implementation that transforms each input string to its length duplicating element if the length is odd
+    {
+        std::cout << "[ DEBUG ] WordpieceTokenizer\n";
+        std::cout << "[ DEBUG ]     vocab size: " << inputs[5].get_size() << "\n";
+        std::cout << "[ DEBUG ]     unk_token_id: " << unk_token_id << "\n";
+
+        // Set output shapes
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+        const size_t num_elems = inputs[0].get_size();
+
+        const size_t num_parts = inputs[2].get_size();
+        size_t new_num_parts = num_parts;
+        // Count number of output elements
+        for(size_t i = 0; i < num_parts; ++i) {
+            auto length = ends[i] - begins[i];
+            new_num_parts += length % 2;
+        }
+
+        outputs[2].set_shape({new_num_parts});
+
+        // Get pointers in the output tensors
+        auto new_begins = outputs[0].data<int32_t>();
+        auto new_ends   = outputs[1].data<int32_t>();
+        auto new_elems  = outputs[2].data<int32_t>();
+        int32_t offset = 0;
+
+        for(size_t j = 0; j < num_elems; ++j) {
+            new_begins[j] = offset;
+
+            for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+
+                auto length = ends[i] - begins[i];
+                new_elems[offset++] = length;
+
+                if(length % 2) {
+                    new_elems[offset++] = length;
+                }
+            }
+
+            new_ends[j] = offset;
+        }
+
+        OPENVINO_ASSERT(offset == outputs[2].get_size(), "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+        return true;
+    }
+    // End of stub implementation
+#endif
 }
 
 
