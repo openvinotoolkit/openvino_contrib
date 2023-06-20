@@ -20,6 +20,7 @@ from tokenizer_pipeline import (
     PunctuationSplitStep,
     RegexSplitStep,
     WhitespaceSplitStep,
+    BytesToCharsStep,
     WordPieceTokenizationStep,
     BPETokenizationStep,
     TruncationStep,
@@ -65,6 +66,21 @@ def parse_split_step(pretokenizer_dict: Dict[str, Any]) -> RegexSplitStep:
         invert=pretokenizer_dict["invert"],
         behaviour=pretokenizer_dict["behavior"],
     )
+
+
+def parse_byte_level_pretokenization_step(
+        pretokenizer_dict: Dict[str, Any]
+) -> List[Union[NormalizationStep, PreTokenizatinStep]]:
+    steps = []
+    if pretokenizer_dict.get("add_prefix_space"):
+        steps.append(RegExpNormalizationStep(regex_search_pattern="^(\S)", replace_term=" $1"))
+
+    # regex is used by default, but it does not appeared in config yet
+    if pretokenizer_dict.get("use_regex", True):
+        steps.append(RegexSplitStep.byte_level_splitter())
+
+    steps.append(BytesToCharsStep())
+    return steps
 
 
 class TransformersTokenizerPipelineParser:
@@ -128,7 +144,7 @@ class TransformersTokenizerPipelineParser:
         "WhitespaceSplit": lambda step_dict: WhitespaceSplitStep(),
         "Split": parse_split_step,
         "Punctuation": lambda step_dict: PunctuationSplitStep(step_dict["behavior"]),
-        "ByteLevel": lambda step_dict:  WhitespaceSplitStep(),  ## !!!FIX ME!!!
+        "ByteLevel": parse_byte_level_pretokenization_step,
     }
 
     def parse_pre_tokenization_step(self, step_dict: Dict[str, Any]) -> None:
@@ -169,11 +185,14 @@ class TransformersTokenizerPipelineParser:
             combine_segments_step = CombineSegmentsStep.from_hf_json_bert_postprocessor(
                 self.tokenizer_json, self.number_of_inputs
             )
-        elif self.tokenizer_json["post_processor"]["type"] == "ByteLevel":  # !!!FIX ME!!!
-            pass  # test BPETokenizer
+        elif self.tokenizer_json["post_processor"]["type"] == "ByteLevel":
             self.add_truncation()
             self.add_padding()
             return
+        elif self.tokenizer_json["post_processor"]["type"] == "RobertaProcessing":
+            combine_segments_step = CombineSegmentsStep.from_hf_json_roberta_processor(
+                self.tokenizer_json, self.number_of_inputs
+            )
         else:
             raise OVTypeError(f"Post-processor type '{self.tokenizer_json['post_processor']['type']}' is not supported")
 
@@ -198,3 +217,5 @@ class TransformersTokenizerPipelineParser:
         elif self.original_tokenizer.pad_token is not None:
             self.pipeline.add_steps(PaddingStep(token=self.original_tokenizer.pad_token))
             self.pipeline[-1].set_token_id(self.pipeline.vocab)
+        else:
+            self.pipeline.add_steps(PaddingStep())

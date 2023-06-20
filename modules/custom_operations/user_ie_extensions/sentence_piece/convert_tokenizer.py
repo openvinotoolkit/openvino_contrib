@@ -17,10 +17,24 @@ def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> Token
 
         # TODO: Remove this check
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):
-            ov_tokenizer = TransformersTokenizerPipelineParser(tokenizer_object).parse(number_of_inputs=number_of_inputs).get_ov_subgraph()
+            ov_tokenizer = TransformersTokenizerPipelineParser(tokenizer_object).parse(
+                number_of_inputs=number_of_inputs
+            ).get_ov_subgraph()
             output_names = tokenizer_object.model_input_names
+
+            ov_tokenizer_output_names = ["input_ids", "attention_mask"]
+            if len(output_names) == 3:
+                ov_tokenizer_output_names.insert(1, "token_type_ids")
+
             filtered_outputs = []
-            for i, output_name in enumerate(['input_ids', 'token_type_ids', 'attention_mask']):
+            for i, output_name in enumerate(ov_tokenizer_output_names):
+                current_output = next(
+                    (output for output in ov_tokenizer.outputs if output.any_name == output_name), False
+                )
+                if current_output:
+                    filtered_outputs.append(current_output)
+                    continue
+
                 if output_name in output_names:
                     ov_tokenizer.output(i).tensor.add_names({output_name})
                     filtered_outputs.append(ov_tokenizer.output(i))
@@ -59,6 +73,7 @@ def connect_models(model1: Model, model2: Model, name_map=None, *, by_indices=No
                 # Search for corresponding model1 output by all possible names
                 for model1_output in model2.outputs
             '''
+
         else:
             aligned_model1_outputs = [model1.output(name1) for name1, _ in name_map]
             aligned_model2_inputs = [model2.input(name2) for _, name2 in name_map]

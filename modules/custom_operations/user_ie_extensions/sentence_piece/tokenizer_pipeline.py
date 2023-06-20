@@ -215,6 +215,15 @@ class RegexSplitStep(PreTokenizatinStep):
     def whitespace_splitter(cls) -> "RegexSplitStep":
         return cls(r"\w+|[^\w\s]+", invert=True)
 
+    @classmethod
+    def byte_level_splitter(cls) -> "RegexSplitStep":
+        return cls(
+            # r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+",
+            r"('s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+)",
+            invert=False,
+            behaviour="Isolate",
+        )
+
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
             self.create_string_constant_node(self.split_pattern).outputs()
@@ -240,6 +249,16 @@ class WhitespaceSplitStep(PreTokenizatinStep):
 class PunctuationSplitStep(PreTokenizatinStep):
     """Splits string on punctuation chars."""
     # behaviour: str = "Isolated"
+
+
+@dataclass
+class BytesToCharsStep(PreTokenizatinStep):
+    """Maps chars to other chars for Byte-level BPE Tokenizer"""
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        return core.make_node(
+            "BytesToChars",
+            input_nodes,
+        ).outputs()
 
 
 @dataclass
@@ -378,11 +397,11 @@ class TruncationStep(PostTokenizationStep):
 
 @dataclass
 class SpecialTokenWithId:
-    token: str
+    token: Optional[str] = None
     _token_id: Optional[int] = None
 
     def set_token_id(self, vocab: Optional[List[str]]) -> None:
-        if vocab is not None:
+        if vocab is not None and self.token in vocab:
             self._token_id = vocab.index(self.token)
 
     @property
@@ -453,7 +472,9 @@ class CombineSegmentsStep(PostTokenizationStep):
         return cls(inputs)
 
     @classmethod
-    def from_hf_json_bert_postprocessor(cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1):
+    def from_hf_json_bert_postprocessor(
+            cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1
+    ) -> "CombineSegmentsStep":
         post_processor_dict = tokenizer_json["post_processor"]
         inputs: List[TokenWithTypeId] = [
             AddToken(
@@ -477,6 +498,27 @@ class CombineSegmentsStep(PostTokenizationStep):
                     ),
                 ]
             )
+        return cls(inputs)
+
+    @classmethod
+    def from_hf_json_roberta_processor(
+            cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1
+    ) -> "CombineSegmentsStep":
+        post_processor_dict = tokenizer_json["post_processor"]
+
+        inputs: List[TokenWithTypeId] = [Sequence(token_type_id=0)]
+
+        if not post_processor_dict.get("add_special_tokens", True):
+            return cls(inputs)
+
+        inputs.insert(
+            0, AddToken(token=post_processor_dict["cls"][0], token_type_id=0)
+        )
+        inputs.append(AddToken(token=post_processor_dict["sep"][0], token_type_id=0))
+
+        if number_of_inputs == 2:
+            print("WARNING: Pair of inputs not supported for RoBERTa postprocessor")
+
         return cls(inputs)
 
     def get_ov_subgraph(self, input_nodes):
@@ -570,15 +612,22 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
 
         #if self.token_type_id == -1:
         #    self.token_type_id = 0
-        for i in range(len(input_nodes)//3):
+        names = ["input_ids", "token_type_ids"]
+        for i, name in zip(range(len(input_nodes)//3), names):
             #print(input_nodes[3*i:3*(i+1)])
             #print(as_node(self.max_length).outputs())
             #print(as_node(np.array(0, dtype=int)).outputs())
-            cur_outputs = core.make_node('RaggedToDense', input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()).outputs()
+            cur_outputs = core.make_node(
+                "RaggedToDense",
+                input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()
+            ).outputs()
+            cur_outputs[0].tensor.add_names({name})
+
             outputs.append(cur_outputs[0])
             if i == 0:
-                mask = opset10.convert(cur_outputs[1], 'i32').output(0)  # TODO: Change RaggedToDense to generate mask of any type
+                mask = opset10.convert(cur_outputs[1], "i32").output(0)  # TODO: Change RaggedToDense to generate mask of any type
 
+        mask.tensor.add_names({"attention_mask"})
         outputs.append(mask)
 
         return outputs
@@ -672,6 +721,7 @@ class TokenizerPipeline:
         processing_outputs = self.create_processing_pipeline(input_nodes)
         outputs = self.create_post_tokenization_pipeline(processing_outputs)
 
+        print(self)
         return Model(outputs, input_nodes, name="tokenizer")
 
 

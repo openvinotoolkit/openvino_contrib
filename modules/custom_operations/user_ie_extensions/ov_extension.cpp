@@ -69,6 +69,7 @@
             std::make_shared<ov::OpExtension<WordpieceTokenizer>>(),                                                        \
             std::make_shared<ov::frontend::ConversionExtension>("WordpieceTokenizeWithOffsets", translate_wordpiece_tokenize_with_offsets), \
             std::make_shared<ov::OpExtension<BPETokenizer>>(),                                                        \
+            std::make_shared<ov::OpExtension<BytesToChars>>(),                                                        \
             std::make_shared<ov::frontend::ConversionExtension>("LookupTableFindV2", translate_lookup_table_find_v2),       \
             std::make_shared<ov::OpExtension<CombineSegments>>(),                                                           \
             std::make_shared<ov::OpExtension<RaggedToDense>>(),                                                             \
