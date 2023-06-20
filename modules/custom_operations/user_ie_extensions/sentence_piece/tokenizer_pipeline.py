@@ -721,7 +721,6 @@ class TokenizerPipeline:
         processing_outputs = self.create_processing_pipeline(input_nodes)
         outputs = self.create_post_tokenization_pipeline(processing_outputs)
 
-        print(self)
         return Model(outputs, input_nodes, name="tokenizer")
 
 
