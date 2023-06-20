@@ -217,6 +217,16 @@ jobs:
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
+      - name: Check Directories (OV Repo)
+        if: ${{ always() }}
+        run: |
+          Get-ChildItem -Recurse -Directory ${{ env.OPENVINO_REPO }}
+
+      - name: Check Directories (Install Dir)
+        if: ${{ always() }}
+        run: |
+          Get-ChildItem -Recurse -Directory ${{ env.INSTALL_DIR }}
+
       - name: Upload openvino package
         if: ${{ always() }}
         uses: actions/upload-artifact@v3
