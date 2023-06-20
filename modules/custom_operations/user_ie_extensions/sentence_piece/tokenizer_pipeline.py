@@ -363,15 +363,23 @@ class TruncationStep(PostTokenizationStep):
 
     @classmethod
     def from_hf_json(cls, tokenizer_json: Dict[str, Any], num_of_added_tokens: int = 0) -> "TruncationStep":
+        max_length = min(
+            tokenizer_json["truncation"]["max_length"] - num_of_added_tokens,
+            2**31 - 1 - num_of_added_tokens,
+        )
         return cls(
-            max_length=tokenizer_json["truncation"]["max_length"] - num_of_added_tokens,
+            max_length=max_length,
             truncate_right=tokenizer_json["truncation"]["direction"] == "Right",
         )
 
     @classmethod
     def from_hf_object(cls, tokenizer: Any, num_of_added_tokens: int = 0) -> "TruncationStep":
+        max_length = min(
+            tokenizer.model_max_length - num_of_added_tokens,
+            2 ** 31 - 1 - num_of_added_tokens,
+        )
         return cls(
-            max_length=tokenizer.model_max_length - num_of_added_tokens,
+            max_length=max_length,
             truncate_right=tokenizer.truncation_side == "right",
         )
 
@@ -604,7 +612,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         #print('ERRROR: SETTING MAX_LENGTH = 100')
         #print('ERROR: Ignoring pad token and set it to id = 0')
 
-        if self.max_length == -1:
+        if self.max_length == -1 or self.max_length >= 2 ** 31:
             # Calculate max_length as the maximum ragged length
             max_length = opset10.reduce_max(opset10.subtract(input_nodes[1], input_nodes[0]), make_constant_node(0, Type.i32))
         else:

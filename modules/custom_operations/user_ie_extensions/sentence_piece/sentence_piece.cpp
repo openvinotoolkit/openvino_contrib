@@ -1546,7 +1546,7 @@ bool BytesToChars::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
 //    }
 //    std::cerr << "\n";
 //
-//    outputs[4].set_shape({char_pointer});
+    outputs[4].set_shape({char_pointer});
 //
 //    std::cerr << "After set_shape:\n";
 //
