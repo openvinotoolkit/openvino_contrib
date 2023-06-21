@@ -359,13 +359,12 @@ jobs:
         if: ${{ always() }}
         shell: cmd
         run: |
-          # TODO: figure out why they need to be reinstalled
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt ^
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt ^
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt ^
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt ^
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt ^
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
           
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
@@ -408,8 +407,7 @@ jobs:
         shell: cmd
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
-              --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xml -k "sigmoid"
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xml -k "sigmoid"
         env:
           TEST_DEVICE: CPU
 
