@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -18,17 +18,17 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class CudaThreadPool : public InferenceEngine::ITaskExecutor {
+class CudaThreadPool : public ov::threading::ITaskExecutor {
 public:
     using Task = std::function<void()>;
 
     CudaThreadPool(CUDA::Device d, unsigned _numThreads);
-    const ThreadContext& GetThreadContext();
     ~CudaThreadPool() override;
+    const ThreadContext& get_thread_context();
     void run(Task task) override;
 
 private:
-    void stopThreadPool() noexcept;
+    void stop_thread_pool() noexcept;
 
     std::mutex mtx_;
     bool is_stopped_ = false;

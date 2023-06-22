@@ -107,7 +107,7 @@ void SelectKernelOp::operator()(const cudaStream_t stream,
                                      output_sizes,
                                      buffer);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Index element type = {} is not supported by Gather operation !!", operation_type_));
     }
 }

@@ -9,8 +9,6 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <kernels/split.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
 
 namespace ov {
@@ -22,10 +20,14 @@ public:
             const ov::Node& node,
             IndexCollection&& inputIds,
             IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
+
     WorkbufferRequest GetWorkBufferRequest() const override;
 
 private:

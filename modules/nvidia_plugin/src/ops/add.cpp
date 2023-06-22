@@ -37,7 +37,7 @@ static OperationBase::Ptr addFactory(const CreationContext& context,
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create AddCuda impl: " << e.what();
     }
-    throwIEException(fmt::format("Add node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Add node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(addFactory, Add)

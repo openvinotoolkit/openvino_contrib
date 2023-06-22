@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/add.hpp>
+#include "openvino/op/add.hpp"
 
 #include "elementwise_binary.hpp"
 #include "kernels/add.hpp"

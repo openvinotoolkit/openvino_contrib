@@ -112,7 +112,7 @@ void ScatterNDUpdate::operator()(const cudaStream_t stream,
         case Type_t::i32:
             return CallByDataType<int32_t>(stream, input, indices, updates, input_data_dim_pading, output);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Index element type = {} is not supported by ScatterNDUpdate operation !!", indices_type_));
     }
 }
@@ -154,7 +154,7 @@ void ScatterNDUpdate::CallByDataType(const cudaStream_t stream,
         case Type_t::u64:
             return Call<uint64_t, IndexType>(stream, input, indices, updates, input_data_dim_pading, output);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Index element type = {} is not supported by ScatterNDUpdate operation !!", indices_type_));
     }
 }

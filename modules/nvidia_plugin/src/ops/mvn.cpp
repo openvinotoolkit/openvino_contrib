@@ -4,13 +4,15 @@
 
 #include "mvn.hpp"
 
+#include "openvino/core/type.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/mvn.hpp"
+#include "ngraph/shape_util.hpp"
+
 #include <cuda/descriptor_utils.hpp>
 #include <cuda_operation_registry.hpp>
-#include <ngraph/validation_util.hpp>
 
 #include "converters.hpp"
-#include "ngraph/op/mvn.hpp"
-#include "ngraph/shape_util.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -52,7 +54,7 @@ MvnOp::MvnOp(const CreationContext& context,
       reduced_tensor_desc_{makeReducedTensorDescriptor(node)},
       reduce_workspace_size_{reduceWorkSpaceSizeCompute(context)} {
     if (!isTypeSupported(op_desc_type_)) {
-        throwIEException(fmt::format("MvnOp: unsupported argument type: {}", toString(op_desc_type_)));
+        throw_ov_exception(fmt::format("MvnOp: unsupported argument type: {}", toString(op_desc_type_)));
     }
     if (!reduced_shape_.empty()) {
         size_t size = shape_size(reduced_shape_);
@@ -96,6 +98,8 @@ void MvnOp::Execute(const InferenceRequestContext& context,
                        {reduced_tensor_desc_, reducedTensor.cast<const void*>()},
                        {tensor_desc_, outputTensors[0]});
 }
+
+bool MvnOp::IsCudaGraphCompatible() const { return true; }
 
 void MvnOp::Context::reduceMean(ConstTensor input, Tensor output) {
     context.getThreadContext().dnnHandle().reduceTensor(op.reduce_mean_desc_,
@@ -148,7 +152,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
         version = MvnV1;
         OPENVINO_ASSERT(node.get_input_size() == 1);
         if (mvnOp_v1->get_eps() <= 0) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The eps attribute of the MVN-1 operation must be positive number, but value is {}.",
                             mvnOp_v1->get_eps()));
         }
@@ -156,16 +160,16 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
         version = MvnV6;
         OPENVINO_ASSERT(node.get_input_size() == 2);
         if (mvnOp_v6->get_eps() <= 0) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The eps attribute of the MVN-6 operation must be positive number, but value is {}.",
                             mvnOp_v6->get_eps()));
         }
-        if (ngraph::get_constant_from_source(node.get_input_node_shared_ptr(1)) == nullptr) {
-            throwIEException("The nvidia_gpu MVN-6 operation implemented only for constant axes input.");
+        if (ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(1)) == nullptr) {
+            throw_ov_exception("The nvidia_gpu MVN-6 operation implemented only for constant axes input.");
         }
     }
     if (!node.get_input_partial_shape(0).rank().is_static()) {
-        throwIEException("For not static input shape the MVN-1 operation was not implemented.");
+        throw_ov_exception("For not static input shape the MVN-1 operation was not implemented.");
     }
     OPENVINO_ASSERT(node.get_output_size() == 1);
     auto inputShape = node.get_input_shape(0);
@@ -180,7 +184,7 @@ MvnOp::MvnVersion MvnOp::validateAndGetVersion(const ov::Node& node) {
     const size_t max_shape_size = 5;  // cudnnOpTensor operation limit. See note here
                                       // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnOpTensor
     if (outputShape.size() > max_shape_size) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ov::nvidia_gpu::MvnOp: the tensor shape size ({}) is exceeded maximum supported value of {}.",
                         outputShape.size(),
                         max_shape_size));
@@ -194,7 +198,7 @@ size_t MvnOp::reduceWorkSpaceSizeCompute(const CreationContext& context) {
     return 0;
 }
 
-ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
+ov::Shape MvnOp::makeReducedShape(const ov::Node& node) {
     if (version_ == MvnV1) {
         auto reducedShape = node.get_input_shape(0);
         if (mvn_op_v1_->get_reduction_axes().empty()) {
@@ -209,13 +213,13 @@ ngraph::Shape MvnOp::makeReducedShape(const ov::Node& node) {
     }
     if (version_ == MvnV6) {
         const auto signed_axes =
-            ngraph::get_constant_from_source(node.get_input_node_shared_ptr(1))->cast_vector<int64_t>();
+            ov::as_type_ptr<op::v0::Constant>(node.get_input_node_shared_ptr(1))->cast_vector<int64_t>();
         auto reducedShape = node.get_input_shape(0);
-        ngraph::AxisSet axes;
+        ov::AxisSet axes;
         for (auto v : signed_axes) {
             auto size = static_cast<int64_t>(reducedShape.size());
             if (v >= size || v < -size) {
-                throwIEException(
+                throw_ov_exception(
                     fmt::format("ov::nvidia_gpu::MVN-6: the axes entry ({}) out of range [{}; {}].", v, -size, size - 1));
             }
             axes.emplace(static_cast<size_t>((v + size) % size));

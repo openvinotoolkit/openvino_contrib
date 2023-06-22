@@ -8,7 +8,6 @@
 #include <cuda/float16.hpp>
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/matmul.hpp>
 #include <transformer/nodes/fully_connected.hpp>
@@ -112,7 +111,7 @@ cudaDataType_t MatMulOp::GetComputeType(const cudaDataType_t abDataType, const c
             return CUDA_R_64F;
         }
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Not supported combination of A and B types [{}] "
                             "with C type [{}]",
                             abDataType,
@@ -226,6 +225,8 @@ void MatMulOp::Execute(const InferenceRequestContext& context,
                                             compute_type_,
                                             CUBLAS_GEMM_DEFAULT));
 }
+
+bool MatMulOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(MatMulOp, MatMul);
 }  // namespace nvidia_gpu

@@ -24,18 +24,18 @@ LSTMSequenceParamsCuDnn::LSTMSequenceParamsCuDnn(const LSTMSequenceParams& param
       r_host_buffers_{params.r_host_buffers_},
       b_host_buffers_{params.b_host_buffers_} {
     if (params.direction_ == LSTMSequenceParams::direction::REVERSE) {
-        throwIEException("Currently LSTMSequence cuDNN implementation doesn't support REVERSE direction");
+        throw_ov_exception("Currently LSTMSequence cuDNN implementation doesn't support REVERSE direction");
     }
 
     if (input_size_ == 1 && hidden_size_ == 1) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMSequence cuDNN implementation doesn't support combination of "
             "input_size == 1 and hidden_size == 1 simultaneously");
     }
 
     const auto supported_activations = std::vector<std::string>{"sigmoid", "tanh", "tanh"};
     if (params.activations_ != supported_activations) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMSequence cuDNN implementation supports only default LSTM activations of "
             "\"sigmoid\", \"tanh\", \"tanh\"");
     }
@@ -47,14 +47,14 @@ LSTMSequenceParamsCuDnn::LSTMSequenceParamsCuDnn(const LSTMSequenceParams& param
     const bool are_supported_betas =
         params.activations_beta_.size() == 0 || params.activations_beta_ == supported_betas;
     if (!are_supported_alphas || !are_supported_betas) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMSequence cuDNN implementation supports only default activation "
             "alphas = {1.0f, 1.0f, 1.0f} and betas = {0.0f, 0.0f, 0.0f}");
     }
 
     const bool is_clipped = (params.clip_ != 0.0f) && !std::isinf(params.clip_);
     if (is_clipped) {
-        throwIEException("Currently LSTMSequence cuDNN implementation doesn't support clipping");
+        throw_ov_exception("Currently LSTMSequence cuDNN implementation doesn't support clipping");
     }
 
     static_assert(sizeof(int32_t) == sizeof(int));

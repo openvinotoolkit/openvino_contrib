@@ -7,8 +7,8 @@
 namespace ov {
 namespace nvidia_gpu {
 
-ExecGraph::ExecGraph(const CreationContext& context, const std::shared_ptr<const ngraph::Function>& function)
-    : SubGraph(context, function) {}
+ExecGraph::ExecGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
+    : SubGraph(context, model) {}
 
 void ExecGraph::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     Workbuffers workbuffers{};

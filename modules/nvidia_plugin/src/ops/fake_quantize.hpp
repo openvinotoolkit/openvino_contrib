@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include <ngraph/op/fake_quantize.hpp>
-
+#include "openvino/op/fake_quantize.hpp"
 #include "components/numpy_broadcast_params.h"
 #include "cuda_operation_base.hpp"
 #include "kernels/fake_quantize.hpp"
@@ -20,6 +19,8 @@ public:
                    const NodeOp& node,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     void Execute(const InferenceRequestContext& context,

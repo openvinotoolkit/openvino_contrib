@@ -7,7 +7,6 @@
 #include <cuda/blas.hpp>
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
 #include <openvino/op/matmul.hpp>
 #include <utility>
 
@@ -54,6 +53,8 @@ void FullyConnectedOp::Execute(const InferenceRequestContext& context,
     }
     matmul_op_.Execute(context, inputs.first(inputs.size() - 1), outputs, workbuffers);
 }
+
+bool FullyConnectedOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(FullyConnectedOp, FullyConnected);
 }  // namespace nvidia_gpu

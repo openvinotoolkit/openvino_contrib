@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/node.hpp>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -19,10 +18,13 @@ public:
                 const std::shared_ptr<ov::Node>& node,
                 IndexCollection&& inputIds,
                 IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     using ExtentsMap = std::unordered_map<int, std::int64_t>;

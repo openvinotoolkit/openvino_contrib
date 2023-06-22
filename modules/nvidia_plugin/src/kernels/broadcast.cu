@@ -47,7 +47,7 @@ constexpr void Broadcast::case_(cudaStream_t stream,
 
 template <typename T>
 void Broadcast::default_(T t, cudaStream_t, const void*, const NumpyBroadcastMapper&, void*) const noexcept {
-    throwIEException(fmt::format("Element type = {} is not supported by Broadcast operation.", t));
+    throw_ov_exception(fmt::format("Element type = {} is not supported by Broadcast operation.", t));
 }
 
 }  // namespace kernel

@@ -29,7 +29,7 @@ private:
     }
 }
 
-[[gnu::cold, noreturn]] void throwIEException(const std::string& msg,
+[[gnu::cold, noreturn]] void throw_ov_exception(const std::string& msg,
                                               const std::experimental::source_location& location) {
     throw Error(msg, location);
 }

@@ -4,7 +4,6 @@
 #include "logical_not.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/node.hpp>
 
 #include "converters.hpp"
 
@@ -35,6 +34,8 @@ void LogicalNotOp::Execute(const InferenceRequestContext& context,
         context.getThreadContext().stream().get(), inputs[0].cast<const bool*>().get(), outputs[0].cast<bool*>().get());
     throwIfError(cudaPeekAtLastError());
 }
+
+bool LogicalNotOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(LogicalNotOp, LogicalNot);
 

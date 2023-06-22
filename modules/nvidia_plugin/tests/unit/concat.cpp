@@ -108,7 +108,7 @@ struct ConcatTest : testing::Test {
     }
     ThreadContext threadContext{{}};
     std::array<Blob::Ptr, 3> blobs;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     size_t output_size{};
     ov::OutputVector params{};

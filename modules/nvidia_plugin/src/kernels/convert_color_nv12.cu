@@ -97,7 +97,7 @@ constexpr void NV12ColorConvert<Conversion>::case_(cudaStream_t stream, Args&&..
 template <ColorConversion Conversion>
 template <typename T, typename... Args>
 void NV12ColorConvert<Conversion>::default_(T t, cudaStream_t, Args&&...) const noexcept {
-    throwIEException(fmt::format("Element type = {} is not supported by NV12ColorConvert operation.", t));
+    throw_ov_exception(fmt::format("Element type = {} is not supported by NV12ColorConvert operation.", t));
 }
 
 template <ColorConversion Conversion>

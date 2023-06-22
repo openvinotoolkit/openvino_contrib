@@ -5,7 +5,6 @@
 #include "group_convolution.hpp"
 
 #include <cuda_operation_registry.hpp>
-#include <ngraph/partial_shape.hpp>
 
 #include "convolution_components/convolution_components.hpp"
 
@@ -25,6 +24,8 @@ void GroupConvolutionOp::Execute(const InferenceRequestContext &context,
                                  const Workbuffers &buffers) const {
     convolution_.Execute(context, inputTensors, outputTensors, buffers);
 }
+
+bool GroupConvolutionOp::IsCudaGraphCompatible() const { return true; }
 
 WorkbufferRequest GroupConvolutionOp::GetWorkBufferRequest() const { return convolution_.GetWorkBufferRequest(); }
 

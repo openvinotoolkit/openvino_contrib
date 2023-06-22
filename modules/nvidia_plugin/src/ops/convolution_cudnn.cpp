@@ -44,6 +44,8 @@ void ConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     throwIfError(status);
 }
 
+bool ConvolutionCuDnn::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest ConvolutionCuDnn::GetWorkBufferRequest() const {
     if (descs_.Algo().memory != 0)
         return {{}, {descs_.Algo().memory}};

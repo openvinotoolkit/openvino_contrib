@@ -59,7 +59,7 @@ VarianceNormalizationFactor::VarianceNormalizationFactor(unsigned blocks_number,
         CASE(f32)
         CASE(f64)
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("ov::nvidia_gpu::MvnOp: unsupported data type, must be any float point type."));
     }
 #undef CASE

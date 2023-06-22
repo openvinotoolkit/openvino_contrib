@@ -11,7 +11,7 @@
 inline void throwIfError(
     cutensorStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUTENSOR_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cutensorGetErrorString(err), location);
+    if (err != CUTENSOR_STATUS_SUCCESS) ov::nvidia_gpu::throw_ov_exception(cutensorGetErrorString(err), location);
 }
 
 inline void logIfError(

@@ -3,9 +3,9 @@
 //
 
 #include "fused_convolution_backprop_data.hpp"
-
-#include <openvino/core/except.hpp>
-#include <ngraph/validation_util.hpp>
+#include "ngraph/validation_util.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/op/constant.hpp"
 
 namespace ov::nvidia_gpu::nodes {
 
@@ -24,9 +24,7 @@ FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
       pads_end_(pads_end),
       dilations_(dilations),
       auto_pad_(auto_pad),
-      output_padding_(output_padding),
-      add_shape_{add.get_shape()},
-      add_type_(add.get_element_type()) {
+      output_padding_(output_padding) {
     constructor_validate_and_infer_types();
 }
 
@@ -46,9 +44,7 @@ FusedConvBackpropData::FusedConvBackpropData(const ov::Output<Node>& data_batch,
       pads_end_(pads_end),
       dilations_(dilations),
       auto_pad_(auto_pad),
-      output_padding_(output_padding),
-      add_shape_{add.get_shape()},
-      add_type_(add.get_element_type()) {
+      output_padding_(output_padding) {
     constructor_validate_and_infer_types();
 }
 
@@ -88,7 +84,53 @@ std::shared_ptr<ov::Node> FusedConvBackpropData::clone_with_new_inputs(const ov:
     }
 }
 
-void FusedConvBackpropData::conv_validate_and_infer_types() {
+ov::PartialShape FusedConvBackpropData::get_output_shape() const {
+    auto data_pshape = get_input_partial_shape(0);
+
+    ov::PartialShape shape;
+    if (data_pshape.rank().is_static()) {
+        shape = ov::PartialShape{std::vector<ov::Dimension>(data_pshape.rank().get_length() - 2)};
+    } else {
+        shape = ov::PartialShape{std::vector<ov::Dimension>(strides_.size())};
+    }
+    bool is_output_shape_present = inputs().size() == 4;
+    if (is_output_shape_present) {
+        if (auto const_op = ov::as_type_ptr<op::v0::Constant>(input_value(2).get_node_shared_ptr())) {
+            shape = const_op->get_shape_val();
+        } else {
+            shape = ov::PartialShape::dynamic();
+        }
+    }
+    return shape;
+}
+
+void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::vector<ov::Dimension>& input_data_shape,
+                                                                     const std::vector<ov::Dimension>& filters_shape,
+                                                                     const ov::Strides& strides,
+                                                                     const ov::Strides& dilations,
+                                                                     const ov::CoordinateDiff& pads_begin,
+                                                                     const ov::CoordinateDiff& pads_end,
+                                                                     const ov::CoordinateDiff& output_padding,
+                                                                     std::vector<ov::Dimension>& output_spatial_shape) {
+    size_t num_spatial_dims = input_data_shape.size();
+    NODE_VALIDATION_CHECK(this,
+                          filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
+                              dilations.size() == num_spatial_dims && pads_begin.size() == num_spatial_dims &&
+                              pads_end.size() == num_spatial_dims && output_padding.size() == num_spatial_dims);
+
+    for (size_t i = 0; i < num_spatial_dims; ++i) {
+        if (input_data_shape[i].is_static() && filters_shape[i].is_static()) {
+            int64_t val = strides[i] * (input_data_shape[i].get_length() - 1) +
+                          dilations[i] * (filters_shape[i].get_length() - 1) + 1 - pads_begin[i] - pads_end[i] +
+                          output_padding[i];
+            output_spatial_shape.push_back(val);
+        } else {
+            output_spatial_shape.push_back(ov::Dimension::dynamic());
+        }
+    }
+}
+
+void FusedConvBackpropData::validate_and_infer_types() {
     auto data_pshape = get_input_partial_shape(0);
     ov::element::Type delta_et = get_input_element_type(0);
     const ov::PartialShape& filters_pshape = get_input_partial_shape(1);
@@ -107,20 +149,24 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
                           ").");
 
     if (data_pshape.rank().is_static() && filters_pshape.rank().is_static()) {
+        size_t rank = (data_pshape.rank().get_length() >= 2) ? (data_pshape.rank().get_length() - 2) :
+                      (filters_pshape.rank().get_length() >= 2) ? (filters_pshape.rank().get_length() - 2) : 0;
+        auto default_padding = ov::CoordinateDiff(rank, 0);
+        auto default_strides = ov::Strides(rank, 1);
         if (pads_begin_.size() == 0) {
-            pads_begin_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
+            pads_begin_ = default_padding;
         }
         if (pads_end_.size() == 0) {
-            pads_end_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
+            pads_end_ = default_padding;
         }
         if (output_padding_.size() == 0) {
-            output_padding_ = ngraph::conv_default_padding(this, data_pshape, filters_pshape);
+            output_padding_ = default_padding;
         }
         if (strides_.size() == 0) {
-            strides_ = ngraph::conv_default_strides(this, data_pshape, filters_pshape);
+            strides_ = default_strides;
         }
         if (dilations_.size() == 0) {
-            dilations_ = ngraph::conv_default_strides(this, data_pshape, filters_pshape);
+            dilations_ = default_strides;
         }
 
         const auto num_spatial_dims = data_pshape.rank().get_length() - 2;
@@ -209,59 +255,10 @@ void FusedConvBackpropData::conv_validate_and_infer_types() {
     set_input_is_relevant_to_shape(0);
     set_input_is_relevant_to_shape(1);
     set_output_type(0, result_et, output_pshape);
-}
-
-ov::PartialShape FusedConvBackpropData::get_output_shape() const {
-    auto data_pshape = get_input_partial_shape(0);
-
-    ov::PartialShape shape;
-    if (data_pshape.rank().is_static()) {
-        shape = ov::PartialShape{std::vector<ov::Dimension>(data_pshape.rank().get_length() - 2)};
-    } else {
-        shape = ov::PartialShape{std::vector<ov::Dimension>(strides_.size())};
-    }
-    bool is_output_shape_present = inputs().size() == 4;
-    if (is_output_shape_present) {
-        if (auto const_op = get_constant_from_source(input_value(2))) {
-            shape = const_op->get_shape_val();
-        } else {
-            shape = ov::PartialShape::dynamic();
-        }
-    }
-    return shape;
-}
-
-void FusedConvBackpropData::infer_conv_backprop_output_spatial_shape(const std::vector<ov::Dimension>& input_data_shape,
-                                                                     const std::vector<ov::Dimension>& filters_shape,
-                                                                     const ov::Strides& strides,
-                                                                     const ov::Strides& dilations,
-                                                                     const ov::CoordinateDiff& pads_begin,
-                                                                     const ov::CoordinateDiff& pads_end,
-                                                                     const ov::CoordinateDiff& output_padding,
-                                                                     std::vector<ov::Dimension>& output_spatial_shape) {
-    size_t num_spatial_dims = input_data_shape.size();
-    NODE_VALIDATION_CHECK(this,
-                          filters_shape.size() == num_spatial_dims && strides.size() == num_spatial_dims &&
-                              dilations.size() == num_spatial_dims && pads_begin.size() == num_spatial_dims &&
-                              pads_end.size() == num_spatial_dims && output_padding.size() == num_spatial_dims);
-
-    for (size_t i = 0; i < num_spatial_dims; ++i) {
-        if (input_data_shape[i].is_static() && filters_shape[i].is_static()) {
-            int64_t val = strides[i] * (input_data_shape[i].get_length() - 1) +
-                          dilations[i] * (filters_shape[i].get_length() - 1) + 1 - pads_begin[i] - pads_end[i] +
-                          output_padding[i];
-            output_spatial_shape.push_back(val);
-        } else {
-            output_spatial_shape.push_back(ov::Dimension::dynamic());
-        }
-    }
-}
-
-void FusedConvBackpropData::validate_and_infer_types() {
-    conv_validate_and_infer_types();
     const auto& element_type = get_output_element_type(0);
+    const auto& add_type = get_input_element_type(2);
     //  OPENVINO_ASSERT(conv_out_shape == add_shape_);
-    OPENVINO_ASSERT(element_type == add_type_);
+    OPENVINO_ASSERT(element_type == add_type);
 }
 
 }  // namespace ov::nvidia_gpu::nodes

@@ -19,7 +19,7 @@ const T& toRNNCell(const ov::Node& node) {
     try {
         return dynamic_cast<const T&>(node);
     } catch (const std::bad_cast&) {
-        throwIEException("Couldn't convert ov::Node node to the derived T of base ov::op::util::RNNCellBase");
+        throw_ov_exception("Couldn't convert ov::Node node to the derived T of base ov::op::util::RNNCellBase");
     }
 }
 

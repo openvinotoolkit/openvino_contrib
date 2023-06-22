@@ -39,7 +39,7 @@ SplitOp::SplitOp(const CreationContext& context,
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
                             static_cast<ov::element::Type_t>(input_element_type)));
@@ -88,6 +88,8 @@ void SplitOp::Execute(const InferenceRequestContext& context,
     auto in = inputs[0];
     (*split_kernel_)(stream.get(), reinterpret_cast<const void*>(in.get()), reinterpret_cast<void**>(outputPtrs.get()));
 }
+
+bool SplitOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(SplitOp, Split);
 }  // namespace nvidia_gpu

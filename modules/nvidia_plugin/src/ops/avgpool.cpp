@@ -30,6 +30,8 @@ void AvgPoolOp::Execute(const InferenceRequestContext& context,
                   outputs[PoolingImpl::output_index].get());
 }
 
+bool AvgPoolOp::IsCudaGraphCompatible() const { return true; }
+
 OPERATION_REGISTER(AvgPoolOp, AvgPool);
 
 }  // namespace nvidia_gpu

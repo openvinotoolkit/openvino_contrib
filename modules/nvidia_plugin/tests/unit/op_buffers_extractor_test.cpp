@@ -269,10 +269,10 @@ TEST_F(OperationBufferExtractorTest, CheckImmutableBuffersSizes) {
 }
 
 TEST_F(OperationBufferExtractorTest, CheckWrongBufferInfexBehavior) {
-    EXPECT_THROW(extractor_->mutableBufferSize(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->mutableBufferLifespanEnd(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->mutableBufferLifespanStart(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->immutableBuffer(128), InferenceEngine::details::InferenceEngineException);
+    EXPECT_THROW(extractor_->mutableBufferSize(128), ov::Exception);
+    EXPECT_THROW(extractor_->mutableBufferLifespanEnd(128), ov::Exception);
+    EXPECT_THROW(extractor_->mutableBufferLifespanStart(128), ov::Exception);
+    EXPECT_THROW(extractor_->immutableBuffer(128), ov::Exception);
 }
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableBufferContent) {

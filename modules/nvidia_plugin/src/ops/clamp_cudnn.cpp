@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 
 #include <cmath>
+
 #include <cuda/constant_factory.hpp>
 #include <cuda/descriptor_utils.hpp>
 #include <cuda/float16.hpp>
@@ -41,7 +42,7 @@ ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
 
     const auto in_shape_size = node.get_input_shape(0).size();
     if (in_shape_size > max_shape_size) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ClampCuDnnOp: in_shape_size > max_shape_size: in_shape_size = {}, max_shape_size = {}",
                         in_shape_size,
                         max_shape_size));
@@ -50,7 +51,7 @@ ClampCuDnnOp::ClampCuDnnOp(const CreationContext& context,
     OPENVINO_ASSERT(node.get_output_element_type(0) == node.get_input_element_type(0), "Node name: ", GetName());
 
     if (min_ > max_) {
-        throwIEException(fmt::format("ov::nvidia_gpu::ClampCuDnnOp: Clamp min_ > max_: min_ = {}, max_ = {}", min_, max_));
+        throw_ov_exception(fmt::format("ov::nvidia_gpu::ClampCuDnnOp: Clamp min_ > max_: min_ = {}, max_ = {}", min_, max_));
     }
 }
 
@@ -96,6 +97,8 @@ void ClampCuDnnOp::Execute(const InferenceRequestContext& context,
                                                     outputTensors[0].get());
 }
 
+bool ClampCuDnnOp::IsCudaGraphCompatible() const { return true; }
+
 void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     switch (data_type_) {
         case CUDNN_DATA_FLOAT:
@@ -116,7 +119,7 @@ void ClampCuDnnOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
             break;
 #endif
         default:
-            throwIEException(fmt::format("ClampCuDnnOp: unsupported data_type_ = {}", toString(data_type_)));
+            throw_ov_exception(fmt::format("ClampCuDnnOp: unsupported data_type_ = {}", toString(data_type_)));
     }
 }
 

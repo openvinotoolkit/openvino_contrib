@@ -53,7 +53,7 @@ void LogicalNot::operator()(cudaStream_t stream, const bool* src, bool* dst) con
             logical_not<1><<<kernel_exec_attrs_.grid, kernel_exec_attrs_.block, 0, stream>>>(src, dst, len_);
             break;
         default:
-            throwIEException(fmt::format("Payload rank {} is not supported.", payload_rank_));
+            throw_ov_exception(fmt::format("Payload rank {} is not supported.", payload_rank_));
     }
 }
 

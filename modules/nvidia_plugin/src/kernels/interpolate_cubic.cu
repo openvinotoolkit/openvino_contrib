@@ -142,7 +142,7 @@ void InterpolateCubic::operator()(const cudaStream_t stream, const void* input, 
         case Type_t::u8:
             return callKernel<uint8_t, float>(stream, input, output);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Element type = {} is not supported by InterpolateCubic operation.", element_type_));
     }
 }

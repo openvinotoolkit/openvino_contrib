@@ -18,14 +18,14 @@ LSTMCellParamsCuDnn::LSTMCellParamsCuDnn(const CreationContext& context, const L
       element_size_{ov::nvidia_gpu::elementSize(data_type_)},
       is_half_supported_(CUDA::isHalfSupported(context.device())) {
     if (inputSize() == 1 && hiddenSize() == 1) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMCell cuDNN implementation doesn't support combination of "
             "input_size == 1 and hidden_size == 1 simultaneously");
     }
 
     const auto supported_activations = std::vector<std::string>{"sigmoid", "tanh", "tanh"};
     if (lstm_cell_params_.activations_ != supported_activations) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMCell cuDNN implementation supports only default LSTM activations of "
             "\"sigmoid\", \"tanh\", \"tanh\"");
     }
@@ -40,7 +40,7 @@ LSTMCellParamsCuDnn::LSTMCellParamsCuDnn(const CreationContext& context, const L
         lstm_cell_params_.activations_beta_.size() == 0 || lstm_cell_params_.activations_beta_ == supported_betas;
 
     if (!are_supported_alphas || !are_supported_betas) {
-        throwIEException(
+        throw_ov_exception(
             "Currently LSTMCell cuDNN implementation supports only default activation "
             "alphas = {1.0f, 1.0f, 1.0f} and betas = {0.0f, 0.0f, 0.0f}");
     }
@@ -97,7 +97,7 @@ CUDA::DnnRnnDescriptor LSTMCellParamsCuDnn::makeRNNDescriptor() const {
 
     const bool is_clipped = clip() != 0.0f && !std::isinf(clip());
     if (is_clipped) {
-        throwIEException("Currently LSTMCell cuDNN implementation doesn't support clipping");
+        throw_ov_exception("Currently LSTMCell cuDNN implementation doesn't support clipping");
     }
     // TODO: If cuDNN starts supporting similar clipping as OpenVino, remove the 'throw' above and uncomment:
     // const auto clip_mode = is_clipped ? CUDNN_RNN_CLIP_MINMAX : CUDNN_RNN_CLIP_NONE;
@@ -369,7 +369,7 @@ GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRU
       is_half_supported_(CUDA::isHalfSupported(context.device())) {
     const auto supported_activations = std::vector<std::string>{"sigmoid", "tanh"};
     if (gru_cell_params_.activations_ != supported_activations) {
-        throwIEException(
+        throw_ov_exception(
             "Currently GRUCell cuDNN implementation supports only default GRU activations of \"sigmoid\", \"tanh\"");
     }
 
@@ -383,7 +383,7 @@ GRUCellParamsCuDnn::GRUCellParamsCuDnn(const CreationContext& context, const GRU
         gru_cell_params_.activations_beta_.size() == 0 || gru_cell_params_.activations_beta_ == supported_betas;
 
     if (!are_supported_alphas || !are_supported_betas) {
-        throwIEException(
+        throw_ov_exception(
             "Currently GRUCell cuDNN implementation supports only default activation "
             "alphas = {1.0f, 1.0f} and betas = {0.0f, 0.0f}");
     }
@@ -447,7 +447,7 @@ CUDA::DnnRnnDescriptor GRUCellParamsCuDnn::makeRNNDescriptor() const {
 
     const bool is_clipped = clip() != 0.0f && !std::isinf(clip());
     if (is_clipped) {
-        throwIEException("Currently LSTMCell cuDNN implementation doesn't support clipping");
+        throw_ov_exception("Currently LSTMCell cuDNN implementation doesn't support clipping");
     }
     // TODO: If cuDNN starts supporting similar clipping as OpenVino, remove the 'throw' above and uncomment:
     // const auto clip_mode = is_clipped ? CUDNN_RNN_CLIP_MINMAX : CUDNN_RNN_CLIP_NONE;

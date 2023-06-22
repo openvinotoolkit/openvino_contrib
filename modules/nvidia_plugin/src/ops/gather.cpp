@@ -9,7 +9,6 @@
 #include <cuda_operation_registry.hpp>
 #include <error.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <numeric>
 #include <openvino/op/gather.hpp>
 
@@ -52,7 +51,7 @@ GatherOp::GatherOp(const CreationContext& context,
         case ov::element::Type_t::undefined:
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
-            throwIEException(fmt::format("Params element type = {} is not supported by Gather operation!",
+            throw_ov_exception(fmt::format("Params element type = {} is not supported by Gather operation!",
                                          static_cast<ov::element::Type_t>(element_type)));
     }
     OPENVINO_ASSERT(node.get_output_element_type(0) == element_type, "Node name: ", GetName());
@@ -65,7 +64,7 @@ GatherOp::GatherOp(const CreationContext& context,
 
     const ov::element::Type_t indices_type = node.get_input_element_type(1);
     if (indices_type != ov::element::Type_t::i64 && indices_type != ov::element::Type_t::i32) {
-        throwIEException(fmt::format("Params index type = {} is not supported by Gather operation!", indices_type));
+        throw_ov_exception(fmt::format("Params index type = {} is not supported by Gather operation!", indices_type));
     }
 
     const auto axis = gather_base->get_axis();
@@ -96,7 +95,7 @@ GatherOp::GatherOp(const CreationContext& context,
         std::accumulate(dict_shape.cbegin() + axis + 1, dict_shape.cend(), 1, std::multiplies<unsigned>());
 
     if (data_length == 0) {
-        throwIEException("data_length == 0: incorrect input parameters dimension!");
+        throw_ov_exception("data_length == 0: incorrect input parameters dimension!");
     }
 
     const unsigned indices_size =
@@ -182,6 +181,8 @@ void GatherOp::Execute(const InferenceRequestContext& context,
                       inputs[1].get(),
                       outputs[0].get());
 }
+
+bool GatherOp::IsCudaGraphCompatible() const { return true; }
 
 OPERATION_REGISTER(GatherOp, Gather);
 }  // namespace nvidia_gpu

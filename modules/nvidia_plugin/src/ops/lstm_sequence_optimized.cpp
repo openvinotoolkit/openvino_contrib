@@ -40,7 +40,7 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
             */
             validateSequenceMajorArgShapes(node);
             setupSequenceMajorLayoutAdapters();
-            throwIEException(
+            throw_ov_exception(
                 "'ov::nvidia_gpu::nodes::LSTMSequenceOptimized::SequenceMajor': This mode has never been used with real "
                 "model.");
             break;

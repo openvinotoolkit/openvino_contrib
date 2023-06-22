@@ -12,11 +12,10 @@
 #include <error.hpp>
 #include <openvino/core/except.hpp>
 #include <kernels/details/cuda_type_traits.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <string_view>
 #include <type_traits>
 
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -64,7 +63,7 @@ inline constexpr cudaDataType_t convertDataType<cudaDataType_t>(const ov::elemen
         case Type_t::u32:
             return CUDA_R_32U;
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The ngraph element type {} is not supported by "
                             "the cuda library",
                             type.c_type_string()));
@@ -95,7 +94,7 @@ inline constexpr cudnnDataType_t convertDataType<cudnnDataType_t>(const ov::elem
         case Type_t::i64:
             return CUDNN_DATA_INT64;
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The ngraph element type {} is not supported by "
                             "the cuDNN library",
                             type.c_type_string()));
@@ -142,7 +141,7 @@ inline constexpr kernel::Type_t convertDataType<kernel::Type_t>(const ov::elemen
         case nType_t::u32:
             return kType_t::u32;
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The ngraph element type {} is not supported by "
                             "the cuda library",
                             type.c_type_string()));
@@ -188,7 +187,7 @@ inline constexpr std::string_view toString<cudaDataType_t>(const cudaDataType_t&
         case CUDA_R_32U:
             return "CUDA_R_32U";
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("ov::nvidia_gpu::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
     }
 }
@@ -222,7 +221,7 @@ inline constexpr std::string_view toString<cudnnDataType_t>(const cudnnDataType_
         case CUDNN_DATA_INT64:
             return "CUDNN_DATA_INT64";
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("ov::nvidia_gpu::toString<cudaDataType_t>(): Unsupported data type: type = {}", type));
     }
 }
@@ -255,7 +254,7 @@ inline constexpr std::size_t elementSize(cudnnDataType_t type) {
         case CUDNN_DATA_INT64:
             return sizeof(std::int64_t);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("The cudnnDataType_t {} is not supported by the cuDNN library", toString(type)));
     }
 }
@@ -276,7 +275,7 @@ inline constexpr cudnnPointwiseMode_t convertActivationModeToBE(const nodes::Act
         case nodes::ActivationMode::SWISH:
             return CUDNN_POINTWISE_SWISH_FWD;
         default:
-            throwIEException(fmt::format("Unsupported activation: {}", mode));
+            throw_ov_exception(fmt::format("Unsupported activation: {}", mode));
     }
 }
 
@@ -295,7 +294,7 @@ inline constexpr cudnnActivationMode_t convertActivationMode(const nodes::Activa
         case nodes::ActivationMode::NO_ACTIVATION:
             return CUDNN_ACTIVATION_IDENTITY;
         default:
-            throwIEException(fmt::format("Unsupported activation: {}", mode));
+            throw_ov_exception(fmt::format("Unsupported activation: {}", mode));
     }
 }
 
@@ -345,7 +344,7 @@ inline constexpr cudnnDataType_t getCuDnnOpTensorCompType(cudnnDataType_t in0,
                                                           cudnnDataType_t in1,
                                                           cudnnDataType_t out) {
     auto throwException = [=] {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("ov::nvidia_gpu::getCuDnnOpTensorType(): Unsupported data types: in0 = {}, in1 = {} out = {}",
                         toString(in0),
                         toString(in1),

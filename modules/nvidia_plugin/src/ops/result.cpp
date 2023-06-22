@@ -33,17 +33,18 @@ void ResultOp::Execute(const InferenceRequestContext& context,
                        const Workbuffers&) const {
     OPENVINO_ASSERT(inputs.size() == 1, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 0, "Node name: ", GetName());
-    std::shared_ptr<ngraph::runtime::Tensor> blob;
+    std::shared_ptr<ov::Tensor> tensor;
     for (const auto& outputName : output_tensor_names_) {
-        if (context.HasOutputBlob(outputName)) {
-            blob = context.GetOutputBlob(outputName);
+        if (context.has_output_tensor(outputName)) {
+            tensor = context.get_output_tensor(outputName);
             break;
         }
     }
-    OPENVINO_ASSERT(blob != nullptr, "Node name: ", GetName());
-    auto memory_ptr = std::static_pointer_cast<ngraph::HostTensor>(blob)->get_data_ptr();
-    context.getThreadContext().stream().download(memory_ptr, inputs[0], blob->get_size_in_bytes());
+    OPENVINO_ASSERT(tensor != nullptr, "Node name: ", GetName());
+    context.getThreadContext().stream().download(tensor->data(), inputs[0], tensor->get_byte_size());
 }
+
+bool ResultOp::IsCudaGraphCompatible() const { return true; }
 
 std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
                                                               const std::string& resultName) {

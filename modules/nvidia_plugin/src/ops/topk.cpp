@@ -7,6 +7,8 @@
 #include <cuda_operation_registry.hpp>
 
 #include "converters.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/topk.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -46,27 +48,27 @@ T getK(const ov::op::v0::Constant* k_constant) {
 
 size_t getK(const ov::op::v0::Constant* k_constant) {
     switch (k_constant->get_element_type()) {
-        case ngraph::element::Type_t::i8:
+        case ov::element::Type_t::i8:
             return getK<int8_t>(k_constant);
-        case ngraph::element::Type_t::i16:
+        case ov::element::Type_t::i16:
             return getK<int16_t>(k_constant);
-        case ngraph::element::Type_t::i32:
+        case ov::element::Type_t::i32:
             return getK<int32_t>(k_constant);
-        case ngraph::element::Type_t::i64:
+        case ov::element::Type_t::i64:
             return getK<int64_t>(k_constant);
-        case ngraph::element::Type_t::u8:
+        case ov::element::Type_t::u8:
             return getK<uint8_t>(k_constant);
-        case ngraph::element::Type_t::u16:
+        case ov::element::Type_t::u16:
             return getK<uint16_t>(k_constant);
-        case ngraph::element::Type_t::u32:
+        case ov::element::Type_t::u32:
             return getK<uint32_t>(k_constant);
-        case ngraph::element::Type_t::u64:
+        case ov::element::Type_t::u64:
             return getK<uint64_t>(k_constant);
         default: {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("k element type = {} is not supported by TopK operation "
                             "!!",
-                            static_cast<ngraph::element::Type_t>(k_constant->get_element_type())));
+                            static_cast<ov::element::Type_t>(k_constant->get_element_type())));
         }
     }
 }
@@ -80,8 +82,8 @@ TopKOp::TopKOp(const CreationContext& context,
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     const auto& topKOp = dynamic_cast<const ov::op::v1::TopK&>(node);
 
-    const ngraph::element::Type element_type{topKOp.get_input_element_type(0)};
-    const ngraph::element::Type index_element_type{topKOp.get_index_element_type()};
+    const ov::element::Type element_type{topKOp.get_input_element_type(0)};
+    const ov::element::Type index_element_type{topKOp.get_index_element_type()};
     auto output_element_type = topKOp.get_output_element_type(0);
 
     OPENVINO_ASSERT(topKOp.get_input_size() == 2, "Node name: ", GetName());
@@ -90,8 +92,8 @@ TopKOp::TopKOp(const CreationContext& context,
     const auto& input_shape = topKOp.get_input_shape(0);
     const auto& output_shape = topKOp.get_output_shape(0);
     const uint64_t axis = topKOp.get_axis();
-    const size_t num_input_element = ngraph::shape_size(input_shape);
-    const size_t num_output_element = ngraph::shape_size(output_shape);
+    const size_t num_input_element = ov::shape_size(input_shape);
+    const size_t num_output_element = ov::shape_size(output_shape);
     workspace_size_ = num_input_element * (element_type.size() + index_element_type.size());
 
     OPENVINO_ASSERT(axis >= 0 && axis < input_shape.size(), "Node name: ", GetName());
@@ -113,7 +115,7 @@ TopKOp::TopKOp(const CreationContext& context,
             case ov::op::TopKMode::MIN:
                 return kernel::TopK::ComputeType::Min;
         }
-        throwIEException(fmt::format("Unknown compute_mode {}", compute_mode));
+        throw_ov_exception(fmt::format("Unknown compute_mode {}", compute_mode));
     };
     auto convertSortType = [](const ov::op::v1::TopK::SortType& sort_type) {
         switch (sort_type) {
@@ -124,7 +126,7 @@ TopKOp::TopKOp(const CreationContext& context,
             case ov::op::TopKSortType::SORT_VALUES:
                 return kernel::TopK::SortType::SortValues;
         }
-        throwIEException(fmt::format("Unknown sort_type {}", sort_type));
+        throw_ov_exception(fmt::format("Unknown sort_type {}", sort_type));
     };
 
     const auto k_constant = dynamic_cast<ov::op::v0::Constant*>(topKOp.get_input_node_ptr(1));
@@ -166,6 +168,8 @@ void TopKOp::Execute(const InferenceRequestContext& context,
                static_cast<void*>(workspace.get()),
                static_cast<const void*>(kernel_param.get()));
 }
+
+bool TopKOp::IsCudaGraphCompatible() const { return true; }
 
 void TopKOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1, "Node name: ", GetName());

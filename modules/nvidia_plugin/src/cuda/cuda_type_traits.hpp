@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include <ngraph/type/element_type_traits.hpp>
+#include "openvino/core/type/element_type.hpp"
+
 #ifdef __CUDACC__
 #include <cuda/float16.hpp>
 #endif

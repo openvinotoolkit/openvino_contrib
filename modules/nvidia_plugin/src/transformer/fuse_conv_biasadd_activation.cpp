@@ -5,7 +5,7 @@
 #include <utility>
 #include <memory>
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
 #include "exec_graph_info.hpp"
@@ -24,7 +24,7 @@
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 
 
-#include "nodes/cuda_plugin_custom_node_types.hpp"
+#include "nodes/activation_type.hpp"
 #include "nodes/fused_convolution.hpp"
 #include "nodes/fused_convolution_backprop_data.hpp"
 #include "rt_info/cuda_node_id.hpp"
