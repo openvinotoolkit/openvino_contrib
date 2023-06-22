@@ -486,6 +486,9 @@ jobs:
       # Dependencies
       #
 
+      - name: Install build dependencies
+        run: apt-get update && apt-get --assume-yes install libbz2-dev clang libc6
+
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
