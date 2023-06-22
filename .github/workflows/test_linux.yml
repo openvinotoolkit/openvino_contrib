@@ -87,10 +87,6 @@ jobs:
           ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
           apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang libc6
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
       - name: Install python dependencies
         run: |
           # For Python API
@@ -451,6 +447,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: akashchi/ubuntu:python_311
+      options: --user root
     env:
       OPENVINO_REPO: /github/openvino
       OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
@@ -486,17 +483,10 @@ jobs:
       # Dependencies
       #
 
-      - name: Install build dependencies
-        run: apt-get update && apt-get --assume-yes install libbz2-dev clang libc6
-
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
       - name: Install python dependencies
         run: |
           # For Python API
-          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip          
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
           
