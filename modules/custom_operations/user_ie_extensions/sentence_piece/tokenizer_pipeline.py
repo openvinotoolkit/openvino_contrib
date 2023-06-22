@@ -114,13 +114,14 @@ class RegExpNormalizationStep(NormalizationStep):
 
     @classmethod
     def del_control_chars_regex(cls) -> "RegExpNormalizationStep":
-        return cls(regex_search_pattern=r"\p{Cc}|\p{Cf}", replace_term=" ")
+        # https://github.com/huggingface/tokenizers/blob/8c9cfb0b689bce00b615b9557a9a767f286d7a33/tokenizers/src/normalizers/bert.rs#L17
+        return cls(regex_search_pattern=r"((?=[^\n\t\r])\p{Cc})|((?=[^\n\t\r])\p{Cf})", replace_term=" ")
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
             (
-                *self.create_string_constant_node("search_pattern").outputs(),
-                *self.create_string_constant_node("replace_pattern").outputs(),
+                *self.create_string_constant_node(self.regex_search_pattern).outputs(),
+                *self.create_string_constant_node(self.replace_term).outputs(),
             )
         )
         return core.make_node(
@@ -164,11 +165,11 @@ class PreTokenizatinStep(BasePipelineStep):
 class RegexSplitStep(PreTokenizatinStep):
     split_pattern: str
     invert: bool = False
-    behaviour: str = "Remove"
+    behaviour: str = "remove"
 
     @classmethod
     def bert_whitespace_splitter(cls) -> "RegexSplitStep":
-        return cls(r"\s+")
+        return cls(split_pattern=r"\s+", invert=False)
 
     @classmethod
     def bert_keep_delimeters_splitter(cls) -> "RegexSplitStep":
@@ -204,7 +205,7 @@ class RegexSplitStep(PreTokenizatinStep):
                 ],
             ),
             invert=False,
-            behaviour="Isolate"
+            behaviour="isolate"
         )
 
     @classmethod
@@ -218,10 +219,17 @@ class RegexSplitStep(PreTokenizatinStep):
     @classmethod
     def byte_level_splitter(cls) -> "RegexSplitStep":
         return cls(
-            # r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+",
-            r"('s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+)",
+            r"('s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+)",
             invert=False,
-            behaviour="Isolate",
+            behaviour="isolate",
+        )
+
+    @classmethod
+    def digits_splitter(cls, behaviour="isolate") -> "RegexSplitStep":
+        return cls(
+            r"\p{Nd}|\p{Nl}|\p{No}",
+            invert=False,
+            behaviour=behaviour,
         )
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
