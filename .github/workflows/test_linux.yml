@@ -85,7 +85,7 @@ jobs:
         run: |
           # TODO: install in the Docker image
           ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
-          apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang
+          apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang libc6
 
       - uses: actions/setup-python@v4
         with:
@@ -401,12 +401,12 @@ jobs:
       #     ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 \
       #           --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
 
-      - name: MULTI / AUTO plugin unit tests
+      - name: AUTO UT
         if: ${{ always() }}
         run: |
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          ${{ env.INSTALL_TEST_DIR }}/ieMultiPluginUnitTests --gtest_print_time=1 \
-                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-MultiAutoUnitTests.xml
+          ${{ env.INSTALL_TEST_DIR }}/ov_auto_unit_tests --gtest_print_time=1 \
+                --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ov_auto_unit_tests.xml
 
       - name: Template plugin tests
         if: ${{ always() }}
