@@ -87,6 +87,12 @@ jobs:
           ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
           apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang
 
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
+
       - name: Install python dependencies
         run: |
           # For Python API
@@ -481,6 +487,12 @@ jobs:
       #
       # Dependencies
       #
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
 
       - name: Install python dependencies
         run: |
