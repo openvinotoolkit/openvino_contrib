@@ -23,7 +23,7 @@ def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> Token
             output_names = tokenizer_object.model_input_names
 
             ov_tokenizer_output_names = ["input_ids", "attention_mask"]
-            if len(output_names) == 3:
+            if len(output_names) == 3 and len(ov_tokenizer.outputs) == 3:
                 ov_tokenizer_output_names.insert(1, "token_type_ids")
 
             filtered_outputs = []

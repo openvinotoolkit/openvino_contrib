@@ -263,7 +263,7 @@ public:
 
     RegexSplit () = default;
 
-    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "removed", bool invert = false) :
+    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "remove", bool invert = false) :
         ov::op::Op(arguments),
         m_behaviour(behaviour),
         m_invert(invert) {

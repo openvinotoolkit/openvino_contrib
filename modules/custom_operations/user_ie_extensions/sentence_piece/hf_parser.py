@@ -38,16 +38,18 @@ def parse_replace_normalizer(normalizer_dict: Dict[str, Any]) -> RegExpNormaliza
 
 
 def parse_bert_normalizer(normalizer_dict: Dict[str, Any]) -> List[NormalizationStep]:
-    steps: List[NormalizationStep] = [NormalizeUnicode("NFD")]
-
-    if normalizer_dict["lowercase"] is True:
-        steps.append(CaseFoldStep())
+    steps: List[NormalizationStep] = []
 
     if normalizer_dict["clean_text"] is True:
         steps.append(RegExpNormalizationStep.del_control_chars_regex())
 
-    if normalizer_dict["strip_accents"] is True:
+    # https://github.com/huggingface/tokenizers/blob/8c9cfb0b689bce00b615b9557a9a767f286d7a33/tokenizers/src/normalizers/bert.rs#L127
+    if normalizer_dict.get("strip_accents") or normalizer_dict["lowercase"]:
+        steps.append(NormalizeUnicode("NFD"))
         steps.append(RegExpNormalizationStep.strip_accents_regex())
+
+    if normalizer_dict["lowercase"] is True:
+        steps.append(CaseFoldStep())
 
     return steps
 
@@ -61,10 +63,11 @@ def parse_strip_step(split_dict: Dict[str, Any]) -> StripStringStep:
 
 def parse_split_step(pretokenizer_dict: Dict[str, Any]) -> RegexSplitStep:
     split_pattern = pretokenizer_dict["pattern"].get("String") or pretokenizer_dict["pattern"]["Regex"]
+    print(pretokenizer_dict["behavior"], pretokenizer_dict["behavior"].lower().rstrip("d"))
     return RegexSplitStep(
         split_pattern=split_pattern,
         invert=pretokenizer_dict["invert"],
-        behaviour=pretokenizer_dict["behavior"],
+        behaviour=pretokenizer_dict["behavior"].lower().rstrip("d")
     )
 
 
@@ -145,6 +148,9 @@ class TransformersTokenizerPipelineParser:
         "Split": parse_split_step,
         "Punctuation": lambda step_dict: PunctuationSplitStep(step_dict["behavior"]),
         "ByteLevel": parse_byte_level_pretokenization_step,
+        "Digits": lambda step_dict: RegexSplitStep.digits_splitter(
+            "isolate" if step_dict["individual_digits"] else "contiguous"
+        )
     }
 
     def parse_pre_tokenization_step(self, step_dict: Dict[str, Any]) -> None:
@@ -174,7 +180,12 @@ class TransformersTokenizerPipelineParser:
             raise OVTypeError(f"Tokenizer type '{self.tokenizer_json['model']['type']}' is not supported")
 
     def post_tokenization(self) -> None:
-        if self.tokenizer_json["post_processor"] is None:
+        if (
+                self.tokenizer_json["post_processor"] is None
+                or self.tokenizer_json["post_processor"]["type"] == "ByteLevel"
+        ):
+            self.add_truncation()
+            self.add_padding()
             return
 
         if self.tokenizer_json["post_processor"]["type"] == "TemplateProcessing":
@@ -185,10 +196,6 @@ class TransformersTokenizerPipelineParser:
             combine_segments_step = CombineSegmentsStep.from_hf_json_bert_postprocessor(
                 self.tokenizer_json, self.number_of_inputs
             )
-        elif self.tokenizer_json["post_processor"]["type"] == "ByteLevel":
-            self.add_truncation()
-            self.add_padding()
-            return
         elif self.tokenizer_json["post_processor"]["type"] == "RobertaProcessing":
             combine_segments_step = CombineSegmentsStep.from_hf_json_roberta_processor(
                 self.tokenizer_json, self.number_of_inputs
