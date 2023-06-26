@@ -19,10 +19,12 @@ public:
     ~CudaGraphTopologyRunner() override = default;
 
     void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
+    void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
     const SubGraph& GetSubGraph() const override;
 
+private:
     void Capture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
-    void UpdateCapture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
+    void UpdateCapture(InferenceRequestContext& context) const;
 };
 
 }  // namespace nvidia_gpu

@@ -259,7 +259,7 @@ std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_benchmark_sync_infer_request() {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})), use_cuda_graph_);
+        std::static_pointer_cast<const CompiledModel>(std::shared_ptr<CompiledModel>(this, [](CompiledModel*) {})));
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_request() {
@@ -273,7 +273,7 @@ std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_benchmark_infer_re
 
 std::shared_ptr<ov::ISyncInferRequest> CompiledModel::create_sync_infer_request() const {
     return std::make_shared<CudaInferRequest>(
-        std::static_pointer_cast<const CompiledModel>(shared_from_this()), use_cuda_graph_);
+        std::static_pointer_cast<const CompiledModel>(shared_from_this()));
 }
 
 std::shared_ptr<ov::IAsyncInferRequest> CompiledModel::create_infer_request() const {

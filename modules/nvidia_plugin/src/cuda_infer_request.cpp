@@ -39,13 +39,12 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 }
 }  // namespace
 
-CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model, bool use_cuda_graph)
+CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
           compiled_model->get_topology_runner().GetSubGraph()},
-      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{use_cuda_graph} {
+      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
 }
 
@@ -154,13 +153,7 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     profiler_,
                                                     cudaGraphContext,
                                                     is_benchmark_mode_};
-        if (use_cuda_graph_) {
-            auto& cuda_graph_topology_runner = dynamic_cast<const CudaGraphTopologyRunner&>(topology_runner);
-            if (cudaGraphContext.graphExec)
-                cuda_graph_topology_runner.UpdateCapture(inferRequestContext, memory);
-            else
-                cuda_graph_topology_runner.Capture(inferRequestContext, memory);
-        }
+        topology_runner.UpdateContext(inferRequestContext, memory);
         topology_runner.Run(inferRequestContext, memory);
         profiler_.stop_stage(Profiler::StartPipeline);
     } catch (...) {

@@ -39,8 +39,14 @@ const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
     return *this;
 }
 
-void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context,
-                                            const DeviceMemBlock &memoryBlock) const {
+void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext &context, const DeviceMemBlock &memoryBlock) const {
+    if (context.getCudaGraphContext().graphExec)
+        UpdateCapture(context);
+    else
+        Capture(context, memoryBlock);
+}
+
+void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context) const {
     CudaGraphContext& graphContext = context.getCudaGraphContext();
     for (auto& pair : graphContext.parameterNodes)
         pair.second.update_src(graphContext.graphExec.value(),
