@@ -2,6 +2,9 @@ name: Tests on Linux
 on:
   workflow_dispatch:
   pull_request:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -9,25 +12,23 @@ concurrency:
 
 env:
   CMAKE_BUILD_TYPE: 'Release'
-  CCACHE_MAXSIZE: '10G'
+  #  CCACHE_MAXSIZE: '10G'
   CMAKE_GENERATOR: 'Ninja'
   CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_C_COMPILER_LAUNCHER: ccache
-  OPENVINO_REPO: /github/openvino
-  OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
-  INSTALL_DIR: /github/install
-  INSTALL_TEST_DIR: /github/install/tests
-  SAMPLES_INSTALL_DIR: /github/install/samples
-  LAYER_TESTS_INSTALL_DIR: /github/install/tests/layer_tests
-  BUILD_DIR: /github/build
-  DATA_PATH: /github/testdata
-  MODELS_PATH: /github/testdata
-  OV_TEMP: /github/openvino_temp
-  CCACHE_DIR: /sources_cache/build_cache
-  OPENVINO_REFERENCE: /sources_cache/openvino.reference
-  OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
-  SUBMODULES_REFERENCE: /sources_cache/submodules.reference
+  # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
+  OPENVINO_REPO: "$GITHUB_WORKSPACE/openvino"
+  OPENVINO_CONTRIB_REPO: "$GITHUB_WORKSPACE/openvino_contrib"
+  INSTALL_DIR: "$GITHUB_WORKSPACE/install"
+  INSTALL_TEST_DIR: "$GITHUB_WORKSPACE/install/tests"
+  SAMPLES_INSTALL_DIR: "$GITHUB_WORKSPACE/install/samples"
+  LAYER_TESTS_INSTALL_DIR: "$GITHUB_WORKSPACE/install/tests/layer_tests"
+  BUILD_DIR: "$GITHUB_WORKSPACE/build"
+  DATA_PATH: "$GITHUB_WORKSPACE/testdata"
+  MODELS_PATH: "$GITHUB_WORKSPACE/testdata"
+  OV_TEMP: "$GITHUB_WORKSPACE/openvino_temp"
+  TOOLS_DIRECTORY: "$GITHUB_WORKSPACE/tools"
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
@@ -35,41 +36,33 @@ jobs:
     defaults:
       run:
         shell: bash
-    runs-on: [ 'self-hosted', 'linux', 'coverage' ]
+    runs-on: ubuntu-latest-8-cores
     container:
       image: akashchi/ubuntu:python_311
-      volumes:
-        - /home/devuser/actions-runner/_work:/sources_cache
     steps:
-      - name: Create Root
-        run: |
-          mkdir -p /github
-          ls -la /github
+      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
+      - name: Clone OpenVINO
+        uses: actions/checkout@v3
+        with:
+          repository: 'akashchi/openvino'
+          ref: 'ci/test-gha'
+          path: 'openvino'
+          submodules: 'recursive'
 
-      - name: Check Volumes
-        run: |
-          ls -la /sources_cache
-
-      - name: Add Reference Repository Folders as Safe
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Clone OpenVINO & OpenVINO Contrib
-        run: |
-
-          # TODO: adapt when scheduled on actual branches
-          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_REFERENCE }} --recurse-submodules https://github.com/akashchi/openvino.git
-          cd /github && git clone --recurse-submodules https://github.com/akashchi/openvino.git
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
-          
-          mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
-          # cd /github && git clone --reference-if-able ${{ env.OPENVINO_CONTRIB_REFERENCE }} --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/openvino_contrib'
+          path: 'openvino_contrib'
+          submodules: 'recursive'
 
       - name: Clone testdata for C API tests
-        run: |
-          cd /github && git clone https://github.com/openvinotoolkit/testdata.git
-          cd ${{ env.DATA_PATH }} && git lfs pull
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/testdata'
+          path: 'testdata'
+          submodules: 'recursive'
+          lfs: 'true'
 
       - name: Get tools versions
         run: |
@@ -77,6 +70,7 @@ jobs:
           ccache --version || exit 1
           python3 --version || exit 1
           cmake --version || exit 1
+
       #
       # Dependencies
       #
@@ -121,12 +115,22 @@ jobs:
       # Build
       #
 
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          max-size: "2000M"
+          # Should save cache only if run in the main branch
+          # save: ${{ github.ref_name == 'main' }}
+          verbose: 2
+          key: ${{ github.job }}-linux
+          restore-keys: |
+            ${{ github.job }}-linux
+
       - name: Get number of CPU cores
         uses: SimenB/github-actions-cpu-cores@v1
         id: cpu-cores
 
       - name: CMake configure
-        id: cmake-configure
         run: |
           cmake \
             -GNinja \
@@ -173,9 +177,7 @@ jobs:
         run: cmake -DCOMPONENT=python_wheels -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
 
       - name: Install Layer Tests
-        run: |
-          # cmake --install ${{ env.BUILD_DIR }}/layer_tests --config Release --prefix ${{ env.INSTALL_DIR }} --component tests
-          cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
+        run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
 
       - name: Install python wheels
         run: python3 -m pip install openvino-dev --find-links=${{ env.INSTALL_DIR }}/tools
@@ -195,15 +197,12 @@ jobs:
       - name: Install Samples Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
 
-      - name: Check Directories
-        run: ls -alR ${{ env.INSTALL_DIR }}
-
       - name: Pack Artifacts
         run: |
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_package.tar.gz --exclude=tests *
           popd
-          
+
           pushd ${{ env.INSTALL_DIR }}
             tar -czvf ${{ env.BUILD_DIR }}/openvino_tests.tar.gz tests/
           popd
@@ -219,7 +218,7 @@ jobs:
         run: |
           python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
           export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
-          
+
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
             --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
@@ -335,7 +334,7 @@ jobs:
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
-      
+
       # - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #   run: |
       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
@@ -390,7 +389,7 @@ jobs:
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 \
                 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
-      
+
       # - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L409
       #   run: |
       #     source ${{ env.INSTALL_DIR }}/setupvars.sh
@@ -438,7 +437,7 @@ jobs:
         with:
           name: test-results-cpp
           path: ${{ env.INSTALL_TEST_DIR }}/TEST*.xml
-  
+
   Python_Unit_Tests:
     needs: Build
     defaults:
@@ -449,36 +448,40 @@ jobs:
       image: akashchi/ubuntu:python_311
       options: --user root
     env:
-      OPENVINO_REPO: /github/openvino
-      OPENVINO_CONTRIB_REPO: /github/openvino_contrib_repo
-      INSTALL_DIR: /github/install
-      INSTALL_TEST_DIR: /github/install/tests
-      SAMPLES_INSTALL_DIR: /github/install/samples
-      LAYER_TESTS_INSTALL_DIR: /github/install/tests/layer_tests
-      BUILD_DIR: /github/build
-      DATA_PATH: /github/testdata
-      MODELS_PATH: /github/testdata
-      OV_TEMP: /github/openvino_temp
-      CCACHE_DIR: /sources_cache/build_cache
-      OPENVINO_REFERENCE: /sources_cache/openvino.reference
-      OPENVINO_CONTRIB_REFERENCE: /sources_cache/openvino_contrib.reference
-      SUBMODULES_REFERENCE: /sources_cache/submodules.reference
+      # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
+      OPENVINO_REPO: "$GITHUB_WORKSPACE/openvino"
+      OPENVINO_CONTRIB_REPO: "$GITHUB_WORKSPACE/openvino_contrib"
+      INSTALL_DIR: "$GITHUB_WORKSPACE/install"
+      INSTALL_TEST_DIR: "$GITHUB_WORKSPACE/install/tests"
+      SAMPLES_INSTALL_DIR: "$GITHUB_WORKSPACE/install/samples"
+      LAYER_TESTS_INSTALL_DIR: "$GITHUB_WORKSPACE/install/tests/layer_tests"
+      BUILD_DIR: "$GITHUB_WORKSPACE/build"
+      DATA_PATH: "$GITHUB_WORKSPACE/testdata"
+      MODELS_PATH: "$GITHUB_WORKSPACE/testdata"
+      OV_TEMP: "$GITHUB_WORKSPACE/openvino_temp"
+      TOOLS_DIRECTORY: "$GITHUB_WORKSPACE/tools"
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
     steps:
       - name: Create Directories
-        run: |
-          mkdir -p /github
-          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+        run: mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Clone OpenVINO & OpenVINO Contrib
-        run: |
-          cd /github && git clone --recurse-submodules https://github.com/akashchi/openvino.git
-          # TODO: rm when scheduled on actual branches
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
-          
-          mkdir -p ${{ env.OPENVINO_CONTRIB_REPO }}
-          cd /github && git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
+      - name: Clone OpenVINO
+        uses: actions/checkout@v3
+        with:
+          repository: 'akashchi/openvino'
+          ref: 'ci/test-gha'
+          path: 'openvino'
+          submodules: 'recursive'
+
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/openvino_contrib'
+          path: 'openvino_contrib'
+          submodules: 'recursive'
+
       #
       # Dependencies
       #
@@ -486,19 +489,19 @@ jobs:
       - name: Install python dependencies
         run: |
           # For Python API
-          python3 -m pip install --upgrade pip          
+          python3 -m pip install --upgrade pip
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
-          
+
           # For running Python API tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-          
+
           # For running ONNX frontend unit tests
           python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
-          
+
           # For running TensorFlow frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-          
+
           # For running Paddle frontend unit tests
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
 
@@ -528,7 +531,7 @@ jobs:
           pushd ${{ env.INSTALL_DIR }}
             tar -xzf openvino_package.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_package.tar.gz || exit 1
           popd
-          
+
           pushd ${{ env.INSTALL_TEST_DIR }}
             tar -xzf openvino_tests.tar.gz -C ${{ env.INSTALL_DIR }} && rm openvino_tests.tar.gz || exit 1
           popd
@@ -550,7 +553,7 @@ jobs:
           # For python imports to import pybind_mock_frontend
           export PYTHONPATH=${{ env.INSTALL_TEST_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml \
             --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py \
@@ -560,9 +563,9 @@ jobs:
       - name: Model Optimizer UT
         if: ${{ always() }}
         run: |
-          
+
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:${{ env.INSTALL_TEST_DIR }}:${{ env.INSTALL_DIR }}/python/python3.11:$PYTHONPATH
-          
+
           # TODO: figure out why they need to be reinstalled
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
@@ -572,7 +575,7 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
 
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests \
               --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
@@ -582,7 +585,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xml
         env:
           TEST_DEVICE: CPU
@@ -605,9 +608,9 @@ jobs:
         run: |
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
-          
+
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/ --use_new_frontend -m precommit_tf_fe --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_fe.xml
         env:
           TEST_DEVICE: CPU
@@ -618,7 +621,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_tests/test_tf_Roll.py --ir_version=10 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf_Roll.xml
 
       - name: TensorFlow 2 Layer Tests - Legacy FE
@@ -627,7 +630,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow2_keras_tests/test_tf2_keras_activation.py \
               --ir_version=11 --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tf2_Activation.xml -k "sigmoid"
         env:
@@ -639,7 +642,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/tensorflow_lite_tests/ --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-tfl_fe.xml
         env:
           TEST_DEVICE: CPU
@@ -650,7 +653,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/mo_python_api_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_mo_convert.xml
         env:
           TEST_DEVICE: CPU
@@ -661,7 +664,7 @@ jobs:
           python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
           export PYTHONPATH=${{ env.OPENVINO_REPO }}/tools/mo/:${{ env.LAYER_TESTS_INSTALL_DIR }}:$PYTHONPATH
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          
+
           python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/py_frontend_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-test_py_fontend.xml
 
       - name: Upload Test Results
