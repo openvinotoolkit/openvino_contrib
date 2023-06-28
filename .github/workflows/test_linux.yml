@@ -261,7 +261,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: $GITHUB_WORKSPACE/build/openvino_package.tar.gz
+          path: ${{ env.GITHUB_WORKSPACE }}/build/openvino_package.tar.gz
           if-no-files-found: 'error'
 
       - name: Upload openvino tests package
@@ -269,7 +269,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: $GITHUB_WORKSPACE/build/openvino_tests.tar.gz
+          path: ${{ env.GITHUB_WORKSPACE }}/build/openvino_tests.tar.gz
           if-no-files-found: 'error'
 
   CXX_Unit_Tests:
