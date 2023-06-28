@@ -248,9 +248,6 @@ jobs:
         env:
           IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
-#          MODELS_PATH: $GITHUB_WORKSPACE/testdata
-#          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
-#          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: ONNX frontend tests
         if: ${{ always() }}
@@ -264,7 +261,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
+          path: $GITHUB_WORKSPACE/build/openvino_package.tar.gz
           if-no-files-found: 'error'
 
       - name: Upload openvino tests package
@@ -272,7 +269,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
+          path: $GITHUB_WORKSPACE/build/openvino_tests.tar.gz
           if-no-files-found: 'error'
 
   CXX_Unit_Tests:
@@ -475,19 +472,19 @@ jobs:
       options: --user root
     env:
       # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
-      OPENVINO_REPO: "$GITHUB_WORKSPACE/openvino"
-      OPENVINO_CONTRIB_REPO: "$GITHUB_WORKSPACE/openvino_contrib"
-      INSTALL_DIR: "$GITHUB_WORKSPACE/install"
-      INSTALL_TEST_DIR: "$GITHUB_WORKSPACE/install/tests"
-      SAMPLES_INSTALL_DIR: "$GITHUB_WORKSPACE/install/samples"
-      LAYER_TESTS_INSTALL_DIR: "$GITHUB_WORKSPACE/install/tests/layer_tests"
-      BUILD_DIR: "$GITHUB_WORKSPACE/build"
-      DATA_PATH: "$GITHUB_WORKSPACE/testdata"
-      MODELS_PATH: "$GITHUB_WORKSPACE/testdata"
-      OV_TEMP: "$GITHUB_WORKSPACE/openvino_temp"
+      OPENVINO_REPO: $GITHUB_WORKSPACE/openvino
+      OPENVINO_CONTRIB_REPO: $GITHUB_WORKSPACE/openvino_contrib
+      INSTALL_DIR: /openvino/install
+      INSTALL_TEST_DIR: /openvino/install/tests
+      SAMPLES_INSTALL_DIR: $GITHUB_WORKSPACE/install/samples
+      LAYER_TESTS_INSTALL_DIR: $GITHUB_WORKSPACE/install/tests/layer_tests
+      BUILD_DIR: $GITHUB_WORKSPACE/build
+      DATA_PATH: $GITHUB_WORKSPACE/testdata
+      OV_TEMP: $GITHUB_WORKSPACE/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
     steps:
+
       - name: Create Directories
         run: mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
 
