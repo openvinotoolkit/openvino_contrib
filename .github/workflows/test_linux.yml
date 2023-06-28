@@ -240,6 +240,7 @@ jobs:
           source ${{ env.INSTALL_DIR }}/setupvars.sh
           export SHARE="$GITHUB_WORKSPACE/install/tests/smoke_tests/samples_smoke_tests_data"
           export MODELS_PATH="$GITHUB_WORKSPACE/testdata"
+          export WORKSPACE="$GITHUB_WORKSPACE/install"
           
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
             --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
