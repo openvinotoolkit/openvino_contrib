@@ -237,13 +237,16 @@ jobs:
           export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
 
           source ${{ env.INSTALL_DIR }}/setupvars.sh
+          export SHARE="$GITHUB_WORKSPACE/install/tests/smoke_tests/samples_smoke_tests_data"
+          export MODELS_PATH="$GITHUB_WORKSPACE/testdata"
+          
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
             --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
             --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
         env:
           IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
-          MODELS_PATH: $GITHUB_WORKSPACE/testdata
+#          MODELS_PATH: $GITHUB_WORKSPACE/testdata
 #          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
 #          WORKSPACE: ${{ env.INSTALL_DIR }}
 
