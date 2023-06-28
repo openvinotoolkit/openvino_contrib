@@ -253,7 +253,6 @@ jobs:
 
   Python_Unit_Tests:
     needs: Build
-    if: ${{ always() }}
     defaults:
       run:
         shell: pwsh
@@ -488,7 +487,6 @@ jobs:
 
   CXX_Unit_Tests:
     needs: Build
-    if: ${{ always() }}
     defaults:
       run:
         shell: pwsh
