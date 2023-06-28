@@ -49,4 +49,4 @@ Use `import org.intel.openvino.*;` for OpenVINO Java API 2.0 or `import org.inte
   ```
 - To import the project into IntelliJ IDEA, select **File** > **Open** and locate the  java api module in `<openvino_contrib>/modules/java_api`.
 
-See [here](src/test/java/org/intel/openvino/README.md) for instructions on running tests.
+See [here](src/test/README.md) for instructions on running tests.
