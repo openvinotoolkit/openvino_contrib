@@ -10,26 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-#env:
-#  CMAKE_BUILD_TYPE: 'Release'
-#  #  CCACHE_MAXSIZE: '10G'
-#  CMAKE_GENERATOR: 'Ninja'
-#  CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
-#  CMAKE_CXX_COMPILER_LAUNCHER: ccache
-#  CMAKE_C_COMPILER_LAUNCHER: ccache
-#  # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
-#  OPENVINO_REPO: ${{ github.workspace }}/openvino
-#  OPENVINO_CONTRIB_REPO: ${{ github.workspace }}/openvino_contrib
-#  INSTALL_DIR: ${{ github.workspace }}/install
-#  INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
-#  SAMPLES_INSTALL_DIR: ${{ github.workspace }}/install/samples
-#  LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}/install/tests/layer_tests
-#  BUILD_DIR: ${{ github.workspace }}/build
-#  DATA_PATH: ${{ github.workspace }}/testdata
-#  MODELS_PATH: ${{ github.workspace }}/testdata
-#  OV_TEMP: ${{ github.workspace }}/openvino_temp
-#  PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
-
 jobs:
   Build:
     defaults:
@@ -45,41 +25,33 @@ jobs:
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_C_COMPILER_LAUNCHER: ccache
-      # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
-      OPENVINO_REPO: $GITHUB_WORKSPACE/openvino
-      OPENVINO_CONTRIB_REPO: $GITHUB_WORKSPACE/openvino_contrib
-      INSTALL_DIR: $GITHUB_WORKSPACE/install
-      INSTALL_TEST_DIR: $GITHUB_WORKSPACE/install/tests
-      SAMPLES_INSTALL_DIR: $GITHUB_WORKSPACE/install/samples
-      LAYER_TESTS_INSTALL_DIR: $GITHUB_WORKSPACE/install/tests/layer_tests
-      BUILD_DIR: $GITHUB_WORKSPACE/build
-      DATA_PATH: $GITHUB_WORKSPACE/testdata
-      OV_TEMP: $GITHUB_WORKSPACE/openvino_temp
+      OPENVINO_REPO: /workdir/openvino
+      OPENVINO_CONTRIB_REPO: /workdir/openvino_contrib
+      INSTALL_DIR: /workdir/install
+      INSTALL_TEST_DIR: /workdir/install/tests
+      SAMPLES_INSTALL_DIR: /workdir/install/samples
+      LAYER_TESTS_INSTALL_DIR: /workdir/install/tests/layer_tests
+      BUILD_DIR: /workdir/build
+      DATA_PATH: /workdir/testdata
+      MODELS_PATH: /workdir/testdata
+      OV_TEMP: /workdir/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
     steps:
-      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
-      - name: Clone OpenVINO
-        uses: actions/checkout@v3
-        with:
-          repository: 'akashchi/openvino'
-          ref: 'ci/test-gha'
-          path: 'openvino'
-          submodules: 'recursive'
+      - name: Create Working Directory
+        run: |
+          mkdir -p /workdir
+          ls -la /github
 
-      - name: Clone OpenVINO Contrib
-        uses: actions/checkout@v3
-        with:
-          repository: 'openvinotoolkit/openvino_contrib'
-          path: 'openvino_contrib'
-          submodules: 'recursive'
-
-      - name: Clone testdata for C API tests
-        uses: actions/checkout@v3
-        with:
-          repository: 'openvinotoolkit/testdata'
-          path: 'testdata'
-          submodules: 'recursive'
-          lfs: 'true'
+      - name: Clone Repositories
+        run: |
+          # TODO: adapt when scheduled on actual branches
+          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
+          
+          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+          
+          git clone --recurse-submodules https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
+          cd ${{ env.DATA_PATH }} && git lfs pull
 
       - name: Get tools versions
         run: |
@@ -234,13 +206,9 @@ jobs:
         if: ${{ always() }}
         run: |
           python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
-          
           export LD_LIBRARY_PATH=${{ env.IE_APP_PATH }}:$LD_LIBRARY_PATH
 
           source ${{ env.INSTALL_DIR }}/setupvars.sh
-          export SHARE="$GITHUB_WORKSPACE/install/tests/smoke_tests/samples_smoke_tests_data"
-          export MODELS_PATH="$GITHUB_WORKSPACE/testdata"
-          export WORKSPACE="$GITHUB_WORKSPACE/install"
           
           python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests \
             --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml \
@@ -248,6 +216,8 @@ jobs:
         env:
           IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
+          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: ONNX frontend tests
         if: ${{ always() }}
@@ -471,38 +441,32 @@ jobs:
       image: akashchi/ubuntu:python_311
       options: --user root
     env:
-      # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
-      OPENVINO_REPO: $GITHUB_WORKSPACE/openvino
-      OPENVINO_CONTRIB_REPO: $GITHUB_WORKSPACE/openvino_contrib
-      INSTALL_DIR: /openvino/install
-      INSTALL_TEST_DIR: /openvino/install/tests
-      SAMPLES_INSTALL_DIR: $GITHUB_WORKSPACE/install/samples
-      LAYER_TESTS_INSTALL_DIR: $GITHUB_WORKSPACE/install/tests/layer_tests
-      BUILD_DIR: $GITHUB_WORKSPACE/build
-      DATA_PATH: $GITHUB_WORKSPACE/testdata
-      OV_TEMP: $GITHUB_WORKSPACE/openvino_temp
+      OPENVINO_REPO: /workdir/openvino
+      OPENVINO_CONTRIB_REPO: /workdir/openvino_contrib
+      INSTALL_DIR: /workdir/install
+      INSTALL_TEST_DIR: /workdir/install/tests
+      SAMPLES_INSTALL_DIR: /workdir/install/samples
+      LAYER_TESTS_INSTALL_DIR: /workdir/install/tests/layer_tests
+      BUILD_DIR: /workdir/build
+      DATA_PATH: /workdir/testdata
+      MODELS_PATH: /workdir/testdata
+      OV_TEMP: /workdir/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
     steps:
 
-      - name: Create Directories
-        run: mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+      - name: Create Working Directory
+        run: |
+          mkdir -p /workdir ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+          ls -la /github
 
-      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
-      - name: Clone OpenVINO
-        uses: actions/checkout@v3
-        with:
-          repository: 'akashchi/openvino'
-          ref: 'ci/test-gha'
-          path: 'openvino'
-          submodules: 'recursive'
+      - name: Clone Repositories
+        run: |
+          # TODO: adapt when scheduled on actual branches
+          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
+          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
 
-      - name: Clone OpenVINO Contrib
-        uses: actions/checkout@v3
-        with:
-          repository: 'openvinotoolkit/openvino_contrib'
-          path: 'openvino_contrib'
-          submodules: 'recursive'
+          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
 
       #
       # Dependencies
