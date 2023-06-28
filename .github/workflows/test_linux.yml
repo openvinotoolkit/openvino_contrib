@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +40,7 @@ jobs:
       - name: Create Working Directory
         run: |
           mkdir -p /workdir
-          ls -la /github
+          ls -la /workdir
 
       - name: Clone Repositories
         run: |
@@ -108,8 +108,8 @@ jobs:
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: "2000M"
-          # Should save cache only if run in the main branch
-          # save: ${{ github.ref_name == 'main' }}
+          # Should save cache only if run in the master branch of the base repo
+          # save: ${{ github.ref_name == 'master' }}
           verbose: 2
           key: ${{ github.job }}-linux
           restore-keys: |
@@ -231,7 +231,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
-          path: ${{ env.GITHUB_WORKSPACE }}/build/openvino_package.tar.gz
+          path: ${{ env.BUILD_DIR }}/openvino_package.tar.gz
           if-no-files-found: 'error'
 
       - name: Upload openvino tests package
@@ -239,7 +239,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
-          path: ${{ env.GITHUB_WORKSPACE }}/build/openvino_tests.tar.gz
+          path: ${{ env.BUILD_DIR }}/openvino_tests.tar.gz
           if-no-files-found: 'error'
 
   CXX_Unit_Tests:

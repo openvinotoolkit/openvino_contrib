@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -122,8 +122,8 @@ jobs:
         with:
           variant: sccache
           max-size: "2000M"
-          # Should save cache only if run in the main branch
-          # save: ${{ github.ref_name == 'main' }}
+          # Should save cache only if run in the master branch of the base repo
+          # save: ${{ github.ref_name == 'master' }}
           key: ${{ github.job }}-windows
           restore-keys: |
             ${{ github.job }}-windows
@@ -320,7 +320,9 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: |
+            3.7
+            3.11
           cache: 'pip'
           cache-dependency-path: '**/requirements*.txt'
 
@@ -374,16 +376,31 @@ jobs:
         if: ${{ always() }}
         shell: cmd
         run: |
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          
+          # Have to use py3.7 due to https://stackoverflow.com/questions/59507552/from-mxnet-import-nd-results-in-syntaxerror-yield-inside-list-comprehension & ticket 95984
+          # For Python API
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
 
-          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.11;%PYTHONPATH%
+          # For running Python API tests
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
 
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+          # For running ONNX frontend unit tests
+          py -3.7 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
+
+          # For running TensorFlow frontend unit tests
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+
+          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
+
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && py -3.7 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
         if: ${{ always() }}
