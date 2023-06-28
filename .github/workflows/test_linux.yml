@@ -54,7 +54,6 @@ jobs:
       LAYER_TESTS_INSTALL_DIR: $GITHUB_WORKSPACE/install/tests/layer_tests
       BUILD_DIR: $GITHUB_WORKSPACE/build
       DATA_PATH: $GITHUB_WORKSPACE/testdata
-      MODELS_PATH: $GITHUB_WORKSPACE/testdata
       OV_TEMP: $GITHUB_WORKSPACE/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
     steps:
@@ -245,8 +244,8 @@ jobs:
           IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
           IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
           MODELS_PATH: $GITHUB_WORKSPACE/testdata
-          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
-          WORKSPACE: ${{ env.INSTALL_DIR }}
+#          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+#          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: ONNX frontend tests
         if: ${{ always() }}
