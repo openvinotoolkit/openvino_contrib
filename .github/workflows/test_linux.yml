@@ -18,16 +18,16 @@ env:
   CMAKE_CXX_COMPILER_LAUNCHER: ccache
   CMAKE_C_COMPILER_LAUNCHER: ccache
   # Using $GITHUB_WORKSPACE instead of ${{ github.workspace }} due to https://github.com/actions/runner/issues/2058 & https://github.com/actions/checkout/issues/785
-  OPENVINO_REPO: "${{ env.GITHUB_WORKSPACE }}/openvino"
-  OPENVINO_CONTRIB_REPO: "${{ env.GITHUB_WORKSPACE }}/openvino_contrib"
-  INSTALL_DIR: "${{ env.GITHUB_WORKSPACE }}/install"
-  INSTALL_TEST_DIR: "${{ env.GITHUB_WORKSPACE }}/install/tests"
-  SAMPLES_INSTALL_DIR: "${{ env.GITHUB_WORKSPACE }}/install/samples"
-  LAYER_TESTS_INSTALL_DIR: "${{ env.GITHUB_WORKSPACE }}/install/tests/layer_tests"
-  BUILD_DIR: "${{ env.GITHUB_WORKSPACE }}/build"
-  DATA_PATH: "${{ env.GITHUB_WORKSPACE }}/testdata"
-  MODELS_PATH: "${{ env.GITHUB_WORKSPACE }}/testdata"
-  OV_TEMP: "${{ env.GITHUB_WORKSPACE }}/openvino_temp"
+  OPENVINO_REPO: ${{ env.GITHUB_WORKSPACE }}/openvino
+  OPENVINO_CONTRIB_REPO: ${{ env.GITHUB_WORKSPACE }}/openvino_contrib
+  INSTALL_DIR: ${{ env.GITHUB_WORKSPACE }}/install
+  INSTALL_TEST_DIR: ${{ env.GITHUB_WORKSPACE }}/install/tests
+  SAMPLES_INSTALL_DIR: ${{ env.GITHUB_WORKSPACE }}/install/samples
+  LAYER_TESTS_INSTALL_DIR: ${{ env.GITHUB_WORKSPACE }}/install/tests/layer_tests
+  BUILD_DIR: ${{ env.GITHUB_WORKSPACE }}/build
+  DATA_PATH: ${{ env.GITHUB_WORKSPACE }}/testdata
+  MODELS_PATH: ${{ env.GITHUB_WORKSPACE }}/testdata
+  OV_TEMP: ${{ env.GITHUB_WORKSPACE }}/openvino_temp
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
 jobs:
