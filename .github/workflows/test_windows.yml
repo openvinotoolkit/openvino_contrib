@@ -397,6 +397,8 @@ jobs:
           py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
           py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
           py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          
+          py -3.7 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
           set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
 
