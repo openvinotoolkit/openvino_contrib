@@ -3,23 +3,27 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
-from typing import Any, List
+from typing import Any, Tuple, Union
 
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime import Model
-from tokenizer_pipeline import TokenizerPipeline
 
 
-def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> TokenizerPipeline:
+def convert_tokenizer(
+        tokenizer_object: Any, number_of_inputs: int = 1, with_decoder=False
+) -> Union[Model, Tuple[Model, Model]]:
     if "transformers" in sys.modules:
         from transformers import PreTrainedTokenizerBase
         from hf_parser import TransformersTokenizerPipelineParser
 
         # TODO: Remove this check
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):
-            ov_tokenizer = TransformersTokenizerPipelineParser(tokenizer_object).parse(
+            pipeline = TransformersTokenizerPipelineParser(tokenizer_object).parse(
                 number_of_inputs=number_of_inputs
-            ).get_ov_subgraph()
+            )
+            ov_tokenizer = pipeline.get_encoder_ov_subgraph()
+            if with_decoder:
+                ov_detokenizer = pipeline.get_decoder_ov_subgraph()
             output_names = tokenizer_object.model_input_names
 
             ov_tokenizer_output_names = ["input_ids", "attention_mask"]
@@ -38,6 +42,9 @@ def convert_tokenizer(tokenizer_object: Any, number_of_inputs: int = 1) -> Token
                 if output_name in output_names:
                     ov_tokenizer.output(i).tensor.add_names({output_name})
                     filtered_outputs.append(ov_tokenizer.output(i))
+
+            if with_decoder:
+                return Model(filtered_outputs, ov_tokenizer.get_parameters()), ov_detokenizer
 
             return Model(filtered_outputs, ov_tokenizer.get_parameters())
 

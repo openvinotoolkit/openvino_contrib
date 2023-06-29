@@ -26,6 +26,8 @@ from tokenizer_pipeline import (
     TruncationStep,
     PaddingStep,
     CombineSegmentsStep,
+    VocabDecoderStep,
+    CharsToBytesStep,
 )
 
 
@@ -107,6 +109,7 @@ class TransformersTokenizerPipelineParser:
             self.pre_tokenization,
             self.tokenization_model,
             self.post_tokenization,
+            self.decoding,
         ]:
             add_steps()
 
@@ -226,3 +229,12 @@ class TransformersTokenizerPipelineParser:
             self.pipeline[-1].set_token_id(self.pipeline.vocab)
         else:
             self.pipeline.add_steps(PaddingStep())
+
+    def decoding(self) -> None:
+        if self.tokenizer_json["decoder"] is None:
+            return
+
+        if self.tokenizer_json["decoder"]["type"] == "ByteLevel":
+            self.pipeline.add_steps(VocabDecoderStep())
+            self.pipeline.add_steps(CharsToBytesStep())
+        return

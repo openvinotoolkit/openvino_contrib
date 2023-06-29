@@ -73,6 +73,8 @@
             std::make_shared<ov::frontend::ConversionExtension>("LookupTableFindV2", translate_lookup_table_find_v2),       \
             std::make_shared<ov::OpExtension<CombineSegments>>(),                                                           \
             std::make_shared<ov::OpExtension<RaggedToDense>>(),                                                             \
+            std::make_shared<ov::OpExtension<VocabDecoder>>(),                                                             \
+            std::make_shared<ov::OpExtension<CharsToBytes>>(),                                                             \
             std::make_shared<ov::frontend::ConversionExtension>("Reshape", translate_reshape),                              \
             std::make_shared<ov::frontend::ConversionExtension>("Const", translate_const),                                  \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \

@@ -987,6 +987,8 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         auto split_pattern_buf  = inputs[3].data<const uint8_t>();
         auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
+        std::cerr << "[ RegexSplit ] Split Pattern: `" << split_pattern << "`\n";
+
         const size_t num_rows = inputs[0].get_size();
         const size_t num_chars = inputs[2].get_size();
 
@@ -1012,26 +1014,26 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
 
         for(size_t seq = 0; seq < num_rows; ++seq) {
-//            std::cerr << "================= Seq: " << seq << " ====================\n";
-//            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
+            std::cerr << "================= Seq: " << seq << " ====================\n";
+            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
 
             new_ragged_begins[seq] = ragged_offset;
 
             for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
 
                 auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
-//                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
+                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
                 paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
                 pretokenizer(&pretokenized);
                 size_t num_splits = pretokenized.GetSplitsSize();
-//                std::cerr << "[ RegexSplit ] num_splits: " << num_splits << "\n";
+                std::cerr << "[ RegexSplit ] num_splits: " << num_splits << "\n";
 
                 for (size_t j = 0; j < num_splits; ++j) {
                     auto split = pretokenized.GetSplit(j);
                     const auto& value = split.normalized_.GetStr();
                     auto offset = split.normalized_.GetOrginalOffset();
-//                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
-//                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
+                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
                     new_begins[ragged_offset] = begins[ragged_col] + offset.first;
                     new_ends[ragged_offset++] = begins[ragged_col] + offset.second;
                 };
@@ -1247,265 +1249,265 @@ ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeCont
 }
 
 
-const std::unordered_map<uint8_t, std::vector<uint8_t>> create_bytes_to_chars_map() {
-    return {
-        { 33 , { 33 }},
-        { 34 , { 34 }},
-        { 35 , { 35 }},
-        { 36 , { 36 }},
-        { 37 , { 37 }},
-        { 38 , { 38 }},
-        { 39 , { 39 }},
-        { 40 , { 40 }},
-        { 41 , { 41 }},
-        { 42 , { 42 }},
-        { 43 , { 43 }},
-        { 44 , { 44 }},
-        { 45 , { 45 }},
-        { 46 , { 46 }},
-        { 47 , { 47 }},
-        { 48 , { 48 }},
-        { 49 , { 49 }},
-        { 50 , { 50 }},
-        { 51 , { 51 }},
-        { 52 , { 52 }},
-        { 53 , { 53 }},
-        { 54 , { 54 }},
-        { 55 , { 55 }},
-        { 56 , { 56 }},
-        { 57 , { 57 }},
-        { 58 , { 58 }},
-        { 59 , { 59 }},
-        { 60 , { 60 }},
-        { 61 , { 61 }},
-        { 62 , { 62 }},
-        { 63 , { 63 }},
-        { 64 , { 64 }},
-        { 65 , { 65 }},
-        { 66 , { 66 }},
-        { 67 , { 67 }},
-        { 68 , { 68 }},
-        { 69 , { 69 }},
-        { 70 , { 70 }},
-        { 71 , { 71 }},
-        { 72 , { 72 }},
-        { 73 , { 73 }},
-        { 74 , { 74 }},
-        { 75 , { 75 }},
-        { 76 , { 76 }},
-        { 77 , { 77 }},
-        { 78 , { 78 }},
-        { 79 , { 79 }},
-        { 80 , { 80 }},
-        { 81 , { 81 }},
-        { 82 , { 82 }},
-        { 83 , { 83 }},
-        { 84 , { 84 }},
-        { 85 , { 85 }},
-        { 86 , { 86 }},
-        { 87 , { 87 }},
-        { 88 , { 88 }},
-        { 89 , { 89 }},
-        { 90 , { 90 }},
-        { 91 , { 91 }},
-        { 92 , { 92 }},
-        { 93 , { 93 }},
-        { 94 , { 94 }},
-        { 95 , { 95 }},
-        { 96 , { 96 }},
-        { 97 , { 97 }},
-        { 98 , { 98 }},
-        { 99 , { 99 }},
-        { 100 , { 100 }},
-        { 101 , { 101 }},
-        { 102 , { 102 }},
-        { 103 , { 103 }},
-        { 104 , { 104 }},
-        { 105 , { 105 }},
-        { 106 , { 106 }},
-        { 107 , { 107 }},
-        { 108 , { 108 }},
-        { 109 , { 109 }},
-        { 110 , { 110 }},
-        { 111 , { 111 }},
-        { 112 , { 112 }},
-        { 113 , { 113 }},
-        { 114 , { 114 }},
-        { 115 , { 115 }},
-        { 116 , { 116 }},
-        { 117 , { 117 }},
-        { 118 , { 118 }},
-        { 119 , { 119 }},
-        { 120 , { 120 }},
-        { 121 , { 121 }},
-        { 122 , { 122 }},
-        { 123 , { 123 }},
-        { 124 , { 124 }},
-        { 125 , { 125 }},
-        { 126 , { 126 }},
-        { 161 , { 194, 161 }},
-        { 162 , { 194, 162 }},
-        { 163 , { 194, 163 }},
-        { 164 , { 194, 164 }},
-        { 165 , { 194, 165 }},
-        { 166 , { 194, 166 }},
-        { 167 , { 194, 167 }},
-        { 168 , { 194, 168 }},
-        { 169 , { 194, 169 }},
-        { 170 , { 194, 170 }},
-        { 171 , { 194, 171 }},
-        { 172 , { 194, 172 }},
-        { 174 , { 194, 174 }},
-        { 175 , { 194, 175 }},
-        { 176 , { 194, 176 }},
-        { 177 , { 194, 177 }},
-        { 178 , { 194, 178 }},
-        { 179 , { 194, 179 }},
-        { 180 , { 194, 180 }},
-        { 181 , { 194, 181 }},
-        { 182 , { 194, 182 }},
-        { 183 , { 194, 183 }},
-        { 184 , { 194, 184 }},
-        { 185 , { 194, 185 }},
-        { 186 , { 194, 186 }},
-        { 187 , { 194, 187 }},
-        { 188 , { 194, 188 }},
-        { 189 , { 194, 189 }},
-        { 190 , { 194, 190 }},
-        { 191 , { 194, 191 }},
-        { 192 , { 195, 128 }},
-        { 193 , { 195, 129 }},
-        { 194 , { 195, 130 }},
-        { 195 , { 195, 131 }},
-        { 196 , { 195, 132 }},
-        { 197 , { 195, 133 }},
-        { 198 , { 195, 134 }},
-        { 199 , { 195, 135 }},
-        { 200 , { 195, 136 }},
-        { 201 , { 195, 137 }},
-        { 202 , { 195, 138 }},
-        { 203 , { 195, 139 }},
-        { 204 , { 195, 140 }},
-        { 205 , { 195, 141 }},
-        { 206 , { 195, 142 }},
-        { 207 , { 195, 143 }},
-        { 208 , { 195, 144 }},
-        { 209 , { 195, 145 }},
-        { 210 , { 195, 146 }},
-        { 211 , { 195, 147 }},
-        { 212 , { 195, 148 }},
-        { 213 , { 195, 149 }},
-        { 214 , { 195, 150 }},
-        { 215 , { 195, 151 }},
-        { 216 , { 195, 152 }},
-        { 217 , { 195, 153 }},
-        { 218 , { 195, 154 }},
-        { 219 , { 195, 155 }},
-        { 220 , { 195, 156 }},
-        { 221 , { 195, 157 }},
-        { 222 , { 195, 158 }},
-        { 223 , { 195, 159 }},
-        { 224 , { 195, 160 }},
-        { 225 , { 195, 161 }},
-        { 226 , { 195, 162 }},
-        { 227 , { 195, 163 }},
-        { 228 , { 195, 164 }},
-        { 229 , { 195, 165 }},
-        { 230 , { 195, 166 }},
-        { 231 , { 195, 167 }},
-        { 232 , { 195, 168 }},
-        { 233 , { 195, 169 }},
-        { 234 , { 195, 170 }},
-        { 235 , { 195, 171 }},
-        { 236 , { 195, 172 }},
-        { 237 , { 195, 173 }},
-        { 238 , { 195, 174 }},
-        { 239 , { 195, 175 }},
-        { 240 , { 195, 176 }},
-        { 241 , { 195, 177 }},
-        { 242 , { 195, 178 }},
-        { 243 , { 195, 179 }},
-        { 244 , { 195, 180 }},
-        { 245 , { 195, 181 }},
-        { 246 , { 195, 182 }},
-        { 247 , { 195, 183 }},
-        { 248 , { 195, 184 }},
-        { 249 , { 195, 185 }},
-        { 250 , { 195, 186 }},
-        { 251 , { 195, 187 }},
-        { 252 , { 195, 188 }},
-        { 253 , { 195, 189 }},
-        { 254 , { 195, 190 }},
-        { 255 , { 195, 191 }},
-        { 0 , { 196, 128 }},
-        { 1 , { 196, 129 }},
-        { 2 , { 196, 130 }},
-        { 3 , { 196, 131 }},
-        { 4 , { 196, 132 }},
-        { 5 , { 196, 133 }},
-        { 6 , { 196, 134 }},
-        { 7 , { 196, 135 }},
-        { 8 , { 196, 136 }},
-        { 9 , { 196, 137 }},
-        { 10 , { 196, 138 }},
-        { 11 , { 196, 139 }},
-        { 12 , { 196, 140 }},
-        { 13 , { 196, 141 }},
-        { 14 , { 196, 142 }},
-        { 15 , { 196, 143 }},
-        { 16 , { 196, 144 }},
-        { 17 , { 196, 145 }},
-        { 18 , { 196, 146 }},
-        { 19 , { 196, 147 }},
-        { 20 , { 196, 148 }},
-        { 21 , { 196, 149 }},
-        { 22 , { 196, 150 }},
-        { 23 , { 196, 151 }},
-        { 24 , { 196, 152 }},
-        { 25 , { 196, 153 }},
-        { 26 , { 196, 154 }},
-        { 27 , { 196, 155 }},
-        { 28 , { 196, 156 }},
-        { 29 , { 196, 157 }},
-        { 30 , { 196, 158 }},
-        { 31 , { 196, 159 }},
-        { 32 , { 196, 160 }},
-        { 127 , { 196, 161 }},
-        { 128 , { 196, 162 }},
-        { 129 , { 196, 163 }},
-        { 130 , { 196, 164 }},
-        { 131 , { 196, 165 }},
-        { 132 , { 196, 166 }},
-        { 133 , { 196, 167 }},
-        { 134 , { 196, 168 }},
-        { 135 , { 196, 169 }},
-        { 136 , { 196, 170 }},
-        { 137 , { 196, 171 }},
-        { 138 , { 196, 172 }},
-        { 139 , { 196, 173 }},
-        { 140 , { 196, 174 }},
-        { 141 , { 196, 175 }},
-        { 142 , { 196, 176 }},
-        { 143 , { 196, 177 }},
-        { 144 , { 196, 178 }},
-        { 145 , { 196, 179 }},
-        { 146 , { 196, 180 }},
-        { 147 , { 196, 181 }},
-        { 148 , { 196, 182 }},
-        { 149 , { 196, 183 }},
-        { 150 , { 196, 184 }},
-        { 151 , { 196, 185 }},
-        { 152 , { 196, 186 }},
-        { 153 , { 196, 187 }},
-        { 154 , { 196, 188 }},
-        { 155 , { 196, 189 }},
-        { 156 , { 196, 190 }},
-        { 157 , { 196, 191 }},
-        { 158 , { 197, 128 }},
-        { 159 , { 197, 129 }},
-        { 160 , { 197, 130 }},
-        { 173 , { 197, 131 }}
-    };
+const std::array<std::vector<uint8_t>, 256> create_bytes_to_chars_map() {
+    return {{
+        { 196, 128 },
+        { 196, 129 },
+        { 196, 130 },
+        { 196, 131 },
+        { 196, 132 },
+        { 196, 133 },
+        { 196, 134 },
+        { 196, 135 },
+        { 196, 136 },
+        { 196, 137 },
+        { 196, 138 },
+        { 196, 139 },
+        { 196, 140 },
+        { 196, 141 },
+        { 196, 142 },
+        { 196, 143 },
+        { 196, 144 },
+        { 196, 145 },
+        { 196, 146 },
+        { 196, 147 },
+        { 196, 148 },
+        { 196, 149 },
+        { 196, 150 },
+        { 196, 151 },
+        { 196, 152 },
+        { 196, 153 },
+        { 196, 154 },
+        { 196, 155 },
+        { 196, 156 },
+        { 196, 157 },
+        { 196, 158 },
+        { 196, 159 },
+        { 196, 160 },
+        { 33 },
+        { 34 },
+        { 35 },
+        { 36 },
+        { 37 },
+        { 38 },
+        { 39 },
+        { 40 },
+        { 41 },
+        { 42 },
+        { 43 },
+        { 44 },
+        { 45 },
+        { 46 },
+        { 47 },
+        { 48 },
+        { 49 },
+        { 50 },
+        { 51 },
+        { 52 },
+        { 53 },
+        { 54 },
+        { 55 },
+        { 56 },
+        { 57 },
+        { 58 },
+        { 59 },
+        { 60 },
+        { 61 },
+        { 62 },
+        { 63 },
+        { 64 },
+        { 65 },
+        { 66 },
+        { 67 },
+        { 68 },
+        { 69 },
+        { 70 },
+        { 71 },
+        { 72 },
+        { 73 },
+        { 74 },
+        { 75 },
+        { 76 },
+        { 77 },
+        { 78 },
+        { 79 },
+        { 80 },
+        { 81 },
+        { 82 },
+        { 83 },
+        { 84 },
+        { 85 },
+        { 86 },
+        { 87 },
+        { 88 },
+        { 89 },
+        { 90 },
+        { 91 },
+        { 92 },
+        { 93 },
+        { 94 },
+        { 95 },
+        { 96 },
+        { 97 },
+        { 98 },
+        { 99 },
+        { 100 },
+        { 101 },
+        { 102 },
+        { 103 },
+        { 104 },
+        { 105 },
+        { 106 },
+        { 107 },
+        { 108 },
+        { 109 },
+        { 110 },
+        { 111 },
+        { 112 },
+        { 113 },
+        { 114 },
+        { 115 },
+        { 116 },
+        { 117 },
+        { 118 },
+        { 119 },
+        { 120 },
+        { 121 },
+        { 122 },
+        { 123 },
+        { 124 },
+        { 125 },
+        { 126 },
+        { 196, 161 },
+        { 196, 162 },
+        { 196, 163 },
+        { 196, 164 },
+        { 196, 165 },
+        { 196, 166 },
+        { 196, 167 },
+        { 196, 168 },
+        { 196, 169 },
+        { 196, 170 },
+        { 196, 171 },
+        { 196, 172 },
+        { 196, 173 },
+        { 196, 174 },
+        { 196, 175 },
+        { 196, 176 },
+        { 196, 177 },
+        { 196, 178 },
+        { 196, 179 },
+        { 196, 180 },
+        { 196, 181 },
+        { 196, 182 },
+        { 196, 183 },
+        { 196, 184 },
+        { 196, 185 },
+        { 196, 186 },
+        { 196, 187 },
+        { 196, 188 },
+        { 196, 189 },
+        { 196, 190 },
+        { 196, 191 },
+        { 197, 128 },
+        { 197, 129 },
+        { 197, 130 },
+        { 194, 161 },
+        { 194, 162 },
+        { 194, 163 },
+        { 194, 164 },
+        { 194, 165 },
+        { 194, 166 },
+        { 194, 167 },
+        { 194, 168 },
+        { 194, 169 },
+        { 194, 170 },
+        { 194, 171 },
+        { 194, 172 },
+        { 197, 131 },
+        { 194, 174 },
+        { 194, 175 },
+        { 194, 176 },
+        { 194, 177 },
+        { 194, 178 },
+        { 194, 179 },
+        { 194, 180 },
+        { 194, 181 },
+        { 194, 182 },
+        { 194, 183 },
+        { 194, 184 },
+        { 194, 185 },
+        { 194, 186 },
+        { 194, 187 },
+        { 194, 188 },
+        { 194, 189 },
+        { 194, 190 },
+        { 194, 191 },
+        { 195, 128 },
+        { 195, 129 },
+        { 195, 130 },
+        { 195, 131 },
+        { 195, 132 },
+        { 195, 133 },
+        { 195, 134 },
+        { 195, 135 },
+        { 195, 136 },
+        { 195, 137 },
+        { 195, 138 },
+        { 195, 139 },
+        { 195, 140 },
+        { 195, 141 },
+        { 195, 142 },
+        { 195, 143 },
+        { 195, 144 },
+        { 195, 145 },
+        { 195, 146 },
+        { 195, 147 },
+        { 195, 148 },
+        { 195, 149 },
+        { 195, 150 },
+        { 195, 151 },
+        { 195, 152 },
+        { 195, 153 },
+        { 195, 154 },
+        { 195, 155 },
+        { 195, 156 },
+        { 195, 157 },
+        { 195, 158 },
+        { 195, 159 },
+        { 195, 160 },
+        { 195, 161 },
+        { 195, 162 },
+        { 195, 163 },
+        { 195, 164 },
+        { 195, 165 },
+        { 195, 166 },
+        { 195, 167 },
+        { 195, 168 },
+        { 195, 169 },
+        { 195, 170 },
+        { 195, 171 },
+        { 195, 172 },
+        { 195, 173 },
+        { 195, 174 },
+        { 195, 175 },
+        { 195, 176 },
+        { 195, 177 },
+        { 195, 178 },
+        { 195, 179 },
+        { 195, 180 },
+        { 195, 181 },
+        { 195, 182 },
+        { 195, 183 },
+        { 195, 184 },
+        { 195, 185 },
+        { 195, 186 },
+        { 195, 187 },
+        { 195, 188 },
+        { 195, 189 },
+        { 195, 190 },
+        { 195, 191 },
+    }};
 }
 
 void BytesToChars::validate_and_infer_types() {
@@ -1544,8 +1546,8 @@ bool BytesToChars::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
             new_begins[i] = char_pointer;
 
             for (size_t k = 0; k < word_len; ++k) {
-                for (auto byte : m_bytes_to_chars.at(chars[begins[i] + k])) {
-                    new_chars[char_pointer++] = static_cast<int> (byte);
+                for (auto byte : m_bytes_to_chars[chars[begins[i] + k]]) {
+                    new_chars[char_pointer++] = byte;
                 }
             }
             new_ends[i] = char_pointer;
@@ -1841,15 +1843,15 @@ bool BPETokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
         for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
             auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
 
-//            std::cerr << "[ BPETokenizer ] String: '" << str << "'\n";
+            std::cerr << "[ BPETokenizer ] String: '" << str << "'\n";
 //            std::cerr << "[ BPETokenizer ] String len: " << ends[ragged_col] - begins[ragged_col]  << "\n";
 
             std::vector<core::Token> results = tokenizer.Tokenize(str);
 
             for (const core::Token& token : results) {
-//                std::cout << "[ BPETokenizer ]     id: " << token.id_ << ", value: " << token.value_
-//                          << ", offset: (" << token.offset_.first << ", "
-//                          << token.offset_.second << ")." << std::endl;
+                std::cout << "[ BPETokenizer ]     id: " << token.id_ << ", value: " << token.value_
+                          << ", offset: (" << token.offset_.first << ", "
+                          << token.offset_.second << ")." << std::endl;
                 OPENVINO_ASSERT(ragged_offset < outputs[2].get_size());
                 new_elems[ragged_offset++] = token.id_;
             };
@@ -2164,3 +2166,130 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
     return {const_node};
 }
 
+
+void VocabDecoder::validate_and_infer_types() {
+//    check_ragged_string_input(this, 0);
+    check_string_input(this, 1);
+    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+}
+
+
+bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto batch_size = inputs[0].get_shape()[0];
+    auto seq_len    = inputs[0].get_shape()[1];
+    auto input_data = inputs[0].data<const int32_t>();
+
+    auto vocab_begins = inputs[1].data<const int32_t>();
+    auto vocab_ends   = inputs[2].data<const int32_t>();
+    auto vocab_chars  = inputs[3].data<const uint8_t>();
+    auto vocab_size   = inputs[1].get_size();
+
+    std::vector<std::vector<uint8_t>> vocab;
+    vocab.resize(vocab_size);
+
+    OPENVINO_ASSERT(inputs.size() == 4, "Too few inputs passed to VocabDecoder, it means it is not converted properly or it is not used in the supported pattern");
+
+    for(size_t id = 0; id < vocab_size; ++id) {
+        std::vector<uint8_t> token = std::vector(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[id] = token;
+    }
+    // Set output shapes
+    outputs[0].set_shape({batch_size});
+    outputs[1].set_shape({batch_size});
+    outputs[2].set_shape({batch_size * seq_len});
+    outputs[3].set_shape({batch_size * seq_len});
+    outputs[4].set_shape({batch_size * seq_len * 100});  // 100 chars - max token length
+    const size_t num_rows = inputs[0].get_size();
+
+    // Get pointers in the output tensors
+    auto new_ragged_begins = outputs[0].data<int32_t>();
+    auto new_ragged_ends = outputs[1].data<int32_t>();
+    auto new_begins = outputs[2].data<int32_t>();
+    auto new_ends   = outputs[3].data<int32_t>();
+    auto new_chars  = outputs[4].data<uint8_t>();
+    uint32_t char_offset = 0;
+
+    for(size_t batch = 0; batch < batch_size; ++batch) {
+        new_ragged_begins[batch] = batch * seq_len;
+        new_ragged_ends[batch]   = new_ragged_begins[batch] + seq_len;
+
+        for(size_t seq = new_ragged_begins[batch]; seq < new_ragged_ends[batch]; ++seq) {
+            auto token_id = input_data[seq];
+            auto token = vocab[token_id];
+
+            std::copy(token.begin(), token.end(), &new_chars[char_offset]);
+
+            new_begins[seq] = char_offset;
+            char_offset += token.size();
+            new_ends[seq] = char_offset;
+        }
+    }
+    outputs[4].set_shape({char_offset});
+    return true;
+}
+
+
+void CharsToBytes::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+//    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+std::array<std::array<uint8_t, 64>, 4> CharsToBytes::create_pair_map() {
+    auto bytes_to_chars = create_bytes_to_chars_map();
+    std::array<std::array<uint8_t, 64>, 4> pair_map;
+
+    for (int i=0; i < bytes_to_chars.size(); ++i) {
+        std::vector<uint8_t> chars = bytes_to_chars[i];
+        if (chars.size() == 2) {
+            pair_map[chars[0] - 194][chars[1] - 128] = i;
+        };
+    };
+
+    return pair_map;
+}
+
+
+bool CharsToBytes::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    OPENVINO_ASSERT(inputs.size() == 5, "Too few inputs passed to CharsToBytes, it means it is not converted properly or it is not used in the supported pattern");
+
+    // Set output shapes
+//    outputs[0] = inputs[0];
+//    outputs[1] = inputs[1];
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    outputs[2].set_shape(Shape({inputs[4].get_size()}));
+    const size_t num_rows = inputs[0].get_size();
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_chars  = outputs[2].data<uint8_t>();
+    uint32_t char_pointer = 0;
+
+    for(size_t row = 0; row < num_rows; ++row) {
+        new_begins[row] = char_pointer;
+        for(size_t col = ragged_begins[row]; col < ragged_ends[row]; ++col) {
+            const auto word_len = ends[col] - begins[col];
+
+            for (size_t k = 0; k < word_len; ++k) {
+                const auto first_byte = chars[begins[col] + k];
+                if (first_byte < m_one_byte_border) {
+                    new_chars[char_pointer++] = first_byte;
+                } else {
+                    const auto second_byte = chars[begins[col] + (++k)];
+                    new_chars[char_pointer++] = m_pair_map[first_byte - 194][second_byte - 128];
+                }
+            }
+        };
+        new_ends[row] = char_pointer;
+    }
+    outputs[2].set_shape({char_pointer});
+    return true;
+}

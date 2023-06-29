@@ -219,7 +219,7 @@ class RegexSplitStep(PreTokenizatinStep):
     @classmethod
     def byte_level_splitter(cls) -> "RegexSplitStep":
         return cls(
-            r"('s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+)",
+            r"'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\s\\p{L}\\p{N}]+|\s+",
             invert=False,
             behaviour="isolate",
         )
@@ -339,9 +339,11 @@ class BPETokenizationStep(TokenizationModelStep):
         )
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        pipeline = self.get_pipeline()
+        pipeline.vocab_node_outputs = self.create_string_constant_node(self.vocab).outputs()
         input_nodes.extend(
             (
-                *self.create_string_constant_node(self.vocab).outputs(),
+                *self.get_pipeline().vocab_node_outputs,
                 *self.create_string_constant_node(self.merges).outputs(),
             )
         )
@@ -650,10 +652,32 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
 
 
 @dataclass
+class DecodingStep(BasePipelineStep):
+    pass
+
+
+@dataclass
+class VocabDecoderStep(DecodingStep):
+    def get_vocab_node_outputs(self) -> Optional[List[Output]]:
+        return self.get_pipeline().vocab_node_outputs
+
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        input_nodes.extend(self.get_vocab_node_outputs())
+        return core.make_node("VocabDecoder", input_nodes, {}).outputs()
+
+
+@dataclass
+class CharsToBytesStep(DecodingStep):
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        return core.make_node("CharsToBytes", input_nodes, {}).outputs()
+
+
+@dataclass
 class TokenizerPipeline:
     steps: List[BasePipelineStep] = field(default_factory=list)
     vocab: Optional[List[str]] = field(default=None, repr=False)
     number_of_inputs: int = 1
+    vocab_node_outputs: Optional[List[Output]] = field(default=None, repr=False)
 
     def get_config(self) -> Dict[str, Dict[str, Any]]:
         return {type(step).__name__: step.get_config() for step in self.steps}
@@ -692,8 +716,15 @@ class TokenizerPipeline:
     def post_tokenization_steps(self) -> List[PostTokenizationStep]:
         return [step for step in self.steps if isinstance(step, PostTokenizationStep)]
 
+    @property
+    def decoding_steps(self) -> List[PostTokenizationStep]:
+        return [step for step in self.steps if isinstance(step, DecodingStep)]
+
     def create_string_input(self) -> Node:
         return op.Parameter(Type.u8, PartialShape(["?"]))
+
+    def create_int_input(self, input_type=Type.i32) -> Node:
+        return op.Parameter(input_type, PartialShape(["?", "?", "?"]))
 
     def create_processing_pipeline(self, input_nodes: List[op.Parameter]) -> List[Node]:
         processing_pipelines_outputs = []
@@ -715,7 +746,7 @@ class TokenizerPipeline:
 
         return processing_pipelines_outputs
 
-    def create_post_tokenization_pipeline(self, input_nodes):
+    def create_post_tokenization_pipeline(self, input_nodes: List[op.Parameter]) -> List[Output]:
         #outputs = []
         for step in self.post_tokenization_steps:
             pipeline_step = step.get_ov_subgraph(input_nodes)
@@ -732,11 +763,39 @@ class TokenizerPipeline:
         #outputs.insert(0, input_nodes[0])
         return input_nodes
 
-    def get_ov_subgraph(self) -> Model:
+    def create_decoding_pipeline(self, input_nodes: List[Output]) -> List[Output]:
+        # input_nodes = inputs.outputs()
+        for step in self.decoding_steps:
+            pipeline_step = step.get_ov_subgraph(input_nodes)
+            input_nodes = pipeline_step
+
+        return core.make_node("StringTensorPack", input_nodes).outputs()
+
+    def get_encoder_ov_subgraph(self) -> Model:
         input_nodes = [self.create_string_input() for _ in range(self.number_of_inputs)]
         processing_outputs = self.create_processing_pipeline(input_nodes)
         outputs = self.create_post_tokenization_pipeline(processing_outputs)
+        return Model(outputs, input_nodes, name="tokenizer_encoder")
 
-        return Model(outputs, input_nodes, name="tokenizer")
+    def get_greedy_decoding_ov_subgraph(self, input_node: op.Parameter) -> List[Output]:
+        argmax = opset10.topk(
+            data=input_node,
+            k=1,
+            axis=-1,
+            mode="max",
+            sort="none",
+            name="ArgMax",
+        )
+        return opset10.squeeze(
+            data=argmax.output(1),
+            axes=-1,
+        ).outputs()
 
+    def get_decoder_ov_subgraph(self) -> Model:
+        input_node = self.create_int_input()
+        argmax = self.get_greedy_decoding_ov_subgraph(input_node)
+        outputs = self.create_decoding_pipeline(argmax)
+        model = Model(outputs, [input_node], name="tokenizer_decoder")
+        model.output().tensor.add_names({"string_output"})
+        return model
 
