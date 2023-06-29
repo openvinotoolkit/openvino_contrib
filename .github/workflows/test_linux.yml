@@ -16,8 +16,6 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-latest-8-cores
-    container:
-      image: akashchi/ubuntu:python_311
     env:
       CMAKE_BUILD_TYPE: 'Release'
       #  CCACHE_MAXSIZE: '10G'
@@ -25,40 +23,42 @@ jobs:
       CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CMAKE_C_COMPILER_LAUNCHER: ccache
-      OPENVINO_REPO: /workdir/openvino
-      OPENVINO_CONTRIB_REPO: /workdir/openvino_contrib
-      INSTALL_DIR: /workdir/install
-      INSTALL_TEST_DIR: /workdir/install/tests
-      SAMPLES_INSTALL_DIR: /workdir/install/samples
-      LAYER_TESTS_INSTALL_DIR: /workdir/install/tests/layer_tests
-      BUILD_DIR: /workdir/build
-      DATA_PATH: /workdir/testdata
-      MODELS_PATH: /workdir/testdata
-      OV_TEMP: /workdir/openvino_temp
+      OPENVINO_REPO: ${{ github.workspace }}/openvino
+      OPENVINO_CONTRIB_REPO: ${{ github.workspace }}/openvino_contrib
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
+      SAMPLES_INSTALL_DIR: ${{ github.workspace }}/install/samples
+      LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}/install/tests/layer_tests
+      BUILD_DIR: ${{ github.workspace }}/build
+      DATA_PATH: ${{ github.workspace }}/testdata
+      MODELS_PATH: ${{ github.workspace }}/testdata
+      OV_TEMP: ${{ github.workspace }}/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
     steps:
-      - name: Create Working Directory
-        run: |
-          mkdir -p /workdir
-          ls -la /workdir
 
-      - name: Clone Repositories
-        run: |
-          # TODO: adapt when scheduled on actual branches
-          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
-          
-          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
-          
-          git clone --recurse-submodules https://github.com/openvinotoolkit/testdata.git ${{ env.DATA_PATH }}
-          cd ${{ env.DATA_PATH }} && git lfs pull
+      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
+      - name: Clone OpenVINO
+        uses: actions/checkout@v3
+        with:
+          repository: 'akashchi/openvino'
+          ref: 'ci/test-gha'
+          path: 'openvino'
+          submodules: 'recursive'
 
-      - name: Get tools versions
-        run: |
-          ninja --version || exit 1
-          ccache --version || exit 1
-          python3 --version || exit 1
-          cmake --version || exit 1
+      - name: Clone OpenVINO Contrib
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/openvino_contrib'
+          path: 'openvino_contrib'
+          submodules: 'recursive'
+
+      - name: Clone testdata for C API tests
+        uses: actions/checkout@v3
+        with:
+          repository: 'openvinotoolkit/testdata'
+          path: 'testdata'
+          submodules: 'recursive'
+          lfs: 'true'
 
       #
       # Dependencies
@@ -66,9 +66,19 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          # TODO: install in the Docker image
-          ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
-          apt-get update && apt-get --assume-yes install openjdk-11-jdk libbz2-dev clang libc6
+          sudo -E ${{ env.OPENVINO_REPO }}/install_build_dependencies.sh
+          sudo -E apt update 
+          sudo -E apt --assume-yes install openjdk-11-jdk libbz2-dev clang unzip libpugixml-dev libtbb-dev intel-opencl-icd ocl-icd-opencl-dev opencl-headers
+          
+          wget https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-linux.zip
+          unzip ninja-linux.zip
+          sudo cp -v ninja /usr/local/bin/
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
 
       - name: Install python dependencies
         run: |
@@ -114,6 +124,13 @@ jobs:
           key: ${{ github.job }}-linux
           restore-keys: |
             ${{ github.job }}-linux
+
+      - name: Get tools versions
+        run: |
+          ninja --version || exit 1
+          ccache --version || exit 1
+          python3 --version || exit 1
+          cmake --version || exit 1
 
       - name: Get number of CPU cores
         uses: SimenB/github-actions-cpu-cores@v1
@@ -248,21 +265,19 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-latest
-    container:
-      image: akashchi/ubuntu:python_311
     env:
-      INSTALL_DIR: /github/install
-      INSTALL_TEST_DIR: /github/install/tests
-      BUILD_DIR: /github/build
-      DATA_PATH: /github/testdata
-      MODELS_PATH: /github/testdata
-      OV_TEMP: /github/openvino_temp
-      PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
 
     steps:
       - name: Create Directories
         run: |
           mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+
+      - name: Install dependencies
+        run: |
+          sudo -E apt update 
+          sudo -E apt --assume-yes install openjdk-11-jdk libbz2-dev clang unzip libpugixml-dev libtbb-dev intel-opencl-icd ocl-icd-opencl-dev opencl-headers
 
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
@@ -437,40 +452,48 @@ jobs:
       run:
         shell: bash
     runs-on: ubuntu-latest
-    container:
-      image: akashchi/ubuntu:python_311
-      options: --user root
     env:
-      OPENVINO_REPO: /workdir/openvino
-      OPENVINO_CONTRIB_REPO: /workdir/openvino_contrib
-      INSTALL_DIR: /workdir/install
-      INSTALL_TEST_DIR: /workdir/install/tests
-      SAMPLES_INSTALL_DIR: /workdir/install/samples
-      LAYER_TESTS_INSTALL_DIR: /workdir/install/tests/layer_tests
-      BUILD_DIR: /workdir/build
-      DATA_PATH: /workdir/testdata
-      MODELS_PATH: /workdir/testdata
-      OV_TEMP: /workdir/openvino_temp
+      OPENVINO_REPO: ${{ github.workspace }}/openvino
+      OPENVINO_CONTRIB_REPO: ${{ github.workspace }}/openvino_contrib
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
+      SAMPLES_INSTALL_DIR: ${{ github.workspace }}/install/samples
+      LAYER_TESTS_INSTALL_DIR: ${{ github.workspace }}/install/tests/layer_tests
+      BUILD_DIR: ${{ github.workspace }}/build
+      DATA_PATH: ${{ github.workspace }}/testdata
+      MODELS_PATH: ${{ github.workspace }}/testdata
+      OV_TEMP: ${{ github.workspace }}/openvino_temp
       PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
 
     steps:
 
       - name: Create Working Directory
         run: |
-          mkdir -p /workdir ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
-          ls -la /github
+          mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
 
-      - name: Clone Repositories
-        run: |
-          # TODO: adapt when scheduled on actual branches
-          git clone --recurse-submodules https://github.com/akashchi/openvino.git ${{ env.OPENVINO_REPO }}
-          cd ${{ env.OPENVINO_REPO }} && git checkout ci/test-gha && git submodule update
-
-          git clone --recurse-submodules https://github.com/openvinotoolkit/openvino_contrib.git ${{ env.OPENVINO_CONTRIB_REPO }}
+      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
+      - name: Clone OpenVINO
+        uses: actions/checkout@v3
+        with:
+          repository: 'akashchi/openvino'
+          ref: 'ci/test-gha'
+          path: 'openvino'
+          submodules: 'recursive'
 
       #
       # Dependencies
       #
+
+      - name: Install dependencies
+        run: |
+          sudo -E apt update 
+          sudo -E apt --assume-yes install openjdk-11-jdk libbz2-dev clang unzip libpugixml-dev libtbb-dev intel-opencl-icd ocl-icd-opencl-dev opencl-headers
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements*.txt'
 
       - name: Install python dependencies
         run: |
@@ -668,15 +691,18 @@ jobs:
         shell: bash
 #    runs-on: ubuntu-latest-16-cores
     runs-on: ubuntu-latest
-    container:
-      image: akashchi/ubuntu:python_311
     env:
-      INSTALL_DIR: /openvino/install
-      INSTALL_TEST_DIR: /openvino/install/tests
+      INSTALL_DIR: ${{ github.workspace }}/install
+      INSTALL_TEST_DIR: ${{ github.workspace }}/install/tests
 
     steps:
       - name: Create Directories
         run: mkdir -p ${{ env.INSTALL_DIR }} ${{ env.INSTALL_TEST_DIR }}
+
+      - name: Install dependencies
+        run: |
+          sudo -E apt update 
+          sudo -E apt --assume-yes install openjdk-11-jdk libbz2-dev clang unzip libpugixml-dev libtbb-dev intel-opencl-icd ocl-icd-opencl-dev opencl-headers
 
       - name: Download OpenVINO package
         uses: actions/download-artifact@v3
