@@ -3,9 +3,22 @@ plugins {
     id 'application'
 }
 
+import org.gradle.internal.os.OperatingSystem
+
 def opencv_path = System.getenv('OpenCV_DIR')
 def opencv_build_path = new File(opencv_path + '/bin')
 def opencv_install_path = new File(opencv_path + '/share/java')
+
+if (OperatingSystem.current().isLinux()) {
+    opencv_build_path = new File(opencv_path + '/bin')
+    opencv_install_path = new File(opencv_path + '/share/java/opencv4')
+} else if (OperatingSystem.current().isMacOsX()) {
+    opencv_build_path = new File(opencv_path + '/share/java/opencv4')
+    opencv_install_path = new File(opencv_path + '/share/OpenCV/java')
+} else if (OperatingSystem.current().isWindows()) {
+    opencv_build_path = new File(opencv_path + '/java')
+    opencv_install_path = new File(opencv_path + '/java')
+}
 
 if (opencv_build_path.exists() ) {
   opencv_path = opencv_build_path
@@ -18,8 +31,7 @@ if (opencv_build_path.exists() ) {
 sourceSets {
     main {
         java {
-            srcDirs = [".."]
-            include 'face_detection_sample_async/*.java', 'ArgumentParser.java'
+            srcDirs = ["src/main/java", "../common"]
         }
     }
 }

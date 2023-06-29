@@ -18,13 +18,13 @@ if(NOT OpenVINODeveloperPackage_FOUND)
     find_package(OpenVINO REQUIRED)
 endif()
 
-file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/cpp/*.cpp)
+file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${sources})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE openvino::runtime)
 target_include_directories(${PROJECT_NAME} PRIVATE ${JNI_INCLUDE_DIRS})
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp)
 
 install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH} COMPONENT java_api
