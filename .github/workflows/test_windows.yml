@@ -378,31 +378,35 @@ jobs:
         run: |
           
           # Have to use py3.7 due to https://stackoverflow.com/questions/59507552/from-mxnet-import-nd-results-in-syntaxerror-yield-inside-list-comprehension & ticket 95984
+          
+          py -3.7 -m venv venv
+          .\venv\Scripts\activate
+          
           # For Python API
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
 
           # For running Python API tests
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
 
           # For running ONNX frontend unit tests
-          py -3.7 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
+          python -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
 
           # For running TensorFlow frontend unit tests
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
           
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          py -3.7 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
           
-          py -3.7 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
+          python -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
           set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
 
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" -pyver 3.7 && py -3.7 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
         if: ${{ always() }}
