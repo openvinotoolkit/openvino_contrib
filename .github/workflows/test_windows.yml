@@ -117,7 +117,7 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: ccache
+      - name: Setup sccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           variant: sccache
@@ -207,6 +207,18 @@ jobs:
         run: |
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.INSTALL_DIR }}
+
+      - name: Samples tests
+        if: ${{ always() }}
+        shell: cmd
+        run: |
+          python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
+        env:
+          IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
+          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
+          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       # Present in the "Build" job due to the fact that these tests require build directory
       - name: ONNX frontend tests
@@ -472,18 +484,6 @@ jobs:
         if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
-
-      - name: Samples tests
-        if: ${{ always() }}
-        shell: cmd
-        run: |
-          python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
-        env:
-          IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
-          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
-          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
-          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: nGraph and IE Python Bindings Tests
         if: ${{ always() }}
