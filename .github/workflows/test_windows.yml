@@ -28,6 +28,7 @@ env:
   OV_TEMP: "${{ github.workspace }}\\openvino_temp"
   #  CCACHE_DIR: /sources_cache/build_cache
   PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
+  VCVARSPATH: "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat"
 
 jobs:
   Build:
@@ -59,6 +60,7 @@ jobs:
           path: 'testdata'
           submodules: 'recursive'
           lfs: 'true'
+
       #
       # Dependencies
       #
@@ -131,7 +133,7 @@ jobs:
 
       - name: CMake configure
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -G "Ninja Multi-Config" `
+          & {{ env.VCVARSPATH }} x64 && cmake -G "Ninja Multi-Config" `
             -DENABLE_CPPLINT=OFF `
             -DENABLE_ONEDNN_FOR_GPU=OFF `
             -DBUILD_SHARED_LIBS=OFF `
@@ -149,7 +151,7 @@ jobs:
 
       - name: Build
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
+          & {{ env.VCVARSPATH }} x64 && cmake --build ${{ env.BUILD_DIR }} --parallel ${{ steps.cpu-cores.outputs.count }} --config Release
 
       - name: Install
         run: cmake -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/cmake_install.cmake
@@ -159,7 +161,7 @@ jobs:
 
       - name: CMake Samples Tests
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
+          & {{ env.VCVARSPATH }} x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/samples_tests -B ${{ env.BUILD_DIR }}/samples_tests
 
       - name: Install Samples Tests
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/samples_tests/cmake_install.cmake
@@ -169,7 +171,7 @@ jobs:
 
       - name: Cmake Layer Tests
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
+          & {{ env.VCVARSPATH }} x64 && cmake -S ${{ env.OPENVINO_REPO }}/tests/layer_tests -B ${{ env.BUILD_DIR }}/layer_tests
 
       - name: Build Layer Tests
         run: cmake --build ${{ env.BUILD_DIR }}/layer_tests --parallel --config Release
@@ -178,7 +180,6 @@ jobs:
         run: cmake -DCOMPONENT=tests -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} -P ${{ env.BUILD_DIR }}/layer_tests/cmake_install.cmake
 
       - name: Pack Artifacts
-        if: ${{ always() }}
         run: |
           $file=Get-ChildItem -Path "${{ env.INSTALL_DIR }}" -Exclude "tests"
           $compress = @{
@@ -197,19 +198,16 @@ jobs:
           Compress-Archive @compress
 
       - name: Build cpp samples
-        if: ${{ always() }}
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & {{ env.VCVARSPATH }} x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/cpp/build_samples_msvc.bat -i ${{ env.INSTALL_DIR }}
 
       - name: Build c samples
-        if: ${{ always() }}
         run: |
-          & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+          & {{ env.VCVARSPATH }} x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.INSTALL_DIR }}
 
       - name: Samples tests
-        if: ${{ always() }}
         shell: cmd
         run: |
           python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
@@ -223,7 +221,6 @@ jobs:
       # Present in the "Build" job due to the fact that these tests require build directory
       - name: ONNX frontend tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
@@ -233,7 +230,6 @@ jobs:
           Get-ChildItem -Recurse -Directory ${{ env.INSTALL_DIR }}
 
       - name: Upload openvino package
-        if: ${{ always() }}
         uses: actions/upload-artifact@v3
         with:
           name: openvino_package
@@ -241,144 +237,140 @@ jobs:
           if-no-files-found: 'error'
 
       - name: Upload openvino tests package
-        if: ${{ always() }}
         uses: actions/upload-artifact@v3
         with:
           name: openvino_tests
           path: ${{ env.BUILD_DIR }}/openvino_tests.zip
           if-no-files-found: 'error'
 
-  MO_UT_PyTorch_LT:
-    needs: Build
-    defaults:
-      run:
-        shell: pwsh
-    runs-on: 'windows-latest'
-    env:
-      OPENVINO_REPO: "${{ github.workspace }}\\openvino"
-      OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib"
-      INSTALL_DIR: "${{ github.workspace }}\\install"
-      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
-      SAMPLES_INSTALL_DIR: "${{ github.workspace }}\\install\\samples"
-      LAYER_TESTS_INSTALL_DIR: "${{ github.workspace }}\\install\\tests\\layer_tests"
-      BUILD_DIR: "${{ github.workspace }}\\build"
-      DATA_PATH: "${{ github.workspace }}\\testdata"
-      MODELS_PATH: "${{ github.workspace }}\\testdata"
-      PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
-
-    steps:
-      - name: Create Directories
-        run: |
-          mkdir ${{ env.INSTALL_DIR }}
-          mkdir ${{ env.INSTALL_TEST_DIR }}
-
-      - name: Download OpenVINO package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_package
-          path: ${{ env.INSTALL_DIR }}
-
-      - name: Download OpenVINO tests package
-        uses: actions/download-artifact@v3
-        with:
-          name: openvino_tests
-          path: ${{ env.INSTALL_TEST_DIR }}
-
-      - name: Extract OpenVINO packages
-        run: |
-          pushd ${{ env.INSTALL_DIR }}
-            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
-          popd
-          pushd ${{ env.INSTALL_TEST_DIR }}
-            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
-          popd
-
-      - name: Check extraction
-        run: |
-          ls "${{ github.workspace }}"
-          ls "${{ env.INSTALL_DIR }}"
-          ls "${{ env.INSTALL_TEST_DIR }}"
-
-      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
-      - name: Clone OpenVINO
-        uses: actions/checkout@v3
-        with:
-          repository: 'akashchi/openvino'
-          ref: 'ci/test-gha'
-          path: 'openvino'
-          submodules: 'recursive'
-
-      - name: Clone OpenVINO Contrib
-        uses: actions/checkout@v3
-        with:
-          repository: 'openvinotoolkit/openvino_contrib'
-          path: 'openvino_contrib'
-          submodules: 'recursive'
-
-      # Have to use py3.7 due to https://stackoverflow.com/questions/59507552/from-mxnet-import-nd-results-in-syntaxerror-yield-inside-list-comprehension & ticket 95984
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.7'
-
-      - name: Install python dependencies
-        run: |
-          # For Python API
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
-
-          # For running Python API tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-
-          # For running ONNX frontend unit tests
-          python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
-
-          # For running TensorFlow frontend unit tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-
-          # For running Paddle frontend unit tests
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
-
-      - name: Install MO dependencies
-        run: |
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
-
-      - name: Install Python wheels
-        if: ${{ always() }}
-        run: |
-          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
-
-      - name: Model Optimizer UT
-        if: ${{ always() }}
-        shell: cmd
-        run: |
-          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
-
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" -pyver 3.7 && python -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
-
-      - name: PyTorch Layer Tests
-        if: ${{ always() }}
-        shell: cmd
-        run: |
-          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
-
-          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};%PYTHONPATH%
-
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" -pyver 3.7 && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xml
-        env:
-          TEST_DEVICE: CPU
-
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v3
-        if: ${{ always() }}
-        with:
-          name: test-results-python
-          path: ${{ env.INSTALL_TEST_DIR }}/TEST*.xml
-          if-no-files-found: 'error'
+#  MO_UT_PyTorch_LT:
+#    needs: Build
+#    defaults:
+#      run:
+#        shell: pwsh
+#    runs-on: 'windows-latest'
+#    env:
+#      OPENVINO_REPO: "${{ github.workspace }}\\openvino"
+#      OPENVINO_CONTRIB_REPO: "${{ github.workspace }}\\openvino_contrib"
+#      INSTALL_DIR: "${{ github.workspace }}\\install"
+#      INSTALL_TEST_DIR: "${{ github.workspace }}\\install\\tests"
+#      SAMPLES_INSTALL_DIR: "${{ github.workspace }}\\install\\samples"
+#      LAYER_TESTS_INSTALL_DIR: "${{ github.workspace }}\\install\\tests\\layer_tests"
+#      BUILD_DIR: "${{ github.workspace }}\\build"
+#      DATA_PATH: "${{ github.workspace }}\\testdata"
+#      MODELS_PATH: "${{ github.workspace }}\\testdata"
+#      PYTHON_STATIC_ARGS: -m "not dynamic_library and not template_plugin"
+#
+#    steps:
+#      - name: Create Directories
+#        run: |
+#          mkdir ${{ env.INSTALL_DIR }}
+#          mkdir ${{ env.INSTALL_TEST_DIR }}
+#
+#      - name: Download OpenVINO package
+#        uses: actions/download-artifact@v3
+#        with:
+#          name: openvino_package
+#          path: ${{ env.INSTALL_DIR }}
+#
+#      - name: Download OpenVINO tests package
+#        uses: actions/download-artifact@v3
+#        with:
+#          name: openvino_tests
+#          path: ${{ env.INSTALL_TEST_DIR }}
+#
+#      - name: Extract OpenVINO packages
+#        run: |
+#          pushd ${{ env.INSTALL_DIR }}
+#            Expand-Archive openvino_package.zip -DestinationPath "${{ env.INSTALL_DIR }}"
+#          popd
+#          pushd ${{ env.INSTALL_TEST_DIR }}
+#            Expand-Archive openvino_tests.zip -DestinationPath "${{ env.INSTALL_TEST_DIR }}"
+#          popd
+#
+#      - name: Check extraction
+#        run: |
+#          ls "${{ github.workspace }}"
+#          ls "${{ env.INSTALL_DIR }}"
+#          ls "${{ env.INSTALL_TEST_DIR }}"
+#
+#      # TODO: do not provide 'ref' and 'repository' when scheduled on actual PRs
+#      - name: Clone OpenVINO
+#        uses: actions/checkout@v3
+#        with:
+#          repository: 'akashchi/openvino'
+#          ref: 'ci/test-gha'
+#          path: 'openvino'
+#          submodules: 'recursive'
+#
+#      - name: Clone OpenVINO Contrib
+#        uses: actions/checkout@v3
+#        with:
+#          repository: 'openvinotoolkit/openvino_contrib'
+#          path: 'openvino_contrib'
+#          submodules: 'recursive'
+#
+#      # Have to use py3.7 due to https://stackoverflow.com/questions/59507552/from-mxnet-import-nd-results-in-syntaxerror-yield-inside-list-comprehension & ticket 95984
+#      - uses: actions/setup-python@v4
+#        with:
+#          python-version: '3.7'
+#
+#      - name: Install python dependencies
+#        run: |
+#          # For Python API
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
+#
+#          # For running Python API tests
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
+#
+#          # For running ONNX frontend unit tests
+#          python3 -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
+#
+#          # For running TensorFlow frontend unit tests
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
+#
+#          # For running Paddle frontend unit tests
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/paddle/tests/requirements.txt
+#
+#      - name: Install MO dependencies
+#        run: |
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+#          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+#
+#      - name: Install Python wheels
+#        run: |
+#          python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
+#
+#      - name: Model Optimizer UT
+#        shell: cmd
+#        run: |
+#          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
+#
+#          call "${{ env.INSTALL_DIR }}\\setupvars.bat" -pyver 3.7 && python -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+#
+#      - name: PyTorch Layer Tests
+#        shell: cmd
+#        run: |
+#          python3 -m pip install -r ${{ env.LAYER_TESTS_INSTALL_DIR }}/requirements.txt
+#
+#          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};%PYTHONPATH%
+#
+#          call "${{ env.INSTALL_DIR }}\\setupvars.bat" -pyver 3.7 && python3 -m pytest ${{ env.LAYER_TESTS_INSTALL_DIR }}/pytorch_tests -m precommit --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-pytorch.xml
+#        env:
+#          TEST_DEVICE: CPU
+#
+#      - name: Upload Test Results
+#        uses: actions/upload-artifact@v3
+#        if: ${{ always() }}
+#        with:
+#          name: test-results-python
+#          path: ${{ env.INSTALL_TEST_DIR }}/TEST*.xml
+#          if-no-files-found: 'error'
 
   Python_Unit_Tests:
     needs: Build
@@ -481,7 +473,6 @@ jobs:
           python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
 
       - name: Install Python wheels
-        if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
 
@@ -499,41 +490,22 @@ jobs:
           set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};%PYTHONPATH%
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/pyopenvino ${{ env.PYTHON_STATIC_ARGS }} --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-Pyngraph.xml --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_utils/test_utils.py --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_zoo_models.py --ignore=${{ env.INSTALL_TEST_DIR }}/pyopenvino/tests/test_onnx/test_backend.py
 
-#      - name: Model Optimizer UT
-#        if: ${{ always() }}
-#        shell: cmd
-#        run: |
-#
-#          :: Have to use py3.7 due to https://stackoverflow.com/questions/59507552/from-mxnet-import-nd-results-in-syntaxerror-yield-inside-list-comprehension & ticket 95984
-#
-#          py -3.7 -m venv venv
-#          .\venv\Scripts\activate
-#
-#          :: For Python API
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/wheel/requirements-dev.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/requirements.txt
-#
-#          :: For running Python API tests
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/bindings/python/src/compatibility/openvino/requirements-dev.txt
-#
-#          :: For running ONNX frontend unit tests
-#          python -m pip install --force-reinstall -r ${{ env.OPENVINO_REPO }}/src/frontends/onnx/tests/requirements.txt
-#
-#          :: For running TensorFlow frontend unit tests
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/src/frontends/tensorflow/tests/requirements.txt
-#
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-#          python -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
-#
-#          python -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
-#
-#          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.7;%PYTHONPATH%
-#
-#          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
+      - name: Model Optimizer UT
+        if: ${{ always() }}
+        shell: cmd
+        run: |
+          
+          set PYTHONPATH=${{ env.OPENVINO_REPO }}\tools\mo;${{ env.LAYER_TESTS_INSTALL_DIR }};${{ env.INSTALL_TEST_DIR }};${{ env.INSTALL_DIR }}\python\python3.11;%PYTHONPATH%
+          
+          :: TODO: figure out why they need to be reinstalled
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -s ${{ env.INSTALL_TEST_DIR }}/mo/unit_tests --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-ModelOptimizer.xml
 
       - name: PyTorch Layer Tests
         if: ${{ always() }}
@@ -680,121 +652,101 @@ jobs:
 
       - name: OpenVINO Core unit tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_core_unit_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-NGraphUT.xml
 
       - name: OpenVINO Inference functional tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_inference_functional_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceFunc.xml
 
       - name: OpenVINO Inference unit tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_inference_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceUnit.xml
 
       - name: Low Precision Transformations Tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_lp_transformations_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-LpTransformations.xml
 
       - name: OpenVINO Conditional compilation tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_conditional_compilation_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ConditionalCompilation.xml
 
       - name: IR frontend tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_ir_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-IRFrontend.xml
 
       #      - name: PaddlePaddle frontend tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L403
       #        shell: cmd
-      #        if: ${{ always() }}
       #        run: |
       #          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/paddle_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-PaddleTests.xml
 
       # - name: ONNX frontend tests # Present in the "Build" job due to the fact that these tests require build directory
       #   shell: cmd
-      #   if: ${{ always() }}
       #   run: |
       #     call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
       - name: TensorFlow Common tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_common_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowCommonFrontend.xml
 
       - name: TensorFlow frontend tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowFrontend.xml
 
       - name: TensorFlow Lite frontend tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_tensorflow_lite_frontend_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TensorFlowLiteFrontend.xml
 
       - name: Transformations Tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_transformations_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-Transformations.xml
 
       - name: Common test utils tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/commonUtilsTests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-commonUtilsTests.xml
 
       - name: CPU plugin unit tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_cpu_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-CPUUnitTests.xml
 
       #      - name: GNA plugin unit tests  # Disabled in Azure: https://github.com/openvinotoolkit/openvino/blob/master/.ci/azure/linux.yml#L434
       #        shell: cmd
-      #        if: ${{ always() }}
       #        run: |
       #          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_gna_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-GNAUnitTests.xml
 
       - name: AUTO UT
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_auto_unit_tests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ov_auto_unit_tests.xml
 
       - name: Template plugin tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_template_func_tests --gtest_print_time=1 --gtest_filter=*smoke* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-TemplateFuncTests.xml
 
       - name: Inference Engine C API tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/InferenceEngineCAPITests --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-InferenceEngineCAPITests.xml
 
       - name: OpenVINO C API tests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_capi_test --gtest_print_time=1 --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-OpenVINOCAPITests.xml
 
       - name: AutoBatch FuncTests
         shell: cmd
-        if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_auto_batch_func_tests --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ov_auto_batch_func_tests.xml
 
@@ -865,7 +817,6 @@ jobs:
 
 #       GPU_Functional_Tests:  # fails due to absence of the GPU
 #         needs: Build
-#         if: ${{ always() }}
 #         defaults:
 #           run:
 #             shell: pwsh
