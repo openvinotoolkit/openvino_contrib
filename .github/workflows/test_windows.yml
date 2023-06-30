@@ -123,7 +123,8 @@ jobs:
           variant: sccache
           max-size: "2000M"
           # Should save cache only if run in the master branch of the base repo
-          # save: ${{ github.ref_name == 'master' }}
+          # github.ref_name is 'ref/PR_#' in case of the PR, and 'branch_name' when executed on push
+          # save: ${{ github.ref_name == 'master' && 'true' || 'false'  }}
           key: ${{ github.job }}-windows
           restore-keys: |
             ${{ github.job }}-windows
@@ -207,30 +208,14 @@ jobs:
           & "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat" x64
           & ${{ env.SAMPLES_INSTALL_DIR }}/c/build_samples_msvc.bat -i ${{ env.INSTALL_DIR }}
 
-      - name: Samples tests
-        if: ${{ always() }}
-        shell: cmd
-        run: |
-          python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
-          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
-        env:
-          IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
-          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
-          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
-          WORKSPACE: ${{ env.INSTALL_DIR }}
-
+      # Present in the "Build" job due to the fact that these tests require build directory
       - name: ONNX frontend tests
         shell: cmd
         if: ${{ always() }}
         run: |
           call "${{ env.INSTALL_DIR }}\\setupvars.bat" && ${{ env.INSTALL_TEST_DIR }}/ov_onnx_frontend_tests --gtest_print_time=1 --gtest_filter=-*IE_GPU* --gtest_output=xml:${{ env.INSTALL_TEST_DIR }}/TEST-ONNXFrontend.xml
 
-      - name: Check Directories (OV Repo)
-        if: ${{ always() }}
-        run: |
-          Get-ChildItem -Recurse -Directory ${{ env.OPENVINO_REPO }}
-
-      - name: Check Directories (Install Dir)
+      - name: List installed files
         if: ${{ always() }}
         run: |
           Get-ChildItem -Recurse -Directory ${{ env.INSTALL_DIR }}
@@ -487,6 +472,18 @@ jobs:
         if: ${{ always() }}
         run: |
           python3 -m pip install openvino-dev --force-reinstall --find-links=${{ env.INSTALL_DIR }}\tools
+
+      - name: Samples tests
+        if: ${{ always() }}
+        shell: cmd
+        run: |
+          python3 -m pip install --ignore-installed PyYAML -r ${{ env.INSTALL_TEST_DIR }}/smoke_tests/requirements.txt
+          call "${{ env.INSTALL_DIR }}\\setupvars.bat" && python3 -m pytest -sv ${{ env.INSTALL_TEST_DIR }}/smoke_tests --env_conf ${{ env.INSTALL_TEST_DIR }}/smoke_tests/env_config.yml --junitxml=${{ env.INSTALL_TEST_DIR }}/TEST-SamplesSmokeTests.xml
+        env:
+          IE_APP_PATH: ${{ env.INSTALL_DIR }}/samples_bin
+          IE_APP_PYTHON_PATH: ${{ env.INSTALL_DIR }}/samples/python
+          SHARE: ${{ env.INSTALL_TEST_DIR }}/smoke_tests/samples_smoke_tests_data
+          WORKSPACE: ${{ env.INSTALL_DIR }}
 
       - name: nGraph and IE Python Bindings Tests
         if: ${{ always() }}
