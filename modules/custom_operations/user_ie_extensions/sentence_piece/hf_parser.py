@@ -80,8 +80,10 @@ def parse_byte_level_pretokenization_step(
     if pretokenizer_dict.get("add_prefix_space"):
         steps.append(RegExpNormalizationStep(regex_search_pattern="^(\S)", replace_term=" $1"))
 
-    # regex is used by default, but it does not appeared in config yet
+    # regex is used by default, but it does not appear in config yet
     if pretokenizer_dict.get("use_regex", True):
+        # re2 does not support negative lookahead, so there is two steps replicate the behaviour
+        steps.append(RegexSplitStep.add_whitespace_to_the_next_word())
         steps.append(RegexSplitStep.byte_level_splitter())
 
     steps.append(BytesToCharsStep())

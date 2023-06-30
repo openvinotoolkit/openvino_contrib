@@ -219,9 +219,17 @@ class RegexSplitStep(PreTokenizatinStep):
     @classmethod
     def byte_level_splitter(cls) -> "RegexSplitStep":
         return cls(
-            r"'s|'t|'re|'ve|'m|'ll|'d| ?\\p{L}+| ?\\p{N}+| ?[^\s\\p{L}\\p{N}]+|\s+",
+            r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+",
             invert=False,
             behaviour="isolate",
+        )
+
+    @classmethod
+    def add_whitespace_to_the_next_word(cls):
+        return cls(
+            r"\s\S",
+            invert=False,
+            behaviour="merge_with_next"
         )
 
     @classmethod
