@@ -3,6 +3,7 @@ plugins {
 }
 
 import org.gradle.internal.os.OperatingSystem
+
 println 'Operating system: ' + OperatingSystem.current()
 def arch = System.getProperty("os.arch")
 def ov_arch = arch;
@@ -60,26 +61,26 @@ native_resources.each {
         }
     }
 }
-file('native').mkdirs()
-file('native/resources_list.txt').text = "${resources_list}"
+file('src/main/native').mkdirs()
+file('src/main/native/resources_list.txt').text = "${resources_list}"
 sourceSets {
     main {
         java {
-            srcDirs = ["org"]
+            srcDirs = ["src/main/java"]
         }
         resources {
             srcDirs = native_resources
-            srcDir 'native'
+            srcDir 'src/main/native'
         }
     }
     test {
         java {
-            srcDirs = ["."]
-            include "tests/compatibility/*.java", "tests/*.java"
+            srcDirs = ["src/test/java"]
+            include "org/intel/openvino/compatibility/*.java", "org/intel/openvino/*.java"
         }
     }
 }
-repositories{
+repositories {
     mavenCentral()
 }
 dependencies {
