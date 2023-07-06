@@ -45,7 +45,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
                                  const Configuration& config) const {
     auto inference_precision = config.get_inference_precision();
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
-        throw_ov_exception("Inference precision f16 is not supported by device!");
+        inference_precision = ov::element::f32;
     }
     auto upscale_precision = [&]() -> bool {
         return !isHalfSupported(device) || inference_precision == ov::element::f32;
