@@ -15,15 +15,25 @@
 
 namespace LayerTestsDefinitions {
 
+constexpr int SEED_FIRST = 10;
+constexpr float THRESHOLD_FP16 = 0.06f;
+
 class CUDNNLSTMCellTest : public LSTMCellTest {
 public:
     void SetUp() override {
         LSTMCellTest::SetUp();
-        constexpr float up_to = 5.0f;
-        constexpr float start_from = -5.0f;
+
+        const auto hiddenSize = std::get<2>(this->GetParam());
+
+        // All the weights and biases are initialized from u(-sqrt(k), sqrt(k)), where k = 1 / hidden_size
+        // https://pytorch.org/docs/stable/generated/torch.nn.LSTMCell.html
+        const auto k_root = std::sqrt(1.0f / static_cast<float>(hiddenSize));
+
+        const float up_to = k_root;
+        const float start_from = -k_root;
 
         const auto& ops = function->get_ordered_ops();
-        int seed = 1;
+        int seed = SEED_FIRST;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
                 const auto constant = ngraph::builder::makeConstant(
@@ -31,6 +41,11 @@ public:
                 function->replace_node(op, constant);
                 ++seed;
             }
+        }
+
+        const auto& netPrecision = std::get<InferenceEngine::Precision>(this->GetParam());
+        if (netPrecision == InferenceEngine::Precision::FP16) {
+            this->threshold = THRESHOLD_FP16;
         }
     }
 };

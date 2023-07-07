@@ -4,11 +4,12 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/runtime.hpp>
 #include <memory>
-#include "openvino/opsets/opset10.hpp"
-#include "transformer/cuda_graph_transformer.hpp"
 
 #include "common_test_utils/ngraph_test_utils.hpp"
+#include "openvino/opsets/opset10.hpp"
+#include "transformer/cuda_graph_transformer.hpp"
 
 using namespace testing;
 
@@ -23,12 +24,16 @@ TEST(TransformationTests, cuda_transformations_f16) {
         model = std::make_shared<ov::Model>(ov::NodeVector{divide}, ov::ParameterVector{data});
 
         // Run transformation
-        const CUDA::Device device{0};
+        const CUDA::Device device{};
         const auto config = ov::nvidia_gpu::Configuration(ov::AnyMap{ov::hint::inference_precision(ov::element::f16)});
         ov::nvidia_gpu::GraphTransformer().transform(device, model, config);
 
         // Check that after applying transformation all runtime info attributes was correctly propagated
         ASSERT_NO_THROW(check_rt_info(model));
+
+        if (!CUDA::isHalfSupported(device)) {
+            GTEST_SKIP() << "f16 precision isn't fully supported on the device";
+        }
     }
 
     {
