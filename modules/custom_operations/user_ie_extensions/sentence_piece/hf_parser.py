@@ -65,7 +65,6 @@ def parse_strip_step(split_dict: Dict[str, Any]) -> StripStringStep:
 
 def parse_split_step(pretokenizer_dict: Dict[str, Any]) -> RegexSplitStep:
     split_pattern = pretokenizer_dict["pattern"].get("String") or pretokenizer_dict["pattern"]["Regex"]
-    print(pretokenizer_dict["behavior"], pretokenizer_dict["behavior"].lower().rstrip("d"))
     return RegexSplitStep(
         split_pattern=split_pattern,
         invert=pretokenizer_dict["invert"],

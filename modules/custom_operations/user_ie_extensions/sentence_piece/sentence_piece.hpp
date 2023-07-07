@@ -502,10 +502,6 @@ public:
     void validate_and_infer_types() override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
-        std::cerr << "[ clone_with_new_inputs ] Number of inputs: " << inputs.size() << "\n";
-        for (int i=0; i < inputs.size(); ++i) {
-            std::cerr << "[ clone_with_new_inputs ] " << inputs[i].get_partial_shape().to_string() << ";\n";
-        };
         return std::make_shared<VocabDecoder>(inputs);
     }
 

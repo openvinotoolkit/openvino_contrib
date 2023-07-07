@@ -987,7 +987,7 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         auto split_pattern_buf  = inputs[3].data<const uint8_t>();
         auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
-        std::cerr << "[ RegexSplit ] Split Pattern: `" << split_pattern << "`\n";
+//        std::cerr << "[ RegexSplit ] Split Pattern: `" << split_pattern << "`, behaviour: " << m_behaviour << "\n";
 
         const size_t num_rows = inputs[0].get_size();
         const size_t num_chars = inputs[2].get_size();
@@ -1014,26 +1014,26 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
 
         for(size_t seq = 0; seq < num_rows; ++seq) {
-            std::cerr << "================= Seq: " << seq << " ====================\n";
-            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
+//            std::cerr << "================= Seq: " << seq << " ====================\n";
+//            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
 
             new_ragged_begins[seq] = ragged_offset;
 
             for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
 
                 auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
-                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
+//                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
                 paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
                 pretokenizer(&pretokenized);
                 size_t num_splits = pretokenized.GetSplitsSize();
-                std::cerr << "[ RegexSplit ] num_splits: " << num_splits << "\n";
+//                std::cerr << "[ RegexSplit ] num_splits: " << num_splits << "\n";
 
                 for (size_t j = 0; j < num_splits; ++j) {
                     auto split = pretokenized.GetSplit(j);
                     const auto& value = split.normalized_.GetStr();
                     auto offset = split.normalized_.GetOrginalOffset();
-                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
-                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+//                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
+//                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
                     new_begins[ragged_offset] = begins[ragged_col] + offset.first;
                     new_ends[ragged_offset++] = begins[ragged_col] + offset.second;
                 };
@@ -1056,7 +1056,7 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         auto split_pattern_buf  = inputs[5].data<const uint8_t>();
         auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[5].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
-//        std::cerr << "Split Pattern: " << split_pattern << "\n";
+//        std::cerr << "Split Pattern: `" << split_pattern << "`, behaviour: " << m_behaviour << "\n";
 
         outputs[4] = inputs[4];
         const size_t num_rows = inputs[0].get_size();
@@ -1242,7 +1242,7 @@ ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeCont
     ov::OutputVector inputs = pre_translate_string_tensor_input(node.get_input(0));
     auto delim_regex_pattern = node.get_input(1).get_node()->input_value(2);    // use u8 part of packed string tensor as we are expecting a scalar string: TODO: verify it is really there
     inputs.push_back(delim_regex_pattern);
-    // TODO: Use node.get_input(2) with keep_delim_regex_pattern, most likely it should be handled in another RegexSplit with `isolated` behaviour
+    // TODO: Use node.get_input(2) with keep_delim_regex_pattern, most likely it should be handled in another RegexSplit with `isolate` behaviour
     auto outputs = std::make_shared<RegexSplit>(inputs)->outputs();
     auto flatten_string_tensor = post_translate_string_tensor_output({outputs[2], outputs[3], outputs[4]});
     return { post_translate_ragged_tensor_output({outputs[0], outputs[1], flatten_string_tensor}) };
@@ -2170,7 +2170,8 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
 void VocabDecoder::validate_and_infer_types() {
 //    check_ragged_string_input(this, 0);
     check_string_input(this, 1);
-    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+    const auto shape = get_input_partial_shape(0);
+    set_ragged_string_output(this, 0, {shape[0]});
 }
 
 
