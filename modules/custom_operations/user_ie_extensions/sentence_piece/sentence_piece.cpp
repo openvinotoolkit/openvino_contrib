@@ -273,12 +273,13 @@ void check_string_scalar_input(const Node* node, size_t input_index) {
     auto shape = node->get_input_partial_shape(input_index);
     auto element_type = node->get_input_element_type(input_index);
 
-    #if USE_STRING_TENSORS
+    #if false && USE_STRING_TENSORS
+    // This block is not used when we convert ops to decomposed representation (and we really do)
 
     OPENVINO_ASSERT(
         (element_type == element::dynamic || element_type == element::string) &&
         (shape.rank().is_dynamic() || shape.rank().get_length() == 0),
-        "string/0D tensor is expected");
+        "string/0D tensor is expected, but observed: " + element_type.get_type_name() + shape.to_string());
 
     #else
 
@@ -528,7 +529,7 @@ bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVec
 #endif
 
 #if USE_STRING_TENSORS
-    OPENVINO_ASSERT(false, "Detected a u8 tensor but element::string tensor should be provided")
+    OPENVINO_ASSERT(false, "Detected a u8 tensor but element::string tensor should be provided");
 #endif
 
     int32_t batch_size;
@@ -929,7 +930,7 @@ std::shared_ptr<Node> string_attribute_to_constant (const ov::frontend::NodeCont
     // TODO: How to translate attribute `replace_global`?
 
     #if USE_STRING_TENSORS
-    return std::make_shared<Constant>(element::string, {}, value);
+    return std::make_shared<Constant>(element::string, Shape{}, &value);
     #else
     return std::make_shared<Constant>(element::u8, Shape{value.length()}, (const void*)value.data());
     #endif
