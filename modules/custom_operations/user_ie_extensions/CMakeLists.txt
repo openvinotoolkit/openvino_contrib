@@ -80,8 +80,9 @@ if(TBB_FOUND)
   target_link_libraries(${TARGET_NAME} PRIVATE TBB::tbb TBB::tbbmalloc)
 endif()
 
-if(sentence_piece IN_LIST CUSTOM_OPERATIONS)
-  add_subdirectory(sentence_piece)
+# Left sentence_piece for backward compatibility
+if(tokenizer IN_LIST CUSTOM_OPERATIONS)
+  add_subdirectory(tokenizer)
 endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime)

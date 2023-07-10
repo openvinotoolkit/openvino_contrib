@@ -52,9 +52,9 @@
 #    define S_CONV_EXT
 #endif
 
-#ifdef sentence_piece
-#    include "sentence_piece/sentence_piece.hpp"
-#    define SENTENSE_PIECE_EXT                                                                                              \
+#ifdef tokenizer
+#    include "tokenizer/tokenizer.hpp"
+#    define TOKENIZER_EXT                                                                                              \
             std::make_shared<ov::OpExtension<StringTensorPack>>(),                                                          \
             std::make_shared<ov::OpExtension<RaggedTensorPack>>(),                                                          \
             std::make_shared<ov::OpExtension<StringTensorUnpack>>(),                                                        \
@@ -81,7 +81,7 @@
             std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
             std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
 #else
-#    define SENTENSE_PIECE_EXT
+#    define TOKENIZER_EXT
 #endif
 
 OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
@@ -91,5 +91,5 @@ OPENVINO_CREATE_EXTENSIONS(std::vector<ov::Extension::Ptr>(
         S_CONV_TRANSPOSE_EXT
         S_CONV_EXT
         COMPLEX_MUL_EXT
-        SENTENSE_PIECE_EXT
+        TOKENIZER_EXT
     }));
