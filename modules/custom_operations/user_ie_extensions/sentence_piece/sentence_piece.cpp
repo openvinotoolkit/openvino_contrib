@@ -1044,8 +1044,8 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         }
 
         // Fix real shape based on collected results
-        outputs[2].set_shape({ragged_offset});
-        outputs[3].set_shape({ragged_offset});
+        outputs[2].set_shape({size_t(ragged_offset)});
+        outputs[3].set_shape({size_t(ragged_offset)});
 
     } else {
         auto ragged_begins = inputs[0].data<const int32_t>();
@@ -1125,8 +1125,8 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
         }
 
         // Fix real shape based on collected results
-        outputs[2].set_shape({ragged_offset});
-        outputs[3].set_shape({ragged_offset});
+        outputs[2].set_shape({size_t(ragged_offset)});
+        outputs[3].set_shape({size_t(ragged_offset)});
 
     }
 #if 1
@@ -1650,7 +1650,7 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
         }
         new_ends[seq] = ragged_offset;
     }
-    outputs[2].set_shape({ragged_offset});
+    outputs[2].set_shape({size_t(ragged_offset)});
     return true;
 
 #else
@@ -1860,7 +1860,7 @@ bool BPETokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
 
         new_ends[seq] = ragged_offset;
     }
-    outputs[2].set_shape({ragged_offset});
+    outputs[2].set_shape({size_t(ragged_offset)});
     return true;
 
 #else
