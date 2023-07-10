@@ -328,7 +328,7 @@ void set_ragged_output(Node* node, size_t output_index, const PartialShape& shap
 
 
 void StringTensorPack::validate_and_infer_types() {
-    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supporst only 'begins_ends' mode, but get " + m_mode);
+    OPENVINO_ASSERT(m_mode == "begins_ends", "StringTensorPack supports only 'begins_ends' mode, but get " + m_mode);
     check_string_input(this, 0);
     #if USE_STRING_TENSORS
     set_output_type(0, element::string, get_input_partial_shape(0));
@@ -952,6 +952,7 @@ using paddlenlp::fast_tokenizer::core::SplitMode;
 const std::map<std::string, SplitMode> split_modes = {
     {"remove", SplitMode::REMOVED},
     {"isolate", SplitMode::ISOLATED},
+    {"contiguous", SplitMode::CONTIGUOUS},
     {"merge_with_previous", SplitMode::MERGED_WITH_PREVIOUS},
     {"merge_with_next", SplitMode::MERGED_WITH_NEXT},
 };
@@ -960,85 +961,196 @@ const std::map<std::string, SplitMode> split_modes = {
 
 
 void RegexSplit::validate_and_infer_types() {
-    check_string_input(this, 0);
-    check_string_scalar_input(this, 3);
+//    check_string_input(this, 0);
+//    check_string_scalar_input(this, 3);
+//    check_ragged_string_input(this, 0);
+//    check_string_input(this, 5);
     OPENVINO_ASSERT(split_modes.find(m_behaviour) != split_modes.end(), "RegexSplit doesn't support unknown split mode: " + m_behaviour);
     set_ragged_string_output(this, 0, get_input_partial_shape(0));
 }
 
 bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    auto begins = inputs[0].data<const int32_t>();
-    auto ends   = inputs[1].data<const int32_t>();
-    auto chars  = inputs[2].data<const uint8_t>();
 
-    auto split_pattern_buf  = inputs[3].data<const uint8_t>();
-    auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+    if (inputs.size() < 5) {
+        auto begins = inputs[0].data<const int32_t>();
+        auto ends   = inputs[1].data<const int32_t>();
+        auto chars  = inputs[2].data<const uint8_t>();
 
+        ov::Tensor ragged_begins_tensor(ov::element::i32, inputs[0].get_shape());
+        ov::Tensor ragged_ends_tensor(ov::element::i32, inputs[0].get_shape());
+        auto ragged_begins = ragged_begins_tensor.data<int32_t>();
+        auto ragged_ends = ragged_ends_tensor.data<int32_t>();
+        for (int i=0; i < inputs[0].get_size(); ++i) {
+            ragged_begins[i] = i;
+            ragged_ends[i] = i + 1;
+        };
+
+        auto split_pattern_buf  = inputs[3].data<const uint8_t>();
+        auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+
+//        std::cerr << "[ RegexSplit ] Split Pattern: `" << split_pattern << "`, behaviour: " << m_behaviour << "\n";
+
+        const size_t num_rows = inputs[0].get_size();
+        const size_t num_chars = inputs[2].get_size();
+
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+
+        outputs[2].set_shape(Shape{num_chars});
+        outputs[3].set_shape(Shape{num_chars});
+
+        outputs[4] = inputs[2];
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_ragged_begins = outputs[0].data<int32_t>();
+        auto new_ragged_ends   = outputs[1].data<int32_t>();
+        auto new_begins = outputs[2].data<int32_t>();
+        auto new_ends   = outputs[3].data<int32_t>();
+        int32_t ragged_offset = 0;
+
+        using namespace paddlenlp::fast_tokenizer;
+        auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
+
+        for(size_t seq = 0; seq < num_rows; ++seq) {
+//            std::cerr << "================= Seq: " << seq << " ====================\n";
+//            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
+
+            new_ragged_begins[seq] = ragged_offset;
+
+            for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
+
+                auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
+//                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
+                paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
+                pretokenizer(&pretokenized);
+                size_t num_splits = pretokenized.GetSplitsSize();
+//                std::cerr << "[ RegexSplit ] num_splits: " << num_splits << "\n";
+
+                for (size_t j = 0; j < num_splits; ++j) {
+                    auto split = pretokenized.GetSplit(j);
+                    const auto& value = split.normalized_.GetStr();
+                    auto offset = split.normalized_.GetOrginalOffset();
+//                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
+//                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+                    new_begins[ragged_offset] = begins[ragged_col] + offset.first;
+                    new_ends[ragged_offset++] = begins[ragged_col] + offset.second;
+                };
+            }
+
+            new_ragged_ends[seq] = ragged_offset;
+        }
+
+        // Fix real shape based on collected results
+        outputs[2].set_shape({ragged_offset});
+        outputs[3].set_shape({ragged_offset});
+
+    } else {
+        auto ragged_begins = inputs[0].data<const int32_t>();
+        auto ragged_ends   = inputs[1].data<const int32_t>();
+        auto begins = inputs[2].data<const int32_t>();
+        auto ends   = inputs[3].data<const int32_t>();
+        auto chars  = inputs[4].data<const uint8_t>();
+
+        auto split_pattern_buf  = inputs[5].data<const uint8_t>();
+        auto split_pattern = absl::string_view((const char*)split_pattern_buf, shape_size(inputs[5].get_shape())/* - 1*/);   // Shouldn't be applied FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
+
+//        std::cerr << "Split Pattern: `" << split_pattern << "`, behaviour: " << m_behaviour << "\n";
+
+        outputs[4] = inputs[4];
+        const size_t num_rows = inputs[0].get_size();
+        const size_t num_chars = inputs[4].get_size();
+
+        outputs[0].set_shape(inputs[0].get_shape());
+        outputs[1].set_shape(inputs[1].get_shape());
+
+        outputs[2].set_shape(Shape{num_chars});
+        outputs[3].set_shape(Shape{num_chars});
+
+        outputs[4] = inputs[4];
+
+        // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
+        // and only number of elements in the original tensors matter
+
+        // Get pointers in the output tensors
+        auto new_ragged_begins = outputs[0].data<int32_t>();
+        auto new_ragged_ends   = outputs[1].data<int32_t>();
+        auto new_begins = outputs[2].data<int32_t>();
+        auto new_ends   = outputs[3].data<int32_t>();
+        int32_t ragged_offset = 0;
+
+        using namespace paddlenlp::fast_tokenizer;
+        auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
+
+        for(size_t seq = 0; seq < num_rows; ++seq) {
+//            std::cerr << "----------------- Seq: " << seq << " -----------------\n";
+//            std::cerr << "Ragged begins: " << ragged_begins[seq] << "; Ragged Ends: " << ragged_ends[seq] << "\n";
+
+            new_ragged_begins[seq] = ragged_offset;
+
+            for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
+                auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
+//                std::cerr << "[ RegexSplit ] old_str: '" << str << "'\n";
+                paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(str);
+                pretokenizer(&pretokenized);
+                size_t num_splits = pretokenized.GetSplitsSize();
+
+
+                for (size_t j = 0; j < num_splits; ++j) {
+                    auto split = pretokenized.GetSplit(j);
+                    const auto& value = split.normalized_.GetStr();
+                    auto offset = split.normalized_.GetOrginalOffset();
+//                    std::cerr << "[ RegexSplit ]     split part: '" << value << "'\n";
+//                    std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
+                    new_begins[ragged_offset] = begins[ragged_col] + offset.first;
+                    new_ends[ragged_offset++] = begins[ragged_col] + offset.second;
+
+
+//                    std::cerr << "New begins and ends:\n";
+//                    for (size_t i = 0; i < outputs[2].get_size(); ++i) {
+//                        std::cerr << outputs[2].data<int32_t>()[i] << ", ";
+//                    }
+//                    std::cerr << "\n";
+//
+//                    for (size_t i = 0; i < outputs[3].get_size(); ++i) {
+//                        std::cerr << outputs[3].data<int32_t>()[i] << ", ";
+//                    }
+//                    std::cerr << "\n";
+                };
+            }
+
+            new_ragged_ends[seq] = ragged_offset;
+        }
+
+        // Fix real shape based on collected results
+        outputs[2].set_shape({ragged_offset});
+        outputs[3].set_shape({ragged_offset});
+
+    }
 #if 1
 
     // Set output shapes
-    outputs[0].set_shape(inputs[0].get_shape());
-    outputs[1].set_shape(inputs[1].get_shape());
-
-    const size_t num_elements = inputs[0].get_size();
-    const size_t num_chars = inputs[2].get_size();
+//    outputs[0].set_shape(inputs[0].get_shape());
+//    outputs[1].set_shape(inputs[1].get_shape());
+//
+//    const size_t num_elements = inputs[0].get_size();
+//    const size_t num_chars = inputs[2].get_size();
 
     // TODO: Better estimations for max size?
     // Assume we cannot have empty parts, so the number of parts cannot be bigger than the number of symbols
-    outputs[2].set_shape(Shape{num_chars});
-    outputs[3].set_shape(Shape{num_chars});
+//    outputs[2].set_shape(Shape{num_chars});
+//    outputs[3].set_shape(Shape{num_chars});
 
     // Assume we cannot introduce new symbols to output, only existing can be distributed (with gaps)
 
     // TODO: Can we just route input tensor directly to the output outside evaluate when graph is being constructed?
-    outputs[4] = inputs[2];  // TODO: Does it really work?
+//    outputs[4] = inputs[2];  // TODO: Does it really work?
 
     // If line above doesn't work, do this instead:
     //outputs[4].set_shape(Shape{num_chars});
     //inputs[2].copy_to(outputs[4]);
-
-    // For the whole implementation below the input shapes can be ignored, we are working with the flatten representaions
-    // and only number of elements in the original tensors matter
-
-    // Get pointers in the output tensors
-    auto new_ragged_begins = outputs[0].data<int32_t>();
-    auto new_ragged_ends   = outputs[1].data<int32_t>();
-    auto new_begins = outputs[2].data<int32_t>();
-    auto new_ends   = outputs[3].data<int32_t>();
-    int32_t ragged_offset = 0;
-
-    using namespace paddlenlp::fast_tokenizer;
-
-    auto pretokenizer = pretokenizers::SplitPreTokenizer(std::string(split_pattern), split_modes.at(m_behaviour), m_invert);
-
-    for(size_t i = 0; i < num_elements; ++i) {
-        auto old_str = std::string(chars + begins[i], chars + ends[i]);
-        //std::cerr << "[ RegexSplit ] old_str: " << old_str << "\n";
-        paddlenlp::fast_tokenizer::pretokenizers::PreTokenizedString pretokenized(old_str);
-        pretokenizer(&pretokenized);
-        size_t num_splits = pretokenized.GetSplitsSize();
-
-        new_ragged_begins[i] = ragged_offset;
-
-        for (size_t j = 0; j < num_splits; ++j) {
-            auto split = pretokenized.GetSplit(j);
-            //const auto& value = split.normalized_.GetStr();
-            auto offset = split.normalized_.GetOrginalOffset();
-            //std::cerr << "[ RegexSplit ]     split part: " << value << "\n";
-            //std::cerr << "[ RegexSplit ]     split offs: " << offset.first << ":" << offset.second << "\n";
-            new_begins[ragged_offset] = begins[i] + offset.first;
-            new_ends[ragged_offset] = begins[i] + offset.second;
-
-            ++ragged_offset;
-        };
-
-        new_ragged_ends[i] = ragged_offset;
-    }
-
-    // Fix real shape based on collected results
-    outputs[2].set_shape({ragged_offset});
-    outputs[3].set_shape({ragged_offset});
-    //outputs[4].set_shape({char_offset});
 
     return true;
 
@@ -1131,10 +1243,319 @@ ov::OutputVector translate_regex_split_with_offsets(const ov::frontend::NodeCont
     ov::OutputVector inputs = pre_translate_string_tensor_input(node.get_input(0));
     auto delim_regex_pattern = node.get_input(1).get_node()->input_value(2);    // use u8 part of packed string tensor as we are expecting a scalar string: TODO: verify it is really there
     inputs.push_back(delim_regex_pattern);
-    // TODO: Use node.get_input(2) with keep_delim_regex_pattern, most likely it should be handled in another RegexSplit with `isolated` behaviour
+    // TODO: Use node.get_input(2) with keep_delim_regex_pattern, most likely it should be handled in another RegexSplit with `isolate` behaviour
     auto outputs = std::make_shared<RegexSplit>(inputs)->outputs();
     auto flatten_string_tensor = post_translate_string_tensor_output({outputs[2], outputs[3], outputs[4]});
     return { post_translate_ragged_tensor_output({outputs[0], outputs[1], flatten_string_tensor}) };
+}
+
+
+const std::array<std::vector<uint8_t>, 256> create_bytes_to_chars_map() {
+    return {{
+        { 196, 128 },
+        { 196, 129 },
+        { 196, 130 },
+        { 196, 131 },
+        { 196, 132 },
+        { 196, 133 },
+        { 196, 134 },
+        { 196, 135 },
+        { 196, 136 },
+        { 196, 137 },
+        { 196, 138 },
+        { 196, 139 },
+        { 196, 140 },
+        { 196, 141 },
+        { 196, 142 },
+        { 196, 143 },
+        { 196, 144 },
+        { 196, 145 },
+        { 196, 146 },
+        { 196, 147 },
+        { 196, 148 },
+        { 196, 149 },
+        { 196, 150 },
+        { 196, 151 },
+        { 196, 152 },
+        { 196, 153 },
+        { 196, 154 },
+        { 196, 155 },
+        { 196, 156 },
+        { 196, 157 },
+        { 196, 158 },
+        { 196, 159 },
+        { 196, 160 },
+        { 33 },
+        { 34 },
+        { 35 },
+        { 36 },
+        { 37 },
+        { 38 },
+        { 39 },
+        { 40 },
+        { 41 },
+        { 42 },
+        { 43 },
+        { 44 },
+        { 45 },
+        { 46 },
+        { 47 },
+        { 48 },
+        { 49 },
+        { 50 },
+        { 51 },
+        { 52 },
+        { 53 },
+        { 54 },
+        { 55 },
+        { 56 },
+        { 57 },
+        { 58 },
+        { 59 },
+        { 60 },
+        { 61 },
+        { 62 },
+        { 63 },
+        { 64 },
+        { 65 },
+        { 66 },
+        { 67 },
+        { 68 },
+        { 69 },
+        { 70 },
+        { 71 },
+        { 72 },
+        { 73 },
+        { 74 },
+        { 75 },
+        { 76 },
+        { 77 },
+        { 78 },
+        { 79 },
+        { 80 },
+        { 81 },
+        { 82 },
+        { 83 },
+        { 84 },
+        { 85 },
+        { 86 },
+        { 87 },
+        { 88 },
+        { 89 },
+        { 90 },
+        { 91 },
+        { 92 },
+        { 93 },
+        { 94 },
+        { 95 },
+        { 96 },
+        { 97 },
+        { 98 },
+        { 99 },
+        { 100 },
+        { 101 },
+        { 102 },
+        { 103 },
+        { 104 },
+        { 105 },
+        { 106 },
+        { 107 },
+        { 108 },
+        { 109 },
+        { 110 },
+        { 111 },
+        { 112 },
+        { 113 },
+        { 114 },
+        { 115 },
+        { 116 },
+        { 117 },
+        { 118 },
+        { 119 },
+        { 120 },
+        { 121 },
+        { 122 },
+        { 123 },
+        { 124 },
+        { 125 },
+        { 126 },
+        { 196, 161 },
+        { 196, 162 },
+        { 196, 163 },
+        { 196, 164 },
+        { 196, 165 },
+        { 196, 166 },
+        { 196, 167 },
+        { 196, 168 },
+        { 196, 169 },
+        { 196, 170 },
+        { 196, 171 },
+        { 196, 172 },
+        { 196, 173 },
+        { 196, 174 },
+        { 196, 175 },
+        { 196, 176 },
+        { 196, 177 },
+        { 196, 178 },
+        { 196, 179 },
+        { 196, 180 },
+        { 196, 181 },
+        { 196, 182 },
+        { 196, 183 },
+        { 196, 184 },
+        { 196, 185 },
+        { 196, 186 },
+        { 196, 187 },
+        { 196, 188 },
+        { 196, 189 },
+        { 196, 190 },
+        { 196, 191 },
+        { 197, 128 },
+        { 197, 129 },
+        { 197, 130 },
+        { 194, 161 },
+        { 194, 162 },
+        { 194, 163 },
+        { 194, 164 },
+        { 194, 165 },
+        { 194, 166 },
+        { 194, 167 },
+        { 194, 168 },
+        { 194, 169 },
+        { 194, 170 },
+        { 194, 171 },
+        { 194, 172 },
+        { 197, 131 },
+        { 194, 174 },
+        { 194, 175 },
+        { 194, 176 },
+        { 194, 177 },
+        { 194, 178 },
+        { 194, 179 },
+        { 194, 180 },
+        { 194, 181 },
+        { 194, 182 },
+        { 194, 183 },
+        { 194, 184 },
+        { 194, 185 },
+        { 194, 186 },
+        { 194, 187 },
+        { 194, 188 },
+        { 194, 189 },
+        { 194, 190 },
+        { 194, 191 },
+        { 195, 128 },
+        { 195, 129 },
+        { 195, 130 },
+        { 195, 131 },
+        { 195, 132 },
+        { 195, 133 },
+        { 195, 134 },
+        { 195, 135 },
+        { 195, 136 },
+        { 195, 137 },
+        { 195, 138 },
+        { 195, 139 },
+        { 195, 140 },
+        { 195, 141 },
+        { 195, 142 },
+        { 195, 143 },
+        { 195, 144 },
+        { 195, 145 },
+        { 195, 146 },
+        { 195, 147 },
+        { 195, 148 },
+        { 195, 149 },
+        { 195, 150 },
+        { 195, 151 },
+        { 195, 152 },
+        { 195, 153 },
+        { 195, 154 },
+        { 195, 155 },
+        { 195, 156 },
+        { 195, 157 },
+        { 195, 158 },
+        { 195, 159 },
+        { 195, 160 },
+        { 195, 161 },
+        { 195, 162 },
+        { 195, 163 },
+        { 195, 164 },
+        { 195, 165 },
+        { 195, 166 },
+        { 195, 167 },
+        { 195, 168 },
+        { 195, 169 },
+        { 195, 170 },
+        { 195, 171 },
+        { 195, 172 },
+        { 195, 173 },
+        { 195, 174 },
+        { 195, 175 },
+        { 195, 176 },
+        { 195, 177 },
+        { 195, 178 },
+        { 195, 179 },
+        { 195, 180 },
+        { 195, 181 },
+        { 195, 182 },
+        { 195, 183 },
+        { 195, 184 },
+        { 195, 185 },
+        { 195, 186 },
+        { 195, 187 },
+        { 195, 188 },
+        { 195, 189 },
+        { 195, 190 },
+        { 195, 191 },
+    }};
+}
+
+void BytesToChars::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+//    check_string_input(this, 5);
+    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+}
+
+bool BytesToChars::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    OPENVINO_ASSERT(inputs.size() == 5, "Too few inputs passed to BytesToChars, it means it is not converted properly or it is not used in the supported pattern");
+
+    // Set output shapes
+    outputs[0] = inputs[0];
+    outputs[1] = inputs[1];
+    outputs[2].set_shape(inputs[2].get_shape());
+    outputs[3].set_shape(inputs[3].get_shape());
+    outputs[4].set_shape(Shape({inputs[4].get_size() * 2}));
+    const size_t num_elems = inputs[0].get_size();
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[2].data<int32_t>();
+    auto new_ends   = outputs[3].data<int32_t>();
+    auto new_chars  = outputs[4].data<uint8_t>();
+    uint32_t char_pointer = 0;
+
+    for(size_t j = 0; j < num_elems; ++j) {
+
+        for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+            const auto word_len = ends[i] - begins[i];
+            new_begins[i] = char_pointer;
+
+            for (size_t k = 0; k < word_len; ++k) {
+                for (auto byte : m_bytes_to_chars[chars[begins[i] + k]]) {
+                    new_chars[char_pointer++] = byte;
+                }
+            }
+            new_ends[i] = char_pointer;
+        }
+    }
+    outputs[4].set_shape({char_pointer});
+    return true;
 }
 
 
@@ -1160,14 +1581,13 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     OPENVINO_ASSERT(inputs.size() == 9, "Too few inputs passed to WordpieceTokenizer, it means it is not converted properly or it is not used in the supported pattern");
 
     auto unk_token_id  = *inputs[8].data<const int32_t>();
-    //std::cerr << "[ WordpieceTokenizer ] unk_token_id = " << unk_token_id << "\n";
 
 #if 1
 
     // Set output shapes
     outputs[0].set_shape(inputs[0].get_shape());
     outputs[1].set_shape(inputs[1].get_shape());
-    const size_t num_elems = inputs[0].get_size();
+    const size_t num_rows = inputs[0].get_size();
 
     //const size_t num_parts = inputs[2].get_size();
     //size_t new_num_parts = num_parts;
@@ -1180,11 +1600,11 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     auto new_begins = outputs[0].data<int32_t>();
     auto new_ends   = outputs[1].data<int32_t>();
     auto new_elems  = outputs[2].data<int32_t>();
-    int32_t offset = 0;
+    int32_t ragged_offset = 0;
 
     using namespace paddlenlp::fast_tokenizer;
 
-    //std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
+//    std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
     core::Vocab vocab;
     std::string unk_token;
     if(unk_token_id < 0)
@@ -1196,38 +1616,41 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
             unk_token = token;
     }
 
-    //std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
-    //std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
-    //std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
+//    std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
+//    std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
+//    std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
 
     auto tokenizer = models::FastWordPiece(vocab, unk_token, m_max_bytes_per_word, m_suffix_indicator, true);   // FIXME: why true?
 
-    //std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
+//    std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
 
 
-    for(size_t j = 0; j < num_elems; ++j) {
-        new_begins[j] = offset;
+    for(size_t seq = 0; seq < num_rows; ++seq) {
+        new_begins[seq] = ragged_offset;
 
-        for(size_t i = ragged_begins[j]; i < ragged_ends[j]; ++i) {
+        for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
 
-            auto str = std::string(chars + begins[i], chars + ends[i]);
+            auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
             std::vector<core::Token> results = tokenizer.Tokenize(str);
 
+//            std::cerr << "[ WordpieceTokenizer ] String bytes: ";
+//            for (auto i = begins[ragged_col]; i < ends[ragged_col]; ++i) {
+//                std::cerr << static_cast<int> (chars[i]) << " ";
+//            }
+//            std::cerr << "\n";
+//            std::cerr << "[ WordpieceTokenizer ] String: '" << str << "'\n";
+//            std::cerr << "[ WordpieceTokenizer ] String len: " << ends[ragged_col] - begins[ragged_col]  << "\n";
             for (const core::Token& token : results) {
-                //std::cout << "[ WordpieceTokenizer ]     id: " << token.id_ << ", value: " << token.value_
-                //          << ", offset: (" << token.offset_.first << ", "
-                //          << token.offset_.second << ")." << std::endl;
-                OPENVINO_ASSERT(offset < outputs[2].get_size());
-                new_elems[offset++] = token.id_;
+//                std::cout << "[ WordpieceTokenizer ]     id: " << token.id_ << ", value: " << token.value_
+//                          << ", offset: (" << token.offset_.first << ", "
+//                          << token.offset_.second << ")." << std::endl;
+                OPENVINO_ASSERT(ragged_offset < outputs[2].get_size());
+                new_elems[ragged_offset++] = token.id_;
             };
         }
-
-        new_ends[j] = offset;
+        new_ends[seq] = ragged_offset;
     }
-
-    outputs[2].set_shape({offset});
-
-    OPENVINO_ASSERT(offset == outputs[2].get_size(), "Internal error in RegexSplit::evaluate: out of range for ragged parts");
+    outputs[2].set_shape({ragged_offset});
     return true;
 
 #else
@@ -1305,6 +1728,145 @@ ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::N
         node.get_attribute<long>("max_bytes_per_word")
     );
     return { post_translate_ragged_tensor_output(wp_tokenizer->outputs()) };
+}
+
+
+void BPETokenizer::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+    check_string_input(this, 5);
+    check_string_input(this, 8);
+    set_ragged_output(this, 0, get_input_partial_shape(0), element::i32);
+}
+
+bool BPETokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    auto vocab_begins = inputs[5].data<const int32_t>();
+    auto vocab_ends   = inputs[6].data<const int32_t>();
+    auto vocab_chars  = inputs[7].data<const uint8_t>();
+
+    auto merges_begins = inputs[8].data<const int32_t>();
+    auto merges_ends   = inputs[9].data<const int32_t>();
+    auto merges_chars  = inputs[10].data<const uint8_t>();
+
+    auto vocab_size = inputs[5].get_size();
+    auto merges_size = inputs[8].get_size();
+
+    OPENVINO_ASSERT(inputs.size() == 11, "Too few inputs passed to BPETokenizer, it means it is not converted properly or it is not used in the supported pattern");
+
+#if 1
+    // Set output shapes
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    const size_t num_rows = inputs[0].get_size();
+
+    // FIXME: Not accurate estimation as there is theoretical possibility for re-use the same symbol area
+    // to represent different elements in ragged tensor
+    outputs[2].set_shape({inputs[4].get_size()});
+
+    using namespace paddlenlp::fast_tokenizer;
+
+//    std::cerr << "[ BPETokenizer ] Start vocab reading\n";
+    core::Vocab vocab;
+    int32_t unk_token_id = -1;
+
+//    std::cerr << "[ BPETokenizer ] Vocab size is " << vocab_size << "\n";
+
+    for(size_t id = 0; id < vocab_size; ++id) {
+        auto token = std::string(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[token] = int32_t(id); // TODO: Check range
+    }
+
+//    std::cerr << "[ BPETokenizer ] Finish vocab reading\n";
+//
+//    std::cerr << "[ BPETokenizer ] Start merges reading\n";
+//    std::cerr << "[ BPETokenizer ] Merges Size: " << merges_size << "\n";
+    core::Merges merges;
+    std::string delim = " ";
+
+
+    for(size_t id = 0; id < merges_size; ++id) {
+        auto merge = std::string(merges_chars + merges_begins[id], merges_chars + merges_ends[id]);
+        const int delim_pos = merge.find(delim);
+
+        std::pair<std::string, std::string> merge_pair = {
+            merge.substr(0, delim_pos), merge.substr(delim_pos + 1)
+        };
+        merges.emplace_back(merge_pair);
+    }
+
+//    std::cerr << "[ BPETokenizer ] Finish merges reading\n";
+
+
+//    std::cerr << "[ BPETokenizer ] Start tokenizer initialization\n";
+
+    std::vector<std::string> unk_token = {};
+    if (m_unk_token.size() > 0) {
+        unk_token.push_back(m_unk_token);
+    };
+    std::vector<std::string> suffix_indicator = {};
+    if (m_suffix_indicator.size() > 0) {
+        suffix_indicator.push_back(m_suffix_indicator);
+    };
+    std::vector<std::string> end_suffix = {};
+    if (m_end_suffix.size() > 0) {
+        end_suffix.push_back(m_end_suffix);
+    };
+
+    models::BPE tokenizer(vocab, merges, 10000 /* default cache size */, {} /* dropout - don't use dropout for inference */,
+                          unk_token, suffix_indicator, end_suffix, m_fuse_unk);
+
+//    std::cerr << "[ BPETokenizer ] Finish tokenizer initialization\n";
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_elems  = outputs[2].data<int32_t>();
+    int32_t ragged_offset = 0;
+
+//    std::cerr << "Ragged Begins and ends:\n";
+//    for (size_t i = 0; i < inputs[0].get_size(); ++i) {
+//        std::cerr << inputs[0].data<int32_t>()[i] << ", ";
+//    }
+//    std::cerr << "\n";
+//    for (size_t i = 0; i < inputs[1].get_size(); ++i) {
+//        std::cerr << inputs[1].data<int32_t>()[i] << ", ";
+//    }
+//    std::cerr << "\n";
+
+
+    for(size_t seq = 0; seq < num_rows; ++seq) {
+        new_begins[seq] = ragged_offset;
+        for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
+            auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
+
+            std::cerr << "[ BPETokenizer ] String: '" << str << "'\n";
+//            std::cerr << "[ BPETokenizer ] String len: " << ends[ragged_col] - begins[ragged_col]  << "\n";
+
+            std::vector<core::Token> results = tokenizer.Tokenize(str);
+
+            for (const core::Token& token : results) {
+                std::cout << "[ BPETokenizer ]     id: " << token.id_ << ", value: " << token.value_
+                          << ", offset: (" << token.offset_.first << ", "
+                          << token.offset_.second << ")." << std::endl;
+                OPENVINO_ASSERT(ragged_offset < outputs[2].get_size());
+                new_elems[ragged_offset++] = token.id_;
+            };
+        }
+
+        new_ends[seq] = ragged_offset;
+    }
+    outputs[2].set_shape({ragged_offset});
+    return true;
+
+#else
+    // Stub implementation that transforms each input string to its length duplicating element if the length is odd
+    // End of stub implementation
+#endif
 }
 
 
@@ -1605,3 +2167,131 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
     return {const_node};
 }
 
+
+void VocabDecoder::validate_and_infer_types() {
+//    check_ragged_string_input(this, 0);
+    check_string_input(this, 1);
+    const auto shape = get_input_partial_shape(0);
+    set_ragged_string_output(this, 0, {shape[0]});
+}
+
+
+bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto batch_size = inputs[0].get_shape()[0];
+    auto seq_len    = inputs[0].get_shape()[1];
+    auto input_data = inputs[0].data<const int32_t>();
+
+    auto vocab_begins = inputs[1].data<const int32_t>();
+    auto vocab_ends   = inputs[2].data<const int32_t>();
+    auto vocab_chars  = inputs[3].data<const uint8_t>();
+    auto vocab_size   = inputs[1].get_size();
+
+    std::vector<std::vector<uint8_t>> vocab;
+    vocab.resize(vocab_size);
+
+    OPENVINO_ASSERT(inputs.size() == 4, "Too few inputs passed to VocabDecoder, it means it is not converted properly or it is not used in the supported pattern");
+
+    for(size_t id = 0; id < vocab_size; ++id) {
+        std::vector<uint8_t> token = std::vector(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[id] = token;
+    }
+    // Set output shapes
+    outputs[0].set_shape({batch_size});
+    outputs[1].set_shape({batch_size});
+    outputs[2].set_shape({batch_size * seq_len});
+    outputs[3].set_shape({batch_size * seq_len});
+    outputs[4].set_shape({batch_size * seq_len * 100});  // 100 chars - max token length
+    const size_t num_rows = inputs[0].get_size();
+
+    // Get pointers in the output tensors
+    auto new_ragged_begins = outputs[0].data<int32_t>();
+    auto new_ragged_ends = outputs[1].data<int32_t>();
+    auto new_begins = outputs[2].data<int32_t>();
+    auto new_ends   = outputs[3].data<int32_t>();
+    auto new_chars  = outputs[4].data<uint8_t>();
+    uint32_t char_offset = 0;
+
+    for(size_t batch = 0; batch < batch_size; ++batch) {
+        new_ragged_begins[batch] = batch * seq_len;
+        new_ragged_ends[batch]   = new_ragged_begins[batch] + seq_len;
+
+        for(size_t seq = new_ragged_begins[batch]; seq < new_ragged_ends[batch]; ++seq) {
+            auto token_id = input_data[seq];
+            auto token = vocab[token_id];
+
+            std::copy(token.begin(), token.end(), &new_chars[char_offset]);
+
+            new_begins[seq] = char_offset;
+            char_offset += token.size();
+            new_ends[seq] = char_offset;
+        }
+    }
+    outputs[4].set_shape({char_offset});
+    return true;
+}
+
+
+void CharsToBytes::validate_and_infer_types() {
+    check_ragged_string_input(this, 0);
+//    set_ragged_string_output(this, 0, get_input_partial_shape(0));
+    set_string_output(this, 0, get_input_partial_shape(0));
+}
+
+std::array<std::array<uint8_t, 64>, 4> CharsToBytes::create_pair_map() {
+    auto bytes_to_chars = create_bytes_to_chars_map();
+    std::array<std::array<uint8_t, 64>, 4> pair_map;
+
+    for (int i=0; i < bytes_to_chars.size(); ++i) {
+        std::vector<uint8_t> chars = bytes_to_chars[i];
+        if (chars.size() == 2) {
+            pair_map[chars[0] - 194][chars[1] - 128] = i;
+        };
+    };
+
+    return pair_map;
+}
+
+
+bool CharsToBytes::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    auto ragged_begins = inputs[0].data<const int32_t>();
+    auto ragged_ends   = inputs[1].data<const int32_t>();
+    auto begins = inputs[2].data<const int32_t>();
+    auto ends   = inputs[3].data<const int32_t>();
+    auto chars  = inputs[4].data<const uint8_t>();
+
+    OPENVINO_ASSERT(inputs.size() == 5, "Too few inputs passed to CharsToBytes, it means it is not converted properly or it is not used in the supported pattern");
+
+    // Set output shapes
+//    outputs[0] = inputs[0];
+//    outputs[1] = inputs[1];
+    outputs[0].set_shape(inputs[0].get_shape());
+    outputs[1].set_shape(inputs[1].get_shape());
+    outputs[2].set_shape(Shape({inputs[4].get_size()}));
+    const size_t num_rows = inputs[0].get_size();
+
+    // Get pointers in the output tensors
+    auto new_begins = outputs[0].data<int32_t>();
+    auto new_ends   = outputs[1].data<int32_t>();
+    auto new_chars  = outputs[2].data<uint8_t>();
+    uint32_t char_pointer = 0;
+
+    for(size_t row = 0; row < num_rows; ++row) {
+        new_begins[row] = char_pointer;
+        for(size_t col = ragged_begins[row]; col < ragged_ends[row]; ++col) {
+            const auto word_len = ends[col] - begins[col];
+
+            for (size_t k = 0; k < word_len; ++k) {
+                const auto first_byte = chars[begins[col] + k];
+                if (first_byte < m_one_byte_border) {
+                    new_chars[char_pointer++] = first_byte;
+                } else {
+                    const auto second_byte = chars[begins[col] + (++k)];
+                    new_chars[char_pointer++] = m_pair_map[first_byte - 194][second_byte - 128];
+                }
+            }
+        };
+        new_ends[row] = char_pointer;
+    }
+    outputs[2].set_shape({char_pointer});
+    return true;
+}

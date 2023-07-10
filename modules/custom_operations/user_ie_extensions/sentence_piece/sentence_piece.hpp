@@ -263,7 +263,7 @@ public:
 
     RegexSplit () = default;
 
-    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "removed", bool invert = false) :
+    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "remove", bool invert = false) :
         ov::op::Op(arguments),
         m_behaviour(behaviour),
         m_invert(invert) {
@@ -336,6 +336,97 @@ private:
 ov::OutputVector translate_wordpiece_tokenize_with_offsets(const ov::frontend::NodeContext& node);
 ov::OutputVector translate_lookup_table_find_v2(const ov::frontend::NodeContext& node);
 
+
+const std::array<std::vector<uint8_t>, 256> create_bytes_to_chars_map();
+
+
+class OPENVINO_API BytesToChars : public ov::op::Op {
+public:
+    OPENVINO_OP("BytesToChars");
+
+    BytesToChars () = default;
+
+    BytesToChars(const ov::OutputVector& arguments) :
+        ov::op::Op(arguments) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<BytesToChars>(inputs);
+    }
+
+//    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+//        visitor.on_attribute("suffix_indicator", m_suffix_indicator);
+//        visitor.on_attribute("max_bytes_per_word", m_max_bytes_per_word);
+//        return true;
+//    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+private:
+    const std::array<std::vector<uint8_t>, 256> m_bytes_to_chars = create_bytes_to_chars_map();
+};
+
+
+class OPENVINO_API BPETokenizer : public ov::op::Op {
+public:
+    OPENVINO_OP("BPETokenizer");
+
+    BPETokenizer () = default;
+
+    BPETokenizer(
+        const ov::OutputVector& arguments,
+        const std::string& unk_token = "",
+        bool fuse_unk = false,
+        const std::string& suffix_indicator = "",
+        const std::string& end_suffix = "",
+        bool byte_fallback = false
+    ) :
+        ov::op::Op(arguments),
+        m_unk_token(unk_token),
+        m_fuse_unk(fuse_unk),
+        m_suffix_indicator(suffix_indicator),
+        m_end_suffix(end_suffix),
+        m_byte_fallback(byte_fallback) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<BPETokenizer>(inputs, m_unk_token, m_fuse_unk, m_suffix_indicator, m_end_suffix, m_byte_fallback);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        visitor.on_attribute("unk_token", m_unk_token);
+        visitor.on_attribute("fuse_unk", m_fuse_unk);
+        visitor.on_attribute("suffix_indicator", m_suffix_indicator);
+        visitor.on_attribute("end_suffix", m_end_suffix);
+        visitor.on_attribute("byte_fallback", m_byte_fallback);
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+private:
+    std::string m_unk_token;
+    bool m_fuse_unk = false;
+    std::string m_suffix_indicator;
+    std::string m_end_suffix;
+    bool m_byte_fallback = false;
+};
+
+
 class OPENVINO_API CombineSegments : public ov::op::Op {
 public:
     OPENVINO_OP("CombineSegments");
@@ -395,3 +486,66 @@ public:
 
 ov::OutputVector translate_reshape(const ov::frontend::NodeContext& node);
 ov::OutputVector translate_const(const ov::frontend::NodeContext& node);
+
+
+class OPENVINO_API VocabDecoder : public ov::op::Op {
+public:
+    OPENVINO_OP("VocabDecoder");
+
+    VocabDecoder () = default;
+
+    VocabDecoder(const ov::OutputVector& arguments) :
+        ov::op::Op(arguments) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<VocabDecoder>(inputs);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+};
+
+class OPENVINO_API CharsToBytes : public ov::op::Op {
+public:
+    OPENVINO_OP("CharsToBytes");
+
+    CharsToBytes () = default;
+
+    CharsToBytes(const ov::OutputVector& arguments) :
+        ov::op::Op(arguments) {
+        constructor_validate_and_infer_types();
+    }
+
+    void validate_and_infer_types() override;
+
+    std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
+        return std::make_shared<CharsToBytes>(inputs);
+    }
+
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
+
+    bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+    bool has_evaluate() const {
+        return true;
+    }
+
+    std::array<std::array<uint8_t, 64>, 4> create_pair_map();
+
+private:
+    const std::array<std::array<uint8_t, 64>, 4> m_pair_map = create_pair_map();
+    const uint8_t m_one_byte_border = 128;  // if char > 128 => it is two byte char
+};

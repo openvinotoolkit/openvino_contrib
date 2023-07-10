@@ -4,6 +4,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import singledispatchmethod
+from itertools import chain
 from typing import List, Optional, Any, Dict
 from unittest.mock import MagicMock
 import weakref
@@ -40,7 +41,7 @@ def pack_string(s):
 
 core = Core()
 # TODO: Use relative path
-core.add_extension("/home/slyalin/openvino-contrib/muse/modules/custom_operations/build/user_ie_extensions/libuser_ov_extensions.so")
+core.add_extension("/home/apaniuko/python/openvino/bin/intel64/Debug/libuser_ov_extensions.so")
 
 
 class BasePipelineStep:
@@ -113,13 +114,14 @@ class RegExpNormalizationStep(NormalizationStep):
 
     @classmethod
     def del_control_chars_regex(cls) -> "RegExpNormalizationStep":
-        return cls(regex_search_pattern=r"\p{Cc}|\p{Cf}", replace_term=" ")
+        # https://github.com/huggingface/tokenizers/blob/8c9cfb0b689bce00b615b9557a9a767f286d7a33/tokenizers/src/normalizers/bert.rs#L17
+        return cls(regex_search_pattern=r"((?=[^\n\t\r])\p{Cc})|((?=[^\n\t\r])\p{Cf})", replace_term=" ")
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
             (
-                *self.create_string_constant_node("search_pattern").outputs(),
-                *self.create_string_constant_node("replace_pattern").outputs(),
+                *self.create_string_constant_node(self.regex_search_pattern).outputs(),
+                *self.create_string_constant_node(self.replace_term).outputs(),
             )
         )
         return core.make_node(
@@ -163,10 +165,14 @@ class PreTokenizatinStep(BasePipelineStep):
 class RegexSplitStep(PreTokenizatinStep):
     split_pattern: str
     invert: bool = False
-    behaviour: str = "Remove"
+    behaviour: str = "remove"
 
     @classmethod
-    def bert_splitter(cls) -> "RegexSplitStep":
+    def bert_whitespace_splitter(cls) -> "RegexSplitStep":
+        return cls(split_pattern=r"\s+", invert=False)
+
+    @classmethod
+    def bert_keep_delimeters_splitter(cls) -> "RegexSplitStep":
         """Generates a step with a standard BERT regex.
 
         The source:
@@ -175,7 +181,6 @@ class RegexSplitStep(PreTokenizatinStep):
         return cls(
             "|".join(
                 [
-                    r"\s+",
                     r"|".join(
                         [
                             r"[!-/]",
@@ -199,11 +204,41 @@ class RegexSplitStep(PreTokenizatinStep):
                     ),
                 ],
             ),
+            invert=False,
+            behaviour="isolate"
         )
 
     @classmethod
+    def bert_splitter(cls) -> List["RegexSplitStep"]:
+        return [cls.bert_whitespace_splitter(), cls.bert_keep_delimeters_splitter()]
+
+    @classmethod
     def whitespace_splitter(cls) -> "RegexSplitStep":
-        return cls(r"\w+|[^\w\s]+")
+        return cls(r"\w+|[^\w\s]+", invert=True)
+
+    @classmethod
+    def byte_level_splitter(cls) -> "RegexSplitStep":
+        return cls(
+            r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+",
+            invert=False,
+            behaviour="isolate",
+        )
+
+    @classmethod
+    def add_whitespace_to_the_next_word(cls):
+        return cls(
+            r"\s\S",
+            invert=False,
+            behaviour="merge_with_next"
+        )
+
+    @classmethod
+    def digits_splitter(cls, behaviour="isolate") -> "RegexSplitStep":
+        return cls(
+            r"\p{Nd}|\p{Nl}|\p{No}",
+            invert=False,
+            behaviour=behaviour,
+        )
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
@@ -230,6 +265,16 @@ class WhitespaceSplitStep(PreTokenizatinStep):
 class PunctuationSplitStep(PreTokenizatinStep):
     """Splits string on punctuation chars."""
     # behaviour: str = "Isolated"
+
+
+@dataclass
+class BytesToCharsStep(PreTokenizatinStep):
+    """Maps chars to other chars for Byte-level BPE Tokenizer"""
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        return core.make_node(
+            "BytesToChars",
+            input_nodes,
+        ).outputs()
 
 
 @dataclass
@@ -281,6 +326,49 @@ class WordPieceTokenizationStep(TokenizationModelStep):
 
 
 @dataclass
+class BPETokenizationStep(TokenizationModelStep):
+    vocab: List[str] = field(repr=False)
+    merges: List[str] = field(repr=False)
+    unk_token: str = ""
+    fuse_unk: bool = False
+    suffix_indicator: str = ""
+    end_suffix: str = ""
+    byte_fallback: bool = False
+
+    @classmethod
+    def from_hf_json(cls, tokenizer_json: Dict[str, Any]) -> "BPETokenizationStep":
+        return cls(
+            unk_token=tokenizer_json["model"]["unk_token"] or "",
+            fuse_unk=tokenizer_json["model"]["fuse_unk"] or False,
+            suffix_indicator=tokenizer_json["model"]["continuing_subword_prefix"] or "",
+            end_suffix=tokenizer_json["model"]["end_of_word_suffix"] or "",
+            vocab=[token for token, index in sorted(tokenizer_json["model"]["vocab"].items(), key=lambda x: x[1])],
+            merges=tokenizer_json["model"]["merges"],
+        )
+
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        pipeline = self.get_pipeline()
+        pipeline.vocab_node_outputs = self.create_string_constant_node(self.vocab).outputs()
+        input_nodes.extend(
+            (
+                *self.get_pipeline().vocab_node_outputs,
+                *self.create_string_constant_node(self.merges).outputs(),
+            )
+        )
+        return core.make_node(
+            "BPETokenizer",
+            input_nodes,
+            {
+                "unk_token": self.unk_token,
+                "fuse_unk": self.fuse_unk,
+                "suffix_indicator": self.suffix_indicator,
+                "end_suffix": self.end_suffix,
+                "byte_fallback": self.byte_fallback,
+            }
+        ).outputs()
+
+
+@dataclass
 class PostTokenizationStep(BasePipelineStep):
     pass
 
@@ -293,15 +381,23 @@ class TruncationStep(PostTokenizationStep):
 
     @classmethod
     def from_hf_json(cls, tokenizer_json: Dict[str, Any], num_of_added_tokens: int = 0) -> "TruncationStep":
+        max_length = min(
+            tokenizer_json["truncation"]["max_length"] - num_of_added_tokens,
+            2**31 - 1 - num_of_added_tokens,
+        )
         return cls(
-            max_length=tokenizer_json["truncation"]["max_length"] - num_of_added_tokens,
+            max_length=max_length,
             truncate_right=tokenizer_json["truncation"]["direction"] == "Right",
         )
 
     @classmethod
     def from_hf_object(cls, tokenizer: Any, num_of_added_tokens: int = 0) -> "TruncationStep":
+        max_length = min(
+            tokenizer.model_max_length - num_of_added_tokens,
+            2 ** 31 - 1 - num_of_added_tokens,
+        )
         return cls(
-            max_length=tokenizer.model_max_length - num_of_added_tokens,
+            max_length=max_length,
             truncate_right=tokenizer.truncation_side == "right",
         )
 
@@ -327,11 +423,11 @@ class TruncationStep(PostTokenizationStep):
 
 @dataclass
 class SpecialTokenWithId:
-    token: str
+    token: Optional[str] = None
     _token_id: Optional[int] = None
 
     def set_token_id(self, vocab: Optional[List[str]]) -> None:
-        if vocab is not None:
+        if vocab is not None and self.token in vocab:
             self._token_id = vocab.index(self.token)
 
     @property
@@ -402,7 +498,9 @@ class CombineSegmentsStep(PostTokenizationStep):
         return cls(inputs)
 
     @classmethod
-    def from_hf_json_bert_postprocessor(cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1):
+    def from_hf_json_bert_postprocessor(
+            cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1
+    ) -> "CombineSegmentsStep":
         post_processor_dict = tokenizer_json["post_processor"]
         inputs: List[TokenWithTypeId] = [
             AddToken(
@@ -426,6 +524,27 @@ class CombineSegmentsStep(PostTokenizationStep):
                     ),
                 ]
             )
+        return cls(inputs)
+
+    @classmethod
+    def from_hf_json_roberta_processor(
+            cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1
+    ) -> "CombineSegmentsStep":
+        post_processor_dict = tokenizer_json["post_processor"]
+
+        inputs: List[TokenWithTypeId] = [Sequence(token_type_id=0)]
+
+        if not post_processor_dict.get("add_special_tokens", True):
+            return cls(inputs)
+
+        inputs.insert(
+            0, AddToken(token=post_processor_dict["cls"][0], token_type_id=0)
+        )
+        inputs.append(AddToken(token=post_processor_dict["sep"][0], token_type_id=0))
+
+        if number_of_inputs == 2:
+            print("WARNING: Pair of inputs not supported for RoBERTa postprocessor")
+
         return cls(inputs)
 
     def get_ov_subgraph(self, input_nodes):
@@ -511,7 +630,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         #print('ERRROR: SETTING MAX_LENGTH = 100')
         #print('ERROR: Ignoring pad token and set it to id = 0')
 
-        if self.max_length == -1:
+        if self.max_length == -1 or self.max_length >= 2 ** 31:
             # Calculate max_length as the maximum ragged length
             max_length = opset10.reduce_max(opset10.subtract(input_nodes[1], input_nodes[0]), make_constant_node(0, Type.i32))
         else:
@@ -519,18 +638,46 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
 
         #if self.token_type_id == -1:
         #    self.token_type_id = 0
-        for i in range(len(input_nodes)//3):
+        names = ["input_ids", "token_type_ids"]
+        for i, name in zip(range(len(input_nodes)//3), names):
             #print(input_nodes[3*i:3*(i+1)])
             #print(as_node(self.max_length).outputs())
             #print(as_node(np.array(0, dtype=int)).outputs())
-            cur_outputs = core.make_node('RaggedToDense', input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()).outputs()
+            cur_outputs = core.make_node(
+                "RaggedToDense",
+                input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()
+            ).outputs()
+            cur_outputs[0].tensor.add_names({name})
+
             outputs.append(cur_outputs[0])
             if i == 0:
-                mask = opset10.convert(cur_outputs[1], 'i32').output(0)  # TODO: Change RaggedToDense to generate mask of any type
+                mask = opset10.convert(cur_outputs[1], "i32").output(0)  # TODO: Change RaggedToDense to generate mask of any type
 
+        mask.tensor.add_names({"attention_mask"})
         outputs.append(mask)
 
         return outputs
+
+
+@dataclass
+class DecodingStep(BasePipelineStep):
+    pass
+
+
+@dataclass
+class VocabDecoderStep(DecodingStep):
+    def get_vocab_node_outputs(self) -> Optional[List[Output]]:
+        return self.get_pipeline().vocab_node_outputs
+
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        input_nodes.extend(self.get_vocab_node_outputs())
+        return core.make_node("VocabDecoder", input_nodes, {}).outputs()
+
+
+@dataclass
+class CharsToBytesStep(DecodingStep):
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        return core.make_node("CharsToBytes", input_nodes, {}).outputs()
 
 
 @dataclass
@@ -538,6 +685,7 @@ class TokenizerPipeline:
     steps: List[BasePipelineStep] = field(default_factory=list)
     vocab: Optional[List[str]] = field(default=None, repr=False)
     number_of_inputs: int = 1
+    vocab_node_outputs: Optional[List[Output]] = field(default=None, repr=False)
 
     def get_config(self) -> Dict[str, Dict[str, Any]]:
         return {type(step).__name__: step.get_config() for step in self.steps}
@@ -561,31 +709,52 @@ class TokenizerPipeline:
         return self.steps[item]
 
     @property
-    def processing_steps(self) -> List[BasePipelineStep]:
-        return [step for step in self.steps if not isinstance(step, PostTokenizationStep)]
+    def normalization_steps(self) -> List[NormalizationStep]:
+        return [step for step in self.steps if isinstance(step, NormalizationStep)]
+
+    @property
+    def pretokenization_steps(self) -> List[PreTokenizatinStep]:
+        return [step for step in self.steps if isinstance(step, PreTokenizatinStep)]
+
+    @property
+    def tokenization_steps(self) -> List[TokenizationModelStep]:
+        return [step for step in self.steps if isinstance(step, TokenizationModelStep)]
 
     @property
     def post_tokenization_steps(self) -> List[PostTokenizationStep]:
         return [step for step in self.steps if isinstance(step, PostTokenizationStep)]
 
+    @property
+    def decoding_steps(self) -> List[PostTokenizationStep]:
+        return [step for step in self.steps if isinstance(step, DecodingStep)]
+
     def create_string_input(self) -> Node:
         return op.Parameter(Type.u8, PartialShape(["?"]))
+
+    def create_int_input(self, input_type=Type.i32) -> Node:
+        return op.Parameter(input_type, PartialShape(["?", "?", "?"]))
 
     def create_processing_pipeline(self, input_nodes: List[op.Parameter]) -> List[Node]:
         processing_pipelines_outputs = []
 
         for input_node in input_nodes:
             input_node = core.make_node("StringTensorUnpack", input_node.outputs()).outputs()
-            #print(input_node)
-            for step in self.processing_steps:
+            for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
-                #print('input_node:', input_node)
-            #ragged_tensor_pack = core.make_node("RaggedTensorPack", input_node)
+
+            # batch_size = opset10.shape_of(input_node[0])
+            # ragged_begins = opset10.range(as_node(0), batch_size, as_node(1)).outputs()
+            # ragged_ends = opset10.range(as_node(1), opset10.add(batch_size, as_node(1)).outputs(), as_node(1))
+            # input_node = [ragged_begins, ragged_ends] + input_node
+
+            for step in chain(self.pretokenization_steps, self.tokenization_steps):
+                input_node = step.get_ov_subgraph(input_node)
+
             processing_pipelines_outputs += input_node
 
         return processing_pipelines_outputs
 
-    def create_post_tokenization_pipeline(self, input_nodes):
+    def create_post_tokenization_pipeline(self, input_nodes: List[op.Parameter]) -> List[Output]:
         #outputs = []
         for step in self.post_tokenization_steps:
             pipeline_step = step.get_ov_subgraph(input_nodes)
@@ -602,11 +771,39 @@ class TokenizerPipeline:
         #outputs.insert(0, input_nodes[0])
         return input_nodes
 
-    def get_ov_subgraph(self) -> Model:
+    def create_decoding_pipeline(self, input_nodes: List[Output]) -> List[Output]:
+        # input_nodes = inputs.outputs()
+        for step in self.decoding_steps:
+            pipeline_step = step.get_ov_subgraph(input_nodes)
+            input_nodes = pipeline_step
+
+        return core.make_node("StringTensorPack", input_nodes).outputs()
+
+    def get_encoder_ov_subgraph(self) -> Model:
         input_nodes = [self.create_string_input() for _ in range(self.number_of_inputs)]
         processing_outputs = self.create_processing_pipeline(input_nodes)
         outputs = self.create_post_tokenization_pipeline(processing_outputs)
+        return Model(outputs, input_nodes, name="tokenizer_encoder")
 
-        return Model(outputs, input_nodes, name="tokenizer")
+    def get_greedy_decoding_ov_subgraph(self, input_node: op.Parameter) -> List[Output]:
+        argmax = opset10.topk(
+            data=input_node,
+            k=1,
+            axis=-1,
+            mode="max",
+            sort="none",
+            name="ArgMax",
+        )
+        return opset10.squeeze(
+            data=argmax.output(1),
+            axes=-1,
+        ).outputs()
 
+    def get_decoder_ov_subgraph(self) -> Model:
+        input_node = self.create_int_input()
+        argmax = self.get_greedy_decoding_ov_subgraph(input_node)
+        outputs = self.create_decoding_pipeline(argmax)
+        model = Model(outputs, [input_node], name="tokenizer_decoder")
+        model.output().tensor.add_names({"string_output"})
+        return model
 
