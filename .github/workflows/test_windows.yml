@@ -93,12 +93,12 @@ jobs:
 
       - name: Install MO dependencies
         run: |
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
 
       - name: Install build dependencies
         run: |
@@ -337,12 +337,12 @@ jobs:
 
       - name: Install MO dependencies
         run: |
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt
-          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
+          python3 -m pip install -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_mxnet.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_caffe.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_kaldi.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_onnx.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_tf2.txt `
+          -r ${{ env.OPENVINO_REPO }}/tools/mo/requirements_dev.txt
 
       - name: Install Python wheels
         run: |
