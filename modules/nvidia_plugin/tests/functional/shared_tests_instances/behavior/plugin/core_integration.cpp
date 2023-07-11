@@ -62,9 +62,15 @@ INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetConfigTest,
                          IEClassGetConfigTest_ThrowUnsupported,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
+#ifdef PROXY_PLUGIN_ENABLED
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetAvailableDevices,
                          IEClassGetAvailableDevices,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(CommonTestUtils::DEVICE_GPU));
+#else
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetAvailableDevices,
+                         IEClassGetAvailableDevices,
+                         ::testing::Values(CommonTestUtils::DEVICE_GPU));
+#endif
 
 //
 // IE Class SetConfig

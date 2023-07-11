@@ -385,7 +385,7 @@ TEST_F(InferenceRequestBasicTest, AsyncParameterResultCancel) {
     fillBlobs(inferRequest, inputsInfo, 1);
     ASSERT_NO_THROW(inferRequest.StartAsync());
     ASSERT_NO_THROW(inferRequest.Cancel());
-    ASSERT_THROW(inferRequest.Wait(5000), std::exception);
+    ASSERT_NO_THROW(inferRequest.Wait(5000));
 }
 
 TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {

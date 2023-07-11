@@ -13,41 +13,42 @@
 
 namespace LayerTestsDefinitions {
 
+constexpr int SEED_FIRST = 10;
+constexpr float THRESHOLD_FP16 = 0.05f;
+
 class CUDNNGRUCellTest : public UnsymmetricalComparer<GRUCellTest> {
 protected:
     void SetUp() override {
         GRUCellTest::SetUp();
 
-        constexpr float up_to = 1.5f;
-        constexpr float start_from = -1.5f;
+        const auto hiddenSize = std::get<2>(this->GetParam());
 
-        int seed = 1;
+        // All the weights and biases are initialized from u(-sqrt(k), sqrt(k)), where k = 1 / hidden_size
+        // https://pytorch.org/docs/stable/generated/torch.nn.GRUCell.html
+        const auto k_root = std::sqrt(1.0f / static_cast<float>(hiddenSize));
+
+        const float up_to = k_root;
+        const float start_from = -k_root;
+
         const auto& ops = function->get_ordered_ops();
+        int seed = SEED_FIRST;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
                 const auto constant = ngraph::builder::makeConstant(
-                    op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
+                    op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed);
                 function->replace_node(op, constant);
+                ++seed;
             }
+        }
+
+        const auto& netPrecision = std::get<InferenceEngine::Precision>(this->GetParam());
+        if (netPrecision == InferenceEngine::Precision::FP16) {
+            this->threshold = THRESHOLD_FP16;
         }
     }
 };
 
-// this class sets lesser precision because of test failures on some hardware, e.g. RTX2080
-class FP16CUDNNGRUCellTest : public CUDNNGRUCellTest {
-protected:
-    void SetUp() override {
-        CUDNNGRUCellTest::SetUp();
-        threshold = 0.07f;
-    }
-};
-
 TEST_P(CUDNNGRUCellTest, CompareWithRefs) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
-    Run();
-}
-
-TEST_P(FP16CUDNNGRUCellTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
     Run();
 }
@@ -110,7 +111,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP32,
                         GRUCellTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
-                        FP16CUDNNGRUCellTest,
+                        CUDNNGRUCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(smoke_batch_02),
                                            ::testing::ValuesIn(smoke_hidden_sizes_02),

@@ -4,6 +4,7 @@
 
 #include "functional_test_utils/skip_tests_config.hpp"
 
+#include <cuda/runtime.hpp>
 #include <string>
 #include <vector>
 
@@ -138,5 +139,13 @@ std::vector<std::string> disabledTestPatterns() {
     retVector.emplace_back(R"(.*ReferenceTopKTest.*topk_max_sort_none)");
     retVector.emplace_back(R"(.*ReferenceTopKTest.*topk_min_sort_none)");
 #endif
+
+    if (!CUDA::isHalfSupported(CUDA::Device{})) {
+        retVector.emplace_back(
+            R"(.*OVExecGraphImportExportTest.*importExportedFunctionParameterResultOnly.*targetDevice=NVIDIA_elementType=f16.*)");
+        retVector.emplace_back(
+            R"(.*OVExecGraphImportExportTest.*importExportedIENetworkParameterResultOnly.*targetDevice=NVIDIA_elementType=f16.*)");
+    }
+
     return retVector;
 }

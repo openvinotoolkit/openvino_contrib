@@ -27,11 +27,15 @@ set_source_files_properties(*.cu *.cuh PROPERTIES LANGUAGE CUDA)
 add_library(${OBJ_NAME} STATIC ${SOURCES})
 target_compile_definitions(${OBJ_NAME} PRIVATE IMPLEMENT_INFERENCE_ENGINE_PLUGIN IMPLEMENT_OPENVINO_EXTENSION_API)
 
+if(ENABLE_PROXY)
+    set(PLUGIN_DEFAULT_CONFIG "PROXY_CONFIGURATION_ALIAS:GPU;PROXY_CONFIGURATION_PRIORITY:1;PROXY_CONFIGURATION_FALLBACK:GPU")
+endif()
+
 # Adds a shared library with plugin
 ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp cuda_create_extensions.cpp
-              SKIP_INSTALL # ATTENTION: uncomment to install component
+              DEFAULT_CONFIG ${PLUGIN_DEFAULT_CONFIG}
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 
 # Enable support of CC for the plugin
@@ -76,15 +80,3 @@ if(ENABLE_NVIDIA)
     ie_register_plugins(MAIN_TARGET ${TARGET_NAME}
                         POSSIBLE_PLUGINS ${TARGET_NAME})
 endif()
-
-# ATTENTION: uncomment to install component
-# install
-
-# set(component_name template)
-# ie_cpack_add_component(${component_name} REQUIRED)
-
-# install(TARGETS ${TARGET_NAME}
-#         RUNTIME DESTINATION ${IE_CPACK_RUNTIME_PATH}
-#         ARCHIVE DESTINATION ${IE_CPACK_ARCHIVE_PATH}
-#         LIBRARY DESTINATION ${IE_CPACK_LIBRARY_PATH}
-#         COMPONENT ${component_name})
