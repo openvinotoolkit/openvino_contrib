@@ -66,11 +66,13 @@ INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetConfigTest,
                          OVClassGetConfigTest_ThrowUnsupported,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 
+#ifdef PROXY_PLUGIN_ENABLED
 INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
                          OVClassGetAvailableDevices,
-#ifdef PROXY_PLUGIN_ENABLED
                          ::testing::Values(CommonTestUtils::DEVICE_GPU));
 #else
+INSTANTIATE_TEST_SUITE_P(smoke_OVClassGetAvailableDevices,
+                         OVClassGetAvailableDevices,
                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 #endif
 
