@@ -30,4 +30,8 @@ addIeTargetTest(
         LABELS
            CUDA
 )
+
+if(ENABLE_PROXY)
+    target_compile_definitions(${TARGET_NAME} PUBLIC PROXY_PLUGIN_ENABLED)
+endif()
 # [cmake:functional_tests]
