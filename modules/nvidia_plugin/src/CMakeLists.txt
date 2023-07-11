@@ -36,6 +36,7 @@ ie_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp cuda_create_extensions.cpp
               DEFAULT_CONFIG ${PLUGIN_DEFAULT_CONFIG}
+              SKIP_INSTALL
               VERSION_DEFINES_FOR cuda_create_plugin.cpp)
 
 # Enable support of CC for the plugin
