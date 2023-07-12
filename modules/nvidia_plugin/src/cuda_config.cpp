@@ -169,7 +169,7 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
         } else if (ov::hint::inference_precision == key) {
             auto element_type = value.as<ov::element::Type>();
             const std::set<ov::element::Type> supported_types = {
-                ov::element::undefined, ov::element::f16, ov::element::f32,
+                ov::element::f16, ov::element::f32,
             };
             if (supported_types.count(element_type) == 0) {
                 throw_ov_exception(fmt::format("Inference precision {} is not supported by plugin", value.as<std::string>()));

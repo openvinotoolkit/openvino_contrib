@@ -30,9 +30,7 @@ Plugin::Plugin() {
         device_thread_pool_[std::to_string(i)] = std::make_shared<CudaThreadPool>(device, num_concurrent_streams);
         configs_.insert({std::to_string(i),
             Configuration({ov::device::id(i),
-                            // TODO uncomment next line to switch default precision
-                            // ov::hint::inference_precision(isHalfSupported(device) ? ov::element::f16 : ov::element::f32)})});
-                            ov::hint::inference_precision(ov::element::undefined)})});
+                            ov::hint::inference_precision(isHalfSupported(device) ? ov::element::f16 : ov::element::f32)})});
     }
 }
 

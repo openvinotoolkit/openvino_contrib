@@ -62,6 +62,11 @@ public:
 std::vector<PropertiesParams> default_properties = {
     {
         {ov::device::id.name(), "0"},
+        {ov::hint::inference_precision.name(), "f16"},
+    },
+    {
+        {ov::device::id.name(), "0"},
+        {ov::hint::inference_precision.name(), "f32"},
     },
 };
 
@@ -71,8 +76,11 @@ TEST_P(MatMulExecNetworkTest, BuildExecutableSequence_MatMul_Success) {
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(
         plugin->compile_model(function_, properties));
     const auto& execSequence = GetExecSequence(cuda_compiled_model);
-    ASSERT_EQ(execSequence.size(), 3);
-    ASSERT_EQ(std::type_index(typeid(*execSequence[1].get())), std::type_index(typeid(MatMulOp)));
+    bool is_f32 = properties.at(ov::hint::inference_precision.name()).as<ov::element::Type>() == ov::element::f32;
+    auto expected_ops = is_f32 ? 3 : 5; // +2 Converts for f16
+    auto matmul_index = is_f32 ? 1 : 2;
+    ASSERT_EQ(execSequence.size(), expected_ops);
+    ASSERT_EQ(std::type_index(typeid(*execSequence[matmul_index].get())), std::type_index(typeid(MatMulOp)));
 }
 
 INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
