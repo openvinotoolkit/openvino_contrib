@@ -87,7 +87,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventCapture) {
     CUDA::GraphCapture capture{stream};
     {
         auto scope = capture.getScope();
-        event0.record(stream, cudaEventRecordExternal);
+        event0.record(stream, CUDA::Event::RecordMode::External);
         stream.upload(devA, a.data(), buffer_size);
         stream.upload(devB, b.data(), buffer_size);
         enqueueVecAdd(stream,
@@ -97,7 +97,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventCapture) {
                       static_cast<int*>(devB.get()),
                       static_cast<int*>(devResult.get()), a.size());
         stream.download(result.data(), devResult, buffer_size);
-        event1.record(stream, cudaEventRecordExternal);
+        event1.record(stream, CUDA::Event::RecordMode::External);
     }
     CUDA::GraphExec exec{capture.getGraph()};
     exec.launch(stream);
@@ -111,7 +111,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventUpdate) {
     CUDA::GraphCapture capture0{stream};
     {
         auto scope = capture0.getScope();
-        event0.record(stream, cudaEventRecordExternal);
+        event0.record(stream, CUDA::Event::RecordMode::External);
         stream.upload(devA, a.data(), buffer_size);
         stream.upload(devB, b.data(), buffer_size);
         enqueueVecAdd(stream,
@@ -121,7 +121,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventUpdate) {
                       static_cast<int*>(devB.get()),
                       static_cast<int*>(devResult.get()), a.size());
         stream.download(result.data(), devResult, buffer_size);
-        event1.record(stream, cudaEventRecordExternal);
+        event1.record(stream, CUDA::Event::RecordMode::External);
     }
     CUDA::GraphExec exec{capture0.getGraph()};
     CUDA::Event event2{};
@@ -129,7 +129,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventUpdate) {
     CUDA::GraphCapture capture1{stream};
     {
         auto scope = capture1.getScope();
-        event2.record(stream, cudaEventRecordExternal);
+        event2.record(stream, CUDA::Event::RecordMode::External);
         stream.upload(devA, a.data(), buffer_size);
         stream.upload(devB, b.data(), buffer_size);
         enqueueVecAdd(stream,
@@ -139,7 +139,7 @@ TEST_F(CudaGraphCaptureCppWrappersTest, EventUpdate) {
                       static_cast<int*>(devB.get()),
                       static_cast<int*>(devResult.get()), a.size());
         stream.download(result.data(), devResult, buffer_size);
-        event3.record(stream, cudaEventRecordExternal);
+        event3.record(stream, CUDA::Event::RecordMode::External);
     }
     exec.update(capture1.getGraph());
     exec.launch(stream);

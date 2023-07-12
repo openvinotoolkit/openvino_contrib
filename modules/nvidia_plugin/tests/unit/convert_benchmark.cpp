@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <iomanip>
@@ -42,11 +43,12 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     constexpr int kNumAttempts = 200;
 
     auto& stream = threadContext.stream();
-    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
 
     using Type_t = ov::element::Type_t;
     constexpr Type_t supported_types[] = {Type_t::boolean,

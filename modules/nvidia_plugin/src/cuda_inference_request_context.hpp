@@ -8,6 +8,7 @@
 
 #include "cancellation_token.hpp"
 #include "cuda_thread_context.hpp"
+#include "cuda_graph_context.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -31,8 +32,8 @@ public:
                             const ThreadContext& threadContext,
                             CancellationToken& token,
                             Profiler& profiler,
-                            bool isBenchmarkMode = false,
-                            bool useCudaGraph = true)
+                            CudaGraphContext& cudaGraphContext,
+                            bool isBenchmarkMode = false)
         : threadContext{threadContext},
           token{token},
           profiler{profiler},
@@ -40,8 +41,8 @@ public:
           inputs_mapping{inputMapping},
           blob_outputs{outputs},
           outputs_mapping{outputMapping},
-          is_benchmark_mode_{isBenchmarkMode},
-          use_cuda_graph_{useCudaGraph} {}
+          cuda_graph_context_{cudaGraphContext},
+          is_benchmark_mode_{isBenchmarkMode} {}
     // don't allow storing references to temporary
     template <typename... Args>
     InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
@@ -85,7 +86,8 @@ public:
     [[nodiscard]] ov::nvidia_gpu::CancellationToken& getCancellationToken() const noexcept { return token; }
     [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
     [[nodiscard]] bool isBenchmarkMode() const noexcept { return is_benchmark_mode_; }
-    [[nodiscard]] bool useCudaGraph() const noexcept { return use_cuda_graph_; }
+    [[nodiscard]] const CudaGraphContext& getCudaGraphContext() const { return cuda_graph_context_; }
+    [[nodiscard]] CudaGraphContext& getCudaGraphContext() { return cuda_graph_context_; }
 
 private:
     const ThreadContext& threadContext;
@@ -95,8 +97,8 @@ private:
     const std::map<std::string, std::size_t>& inputs_mapping;
     const std::vector<std::shared_ptr<ov::Tensor>>& blob_outputs;
     const std::map<std::string, std::size_t>& outputs_mapping;
+    CudaGraphContext& cuda_graph_context_;
     bool is_benchmark_mode_;
-    bool use_cuda_graph_;
 };
 
 }  // namespace nvidia_gpu

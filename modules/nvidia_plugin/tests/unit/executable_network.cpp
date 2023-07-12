@@ -44,7 +44,7 @@ public:
         return result.str();
     }
     auto GetExecSequence(const std::shared_ptr<CompiledModel>& compiled_model) {
-        const auto& graph = compiled_model->get_execution_graph();
+        const auto& graph = compiled_model->get_topology_runner().GetSubGraph();
         std::vector<OperationBase::Ptr> execSequence{};
         auto graph_exec_sequence = graph.getExecSequence();
         execSequence.insert(execSequence.end(), graph_exec_sequence.begin(), graph_exec_sequence.end());

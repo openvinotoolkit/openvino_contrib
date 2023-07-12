@@ -122,6 +122,23 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     return result;
 }
 
+void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
+                       const Workbuffers &workbuffers) const {
+    const auto& stream = context.getThreadContext().stream();
+    const auto& memoryManager = *memory_manager_;
+    auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
+
+    auto& cancellationToken = context.getCancellationToken();
+    auto& profiler = context.getProfiler();
+    profiler.set_stream(stream);
+    for (auto& op : profiler.create_exec_sequence(this)) {
+        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
+        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
+        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
+        op->capture(context, inputTensors, outputTensors, workBuffers);
+    }
+}
+
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
     const auto memoryBlockSize = memory_manager_->mutableTensorsMemoryModel()->deviceMemoryBlockSize();
     return {{}, {memoryBlockSize}};

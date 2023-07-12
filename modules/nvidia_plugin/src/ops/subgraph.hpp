@@ -22,6 +22,11 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+
     bool IsCudaGraphCompatible() const override;
 
     const MemoryManager& memoryManager() const { return *memory_manager_; }

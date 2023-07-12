@@ -14,7 +14,7 @@
 #include <utils/perf_timing.hpp>
 #include <vector>
 
-#include "cuda_graph.hpp"
+#include "cuda_eager_topology_runner.hpp"
 #include "cuda_operation_base.hpp"
 
 namespace ov {
@@ -88,6 +88,8 @@ public:
      */
     void process_events();
 
+    void set_cuda_event_record_mode(CUDA::Event::RecordMode mode) { cuda_event_record_mode_ = mode; }
+
 private:
     void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
     void collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
@@ -106,6 +108,7 @@ private:
     std::array<Duration, NumOfStages> durations_;
     Time::time_point start_{};
     size_t infer_count_{};
+    CUDA::Event::RecordMode cuda_event_record_mode_ {CUDA::Event::RecordMode::Default};
 };
 
 class Profiler::ProfileExecStep {
@@ -125,11 +128,22 @@ public:
     template <typename... TArgs>
     void execute(TArgs&&... args) const {
         if (this->profiler_.perf_count_) {
-            timing_.setStart(*this->profiler_.active_stream_);
+            timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
             exec_step_.Execute(std::forward<TArgs>(args)...);
-            timing_.setStop(*this->profiler_.active_stream_);
+            timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
         } else {
             exec_step_.Execute(std::forward<TArgs>(args)...);
+        }
+    }
+
+    template <typename... TArgs>
+    void capture(TArgs&&... args) const {
+        if (this->profiler_.perf_count_) {
+            timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+            exec_step_.Capture(std::forward<TArgs>(args)...);
+            timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        } else {
+            exec_step_.Capture(std::forward<TArgs>(args)...);
         }
     }
 
@@ -184,7 +198,7 @@ public:
      */
     ProfilerSequence(Profiler& profiler, size_t index) : profiler_{profiler}, index_{index} {
         if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStart(*profiler_.active_stream_);
+            profiler_.exec_timing_.setStart(*profiler_.active_stream_, profiler.cuda_event_record_mode_);
         }
     }
 
@@ -194,7 +208,7 @@ public:
      */
     ~ProfilerSequence() {
         if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStop(*profiler_.active_stream_);
+            profiler_.exec_timing_.setStop(*profiler_.active_stream_, profiler_.cuda_event_record_mode_);
         }
     }
 

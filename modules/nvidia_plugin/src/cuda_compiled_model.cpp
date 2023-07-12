@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
@@ -51,7 +52,9 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
     : ov::ICompiledModel(model, plugin, nullptr, nullptr),
       config_(std::move(cfg)),
       cuda_stream_executor_(std::move(wait_executor)),
-      loaded_from_cache_(loaded_from_cache) {
+      loaded_from_cache_(loaded_from_cache),
+      use_cuda_graph_{get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>() &&
+    !get_property(ov::enable_profiling.name()).as<bool>()} {
     try {
         compile_model(model);
         init_executor();  // creates thread-based executor using for async requests
@@ -117,7 +120,17 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     const bool opBenchOption = config_.get(ov::nvidia_gpu::operation_benchmark.name()).as<bool>();
     const auto creationContext = CreationContext{device, opBenchOption};
 
-    graph_ = std::make_unique<ExecGraph>(creationContext, model_);
+    if (use_cuda_graph_) {
+        try {
+            topology_runner_ = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
+            // TODO: Add CudaGraphTopologyRunner validation
+        } catch (const CudaGraphTopologyRunner::CudaGraphIncompatible&) {
+            topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
+            use_cuda_graph_ = false;
+        }
+    } else {
+        topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
+    }
 
     memory_pool_ = create_memory_pool();
 }
@@ -235,7 +248,7 @@ size_t CompiledModel::get_optimal_number_of_streams(size_t const_blob_size,
 }
 
 std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
-    const auto& memory_manager = graph_->memoryManager();
+    const auto& memory_manager = topology_runner_->GetSubGraph().memoryManager();
     const auto const_blob_size = memory_manager.immutableTensors().memoryModel()->deviceMemoryBlockSize();
     const auto immutable_work_buffers_size = memory_manager.immutableWorkbuffers().memoryModel()->deviceMemoryBlockSize();
     const auto& memory_model = memory_manager.mutableTensorsMemoryModel();
@@ -378,8 +391,8 @@ void CompiledModel::export_model(std::ostream& model_stream) const {
     model_stream.write(reinterpret_cast<char*>(&weights[0]), data_size);
 }
 
-const ExecGraph& CompiledModel::get_execution_graph() const {
-    return *graph_;
+const ITopologyRunner& CompiledModel::get_topology_runner() const {
+    return *topology_runner_;
 }
 
 const std::shared_ptr<MemoryPool>& CompiledModel::get_memory_pool() const {

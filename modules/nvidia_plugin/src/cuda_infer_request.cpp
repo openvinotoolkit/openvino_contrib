@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
 #include "nvidia/properties.hpp"
@@ -41,9 +42,9 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(), compiled_model->get_execution_graph()},
-      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{compiled_model->get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
+      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
+          compiled_model->get_topology_runner().GetSubGraph()},
+      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
 }
 
@@ -141,7 +142,8 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         auto compiled_model = get_nvidia_model();
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
-        auto& graph = compiled_model->get_execution_graph();
+        auto& cudaGraphContext = memory.cudaGraphContext();
+        auto& topology_runner = compiled_model->get_topology_runner();
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
                                                     output_tensors_,
@@ -149,9 +151,10 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    is_benchmark_mode_,
-                                                    use_cuda_graph_};
-        graph.Run(inferRequestContext, memory);
+                                                    cudaGraphContext,
+                                                    is_benchmark_mode_};
+        topology_runner.UpdateContext(inferRequestContext, memory);
+        topology_runner.Run(inferRequestContext, memory);
         profiler_.stop_stage(Profiler::StartPipeline);
     } catch (...) {
         // TODO:

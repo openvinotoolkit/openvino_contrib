@@ -14,7 +14,8 @@
 #include <cuda/runtime.hpp>
 #include <cuda_config.hpp>
 #include <cuda_creation_context.hpp>
-#include <cuda_graph.hpp>
+#include <cuda_eager_topology_runner.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
@@ -150,10 +151,11 @@ void run_zero_div_test() {
     std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::ExecGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
+    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));
