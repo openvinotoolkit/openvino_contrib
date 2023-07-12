@@ -83,6 +83,10 @@ class BasicConvolutionBiasAddActivationLayerTest
 public:
     using Traits = ConvBAATraits<TConvLayerTest>;
 
+    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override {
+        return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), 2, -1, 1000, 1);
+    }
+
     static std::string getTestCaseName(testing::TestParamInfo<typename Traits::ConvBAAParamSet> obj) {
         typename Traits::ConvParamSet convParamSet;
         ngraph::helpers::ActivationTypes activation;
@@ -107,6 +111,9 @@ protected:
         ov::ParameterVector params;
         std::shared_ptr<typename Traits::ConvNode> convLayer;
         std::tie(ngNetPrc, params, convLayer) = setUpConvolutionTestParams(convParamSet);
+        if (ngNetPrc == ov::element::f16) {
+            this->threshold = 0.5;
+        }
 
         auto biasShape = convLayer->get_output_shape(0);
         constexpr size_t channel_dim_index = 1;
