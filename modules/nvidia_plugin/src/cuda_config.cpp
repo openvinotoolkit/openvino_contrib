@@ -20,7 +20,6 @@ std::vector<ov::PropertyName> Configuration::get_ro_properties() {
     static const std::vector<ov::PropertyName> ro_properties = {
         // Metrics
         ov::PropertyName{ov::available_devices.name(), ov::PropertyMutability::RO},
-        ov::PropertyName{ov::caching_properties.name(), ov::PropertyMutability::RO},
         ov::PropertyName{ov::supported_properties.name(), ov::PropertyMutability::RO},
         ov::PropertyName{ov::range_for_streams.name(), ov::PropertyMutability::RO},
         ov::PropertyName{ov::range_for_async_infer_requests.name(), ov::PropertyMutability::RO},
@@ -59,6 +58,13 @@ std::vector<ov::PropertyName> Configuration::get_supported_properties() {
     std::vector<ov::PropertyName> supported_properties(std::begin(ro_properties), std::end(ro_properties));
     supported_properties.insert(std::end(supported_properties), std::begin(rw_properties), std::end(rw_properties));
     return supported_properties;
+}
+
+std::vector<ov::PropertyName> Configuration::get_supported_internal_properties() {
+    static const std::vector<ov::PropertyName> supported_internal_properties = {
+            ov::PropertyName{ov::internal::caching_properties.name(), ov::PropertyMutability::RO},
+            ov::PropertyName{ov::internal::config_device_id.name(), ov::PropertyMutability::WO}};
+    return supported_internal_properties;
 }
 
 std::vector<ov::PropertyName> Configuration::get_caching_properties() {
