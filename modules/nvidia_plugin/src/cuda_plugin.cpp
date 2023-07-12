@@ -63,7 +63,7 @@ Configuration Plugin::get_full_config(const ov::AnyMap& properties, const bool t
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<const ov::Model>& model,
                                                           const ov::AnyMap& properties,
-                                                          const ov::RemoteContext& context) const {
+                                                          const ov::SoPtr<ov::IRemoteContext>& context) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::compile_model");
 
     auto full_config = get_full_config(properties);
@@ -84,7 +84,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_stream,
-                                                         const ov::RemoteContext& context,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
                                                          const ov::AnyMap& properties) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::import_model");
 
