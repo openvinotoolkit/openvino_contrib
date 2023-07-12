@@ -12,7 +12,6 @@
 #include "openvino/op/gru_sequence.hpp"
 #include "openvino/op/rnn_sequence.hpp"
 #include "openvino/op/lstm_sequence.hpp"
-#include "openvino/op/util/op_types.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
 #include "transformations/convert_precision.hpp"
@@ -55,30 +54,6 @@ void GraphTransformer::transform(const CUDA::Device& device,
         return isHalfSupported(device) && inference_precision == ov::element::f16;
     };
 
-    // WA for ConvertPrecision which doesn't keep original precisions (CVS-111453)
-    // Store original precisions for inputs and outputs
-    // And restore them after transformations if ConvertPrecision was called
-    std::map<size_t, ov::element::Type> input_direct;
-    std::map<size_t, ov::element::Type> input_preprocess;
-    std::map<size_t, ov::element::Type> output_postprocess;
-    for (size_t i = 0; i < model->inputs().size(); i++) {
-        auto input = model->input(i);
-        auto target_inputs = input.get_target_inputs();
-        // Avoid pre-processing for models wtih Parameter-Result only
-        if (all_of(target_inputs.begin(), target_inputs.end(),
-            [&] (const Input<Node>& i) {return ov::op::util::is_output(i.get_node());})) {
-            input_direct[i] = input.get_element_type();
-        } else {
-            input_preprocess[i] = input.get_element_type();
-        }
-    }
-    for (size_t i = 0; i < model->get_output_size(); i++) {
-        auto output = model->output(i);
-        if (!ov::op::util::is_parameter(output.get_node())) {
-            output_postprocess[i] = output.get_element_type();
-        }
-    }
-
     precisions_map fp_convert_precision_map = {
         {ov::element::f64, ov::element::f32}
     };
@@ -90,7 +65,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     }
 
     auto pass_config = std::make_shared<ov::pass::PassConfig>();
-    ov::pass::Manager common_manager{pass_config};
+    ov::pass::Manager pass_manager{pass_config};
 
     pass_config->enable<ov::pass::ConvertInterpolate1ToInterpolate4>();
     pass_config->disable<ov::pass::MVN6Decomposition>();
@@ -107,43 +82,18 @@ void GraphTransformer::transform(const CUDA::Device& device,
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
-    common_manager.register_pass<ov::pass::InitNodeInfo>();
-    common_manager.register_pass<ov::pass::ConvertPrecision>(fp_convert_precision_map, empty_fuse_map, true);
-    common_manager.register_pass<ov::pass::CommonOptimizations>();
-    common_manager.register_pass<ov::pass::ReshapePRelu>();
+    pass_manager.register_pass<ov::pass::InitNodeInfo>();
+    pass_manager.register_pass<ov::pass::ConvertPrecision>(fp_convert_precision_map, empty_fuse_map, true, false);
+    pass_manager.register_pass<ov::pass::CommonOptimizations>();
+    pass_manager.register_pass<ov::pass::ReshapePRelu>();
     // Do we actually need this transformations in plugin?
     // Having duplicated results seems to be rare case in real world.
-    // But currently it affects the following places:
-    // 1. HETERO plugin creates separate Result operation for each subset of inputs
-    //    if subset belongs to other subgraph - it should be fixed, if we
-    //    want to avoid extra output processing (CVS-111877)
-    // 2. CudaInferRequest implementation relies on number of outputs of original model
-    // 3. WA for ConvertPrecision - will removed after fixing CVS-111453
-    // common_manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
-    common_manager.run_passes(model);
-
-    auto preprocessor = ov::preprocess::PrePostProcessor(model);
-    for (auto& item : input_direct) {
-        auto node = model->input(item.first).get_node_shared_ptr();
-        if (auto param = ov::as_type_ptr<ov::op::v0::Parameter>(node)) {
-            param->set_element_type(item.second);
-            param->validate_and_infer_types();
-        }
-    }
-    for (auto& item : input_preprocess) {
-        auto& in = preprocessor.input(item.first);
-        in.tensor().set_element_type(item.second);
-    }
-    for (auto& item : output_postprocess) {
-        auto& out = preprocessor.output(item.first);
-        out.tensor().set_element_type(item.second);
-    }
-    model = preprocessor.build();
-
-    ov::pass::Manager plugin_manager{pass_config};
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(pass_config);
-    plugin_manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
+    // But currently it affects the CudaInferRequest which implementation
+    // relies on number of outputs of original model
+    // pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(pass_config);
+    pass_manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
 
     // Sequences supported by the plugin shouldn't be converted to TensorIterator.
     auto is_sequence_primitive_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
@@ -167,24 +117,24 @@ void GraphTransformer::transform(const CUDA::Device& device,
     };
 
     pass_config->set_callback<ov::pass::ConvertRNNSequenceToTensorIterator,
-                                ov::pass::ConvertGRUSequenceToTensorIterator,
-                                ov::pass::ConvertLSTMSequenceToTensorIterator>(
+                              ov::pass::ConvertGRUSequenceToTensorIterator,
+                              ov::pass::ConvertLSTMSequenceToTensorIterator>(
             [is_sequence_primitive_supported](const std::shared_ptr<const ov::Node> &node) -> bool {
                 return is_sequence_primitive_supported(node);
             });
 
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::FusedConvBackpropDataAsymPaddingTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
-    plugin_manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionAsymPaddingTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionAsymPaddingTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::ConvolutionBackpropDataAsymPaddingTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::GroupConvolutionBackpropDataAsymPaddingTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::FusedConvBackpropDataAsymPaddingTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
 
-    plugin_manager.run_passes(model);
+    pass_manager.run_passes(model);
 
     [[maybe_unused]] const auto& transformedOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& transformedOpsSize = transformedOps.size();
