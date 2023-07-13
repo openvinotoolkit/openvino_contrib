@@ -41,7 +41,7 @@ public:
     ~CudaInferRequest() = default;
 
     void infer() override;
-    std::vector<std::shared_ptr<ov::IVariableState>> query_state() const override;
+    std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override;
     std::vector<ov::ProfilingInfo> get_profiling_info() const override;
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular

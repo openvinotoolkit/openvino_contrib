@@ -136,12 +136,12 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
     return res;
 }
 
-std::shared_ptr<ov::IRemoteContext> Plugin::create_context(
+ov::SoPtr<ov::IRemoteContext> Plugin::create_context(
     const ov::AnyMap& remote_properties) const {
     OPENVINO_NOT_IMPLEMENTED;
 }
 
-std::shared_ptr<ov::IRemoteContext> Plugin::get_default_context(
+ov::SoPtr<ov::IRemoteContext> Plugin::get_default_context(
     const ov::AnyMap& remote_properties) const {
     OPENVINO_NOT_IMPLEMENTED;
 }

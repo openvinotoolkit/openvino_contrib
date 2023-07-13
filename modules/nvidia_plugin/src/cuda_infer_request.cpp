@@ -228,7 +228,7 @@ void CudaInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
     OPENVINO_THROW("Cannot find input tensors for port ", port);
 }
 
-std::vector<std::shared_ptr<ov::IVariableState>> CudaInferRequest::query_state() const {
+std::vector<ov::SoPtr<ov::IVariableState>> CudaInferRequest::query_state() const {
     OPENVINO_NOT_IMPLEMENTED;
 }
 
