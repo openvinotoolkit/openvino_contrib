@@ -188,7 +188,8 @@ void CudaInferRequest::infer_postprocess() {
             ov::Output<const ov::Node> output{result->output(0).get_node(), result->output(0).get_index()};
             allocate_tensor(output, [host_tensor](ov::SoPtr<ov::ITensor>& tensor) {
                 allocate_tensor_impl(tensor, host_tensor.get_element_type(), host_tensor.get_shape());
-                host_tensor.copy_to(ov::make_tensor(tensor));
+                auto ov_tensor = ov::make_tensor(tensor);
+                host_tensor.copy_to(ov_tensor);
             });
         } else if (!tensor.is_continuous()) {
             host_tensor.copy_to(tensor);
