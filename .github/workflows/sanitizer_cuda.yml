@@ -29,6 +29,6 @@ jobs:
     - name: cmake
       run: env -C ~/runner ./configure_cuda_sanitizer.sh
     - name: ninja
-      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/build_cuda_sanitizer -v CudaFuncTests CudaUnitTests' | make -j`nproc` -f-
+      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/build_cuda_sanitizer -v ov_nvidia_func_tests ov_nvidia_unit_tests' | make -j`nproc` -f-
     - name: functional tests
-      run: env -C ~/runner PATH=/usr/local/cuda-11.2/bin:/usr/local/cuda-11.4/bin:/usr/local/cuda-11.7/bin:$PATH ./openvino_contrib/modules/nvidia_plugin/utils/cuda-sanitizer.sh ./build_cuda_sanitizer/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*:*smoke*OVExecGraphImportExportTest.importExportedIENetwork*:*smoke*OVClassBasicTestP.registerNewPluginNoThrows*:*smoke*OVHoldersTest.Orders*:*smoke*IEClassBasicTestP.registerNewPluginNoThrows*:*smoke*IEClassBasicTestP.smoke_registerPluginsXMLUnicodePath*
+      run: env -C ~/runner PATH=/usr/local/cuda-11.2/bin:/usr/local/cuda-11.4/bin:/usr/local/cuda-11.7/bin:$PATH ./openvino_contrib/modules/nvidia_plugin/utils/cuda-sanitizer.sh ./build_cuda_sanitizer/bin/intel64/ov_nvidia_func_tests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*:smoke_GRU*:smoke_LSTM*:smoke_TensorIterator*:*ConvBiasFusion*:*smoke*OVExecGraphImportExportTest.importExportedIENetwork*:*smoke*OVClassBasicTestP.registerNewPluginNoThrows*:*smoke*OVHoldersTest.Orders*:*smoke*IEClassBasicTestP.registerNewPluginNoThrows*:*smoke*IEClassBasicTestP.smoke_registerPluginsXMLUnicodePath*

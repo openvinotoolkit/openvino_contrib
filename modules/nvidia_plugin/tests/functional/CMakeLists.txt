@@ -4,7 +4,7 @@
 #
 
 # [cmake:functional_tests]
-set(TARGET_NAME CudaFuncTests)
+set(TARGET_NAME ov_nvidia_func_tests)
 
 if (ENABLE_INTEL_CPU)
     set(OPENVINO_ADDITIONAL_DEPENDENCIES openvino_intel_cpu_plugin)

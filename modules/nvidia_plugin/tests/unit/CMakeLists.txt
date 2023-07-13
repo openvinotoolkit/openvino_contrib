@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-set(TARGET_NAME CudaUnitTests)
+set(TARGET_NAME ov_nvidia_unit_tests)
 
 set(EXCLUDED_SOURCE_PATHS)
 if(${CUDAToolkit_VERSION_MAJOR} EQUAL 10)

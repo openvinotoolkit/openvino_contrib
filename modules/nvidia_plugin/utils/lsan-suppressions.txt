@@ -34,7 +34,7 @@ leak:site-packages/google/protobuf
 # THIS SECTION defines all other exceptions including those required by nvidia_gpu.
 #
 
-# The folowing are reproduced running CudaUnitTests
+# The folowing are reproduced running ov_nvidia_unit_tests
 leak:libtbb.so
 leak:InferenceEngine::CPUStreamsExecutor
 
