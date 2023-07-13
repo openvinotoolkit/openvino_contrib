@@ -17,6 +17,26 @@ public class CoreTests extends OVTest {
     }
 
     @Test
+    public void testCompileModelFromFileDeviceAuto() {
+        CompiledModel model = core.compile_model(modelXml);
+        assertTrue(model instanceof CompiledModel);
+    }
+
+    @Test
+    public void testCompileModelFromFile() {
+        CompiledModel model = core.compile_model(modelXml, device);
+        assertTrue(model instanceof CompiledModel);
+    }
+
+    @Test
+    public void testCompileModelWithProps() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("INFERENCE_NUM_THREADS", "1");
+        CompiledModel model = core.compile_model(modelXml, device, properties);
+        assertTrue(model instanceof CompiledModel);
+    }
+
+    @Test
     public void testReadNetworkXmlOnly() {
         Model net = core.read_model(modelXml);
         PrePostProcessor p = new PrePostProcessor(net);

@@ -80,9 +80,19 @@ public class InferRequest extends Wrapper {
     }
 
     /**
-     * Detele the native object to release resources.
+     * Sets an input/output tensor to infer on.
      *
-     * <p>This mehtod is protected from double deallocation
+     * @param tensorName Name of the tensor.
+     * @param tensor The tensor to set.
+     */
+    public void set_tensor(String tensorName, Tensor tensor) {
+        SetTensor(nativeObj, tensorName, tensor.nativeObj);
+    }
+
+    /**
+     * Delete the native object to release resources.
+     *
+     * <p>This method is protected from double deallocation
      */
     public void release() {
         delete(nativeObj);
@@ -103,6 +113,8 @@ public class InferRequest extends Wrapper {
     private static native long GetOutputTensor(long addr);
 
     private static native long GetTensor(long addr, String tensorName);
+
+    private static native void SetTensor(long addr, String tensorName, long tensor);
 
     @Override
     protected native void delete(long nativeObj);
