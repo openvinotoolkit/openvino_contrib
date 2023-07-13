@@ -23,6 +23,16 @@ public class Tensor extends Wrapper {
     }
 
     /**
+     * Constructs an Integer {@link Tensor} from the given int array.
+     *
+     * @param dims shape of the tensor
+     * @param data an integer array containing the tensor data
+     */
+    public Tensor(int[] dims, int[] data) {
+        super(TensorInt(dims, data));
+    }
+
+    /**
      * Returns the total number of elements (a product of all the dims or 1 for scalar)
      *
      * @return The total number of elements
@@ -41,14 +51,23 @@ public class Tensor extends Wrapper {
         return asFloat(nativeObj);
     }
 
+    /** Returns the tensor data as an integer array. */
+    public int[] as_int() {
+        return asInt(nativeObj);
+    }
+
     /*----------------------------------- native methods -----------------------------------*/
     private static native long TensorCArray(int type, int[] shape, long cArray);
 
     private static native long TensorFloat(int[] shape, float[] data);
 
+    private static native long TensorInt(int[] shape, int[] data);
+
     private static native int[] GetShape(long addr);
 
     private static native float[] asFloat(long addr);
+
+    private static native int[] asInt(long addr);
 
     private static native int GetSize(long addr);
 

@@ -32,6 +32,12 @@ public class ModelTests extends OVTest {
     }
 
     @Test
+    public void testOutputType() {
+        Output output = net.output();
+        assertEquals("Output element type", ElementType.f32, output.get_element_type());
+    }
+
+    @Test
     public void testGetShape() {
         ArrayList<Output> outputs = net.outputs();
         int[] ref = new int[] {1, 10};

@@ -133,8 +133,12 @@ extern "C"
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_ReadModel1(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel(JNIEnv *, jobject, jlong, jlong, jstring);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel1(JNIEnv *, jobject, jlong, jstring);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel2(JNIEnv *, jobject, jlong, jstring, jstring);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel3(JNIEnv *, jobject, jlong, jstring, jstring, jobject);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *, jobject, jlong, jstring, jobject);
+    JNIEXPORT jobject JNICALL Java_org_intel_openvino_Core_GetAvailableDevices(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Core_delete(JNIEnv *, jobject, jlong);
 
     // ov::Any
@@ -152,6 +156,8 @@ extern "C"
     // ov::CompiledModel
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_CompiledModel_CreateInferRequest(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_CompiledModel_delete(JNIEnv *, jobject, jlong);
+    JNIEXPORT jobject JNICALL Java_org_intel_openvino_CompiledModel_GetInputs(JNIEnv *, jobject, jlong);
+    JNIEXPORT jobject JNICALL Java_org_intel_openvino_CompiledModel_GetOutputs(JNIEnv *, jobject, jlong);
 
     // ov::InferRequest
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_Infer(JNIEnv *, jobject, jlong);
@@ -161,14 +167,17 @@ extern "C"
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetOutputTensor(JNIEnv *, jobject, jlong, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetOutputTensor(JNIEnv *, jobject, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *, jobject, jlong, jstring);
+    JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetTensor(JNIEnv *, jobject, jlong, jstring, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_delete(JNIEnv *, jobject, jlong);
 
     // ov::Tensor
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorCArray(JNIEnv *, jobject, jint, jintArray, jlong);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorFloat(JNIEnv *, jobject, jintArray, jfloatArray);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorInt(JNIEnv *, jobject, jintArray, jintArray);
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetSize(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_GetShape(JNIEnv *, jobject, jlong);
     JNIEXPORT jfloatArray JNICALL Java_org_intel_openvino_Tensor_asFloat(JNIEnv *, jobject, jlong);
+    JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Tensor_asInt(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Tensor_delete(JNIEnv *, jobject, jlong);
 
     // ov::PrePostProcessor
@@ -216,6 +225,7 @@ extern "C"
     // ov::Output<ov::Node>
     JNIEXPORT jstring JNICALL Java_org_intel_openvino_Output_GetAnyName(JNIEnv *, jobject, jlong);
     JNIEXPORT jintArray JNICALL Java_org_intel_openvino_Output_GetShape(JNIEnv *, jobject, jlong);
+    JNIEXPORT int JNICALL Java_org_intel_openvino_Output_GetElementType(JNIEnv *, jobject, jlong);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Output_delete(JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus
