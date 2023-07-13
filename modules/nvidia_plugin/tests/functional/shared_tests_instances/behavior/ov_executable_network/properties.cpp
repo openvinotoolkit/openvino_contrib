@@ -72,7 +72,8 @@ const std::vector<ov::AnyMap> default_properties = {
     {ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE)},
     {ov::enable_profiling(false)},
     {ov::device::id("0")},
-    {ov::nvidia_gpu::operation_benchmark(false)}
+    {ov::nvidia_gpu::operation_benchmark(false)},
+    {ov::nvidia_gpu::use_cuda_graph(true)}
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,

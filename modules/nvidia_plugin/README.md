@@ -175,6 +175,7 @@ Please refer to OpenVINO documentation for details.
 
 ### Plugin specific parameters
 * `ov::nvidia_gpu::operation_benchmark` - specifies if operation level benchmark should be run for increasing performance of network (`false` by default)
+* `ov::nvidia_gpu::use_cuda_graph` - specifies if NVIDIA plugin attempts to use CUDA Graph feature to speed up sequential network inferences (`true` by default)
 
 All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
  
