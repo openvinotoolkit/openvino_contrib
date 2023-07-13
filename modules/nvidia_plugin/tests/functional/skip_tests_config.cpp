@@ -109,8 +109,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*ReferenceTileTest.*rType=i4.*)",
         R"(.*ReferenceTileTest.*rType=u4.*)",
         R"(.*CachingSupportCase*.*ReadConcatSplitAssign.*)",
-        // 98989
-        R"(.*GroupConvolutionBias(Add|AddAdd)ActivationLayerTest.*IS=\(2\.16\.12\.6\).*K\(3\.3\).*S\(1\.1\).*PB\(0\.3\).*PE\(0\.3\).*D=\(1\.1\).*O=(8|32).*G=2.*AP=explicit.*netPRC=FP16*.*)",
         // 101751, 101746, 101747, 101748, 101755
         R"(.*(d|D)ynamic*.*)",
         R"(.*smoke_Auto_BehaviorTests*.*)",
