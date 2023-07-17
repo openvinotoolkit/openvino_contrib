@@ -14,7 +14,7 @@ from tokenizer_pipeline import (
     NormalizeUnicode,
     NMTNormalizationStep,
     CaseFoldStep,
-    RegExpNormalizationStep,
+    RegexNormalizationStep,
     StripStringStep,
     PreTokenizatinStep,
     PunctuationSplitStep,
@@ -28,12 +28,13 @@ from tokenizer_pipeline import (
     CombineSegmentsStep,
     VocabDecoderStep,
     CharsToBytesStep,
+    RegexDecodingStep,
 )
 
 
-def parse_replace_normalizer(normalizer_dict: Dict[str, Any]) -> RegExpNormalizationStep:
+def parse_replace_normalizer(normalizer_dict: Dict[str, Any]) -> RegexNormalizationStep:
     regex_search_pattern = normalizer_dict["pattern"].get("String") or normalizer_dict["pattern"]["Regex"]
-    return RegExpNormalizationStep(
+    return RegexNormalizationStep(
         regex_search_pattern=regex_search_pattern,
         replace_term=normalizer_dict["content"],
     )
@@ -43,12 +44,12 @@ def parse_bert_normalizer(normalizer_dict: Dict[str, Any]) -> List[Normalization
     steps: List[NormalizationStep] = []
 
     if normalizer_dict["clean_text"] is True:
-        steps.append(RegExpNormalizationStep.del_control_chars_regex())
+        steps.append(RegexNormalizationStep.del_control_chars_regex())
 
     # https://github.com/huggingface/tokenizers/blob/8c9cfb0b689bce00b615b9557a9a767f286d7a33/tokenizers/src/normalizers/bert.rs#L127
     if normalizer_dict.get("strip_accents") or normalizer_dict["lowercase"]:
         steps.append(NormalizeUnicode("NFD"))
-        steps.append(RegExpNormalizationStep.strip_accents_regex())
+        steps.append(RegexNormalizationStep.strip_accents_regex())
 
     if normalizer_dict["lowercase"] is True:
         steps.append(CaseFoldStep())
@@ -77,7 +78,7 @@ def parse_byte_level_pretokenization_step(
 ) -> List[Union[NormalizationStep, PreTokenizatinStep]]:
     steps = []
     if pretokenizer_dict.get("add_prefix_space"):
-        steps.append(RegExpNormalizationStep(regex_search_pattern="^(\S)", replace_term=" $1"))
+        steps.append(RegexNormalizationStep.add_prefix_whitespace_regex())
 
     # regex is used by default, but it does not appear in config yet
     if pretokenizer_dict.get("use_regex", True):
@@ -123,7 +124,7 @@ class TransformersTokenizerPipelineParser:
         "NFKD": lambda step_dict: NormalizeUnicode("NFKD"),
         "Nmt": lambda step_dict: NMTNormalizationStep(),
         "Lowercase": lambda step_dict: CaseFoldStep(),
-        "StripAccents": lambda step_dict: RegExpNormalizationStep.strip_accents_regex(),
+        "StripAccents": lambda step_dict: RegexNormalizationStep.strip_accents_regex(),
         "BertNormalizer": parse_bert_normalizer,
         "Replace": parse_replace_normalizer,
         "Strip": parse_strip_step,
@@ -238,4 +239,7 @@ class TransformersTokenizerPipelineParser:
         if self.tokenizer_json["decoder"]["type"] == "ByteLevel":
             self.pipeline.add_steps(VocabDecoderStep())
             self.pipeline.add_steps(CharsToBytesStep())
+
+        if self.original_tokenizer.clean_up_tokenization_spaces:
+            self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return

@@ -16,9 +16,6 @@ from openvino.runtime import Type, PartialShape, op, Model, Core, Output, Node, 
 from openvino.runtime.utils.types import as_node, make_constant_node
 
 
-string_ops = None  #MagicMock()
-
-
 def pack_strings(strings):
     assert isinstance(strings, list)
     to_bytes = lambda x: x.to_bytes(4, "little")
@@ -104,18 +101,26 @@ class CaseFoldStep(NormalizationStep):
 
 
 @dataclass
-class RegExpNormalizationStep(NormalizationStep):
+class RegexNormalizationStep(NormalizationStep):
     regex_search_pattern: str
     replace_term: str
 
     @classmethod
-    def strip_accents_regex(cls) -> "RegExpNormalizationStep":
+    def strip_accents_regex(cls) -> "RegexNormalizationStep":
         return cls(regex_search_pattern=r"\p{Mn}", replace_term="")
 
     @classmethod
-    def del_control_chars_regex(cls) -> "RegExpNormalizationStep":
+    def add_prefix_whitespace_regex(cls) -> "RegexNormalizationStep":
+        return cls(regex_search_pattern=r"^(\S)", replace_term=r" \1")
+
+    @classmethod
+    def del_control_chars_regex(cls) -> "RegexNormalizationStep":
         # https://github.com/huggingface/tokenizers/blob/8c9cfb0b689bce00b615b9557a9a767f286d7a33/tokenizers/src/normalizers/bert.rs#L17
         return cls(regex_search_pattern=r"((?=[^\n\t\r])\p{Cc})|((?=[^\n\t\r])\p{Cf})", replace_term=" ")
+
+    @classmethod
+    def clean_up_tokenization_spaces(cls) -> "RegexNormalizationStep":
+        return cls(regex_search_pattern=r" ([\.\?\!\,])| ('[ms])| (') | ('[rv]e)", replace_term="\1")
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(
@@ -141,13 +146,13 @@ class NMTNormalizationStep(NormalizationStep):
 @dataclass
 class StripAccentsStep(NormalizationStep):
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return RegExpNormalizationStep.strip_accents_regex().get_ov_subgraph(input_nodes)
+        return RegexNormalizationStep.strip_accents_regex().get_ov_subgraph(input_nodes)
 
 
 @dataclass
 class DelControlCharsStep(NormalizationStep):
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return RegExpNormalizationStep.del_control_chars_regex().get_ov_subgraph(input_nodes)
+        return RegexNormalizationStep.del_control_chars_regex().get_ov_subgraph(input_nodes)
 
 
 @dataclass
@@ -681,6 +686,31 @@ class CharsToBytesStep(DecodingStep):
 
 
 @dataclass
+class RegexDecodingStep(DecodingStep):
+    regex_search_pattern: str
+    replace_term: str
+
+    @classmethod
+    def clean_up_tokenization_spaces(cls) -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern=r" ([\\.\\?\\!,])| ('[ms])| (') | ('[rv]e)| (n't)",
+            replace_term=r"\1",
+        )
+
+    def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
+        input_nodes.extend(
+            (
+                *self.create_string_constant_node(self.regex_search_pattern).outputs(),
+                *self.create_string_constant_node(self.replace_term).outputs(),
+            )
+        )
+        return core.make_node(
+            "RegexNormalization",
+            input_nodes
+        ).outputs()
+
+
+@dataclass
 class TokenizerPipeline:
     steps: List[BasePipelineStep] = field(default_factory=list)
     vocab: Optional[List[str]] = field(default=None, repr=False)
@@ -725,7 +755,7 @@ class TokenizerPipeline:
         return [step for step in self.steps if isinstance(step, PostTokenizationStep)]
 
     @property
-    def decoding_steps(self) -> List[PostTokenizationStep]:
+    def decoding_steps(self) -> List[DecodingStep]:
         return [step for step in self.steps if isinstance(step, DecodingStep)]
 
     def create_string_input(self) -> Node:
@@ -742,10 +772,23 @@ class TokenizerPipeline:
             for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
 
-            # batch_size = opset10.shape_of(input_node[0])
-            # ragged_begins = opset10.range(as_node(0), batch_size, as_node(1)).outputs()
-            # ragged_ends = opset10.range(as_node(1), opset10.add(batch_size, as_node(1)).outputs(), as_node(1))
-            # input_node = [ragged_begins, ragged_ends] + input_node
+            shape = opset10.shape_of(input_node[0])
+            batch_size = opset10.gather(shape, as_node(0), as_node(0))
+
+            # FIXME: Cannot create range with specific data type from python
+            ragged_begins = opset10.convert(
+                opset10.range(as_node(0), batch_size, as_node(1)),
+                "i32",
+            ).outputs()
+            ragged_ends = opset10.convert(
+                opset10.range(
+                    as_node(1),
+                    opset10.add(batch_size, as_node(1)),
+                    as_node(1),
+                ),
+                "i32",
+            ).outputs()
+            input_node = ragged_begins + ragged_ends + input_node
 
             for step in chain(self.pretokenization_steps, self.tokenization_steps):
                 input_node = step.get_ov_subgraph(input_node)
@@ -755,24 +798,13 @@ class TokenizerPipeline:
         return processing_pipelines_outputs
 
     def create_post_tokenization_pipeline(self, input_nodes: List[op.Parameter]) -> List[Output]:
-        #outputs = []
         for step in self.post_tokenization_steps:
             pipeline_step = step.get_ov_subgraph(input_nodes)
             input_nodes = pipeline_step
 
-            #if isinstance(step, CombineSegmentsStep):
-            #    input_nodes.append(MagicMock(name="token_type_ids"))
-            #    outputs.append(input_nodes.pop(-1))  # token_type_ids node
-            #if isinstance(step, PaddingStep):
-            #    print('HEY!!!!!!!')
-            #    input_nodes.append(MagicMock(name="attention_mask"))
-            #    outputs.append(input_nodes.pop(-1))  # attention_mask node
-
-        #outputs.insert(0, input_nodes[0])
         return input_nodes
 
     def create_decoding_pipeline(self, input_nodes: List[Output]) -> List[Output]:
-        # input_nodes = inputs.outputs()
         for step in self.decoding_steps:
             pipeline_step = step.get_ov_subgraph(input_nodes)
             input_nodes = pipeline_step

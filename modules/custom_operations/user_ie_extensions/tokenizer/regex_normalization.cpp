@@ -27,12 +27,12 @@ bool RegexNormalization::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     auto search_pattern = absl::string_view((const char*)search_pattern_buf, shape_size(inputs[3].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
     auto replace_pattern = absl::string_view((const char*)replace_pattern_buf, shape_size(inputs[4].get_shape()) - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
 
-    using namespace paddlenlp::fast_tokenizer::normalizers;
     re2::RE2 search_pattern_re(search_pattern);
-
     return evaluate_normalization_helper(
         outputs, inputs,
         [&replace_pattern, &search_pattern_re](const std::string& str) {
-            return NormalizedString(str).Replace(search_pattern_re, std::string(replace_pattern)).GetStr();
+            std::string result = static_cast<std::string>(str);
+            re2::RE2::GlobalReplace(&result, search_pattern_re, replace_pattern);
+            return result;
     });
 }
