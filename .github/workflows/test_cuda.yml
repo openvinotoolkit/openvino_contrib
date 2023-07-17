@@ -29,19 +29,19 @@ jobs:
     - name: cmake
       run: env -C ~/runner ./configrelease.sh
     - name: ninja
-      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/buildrelease -v CudaFuncTests CudaUnitTests benchmark_app' | make -j`nproc` -f-
+      run: echo 'all:; +NINJA_STATUS="[%u/%r/%f] " ninja -C ~/runner/buildrelease -v ov_nvidia_func_tests ov_nvidia_unit_tests benchmark_app' | make -j`nproc` -f-
     - name: functional tests
-      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
+      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/ov_nvidia_func_tests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
     - name: unit tests
-      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/CudaUnitTests
+      run: source ~/runner/sanitizer-env.sh; ~/runner/buildrelease/bin/intel64/ov_nvidia_unit_tests
     - name: networks regression
       run: source ~/runner/sanitizer-env.sh; ~/runner/run_all_models.sh
     - name: cmake 440
       run: ~/docker/e440.sh ./configrelease-440.sh
     - name: ninja 440
-      run: ~/docker/e440.sh ./buildrelease-440.sh CudaUnitTests
+      run: ~/docker/e440.sh ./buildrelease-440.sh ov_nvidia_unit_tests
     - name: unit tests 440
-      run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaUnitTests
+      run: ~/docker/e440.sh buildrelease-440/bin/intel64/ov_nvidia_unit_tests
 # many functional tests use missing operations, just skip everything for now
 #    - name: functional tests
-#      run: ~/docker/e440.sh buildrelease-440/bin/intel64/CudaFuncTests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
+#      run: ~/docker/e440.sh buildrelease-440/bin/intel64/ov_nvidia_func_tests --gtest_filter=*smoke*:-*dynamic*:*Dynamic*
