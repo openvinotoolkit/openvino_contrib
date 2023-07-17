@@ -112,6 +112,27 @@ std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result&
     return outputNames;
 }
 
+void ResultOp::Capture(InferenceRequestContext& context,
+                       Inputs inputs,
+                       Outputs outputs,
+                       const Workbuffers&) const {
+    OPENVINO_ASSERT(inputs.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 0, "Node name: ", GetName());
+    std::shared_ptr<ov::Tensor> tensor;
+    std::string outputTensorName{};
+    for (const auto& outputName : output_tensor_names_) {
+        if (context.has_output_tensor(outputName)) {
+            tensor = context.get_output_tensor(outputName);
+            outputTensorName = outputName;
+            break;
+        }
+    }
+    OPENVINO_ASSERT(tensor != nullptr, "Node name: ", GetName());
+    CUDA::CaptureInfo captureInfo{context.getThreadContext().stream()};
+    context.getCudaGraphContext().resultNodes.emplace(std::make_pair(outputTensorName,
+            captureInfo.addDownloadNode(tensor->data(), inputs[0], tensor->get_byte_size())));
+}
+
 OPERATION_REGISTER(ResultOp, Result);
 }  // namespace nvidia_gpu
 }  // namespace ov

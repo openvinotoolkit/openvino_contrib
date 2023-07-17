@@ -18,9 +18,11 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
 #include "nvidia/properties.hpp"
+#include "openvino/runtime/make_tensor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -29,11 +31,11 @@ using namespace utils;
 using Time = std::chrono::steady_clock;
 
 namespace {
-void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_type, const ov::Shape& shape) {
-    if (!tensor || tensor.get_element_type() != element_type) {
-        tensor = ov::Tensor(element_type, shape);
+void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor, const ov::element::Type& element_type, const ov::Shape& shape) {
+    if (!tensor || tensor->get_element_type() != element_type) {
+        tensor = ov::SoPtr<ov::ITensor>{ov::make_tensor(element_type, shape), nullptr};
     } else {
-        tensor.set_shape(shape);
+        tensor->set_shape(shape);
     }
 }
 }  // namespace
@@ -41,9 +43,9 @@ void allocate_tensor_impl(ov::Tensor& tensor, const ov::element::Type& element_t
 CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(), compiled_model->get_execution_graph()},
-      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()},
-      use_cuda_graph_{compiled_model->get_property(ov::nvidia_gpu::internal::use_cuda_graph.name()).as<bool>()} {
+      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
+          compiled_model->get_topology_runner().GetSubGraph()},
+      is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
 }
 
@@ -66,7 +68,7 @@ void CudaInferRequest::create_infer_request() {
 
     // Allocate input/output tensors
     for (const auto& input : get_inputs()) {
-        allocate_tensor(input, [input](ov::Tensor& tensor) {
+        allocate_tensor(input, [input](ov::SoPtr<ov::ITensor>& tensor) {
             // Can add a check to avoid double work in case of shared tensors
             allocate_tensor_impl(tensor,
                                  input.get_element_type(),
@@ -74,7 +76,7 @@ void CudaInferRequest::create_infer_request() {
         });
     }
     for (const auto& output : get_outputs()) {
-        allocate_tensor(output, [output](ov::Tensor& tensor) {
+        allocate_tensor(output, [output](ov::SoPtr<ov::ITensor>& tensor) {
             // Can add a check to avoid double work in case of shared tensors
             allocate_tensor_impl(tensor,
                                  output.get_element_type(),
@@ -93,7 +95,7 @@ void CudaInferRequest::infer_preprocess() {
     // Allocate host input tensors
     OPENVINO_ASSERT(get_inputs().size() == input_tensors_.size());
     for (size_t i = 0; i < get_inputs().size(); i++) {
-        auto tensor = get_tensor(get_inputs()[i]);
+        auto tensor = ov::make_tensor(get_tensor(get_inputs()[i]));
         ov::element::Type element_type = tensor.get_element_type();
         ov::Shape shape = tensor.get_shape();
         if (tensor.is<ov::RemoteTensor>()) {
@@ -123,7 +125,7 @@ void CudaInferRequest::infer_preprocess() {
             output_tensors_.at(i) = std::make_shared<ov::Tensor>();
             continue;
         }
-        auto tensor = get_tensor(get_outputs()[i]);
+        auto tensor = ov::make_tensor(get_tensor(get_outputs()[i]));
         ov::element::Type element_type = tensor.get_element_type();
         ov::Shape shape = tensor.get_shape();
         if (tensor.is_continuous() && !tensor.is<ov::RemoteTensor>())
@@ -141,7 +143,8 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
         auto compiled_model = get_nvidia_model();
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
-        auto& graph = compiled_model->get_execution_graph();
+        auto& cudaGraphContext = memory.cudaGraphContext();
+        auto& topology_runner = compiled_model->get_topology_runner();
         InferenceRequestContext inferRequestContext{input_tensors_,
                                                     compiled_model->input_index_,
                                                     output_tensors_,
@@ -149,9 +152,10 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     threadContext,
                                                     cancellation_token_,
                                                     profiler_,
-                                                    is_benchmark_mode_,
-                                                    use_cuda_graph_};
-        graph.Run(inferRequestContext, memory);
+                                                    cudaGraphContext,
+                                                    is_benchmark_mode_};
+        topology_runner.UpdateContext(inferRequestContext, memory);
+        topology_runner.Run(inferRequestContext, memory);
         profiler_.stop_stage(Profiler::StartPipeline);
     } catch (...) {
         // TODO:
@@ -179,12 +183,13 @@ void CudaInferRequest::infer_postprocess() {
     for (size_t i = 0; i < get_outputs().size(); i++) {
         const auto& result = get_nvidia_model()->model_->get_results()[i];
         auto host_tensor = *output_tensors_[i].get();
-        auto tensor = get_tensor(get_outputs()[i]);
+        auto tensor = ov::make_tensor(get_tensor(get_outputs()[i]));
         if (result->get_output_partial_shape(0).is_dynamic()) {
             ov::Output<const ov::Node> output{result->output(0).get_node(), result->output(0).get_index()};
-            allocate_tensor(output, [host_tensor](ov::Tensor& tensor) {
+            allocate_tensor(output, [host_tensor](ov::SoPtr<ov::ITensor>& tensor) {
                 allocate_tensor_impl(tensor, host_tensor.get_element_type(), host_tensor.get_shape());
-                host_tensor.copy_to(tensor);
+                auto ov_tensor = ov::make_tensor(tensor);
+                host_tensor.copy_to(ov_tensor);
             });
         } else if (!tensor.is_continuous()) {
             host_tensor.copy_to(tensor);
@@ -213,7 +218,7 @@ std::shared_ptr<const CompiledModel> CudaInferRequest::get_nvidia_model() {
 }
 
 void CudaInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
-                                        const std::vector<ov::Tensor>& tensors) {
+                                        const std::vector<ov::SoPtr<ov::ITensor>>& tensors) {
     for (const auto& input : get_inputs()) {
         if (input == port) {
             m_batched_tensors[input.get_tensor_ptr()] = tensors;
@@ -223,7 +228,7 @@ void CudaInferRequest::set_tensors_impl(const ov::Output<const ov::Node> port,
     OPENVINO_THROW("Cannot find input tensors for port ", port);
 }
 
-std::vector<std::shared_ptr<ov::IVariableState>> CudaInferRequest::query_state() const {
+std::vector<ov::SoPtr<ov::IVariableState>> CudaInferRequest::query_state() const {
     OPENVINO_NOT_IMPLEMENTED;
 }
 

@@ -30,9 +30,7 @@ Plugin::Plugin() {
         device_thread_pool_[std::to_string(i)] = std::make_shared<CudaThreadPool>(device, num_concurrent_streams);
         configs_.insert({std::to_string(i),
             Configuration({ov::device::id(i),
-                            // TODO uncomment next line to switch default precision
-                            // ov::hint::inference_precision(isHalfSupported(device) ? ov::element::f16 : ov::element::f32)})});
-                            ov::hint::inference_precision(ov::element::undefined)})});
+                            ov::hint::inference_precision(isHalfSupported(device) ? ov::element::f16 : ov::element::f32)})});
     }
 }
 
@@ -65,7 +63,7 @@ Configuration Plugin::get_full_config(const ov::AnyMap& properties, const bool t
 
 std::shared_ptr<ov::ICompiledModel> Plugin::compile_model(const std::shared_ptr<const ov::Model>& model,
                                                           const ov::AnyMap& properties,
-                                                          const ov::RemoteContext& context) const {
+                                                          const ov::SoPtr<ov::IRemoteContext>& context) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "Plugin::compile_model");
 
     auto full_config = get_full_config(properties);
@@ -86,7 +84,7 @@ std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_str
 }
 
 std::shared_ptr<ov::ICompiledModel> Plugin::import_model(std::istream& model_stream,
-                                                         const ov::RemoteContext& context,
+                                                         const ov::SoPtr<ov::IRemoteContext>& context,
                                                          const ov::AnyMap& properties) const {
     OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, "ov::nvidia_gpu::import_model");
 
@@ -138,12 +136,12 @@ ov::SupportedOpsMap Plugin::query_model(const std::shared_ptr<const ov::Model>& 
     return res;
 }
 
-std::shared_ptr<ov::IRemoteContext> Plugin::create_context(
+ov::SoPtr<ov::IRemoteContext> Plugin::create_context(
     const ov::AnyMap& remote_properties) const {
     OPENVINO_NOT_IMPLEMENTED;
 }
 
-std::shared_ptr<ov::IRemoteContext> Plugin::get_default_context(
+ov::SoPtr<ov::IRemoteContext> Plugin::get_default_context(
     const ov::AnyMap& remote_properties) const {
     OPENVINO_NOT_IMPLEMENTED;
 }
@@ -171,19 +169,21 @@ void Plugin::set_property(const ov::AnyMap& properties) {
     auto get_property_value = [&properties](const std::string& name) {
         return properties.at(name).as<std::string>();
     };
-    auto update_config = [this, &properties](Configuration& config) {
-        config = Configuration{properties, config};
+    auto update_config = [this, &properties](const ov::AnyMap& config_properties, Configuration& config) {
+        config = Configuration{config_properties, config};
     };
-    if (has_property_value(InferenceEngine::PluginConfigInternalParams::KEY_CONFIG_DEVICE_ID)) {
-        std::string device_id = get_property_value(InferenceEngine::PluginConfigInternalParams::KEY_CONFIG_DEVICE_ID);
-        update_config(configs_.at(device_id));
+    if (has_property_value(ov::internal::config_device_id.name())) {
+        std::string device_id = get_property_value(ov::internal::config_device_id.name());
+        auto properties_for_device = properties;
+        properties_for_device.erase(ov::internal::config_device_id.name());
+        update_config(properties_for_device, configs_.at(device_id));
     } else {
         if (has_property_value(ov::device::id.name())) {
             default_device_id = get_property_value(ov::device::id.name());
-            update_config(configs_.at(default_device_id));
+            update_config(properties, configs_.at(default_device_id));
         } else {
             for (auto& conf : configs_) {
-                update_config(conf.second);
+                update_config(properties, conf.second);
             }
         }
     }
@@ -196,6 +196,8 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
 
     if (ov::supported_properties == name) {
         return decltype(ov::supported_properties)::value_type{Configuration::get_supported_properties()};
+    } else if (ov::internal::supported_properties == name) {
+        return decltype(ov::internal::supported_properties)::value_type{Configuration::get_supported_internal_properties()};
     } else if (METRIC_KEY(SUPPORTED_METRICS) == name) {
         std::vector<std::string> supportedMetrics = {METRIC_KEY(AVAILABLE_DEVICES),
                                                      METRIC_KEY(SUPPORTED_METRICS),
@@ -217,8 +219,8 @@ ov::Any Plugin::get_property(const std::string& name, const ov::AnyMap& properti
             }
         }
         IE_SET_METRIC_RETURN(SUPPORTED_CONFIG_KEYS, configKeys);
-    } else if (ov::caching_properties == name) {
-        return decltype(ov::caching_properties)::value_type{Configuration::get_caching_properties()};
+    } else if (ov::internal::caching_properties == name) {
+        return decltype(ov::internal::caching_properties)::value_type{Configuration::get_caching_properties()};
     } else if (ov::available_devices == name) {
         std::vector<std::string> available_devices = {};
         for (size_t i = 0; i < CUDA::Device::count(); ++i) {

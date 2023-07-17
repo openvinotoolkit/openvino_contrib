@@ -38,6 +38,7 @@ struct Configuration {
     ov::Any get(const std::string& name) const;
 
     static std::vector<ov::PropertyName> get_supported_properties();
+    static std::vector<ov::PropertyName> get_supported_internal_properties();
     static std::vector<ov::PropertyName> get_ro_properties();
     static std::vector<ov::PropertyName> get_rw_properties();
     static std::vector<ov::PropertyName> get_caching_properties();

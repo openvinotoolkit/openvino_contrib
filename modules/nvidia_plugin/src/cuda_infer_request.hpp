@@ -41,7 +41,7 @@ public:
     ~CudaInferRequest() = default;
 
     void infer() override;
-    std::vector<std::shared_ptr<ov::IVariableState>> query_state() const override;
+    std::vector<ov::SoPtr<ov::IVariableState>> query_state() const override;
     std::vector<ov::ProfilingInfo> get_profiling_info() const override;
 
     // pipeline methods-stages which are used in async infer request implementation and assigned to particular
@@ -52,7 +52,7 @@ public:
     void infer_postprocess();
     void cancel();
 
-    void set_tensors_impl(const ov::Output<const ov::Node> port, const std::vector<ov::Tensor>& tensors) override;
+    void set_tensors_impl(const ov::Output<const ov::Node> port, const std::vector<ov::SoPtr<ov::ITensor>>& tensors) override;
 
 private:
     std::shared_ptr<const CompiledModel> get_nvidia_model();
@@ -65,7 +65,6 @@ private:
     std::vector<std::shared_ptr<ov::Tensor>> input_tensors_;
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;
     bool is_benchmark_mode_;
-    bool use_cuda_graph_;
 };
 // ! [infer_request:header]
 

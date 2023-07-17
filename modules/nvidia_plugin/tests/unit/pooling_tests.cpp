@@ -7,6 +7,7 @@
 #include <cudnn_ops_infer.h>
 #include <gtest/gtest.h>
 
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
@@ -90,10 +91,11 @@ struct PoolingTest : testing::Test {
         CUDA::Device device{};
         const bool optimizeOption = false;
         CancellationToken token{};
-        ExecGraph graph{CreationContext{CUDA::Device{}, false}, {}};
+        EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
         Profiler profiler{false, graph};
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;
