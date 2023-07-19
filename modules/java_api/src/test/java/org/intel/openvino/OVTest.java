@@ -11,6 +11,7 @@ import java.nio.file.Paths;
 public class OVTest {
     String modelXml;
     String modelBin;
+    String modelOnnx;
     static String device;
 
     public OVTest() {
@@ -34,6 +35,14 @@ public class OVTest {
                                 "models",
                                 "test_model",
                                 "test_model_fp32.bin")
+                        .toString();
+
+        modelOnnx =
+                Paths.get(
+                                System.getProperty("MODELS_PATH"),
+                                "models",
+                                "test_model",
+                                "test_model.onnx")
                         .toString();
     }
 

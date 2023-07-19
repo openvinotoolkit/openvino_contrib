@@ -26,6 +26,15 @@ public class CoreTests extends OVTest {
     }
 
     @Test
+    public void testReadNetworkOnnx() {
+        Model net = core.read_model(modelOnnx);
+        PrePostProcessor p = new PrePostProcessor(net);
+        p.input().tensor().set_layout(new Layout("NCHW"));
+        p.build();
+        assertEquals("Batch size", 1, net.get_batch().get_length());
+    }
+
+    @Test
     public void testReadModelIncorrectBinPath() {
         String exceptionMessage = "";
         try {
