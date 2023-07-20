@@ -74,6 +74,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -88,6 +89,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMSequence_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),
                                            ::testing::ValuesIn(sequenceDirections),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -104,6 +106,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -118,6 +121,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_decoder_02,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::FORWARD),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);
@@ -132,6 +136,7 @@ INSTANTIATE_TEST_CASE_P(LSTMSequence_Tacotron2_encoder_01,
                                            ::testing::Values(activations),
                                            ::testing::Values(no_clip),  // clip
                                            ::testing::Values(ov::op::RecurrentSequenceDirection::BIDIRECTIONAL),
+                                           ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         CUDALSTMSequenceTest::getTestCaseName);

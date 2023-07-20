@@ -67,6 +67,7 @@ const std::vector<bool> linear_before_reset{true};
 
 const std::vector<InferenceEngine::Precision> net_precisions = {InferenceEngine::Precision::FP32,
                                                                 InferenceEngine::Precision::FP16};
+const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batches_01{1, 2};
@@ -82,6 +83,9 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_01,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
@@ -99,6 +103,9 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP32,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP32),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
@@ -112,6 +119,9 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP16),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
@@ -130,6 +140,9 @@ INSTANTIATE_TEST_CASE_P(GRUCell_LPCNet,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
@@ -144,6 +157,9 @@ const auto benchmark_params = ::testing::Combine(::testing::Values(should_decomp
                                                  ::testing::Values(activations),
                                                  ::testing::Values(clips[0]),
                                                  ::testing::Values(linear_before_reset[0]),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
                                                  ::testing::Values(net_precisions[0]),
                                                  ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
 

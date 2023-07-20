@@ -12,6 +12,8 @@
 
 namespace LayerTestsDefinitions {
 
+using ngraph::helpers::InputLayerType;
+
 class CUDNNGRUSequenceTest : public UnsymmetricalComparer<GRUSequenceTest> {
 public:
     void SetUp() override {
@@ -74,6 +76,7 @@ public:
         bool linear_before_reset;
         SequenceTestsMode mode;
         ov::op::RecurrentSequenceDirection direction;
+        InputLayerType WRBType;
         InferenceEngine::Precision netPrecision;
         std::tie(mode,
                  seq_lengths,
@@ -83,6 +86,7 @@ public:
                  clip,
                  linear_before_reset,
                  direction,
+                 WRBType,
                  netPrecision,
                  targetDevice) = this->GetParam();
         size_t num_directions = direction == ov::op::RecurrentSequenceDirection::BIDIRECTIONAL ? 2 : 1;
@@ -98,6 +102,7 @@ public:
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         auto params = ngraph::builder::makeParams(ngPrc, {inputShapes[0], inputShapes[1]});
 
+        ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
         auto gru_sequence =
             ngraph::builder::makeGRU(ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes(params)),
@@ -168,6 +173,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(clip),
                        ::testing::ValuesIn(linear_before_reset),
                        ::testing::ValuesIn(direction),
+                       ::testing::Values(InputLayerType::CONSTANT),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     GRUSequenceTest::getTestCaseName);
@@ -188,6 +194,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(clip),
                        ::testing::ValuesIn(linear_before_reset),
                        ::testing::ValuesIn(direction),
+                       ::testing::Values(InputLayerType::CONSTANT),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
     GRUSequenceTest::getTestCaseName);
@@ -207,6 +214,7 @@ INSTANTIATE_TEST_CASE_P(LPCNetCUDNNGRUSequenceShapeTest,
                                            ::testing::ValuesIn(clip),
                                            ::testing::ValuesIn(linear_before_reset),
                                            ::testing::ValuesIn(direction),
+                                           ::testing::Values(InputLayerType::CONSTANT),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
                         GRUSequenceTest::getTestCaseName);
