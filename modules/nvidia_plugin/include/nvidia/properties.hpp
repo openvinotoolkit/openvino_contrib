@@ -24,5 +24,10 @@ namespace nvidia_gpu {
  */
 static constexpr Property<bool, PropertyMutability::RW> operation_benchmark{"NVIDIA_OPERATION_BENCHMARK"};
 
+/**
+ * @brief Specifies if NVIDIA plugin attempts to use CUDA Graph feature to speed up sequential network inferences
+ */
+static constexpr ov::Property<bool, ov::PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
+
 }  // namespace nvidia_gpu
 }  // namespace ov

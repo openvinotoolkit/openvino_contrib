@@ -27,6 +27,13 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
+
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+
 private:
     struct PortMap {
         int64_t start{0};

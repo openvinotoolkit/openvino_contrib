@@ -200,6 +200,8 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     }
 }
 
+bool TensorIteratorOp::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest TensorIteratorOp::GetWorkBufferRequest() const {
     std::vector<WorkbufferRequest::size_in_bytes_t> immutable_sizes;
     immutable_sizes.reserve(kernelmap_inputs_.size() + kernelmap_outputs_.size());
@@ -306,6 +308,13 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
         start += iter * portMap.stride;
         insert(stream.get(), inputTensors[0].get(), output.get(), start);
     }
+}
+
+void TensorIteratorOp::Capture(InferenceRequestContext& context,
+                               Inputs inputTensors,
+                               Outputs outputTensors,
+                               const Workbuffers& workbuffers) const {
+    Execute(context, inputTensors, outputTensors, workbuffers);
 }
 
 OPERATION_REGISTER(TensorIteratorOp, TensorIterator);
