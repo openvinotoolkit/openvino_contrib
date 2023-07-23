@@ -113,6 +113,23 @@ public class Core extends Wrapper {
     }
 
     /**
+     * Creates a compiled model from a source model object.
+     *
+     * <p>Users can create as many compiled models as they need and use them simultaneously (up to
+     * the limitation of the hardware resources).
+     *
+     * @param model Model object acquired from {@link Core#read_model}.
+     * @param device Name of a device to load a model to.
+     * @param properties properties – Map of pairs: (property name, property value) relevant only
+     *     for this load operation.
+     * @return A compiled model.
+     */
+    public CompiledModel compile_model(
+            Model model, final String device, final Map<String, String> properties) {
+        return new CompiledModel(CompileModel4(nativeObj, model.getNativeObjAddr(), device, properties));
+    }
+
+    /**
      * Gets properties related to device behaviour.
      *
      * <p>The method extracts information that can be set via the set_property method.
@@ -166,6 +183,9 @@ public class Core extends Wrapper {
 
     private static native long CompileModel2(
             long core, final String modelPath, final String device);
+
+    private static native long CompileModel4(
+            long core, long net, final String device, final Map<String, String> properties);
 
     private static native long CompileModel3(
             long core,

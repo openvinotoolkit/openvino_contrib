@@ -127,6 +127,9 @@ extern "C"
 
     /* -------------------------------------- API 2.0 ------------------------------------------*/
 
+    //ov
+    JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_serialize(JNIEnv *, jobject, jlong, jstring, jstring);
+
     // ov::Core
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore(JNIEnv *, jobject);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetCore1(JNIEnv *, jobject, jstring);
@@ -136,6 +139,7 @@ extern "C"
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel1(JNIEnv *, jobject, jlong, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel2(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel3(JNIEnv *, jobject, jlong, jstring, jstring, jobject);
+    JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel4(JNIEnv *, jobject, jlong, jlong, jstring, jobject);
     JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_GetProperty(JNIEnv *, jobject, jlong, jstring, jstring);
     JNIEXPORT void JNICALL Java_org_intel_openvino_Core_SetProperty(JNIEnv *, jobject, jlong, jstring, jobject);
     JNIEXPORT jobject JNICALL Java_org_intel_openvino_Core_GetAvailableDevices(JNIEnv *, jobject, jlong);
