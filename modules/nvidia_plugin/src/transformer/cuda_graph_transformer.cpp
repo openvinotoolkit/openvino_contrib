@@ -27,7 +27,7 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
-#include "cuda_fullyconnected_transformation.hpp"
+#include "fuse_matmul_add.hpp"
 #include "matmul_transformations.hpp"
 #include "noop_broadcast_transformation.hpp"
 #include "remove_duplicated_results_transformation.hpp"
