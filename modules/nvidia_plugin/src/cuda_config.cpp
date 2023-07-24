@@ -64,7 +64,8 @@ std::vector<ov::PropertyName> Configuration::get_supported_properties() {
 std::vector<ov::PropertyName> Configuration::get_supported_internal_properties() {
     static const std::vector<ov::PropertyName> supported_internal_properties = {
             ov::PropertyName{ov::internal::caching_properties.name(), ov::PropertyMutability::RO},
-            ov::PropertyName{ov::internal::config_device_id.name(), ov::PropertyMutability::WO}};
+            ov::PropertyName{ov::internal::config_device_id.name(), ov::PropertyMutability::WO},
+            ov::PropertyName{ov::internal::exclusive_async_requests.name(), ov::PropertyMutability::RW}};
     return supported_internal_properties;
 }
 
@@ -111,6 +112,8 @@ ov::element::Type Configuration::get_inference_precision() const noexcept {
 }
 
 bool Configuration::auto_streams_detection_required() const noexcept {
+    if (exclusive_async_requests)
+        return false;
     return ((ov::hint::PerformanceMode::THROUGHPUT == performance_mode) && (num_streams <= 0)) ||
             (num_streams == ov::streams::AUTO);
 }
@@ -124,7 +127,7 @@ uint32_t Configuration::get_optimal_number_of_streams() const noexcept {
         optimal_number_of_streams = (hint_num_requests > 0) ?
             std::min(hint_num_requests, reasonable_limit_of_streams)
             : reasonable_limit_of_streams;
-    } else if (num_streams > 0) {
+    } else if (num_streams > 0 && !exclusive_async_requests) {
         optimal_number_of_streams = num_streams;
     }
     return optimal_number_of_streams;
@@ -135,6 +138,10 @@ bool Configuration::is_stream_executor_property(const std::string& name) const {
         ov::supported_properties.name()).as<std::vector<std::string>>();
     return (stream_executor_properties.end() !=
         std::find(std::begin(stream_executor_properties), std::end(stream_executor_properties), name));
+}
+
+bool Configuration::is_exclusive_async_requests() const noexcept {
+    return exclusive_async_requests;
 }
 
 Configuration::Configuration(const ov::AnyMap& config, const Configuration& defaultCfg, bool throwOnUnsupported) {
@@ -186,6 +193,8 @@ Configuration::Configuration(const ov::AnyMap& config, const Configuration& defa
             performance_mode = value.as<ov::hint::PerformanceMode>();
         } else if (ov::hint::execution_mode == key) {
             execution_mode = value.as<ov::hint::ExecutionMode>();
+        } else if (ov::internal::exclusive_async_requests == key) {
+            exclusive_async_requests = value.as<bool>();
         } else if (throwOnUnsupported) {
             throw_ov_exception(key);
         }
@@ -219,6 +228,8 @@ ov::Any Configuration::get(const std::string& name) const {
         return performance_mode;
     } else if (name == ov::hint::execution_mode) {
         return execution_mode;
+    } else if (name == ov::internal::exclusive_async_requests) {
+        return exclusive_async_requests;
     } else {
         OPENVINO_THROW("Property was not found: ", name);
     }

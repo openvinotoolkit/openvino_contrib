@@ -42,6 +42,7 @@ struct Configuration {
     ov::element::Type get_inference_precision() const noexcept;
     uint32_t get_optimal_number_of_streams() const noexcept;
     bool auto_streams_detection_required() const noexcept;
+    bool is_exclusive_async_requests() const noexcept;
 
     // Plugin configuration parameters
     static constexpr uint32_t reasonable_limit_of_streams = 10;
@@ -52,6 +53,7 @@ private:
     bool is_profiling_enabled = false;
     bool operation_benchmark = false;
     bool use_cuda_graph = true;
+    bool exclusive_async_requests = false;
     uint32_t hint_num_requests = 0;
     ov::streams::Num num_streams = 0;
     ov::hint::PerformanceMode performance_mode = ov::hint::PerformanceMode::LATENCY;

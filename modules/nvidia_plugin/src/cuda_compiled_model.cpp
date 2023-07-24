@@ -31,11 +31,12 @@
 #include "transformer/cuda_graph_transformer.hpp"
 
 #include "openvino/runtime/exec_model_info.hpp"
+#include "openvino/runtime/internal_properties.hpp"
 #include "openvino/runtime/iplugin.hpp"
-#include "openvino/pass/serialize.hpp"
 
 namespace {
-static constexpr const char* nv_task_executor_name = "NvidiaCallbackExecutor";
+static constexpr const char* nv_stream_executor_name = "NvidiaStreamExecutor";
+static constexpr const char* nv_exclusive_executor = "NvidiaExecutor";
 static constexpr const char* nv_callback_executor_name = "NvidiaCallbackExecutor";
 }  // namespace
 
@@ -73,17 +74,21 @@ void CompiledModel::init_executor() {
     // real hardware cores and NUMA nodes.
     config_.streams_executor_config_.set_property({ ov::num_streams(ov::streams::Num(memory_pool_->Size())) });
     auto streams_executor_config = ov::threading::IStreamsExecutor::Config::make_default_multi_threaded(config_.streams_executor_config_);
-    streams_executor_config._name = nv_task_executor_name;
+    streams_executor_config._name = nv_stream_executor_name;
     // As OpenVINO CPU Streams Executor creates some additional threads
     // it is better to avoid threads recreateion as some OSs memory allocator can not manage such usage cases
     // and memory consumption can be larger than it is expected.
     // So OpenVINO provides executors cache.
-    set_task_executor(get_plugin()->get_executor_manager()->get_idle_cpu_streams_executor(streams_executor_config));
+    if (config_.is_exclusive_async_requests()) {
+        set_task_executor(get_plugin()->get_executor_manager()->get_executor(nv_exclusive_executor));
+    } else {
+        set_task_executor(get_plugin()->get_executor_manager()->get_idle_cpu_streams_executor(streams_executor_config));
+    }
     set_callback_executor(get_plugin()->get_executor_manager()->get_idle_cpu_streams_executor({nv_callback_executor_name}));
 }
 
 CompiledModel::~CompiledModel() {
-    get_plugin()->get_executor_manager()->clear(nv_task_executor_name);
+    get_plugin()->get_executor_manager()->clear(nv_stream_executor_name);
     get_plugin()->get_executor_manager()->clear(nv_callback_executor_name);
 }
 
