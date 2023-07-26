@@ -89,7 +89,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 const std::vector<size_t> smoke_input_sizes_02{2, 3, 30};
@@ -107,7 +107,7 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_02,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Other shapes -------------
@@ -133,7 +133,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_dec_02{1, 1536, 1024, 0.0f};
@@ -150,7 +150,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_02,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_enc_01{1, 512, 256, 0.0f};
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_enc_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Big shapes -------------
@@ -185,7 +185,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_OV_Doc_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_01{10, 2048, 2048, 0.0f};
@@ -202,7 +202,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_02{1, 8192, 4096, 0.0f};
@@ -219,7 +219,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_02,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_03{3, 1781, 5003, 0.0f};
@@ -236,7 +236,7 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_03,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Benchmark -------------

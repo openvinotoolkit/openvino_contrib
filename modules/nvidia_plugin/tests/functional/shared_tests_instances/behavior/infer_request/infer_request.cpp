@@ -364,7 +364,7 @@ TEST_F(smoke_InferenceRequestTest, AsyncParameterResult) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA);
     InferenceEngine::InferRequest inferRequest{execNet.CreateInferRequest()};
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};
     fillBlobs(inferRequest, inputsInfo, 1);
@@ -379,7 +379,7 @@ TEST_F(InferenceRequestBasicTest, AsyncParameterResultCancel) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(heavyModel10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA);
     InferenceEngine::InferRequest inferRequest{execNet.CreateInferRequest()};
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};
     fillBlobs(inferRequest, inputsInfo, 1);
@@ -395,7 +395,7 @@ TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {
         {InferenceEngine::PluginConfigParams::KEY_PERF_COUNT, InferenceEngine::PluginConfigParams::YES}};
 
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA, config);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA, config);
     InferenceEngine::InferRequest request{execNet.CreateInferRequest()};
 
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};

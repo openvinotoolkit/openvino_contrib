@@ -65,7 +65,7 @@ const auto smoke_1D_AutoPadValid_Params =
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({5, 8, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations));
 
 const auto smoke_1D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
@@ -83,7 +83,7 @@ const auto smoke_1D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>({2, 16, 15})),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ::testing::ValuesIn(netActivations));
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBiasAdd_1D_AutoPadValid_Params,
@@ -128,7 +128,7 @@ const auto smoke_2D_ExplicitPaddingSymmetric_Params = ::testing::Combine(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>({2, 16, 12, 6})),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ::testing::ValuesIn(netActivations));
 
 const auto smoke_2D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
@@ -146,7 +146,7 @@ const auto smoke_2D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>({3, 8, 21, 11})),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ::testing::ValuesIn(netActivations));
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBiasAdd_2D_ExplicitPaddingSymmetric,
@@ -195,7 +195,7 @@ const auto smoke_3D_ExplicitPaddingSymmetric_Params = ::testing::Combine(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>({1, 6, 9, 12, 10})),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ::testing::ValuesIn(netActivations));
 
 const auto smoke_3D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
@@ -213,7 +213,7 @@ const auto smoke_3D_ExplicitPaddingAsymmetric_Params = ::testing::Combine(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>({2, 6, 12, 15, 20})),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ::testing::ValuesIn(netActivations));
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBiasAdd_3D_ExplicitPaddingSymmetric,

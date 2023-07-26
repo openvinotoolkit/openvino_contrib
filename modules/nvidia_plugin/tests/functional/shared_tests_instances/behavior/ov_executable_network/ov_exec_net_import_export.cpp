@@ -16,28 +16,28 @@ const std::vector<ov::element::Type_t> netPrecisions = {
 const std::vector<ov::AnyMap> configs = {
     {},
 };
-const std::vector<ov::AnyMap> multiConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
+const std::vector<ov::AnyMap> multiConfigs = {{ov::device::priorities(ov::test::utils::DEVICE_NVIDIA)}};
 
-const std::vector<ov::AnyMap> heteroConfigs = {{ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA)}};
+const std::vector<ov::AnyMap> heteroConfigs = {{ov::device::priorities(ov::test::utils::DEVICE_NVIDIA)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVExecGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
-                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          OVExecGraphImportExportTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Auto_BehaviorTests,
                          OVExecGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
-                                            ::testing::Values(CommonTestUtils::DEVICE_AUTO),
+                                            ::testing::Values(ov::test::utils::DEVICE_AUTO),
                                             ::testing::ValuesIn(multiConfigs)),
                          OVExecGraphImportExportTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_Hetero_BehaviorTests,
                          OVExecGraphImportExportTest,
                          ::testing::Combine(::testing::ValuesIn(netPrecisions),
-                                            ::testing::Values(CommonTestUtils::DEVICE_HETERO),
+                                            ::testing::Values(ov::test::utils::DEVICE_HETERO),
                                             ::testing::ValuesIn(heteroConfigs)),
                          OVExecGraphImportExportTest::getTestCaseName);
 

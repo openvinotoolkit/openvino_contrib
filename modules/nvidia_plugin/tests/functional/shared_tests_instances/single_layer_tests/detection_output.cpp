@@ -20,15 +20,15 @@ struct TestDetectionOutputResult {
 
     template <typename TOtherDataType>
     static bool similar(const TDataType &res, const TOtherDataType &ref) {
-        const auto absoluteDifference = CommonTestUtils::ie_abs(res - ref);
+        const auto absoluteDifference = ov::test::utils::ie_abs(res - ref);
         if (absoluteDifference <= threshold) {
             return true;
         }
         double max;
         if (sizeof(TDataType) < sizeof(TOtherDataType)) {
-            max = std::max(CommonTestUtils::ie_abs(TOtherDataType(res)), CommonTestUtils::ie_abs(ref));
+            max = std::max(ov::test::utils::ie_abs(TOtherDataType(res)), ov::test::utils::ie_abs(ref));
         } else {
-            max = std::max(CommonTestUtils::ie_abs(res), CommonTestUtils::ie_abs(TDataType(ref)));
+            max = std::max(ov::test::utils::ie_abs(res), ov::test::utils::ie_abs(TDataType(ref)));
         }
         double diff = static_cast<float>(absoluteDifference) / max;
         if (max == 0 || (diff > static_cast<float>(threshold)) || std::isnan(static_cast<float>(res)) ||
@@ -203,7 +203,7 @@ const auto params3Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams3In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(0.0f),
-                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                              ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput3In,
                         CudaDetectionOutputLayerTest,
@@ -227,7 +227,7 @@ const auto params5Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams5In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(objectnessScore),
-                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                              ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput5In,
                         CudaDetectionOutputLayerTest,
@@ -267,7 +267,7 @@ const auto paramsSSDMobileNetInputs = ::testing::Combine(commonAttributesSSDMobi
                                                          ::testing::ValuesIn(specificParamsSSDMobileNetIn),
                                                          ::testing::ValuesIn(numberBatchSSDMobileNet),
                                                          ::testing::Values(objectnessScoreSSDMobileNet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputSSDMobileNetIn,
                         CudaDetectionOutputLayerTest,
@@ -307,7 +307,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 // NOTE: Too many elements with similar confidence that leads test to fail
 INSTANTIATE_TEST_CASE_P(DISABLED_DetectionOutputEfficientDetIn,
@@ -332,7 +332,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputEfficientDetIn,
                         CudaDetectionOutputLayerBenchmarkTest,

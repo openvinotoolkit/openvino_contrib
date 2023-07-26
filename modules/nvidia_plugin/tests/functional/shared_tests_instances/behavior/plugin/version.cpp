@@ -14,7 +14,7 @@ const std::vector<std::map<std::string, std::string>> configs = {{}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          VersionTest,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                          VersionTest::getTestCaseName);
 
 }  // namespace

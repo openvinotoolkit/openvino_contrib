@@ -36,7 +36,7 @@ const auto params = testing::Combine(testing::ValuesIn(inputOrder),
                                      testing::Values(InferenceEngine::Layout::ANY),
                                      testing::Values(InferenceEngine::Layout::ANY),
                                      testing::ValuesIn(inputShapes),
-                                     testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                     testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Transpose, TransposeLayerTest, params, TransposeLayerTest::getTestCaseName);
 

@@ -142,7 +142,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP32,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>())),
                         StridedSliceLayerTest::getTestCaseName);
 
@@ -154,7 +154,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_FP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>())),
                         StridedSliceLayerTest::getTestCaseName);
 
@@ -166,7 +166,7 @@ INSTANTIATE_TEST_CASE_P(StridedSliceTest_I32,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>())),
                         StridedSliceLayerTest::getTestCaseName);
 
@@ -178,7 +178,7 @@ INSTANTIATE_TEST_CASE_P(smoke_StridedSliceTest_FP32,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(std::map<std::string, std::string>())),
                         StridedSliceLayerTest::getTestCaseName);
 }  // namespace

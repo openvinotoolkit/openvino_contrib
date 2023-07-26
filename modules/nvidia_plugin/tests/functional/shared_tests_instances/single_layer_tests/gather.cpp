@@ -34,9 +34,9 @@ public:
             indices, indicesShape, axis, inputShape, netPrecision, inPrc, outPrc, inLayout, outLayout, targetName) =
             obj.param;
         std::ostringstream result;
-        result << "IS=" << CommonTestUtils::vec2str(inputShape) << "_";
+        result << "IS=" << ov::test::utils::vec2str(inputShape) << "_";
         result << "axis=" << axis << "_";
-        result << "indicesShape=" << CommonTestUtils::vec2str(indicesShape) << "_";
+        result << "indicesShape=" << ov::test::utils::vec2str(indicesShape) << "_";
         result << "netPRC=" << netPrecision.name() << "_";
         result << "inPRC=" << inPrc.name() << "_";
         result << "outPRC=" << outPrc.name() << "_";
@@ -74,7 +74,7 @@ struct GatherTestParams {
     InferenceEngine::Precision output_precision_ = InferenceEngine::Precision::UNSPECIFIED;
     InferenceEngine::Layout input_layout_ = InferenceEngine::Layout::ANY;
     InferenceEngine::Layout output_layout_ = InferenceEngine::Layout::ANY;
-    LayerTestsUtils::TargetDevice device_ = CommonTestUtils::DEVICE_NVIDIA;
+    LayerTestsUtils::TargetDevice device_ = ov::test::utils::DEVICE_NVIDIA;
 };
 
 template <typename T>
@@ -754,8 +754,8 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     const auto end = std::chrono::steady_clock::now();
     microseconds average_exec_time = (end - start) / NUM_ATTEMPTS;
     std::cout << std::fixed << std::setfill('0') << "Gather_v" << (is_v7 ? "7 " : "1 ")
-              << CommonTestUtils::vec2str(params.params_shape_) << ", "
-              << CommonTestUtils::vec2str(params.indices_shape_) << ", axis = " << params.axis_
+              << ov::test::utils::vec2str(params.params_shape_) << ", "
+              << ov::test::utils::vec2str(params.indices_shape_) << ", axis = " << params.axis_
               << ", batch_dims = " << params.batch_dims_ << ": " << average_exec_time.count() << " us\n";
 }
 

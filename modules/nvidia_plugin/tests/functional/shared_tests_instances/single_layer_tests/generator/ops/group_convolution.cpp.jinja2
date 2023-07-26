@@ -19,7 +19,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({{op.cpp_list_input}})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     {{op.cpp_test_class_name}}::getTestCaseName);
 
 {% endfor -%}

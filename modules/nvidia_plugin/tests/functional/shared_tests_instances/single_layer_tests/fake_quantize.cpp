@@ -50,7 +50,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantize,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(config)),
                         FakeQuantizeLayerTest::getTestCaseName);
 
@@ -71,7 +71,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDAFakeQuantizeBr,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapesBr),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(config)),
                         FakeQuantizeLayerTest::getTestCaseName);
 

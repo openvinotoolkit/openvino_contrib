@@ -34,31 +34,31 @@ const std::vector<ov::AnyMap> auto_batch_inproperties = {
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Hetero_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_HETERO),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_HETERO),
                                             ::testing::ValuesIn(hetero_inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Multi_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_MULTI),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_MULTI),
                                             ::testing::ValuesIn(multi_inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Auto_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_AUTO),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_AUTO),
                                             ::testing::ValuesIn(auto_inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_AutoBatch_BehaviorTests,
                          OVPropertiesIncorrectTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_BATCH),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_BATCH),
                                             ::testing::ValuesIn(auto_batch_inproperties)),
                          OVPropertiesIncorrectTests::getTestCaseName);
 
@@ -73,7 +73,7 @@ const std::vector<ov::AnyMap> default_properties = {
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVPropertiesDefaultTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(default_properties)),
                          OVPropertiesDefaultTests::getTestCaseName);
 
@@ -92,41 +92,41 @@ const std::vector<ov::AnyMap> properties = {
 };
 
 const std::vector<ov::AnyMap> hetero_properties = {
-    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::enable_profiling(true)},
-    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::device::id(0)},
+    {ov::device::priorities(ov::test::utils::DEVICE_NVIDIA), ov::enable_profiling(true)},
+    {ov::device::priorities(ov::test::utils::DEVICE_NVIDIA), ov::device::id(0)},
 };
 
 const std::vector<ov::AnyMap> multi_properties = {
-    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::enable_profiling(true)},
-    {ov::device::priorities(CommonTestUtils::DEVICE_NVIDIA), ov::device::id(0)},
+    {ov::device::priorities(ov::test::utils::DEVICE_NVIDIA), ov::enable_profiling(true)},
+    {ov::device::priorities(ov::test::utils::DEVICE_NVIDIA), ov::device::id(0)},
 };
 
 const std::vector<ov::AnyMap> auto_batch_properties = {
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_NVIDIA}},
-    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), CommonTestUtils::DEVICE_NVIDIA}, {CONFIG_KEY(AUTO_BATCH_TIMEOUT), "1"}},
+    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), ov::test::utils::DEVICE_NVIDIA}},
+    {{CONFIG_KEY(AUTO_BATCH_DEVICE_CONFIG), ov::test::utils::DEVICE_NVIDIA}, {CONFIG_KEY(AUTO_BATCH_TIMEOUT), "1"}},
 };
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVPropertiesTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(properties)),
                          OVPropertiesTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Hetero_BehaviorTests,
                          OVPropertiesTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_HETERO),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_HETERO),
                                             ::testing::ValuesIn(hetero_properties)),
                          OVPropertiesTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_Multi_BehaviorTests,
                          OVPropertiesTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_MULTI),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_MULTI),
                                             ::testing::ValuesIn(multi_properties)),
                          OVPropertiesTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(DISABLED_smoke_AutoBatch_BehaviorTests,
                          OVPropertiesTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_BATCH),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_BATCH),
                                             ::testing::ValuesIn(auto_batch_properties)),
                          OVPropertiesTests::getTestCaseName);
 }  // namespace

@@ -33,7 +33,7 @@ INSTANTIATE_TEST_CASE_P(smoke_NoReshape,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConcatLayerTest::getTestCaseName);
 
 }  // namespace

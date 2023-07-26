@@ -58,7 +58,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_From_F32,
                                             ::testing::ValuesIn(out_precisions),
                                             ::testing::Values(InferenceEngine::Layout::ANY),
                                             ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                          ConversionLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_To_F32,
@@ -69,7 +69,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_To_F32,
                                             ::testing::Values(Precision::FP32),
                                             ::testing::Values(InferenceEngine::Layout::ANY),
                                             ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                          ConversionLayerTest::getTestCaseName);
 
 /* TODO Uncomment when BF16 support is implemented
@@ -80,7 +80,7 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_BF16, ConversionCUDALayerTes
                                 ::testing::ValuesIn(precisions),
                                 ::testing::Values(Layout::ANY),
                                 ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvertLayerTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConversionCUDALayerTest,
                         ::testing::Combine(
@@ -89,7 +89,7 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConversionCUDALayerTest,
                                 ::testing::Values(Precision::BF16),
                                 ::testing::Values(Layout::ANY),
                                 ::testing::Values(Layout::ANY),
-                                ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvertLayerTest::getTestCaseName);
 */
 }  // namespace

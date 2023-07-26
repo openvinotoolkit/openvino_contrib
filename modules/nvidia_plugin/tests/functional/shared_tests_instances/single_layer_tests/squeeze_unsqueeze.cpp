@@ -30,13 +30,13 @@ const std::vector<ngraph::helpers::SqueezeOpType> opTypes = {ngraph::helpers::Sq
 
 INSTANTIATE_TEST_CASE_P(smoke_Basic,
                         SqueezeUnsqueezeLayerTest,
-                        ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(axesVectors)),
+                        ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(axesVectors)),
                                            ::testing::ValuesIn(opTypes),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         SqueezeUnsqueezeLayerTest::getTestCaseName);
 }  // namespace

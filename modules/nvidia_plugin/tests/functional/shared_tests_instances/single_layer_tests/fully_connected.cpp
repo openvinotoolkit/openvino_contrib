@@ -47,8 +47,8 @@ public:
                  additionalConfig) = obj.param;
 
         std::ostringstream result;
-        result << "IS0=" << CommonTestUtils::vec2str(shapeRelatedParams.input1.first) << "_";
-        result << "IS1=" << CommonTestUtils::vec2str(shapeRelatedParams.input2.first) << "_";
+        result << "IS0=" << ov::test::utils::vec2str(shapeRelatedParams.input1.first) << "_";
+        result << "IS1=" << ov::test::utils::vec2str(shapeRelatedParams.input2.first) << "_";
         result << "transpose_a=" << shapeRelatedParams.input1.second << "_";
         result << "transpose_b=" << shapeRelatedParams.input2.second << "_";
         result << "secondaryInputType=" << secondaryInputType << "_";
@@ -149,10 +149,10 @@ public:
                  additionalConfig) = obj.param;
 
         std::ostringstream result;
-        result << "IS00=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul1_input1.first) << "_";
-        result << "IS01=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul1_input2.first) << "_";
-        result << "IS10=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul2_input1.first) << "_";
-        result << "IS11=" << CommonTestUtils::vec2str(shapeRelatedParams.matmul2_input2.first) << "_";
+        result << "IS00=" << ov::test::utils::vec2str(shapeRelatedParams.matmul1_input1.first) << "_";
+        result << "IS01=" << ov::test::utils::vec2str(shapeRelatedParams.matmul1_input2.first) << "_";
+        result << "IS10=" << ov::test::utils::vec2str(shapeRelatedParams.matmul2_input1.first) << "_";
+        result << "IS11=" << ov::test::utils::vec2str(shapeRelatedParams.matmul2_input2.first) << "_";
         result << "IS0 transpose_a=" << shapeRelatedParams.matmul1_input1.second << "_";
         result << "IS0 transpose_b=" << shapeRelatedParams.matmul1_input2.second << "_";
         result << "IS1 transpose_a=" << shapeRelatedParams.matmul2_input1.second << "_";
@@ -295,7 +295,7 @@ INSTANTIATE_TEST_CASE_P(smoke_MatMulFP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -307,7 +307,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_Resnet50FP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -319,7 +319,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_VGG16FP16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayerTest::getTestCaseName);
 
@@ -331,7 +331,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_Tacatron2,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         FullyConnectedLayer2MatMulTest::getTestCaseName);
 
