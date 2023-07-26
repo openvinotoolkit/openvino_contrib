@@ -32,26 +32,14 @@ public:
            unsigned els_per_thread_chunks,
            unsigned els_per_thread_dicts);
 
-    void operator()(const cudaStream_t stream,
-                    bool is_benchmark_mode,
-                    const void* src_dict,
-                    const void* src_index,
-                    void* dst_data) const;
+    void operator()(const cudaStream_t stream, const void* src_dict, const void* src_index, void* dst_data) const;
 
 private:
     template <typename IndexType>
-    void CallByDataType(const cudaStream_t stream,
-                        bool is_benchmark_mode,
-                        const void* src_dict,
-                        const void* src_index,
-                        void* dst_data) const;
+    void CallByDataType(const cudaStream_t stream, const void* src_dict, const void* src_index, void* dst_data) const;
 
     template <typename DataType, typename IndexType>
-    void Call(const cudaStream_t stream,
-              bool is_benchmark_mode,
-              const void* src_dict,
-              const void* src_index,
-              void* dst_data) const;
+    void Call(const cudaStream_t stream, const void* src_dict, const void* src_index, void* dst_data) const;
 
     Type_t element_type_;
     Type_t indices_type_;

@@ -8,8 +8,8 @@
 
 #include <cuda_operation_registry.hpp>
 #include <error.hpp>
-#include <openvino/core/except.hpp>
 #include <numeric>
+#include <openvino/core/except.hpp>
 #include <openvino/op/gather.hpp>
 
 #include "converters.hpp"
@@ -52,7 +52,7 @@ GatherOp::GatherOp(const CreationContext& context,
         case ov::element::Type_t::dynamic:
         case ov::element::Type_t::u1:
             throw_ov_exception(fmt::format("Params element type = {} is not supported by Gather operation!",
-                                         static_cast<ov::element::Type_t>(element_type)));
+                                           static_cast<ov::element::Type_t>(element_type)));
     }
     OPENVINO_ASSERT(node.get_output_element_type(0) == element_type, "Node name: ", GetName());
 
@@ -175,11 +175,7 @@ void GatherOp::Execute(const InferenceRequestContext& context,
     OPENVINO_ASSERT(inputs.size() == 3, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
 
-    (*gather_kernel_)(context.getThreadContext().stream().get(),
-                      context.isBenchmarkMode(),
-                      inputs[0].get(),
-                      inputs[1].get(),
-                      outputs[0].get());
+    (*gather_kernel_)(context.getThreadContext().stream().get(), inputs[0].get(), inputs[1].get(), outputs[0].get());
 }
 
 bool GatherOp::IsCudaGraphCompatible() const { return true; }
