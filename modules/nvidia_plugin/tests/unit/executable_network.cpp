@@ -7,6 +7,8 @@
 #include <memory>
 #include <typeinfo>
 
+#include "openvino/runtime/internal_properties.hpp"
+
 #include "cuda_compiled_model.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
@@ -133,6 +135,8 @@ TEST_P(NumStreams1ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_1_
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::num_streams.name()), ov::streams::Num(total_streams));
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
 }
 
 INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
@@ -170,13 +174,58 @@ TEST_P(NumStreams8ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::num_streams.name()), ov::streams::Num(total_streams));
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
 }
+
 
 INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
                          NumStreams8ExecNetworkTest,
                          ::testing::ValuesIn(num_streams_8_properties),
                          ExecNetworkTest::getTestCaseName);
 
+std::vector<PropertiesParams> num_streams_8_properties_exclusive = {
+    {
+        {CONFIG_KEY(DEVICE_ID), "0"},
+        {NVIDIA_CONFIG_KEY(THROUGHPUT_STREAMS), "8"},
+        {CONFIG_KEY(EXCLUSIVE_ASYNC_REQUESTS), CONFIG_VALUE(YES)},
+    },
+    {
+        {ov::device::id.name(), "0"},
+        {ov::num_streams.name(), "8"},
+        {ov::internal::exclusive_async_requests.name(), true},
+    },
+    {
+        {ov::device::id.name(), "0"},
+        {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::THROUGHPUT)},
+        {ov::num_streams.name(), "8"},
+        {ov::internal::exclusive_async_requests.name(), true},
+    },
+    {
+        {ov::device::id.name(), "0"},
+        {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::LATENCY)},
+        {ov::num_streams.name(), "8"},
+        {ov::internal::exclusive_async_requests.name(), true},
+    },
+};
+
+using NumStreams8ExclusiveExecNetworkTest = ExecNetworkTest;
+TEST_P(NumStreams8ExclusiveExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_Success) {
+    using namespace std::chrono_literals;
+    auto plugin = std::make_shared<Plugin>();
+    constexpr auto total_streams = 1;
+    auto compiled_model = plugin->compile_model(function_, properties);
+    auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
+    auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
+    ASSERT_EQ(memoryManagerPool->Size(), total_streams);
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::num_streams.name()), ov::streams::Num(total_streams));
+    ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
+}
+
+INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
+                         NumStreams8ExclusiveExecNetworkTest,
+                         ::testing::ValuesIn(num_streams_8_properties_exclusive),
+                         ExecNetworkTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_auto_properties = {
     {
