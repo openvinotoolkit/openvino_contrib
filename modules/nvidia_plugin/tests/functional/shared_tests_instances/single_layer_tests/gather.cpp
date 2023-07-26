@@ -78,7 +78,7 @@ struct GatherTestParams {
 };
 
 template <typename T>
-std::vector<T> generate_indices(const GatherTestParams& test_params) {
+std::vector<T> generate_indices(const GatherTestParams& test_params, bool add_out_of_range = false) {
     static std::random_device r_device;
     static std::default_random_engine r_engine{r_device()};
 
@@ -93,7 +93,15 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
 
     const auto indices_size = ov::shape_size(test_params.indices_shape_);
     std::vector<T> indices(indices_size);
-    std::generate(indices.begin(), indices.end(), [&]() { return distr(r_engine); });
+    auto gen_function = [&]() { return distr(r_engine); };
+    if (!add_out_of_range) {
+        std::generate(indices.begin(), indices.end(), gen_function);
+    } else {
+        if (indices_size > 0) {
+            indices[0] = test_params.params_shape_[normalized_axis];
+        }
+        std::generate(indices.begin() + 1, indices.end(), gen_function);
+    }
     return indices;
 }
 
@@ -102,6 +110,20 @@ const GatherTestParams smoke_01_params_v1_v7 = {{4, 3}, {2}};
 INSTANTIATE_TEST_CASE_P(smoke_Gather_v1_01,
                         CudaGatherLayerTest,
                         ::testing::Combine(::testing::Values(generate_indices<int>(smoke_01_params_v1_v7)),
+                                           ::testing::Values(smoke_01_params_v1_v7.indices_shape_),
+                                           ::testing::Values(smoke_01_params_v1_v7.axis_),
+                                           ::testing::Values(smoke_01_params_v1_v7.params_shape_),
+                                           ::testing::ValuesIn(smoke_01_params_v1_v7.net_precisions_),
+                                           ::testing::Values(smoke_01_params_v1_v7.input_precision_),
+                                           ::testing::Values(smoke_01_params_v1_v7.output_precision_),
+                                           ::testing::Values(smoke_01_params_v1_v7.input_layout_),
+                                           ::testing::Values(smoke_01_params_v1_v7.output_layout_),
+                                           ::testing::Values(smoke_01_params_v1_v7.device_)),
+                        CudaGatherLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(smoke_Gather_v1_01_out_of_range_index,
+                        CudaGatherLayerTest,
+                        ::testing::Combine(::testing::Values(generate_indices<int>(smoke_01_params_v1_v7, true)),
                                            ::testing::Values(smoke_01_params_v1_v7.indices_shape_),
                                            ::testing::Values(smoke_01_params_v1_v7.axis_),
                                            ::testing::Values(smoke_01_params_v1_v7.params_shape_),
