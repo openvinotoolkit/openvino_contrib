@@ -103,6 +103,11 @@ find_library(CUTENSOR_PATH
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
 
+if(WIN32)
+    string(REPLACE "-Zi" "-Z7" CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG}")
+    message("-- [nvidia_gpu] CMAKE_CUDA_FLAGS_DEBUG ${CMAKE_CUDA_FLAGS_DEBUG}")
+endif()
+
 message("-- [nvidia_gpu] CUTENSOR_PATH ${CUTENSOR_PATH}")
 message("-- [nvidia_gpu] CUTENSOR_INCLUDE_DIR ${CUTENSOR_INCLUDE_DIR}")
 message("-- [nvidia_gpu] CUDNN_PATH ${CUDNN_PATH}")
