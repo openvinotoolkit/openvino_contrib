@@ -12,9 +12,9 @@ using namespace ov;
 
 RegexNormalization::RegexNormalization(const ov::OutputVector& arguments) :
         ov::op::Op(arguments) {
-        auto search_pattern_const   = as_type_ptr<Constant>(arguments[3].get_node_shared_ptr());
-        auto replace_pattern_const  = as_type_ptr<Constant>(arguments[4].get_node_shared_ptr());
-        auto search_pattern_buf  = static_cast<const char*>(search_pattern_const->get_data_ptr());
+        auto search_pattern_const = as_type_ptr<Constant>(arguments[3].get_node_shared_ptr());
+        auto replace_pattern_const = as_type_ptr<Constant>(arguments[4].get_node_shared_ptr());
+        auto search_pattern_buf = static_cast<const char*>(search_pattern_const->get_data_ptr());
         auto replace_pattern_buf = static_cast<const char*>(replace_pattern_const->get_data_ptr());
         auto search_pattern = absl::string_view((const char*)search_pattern_buf, search_pattern_const->get_byte_size() - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant
         m_replace_pattern = absl::string_view((const char*)replace_pattern_buf, replace_pattern_const->get_byte_size() - 1);   // FIXME: -1 is a complementary change to a WA applied in string_attribute_to_constant

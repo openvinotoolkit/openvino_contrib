@@ -4,25 +4,35 @@
 
 #pragma once
 
+#include "normalizer.h" // for absl::string_view
+
 #include <openvino/op/op.hpp>
+#include "openvino/opsets/opset10.hpp"
+#include "fast_tokenizer/normalizers/normalizers.h"  // for re2::RE2
+#include "fast_tokenizer/pretokenizers/pretokenizers.h"
+
+using namespace ov;
+using namespace ov::opset10;
+using namespace paddlenlp::fast_tokenizer;
+
 
 class OPENVINO_API RegexSplit : public ov::op::Op {
 public:
     OPENVINO_OP("RegexSplit");
 
     RegexSplit () = default;
-
-    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "remove", bool invert = false) :
-        ov::op::Op(arguments),
-        m_behaviour(behaviour),
-        m_invert(invert) {
-        constructor_validate_and_infer_types();
-    }
+    RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "remove", bool invert = false);
+    RegexSplit(
+        const ov::OutputVector& arguments,
+        const std::shared_ptr<pretokenizers::SplitPreTokenizer> pretokenizer,
+        const std::string& behaviour = "remove",
+        bool invert = false
+    );
 
     void validate_and_infer_types() override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
-        return std::make_shared<RegexSplit>(inputs, m_behaviour, m_invert);
+        return std::make_shared<RegexSplit>(inputs, m_pretokenizer, m_behaviour, m_invert);
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
@@ -38,7 +48,7 @@ public:
     }
 
 private:
-
+    std::shared_ptr<pretokenizers::SplitPreTokenizer> m_pretokenizer;
     std::string m_behaviour = "remove";
     bool m_invert = false;
 };
