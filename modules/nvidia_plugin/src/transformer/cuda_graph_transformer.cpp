@@ -29,7 +29,6 @@
 #include "concat_transformation.hpp"
 #include "fuse_matmul_add.hpp"
 #include "matmul_transformations.hpp"
-#include "noop_broadcast_transformation.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/op_conversions/convert_divide.hpp"
@@ -132,7 +131,8 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
-    pass_manager.register_pass<ov::nvidia_gpu::pass::NoopBroadcastTransformation>();
+    // Do we actually need to eliminate broadcast one more time at the end?
+    pass_manager.register_pass<ov::pass::NopElimination>();
 
     pass_manager.run_passes(model);
 
