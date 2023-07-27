@@ -59,14 +59,14 @@ public:
             convBackpropDataParams;
 
         std::ostringstream result;
-        result << "IS=" << CommonTestUtils::vec2str(inputShapes) << "_";
-        result << "OSD=" << CommonTestUtils::vec2str(outputShapeData) << "_";
-        result << "K" << CommonTestUtils::vec2str(kernel) << "_";
-        result << "S" << CommonTestUtils::vec2str(stride) << "_";
-        result << "PB" << CommonTestUtils::vec2str(padBegin) << "_";
-        result << "PE" << CommonTestUtils::vec2str(padEnd) << "_";
-        result << "D=" << CommonTestUtils::vec2str(dilation) << "_";
-        result << "OP=" << CommonTestUtils::vec2str(outputPad) << "_";
+        result << "IS=" << ov::test::utils::vec2str(inputShapes) << "_";
+        result << "OSD=" << ov::test::utils::vec2str(outputShapeData) << "_";
+        result << "K" << ov::test::utils::vec2str(kernel) << "_";
+        result << "S" << ov::test::utils::vec2str(stride) << "_";
+        result << "PB" << ov::test::utils::vec2str(padBegin) << "_";
+        result << "PE" << ov::test::utils::vec2str(padEnd) << "_";
+        result << "D=" << ov::test::utils::vec2str(dilation) << "_";
+        result << "OP=" << ov::test::utils::vec2str(outputPad) << "_";
         result << "O=" << convOutChannels << "_";
         result << "AP=" << padType << "_";
         result << "netPRC=" << netPrecision.name() << "_";
@@ -226,7 +226,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_0),
                                            ::testing::Values(output2D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'dilations': '1,1', 'strides': '2,2'}
@@ -242,7 +242,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_0),
                                            ::testing::Values(output2D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -275,7 +275,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_1),
                                            ::testing::Values(output2D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -291,7 +291,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_1),
                                            ::testing::Values(output2D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -324,7 +324,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_2),
                                            ::testing::Values(output2D_group_2),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -340,7 +340,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_2),
                                            ::testing::Values(output2D_group_2),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -372,7 +372,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_3),
                                            ::testing::Values(output2D_group_3),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -388,7 +388,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_3),
                                            ::testing::Values(output2D_group_3),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -420,7 +420,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_4),
                                            ::testing::Values(output2D_group_4),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -436,7 +436,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_4),
                                            ::testing::Values(output2D_group_4),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'explicit', 'dilations': '1,1', 'strides': '2,2'}
@@ -468,7 +468,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_5,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_5),
                                            ::testing::Values(output2D_group_5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_5,
                         ConvolutionBackpropDataExtendedLayerTest,
@@ -480,7 +480,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_5,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_5),
                                            ::testing::Values(output2D_group_5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 /* ============= ConvolutionBackpropData params (3D) ============= */
@@ -513,7 +513,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_0),
                                            ::testing::Values(output3D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -529,7 +529,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_0),
                                            ::testing::Values(output3D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -561,7 +561,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_1),
                                            ::testing::Values(output3D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -577,7 +577,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_1),
                                            ::testing::Values(output3D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -609,7 +609,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_2),
                                            ::testing::Values(output3D_group_2),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -625,7 +625,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_2),
                                            ::testing::Values(output3D_group_2),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -657,7 +657,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_3),
                                            ::testing::Values(output3D_group_3),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -673,7 +673,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_3),
                                            ::testing::Values(output3D_group_3),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -705,7 +705,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_4),
                                            ::testing::Values(output3D_group_4),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -721,7 +721,7 @@ INSTANTIATE_TEST_CASE_P(Convolution3D_group_4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_4),
                                            ::testing::Values(output3D_group_4),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'padbegin': '2,2,2', 'padend': '2,2,2', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -753,7 +753,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_group_5,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_5),
                                            ::testing::Values(output3D_group_5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'padbegin': '2,2,2', 'padend': '2,2,2', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -769,7 +769,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_group_5,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_5),
                                            ::testing::Values(output3D_group_5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -801,7 +801,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_group_6,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_6),
                                            ::testing::Values(output3D_group_6),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -817,7 +817,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_group_6,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_6),
                                            ::testing::Values(output3D_group_6),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'explicit', 'dilations': '1,1,1', 'strides': '2,2,2'}
@@ -849,7 +849,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AsymPad_group_7,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_7),
                                            ::testing::Values(output3D_group_7),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataLayerTest::getTestCaseName);
 INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AsymPad_group_7,
                         ConvolutionBackpropDataExtendedLayerTest,
@@ -861,7 +861,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution3D_AsymPad_group_7,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input3D_group_7),
                                            ::testing::Values(output3D_group_7),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // =============================================================================
@@ -892,7 +892,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 16, 16}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {32, 32}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -920,7 +920,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 8, 8}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {16, 16}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -948,7 +948,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 64, 64}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {128, 128}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -976,7 +976,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 32, 32}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {64, 64}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1004,7 +1004,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {64, 128, 7, 7}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {14, 14}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1032,7 +1032,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {64, 64, 14, 14}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {28, 28}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1060,7 +1060,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 18, 18, 18}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {36, 36, 36}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1088,7 +1088,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 9, 9, 9}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {18, 18, 18}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1116,7 +1116,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 72, 72, 72}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {144, 144, 144}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 
@@ -1144,7 +1144,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 36, 36, 36}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {72, 72, 72}), // Output shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     ConvolutionBackpropDataExtendedLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}

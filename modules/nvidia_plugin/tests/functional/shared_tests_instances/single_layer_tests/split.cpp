@@ -23,7 +23,7 @@ INSTANTIATE_TEST_CASE_P(NumSplitsCheck,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
                                            ::testing::Values(std::vector<size_t>({})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         SplitLayerTest::getTestCaseName);
 
 }  // namespace

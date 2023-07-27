@@ -22,7 +22,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Behavior_PreprocessingPrecisionConvertTestsViaSet
                          ::testing::Combine(::testing::ValuesIn(inputPrecisions),
                                             ::testing::Values(4),     // Number of input tensor channels
                                             ::testing::Values(true),  // Use SetInput
-                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          PreprocessingPrecisionConvertTest::getTestCaseName);
 
@@ -32,7 +32,7 @@ INSTANTIATE_TEST_SUITE_P(smoke_Behavior_PreprocessingPrecisionConvertTestsViaGet
                                             ::testing::Values(4),  // Number of input tensor channels (blob_copy only
                                                                    // supports 4d and 5d tensors)
                                             ::testing::Values(false),  // use GetBlob
-                                            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(configs)),
                          PreprocessingPrecisionConvertTest::getTestCaseName);
 

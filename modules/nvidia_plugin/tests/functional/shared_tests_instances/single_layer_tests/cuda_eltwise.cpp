@@ -194,7 +194,7 @@ void CudaEltwiseLayerTest::SetUp() {
     ov::test::ElementType in_prc;
     ov::test::ElementType out_prc;
     ngraph::helpers::InputLayerType secondaryInputType;
-    CommonTestUtils::OpType opType;
+    ov::test::utils::OpType opType;
     ngraph::helpers::EltwiseTypes eltwiseType;
     ov::AnyMap additionalConfig;
     const ov::test::subgraph::EltwiseTestParams ew_params = std::get<0>(this->GetParam());
@@ -212,11 +212,11 @@ void CudaEltwiseLayerTest::SetUp() {
 
     ov::PartialShape shape_input_secondary;
     switch (opType) {
-        case CommonTestUtils::OpType::SCALAR: {
+        case ov::test::utils::OpType::SCALAR: {
             shape_input_secondary = {1};
             break;
         }
-        case CommonTestUtils::OpType::VECTOR:
+        case ov::test::utils::OpType::VECTOR:
             shape_input_secondary = inputDynamicShapes.back();
             break;
         default:

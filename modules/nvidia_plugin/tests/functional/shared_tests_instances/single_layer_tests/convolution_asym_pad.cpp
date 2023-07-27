@@ -42,7 +42,7 @@ INSTANTIATE_TEST_CASE_P(smoke_ConvolutionAsymPadCUDA2D_Run,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(inputShapes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionAsymPadCUDALayerTest::getTestCaseName);
 }  // namespace
 }  // namespace CUDALayerTestsDefinitions

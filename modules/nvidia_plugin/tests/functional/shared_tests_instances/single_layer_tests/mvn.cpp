@@ -54,7 +54,7 @@ const auto MvnCases = ::testing::Combine(::testing::ValuesIn(inputShapes),
                                          ::testing::ValuesIn(acrossChannels),
                                          ::testing::ValuesIn(normalizeVariance),
                                          ::testing::ValuesIn(epsilon),
-                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDA_TestsMVN, Mvn1LayerTest, MvnCases, Mvn1LayerTest::getTestCaseName);
 
@@ -79,7 +79,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_MVN_5D,
                                            ::testing::ValuesIn(normalizeVariance),
                                            ::testing::ValuesIn(epsilonF),
                                            ::testing::ValuesIn(epsMode),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
@@ -92,7 +92,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(normalizeVariance),
                        ::testing::ValuesIn(epsilonF),
                        ::testing::ValuesIn(epsMode),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
@@ -105,7 +105,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(normalizeVariance),
                        ::testing::ValuesIn(epsilonF),
                        ::testing::ValuesIn(epsMode),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDA_MVN_2D,
@@ -117,7 +117,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_MVN_2D,
                                            ::testing::ValuesIn(normalizeVariance),
                                            ::testing::ValuesIn(epsilonF),
                                            ::testing::ValuesIn(epsMode),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDA_MVN_1D,
@@ -129,7 +129,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_MVN_1D,
                                            ::testing::ValuesIn(normalizeVariance),
                                            ::testing::ValuesIn(epsilonF),
                                            ::testing::ValuesIn(epsMode),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_3D,
@@ -142,7 +142,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_3D,
                                            ::testing::ValuesIn(normalizeVariance),
                                            ::testing::ValuesIn(epsilonF),
                                            ::testing::ValuesIn(epsMode),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_4D,
@@ -156,7 +156,7 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_4D,
                                            ::testing::ValuesIn(normalizeVariance),
                                            ::testing::ValuesIn(epsilonF),
                                            ::testing::ValuesIn(epsMode),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         Mvn6_4DPreprocessLayerTest::getTestCaseName);
 
 // TODO: uncomment this when implementation for higher rang tensor will be supported, current CUDNN implementation
@@ -172,6 +172,6 @@ INSTANTIATE_TEST_CASE_P(smoke_CUDA_Decomposition_4D,
 //                                           ::testing::ValuesIn(normalizeVariance),
 //                                           ::testing::ValuesIn(epsilonF),
 //                                           ::testing::ValuesIn(epsMode),
-//                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+//                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
 //                        Mvn6_4DPreprocessLayerTest::getTestCaseName);
 }  // namespace

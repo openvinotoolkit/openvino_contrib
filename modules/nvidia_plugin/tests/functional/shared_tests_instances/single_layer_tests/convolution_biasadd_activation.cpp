@@ -151,7 +151,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -165,7 +165,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -179,7 +179,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -193,7 +193,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -207,7 +207,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -221,7 +221,7 @@ INSTANTIATE_TEST_CASE_P(
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(InferenceEngine::Layout::ANY),
                                           ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -242,7 +242,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 88, 10, 10})),               // Input shape
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::Values(ngraph::helpers::ActivationTypes::None)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -267,7 +267,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -290,7 +290,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -313,7 +313,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 14, 14})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -336,7 +336,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 3, 224, 224})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -359,7 +359,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -382,7 +382,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),             // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -405,7 +405,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -428,7 +428,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 14, 14})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -451,7 +451,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),               // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -474,7 +474,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -497,7 +497,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 14, 14})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -520,7 +520,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),               // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -543,7 +543,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 64, 56, 56})),               // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -566,7 +566,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -589,7 +589,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -612,7 +612,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 2048, 7, 7})),               // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -635,7 +635,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),             // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -658,7 +658,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 7, 7})),                // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -681,7 +681,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -704,7 +704,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -727,7 +727,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 7, 7})),                // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -750,7 +750,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -773,7 +773,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 1024, 14, 14})),             // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -796,7 +796,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 64, 224, 224})),             // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -819,7 +819,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 3, 224, 224})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -842,7 +842,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -865,7 +865,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -888,7 +888,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 512, 14, 14})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -911,7 +911,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 28, 28})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -934,7 +934,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 256, 56, 56})),              // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -957,7 +957,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 64, 112, 112})),             // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -980,7 +980,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 112, 112})),            // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1003,7 +1003,7 @@ INSTANTIATE_TEST_CASE_P(
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Output layout
                            ::testing::Values(std::vector<size_t>({1, 128, 112, 112})),            // Input shapes
-                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1042,7 +1042,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 1, 128, 128})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1070,7 +1070,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 16, 16})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1098,7 +1098,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 32, 32})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1126,7 +1126,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 8, 8})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1154,7 +1154,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1182,7 +1182,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 64, 64})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1210,7 +1210,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 16, 16})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1238,7 +1238,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 8, 8})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1266,7 +1266,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 128, 128})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1294,7 +1294,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 32, 32})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1322,7 +1322,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 64, 64})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1350,7 +1350,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 16, 16})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1378,7 +1378,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 32, 32})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1406,7 +1406,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 64, 64})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1434,7 +1434,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 1, 144, 144, 144})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1462,7 +1462,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 18, 18, 18})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1490,7 +1490,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 36, 36, 36})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1518,7 +1518,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 9, 9, 9})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1546,7 +1546,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1574,7 +1574,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 72, 72, 72})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1602,7 +1602,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 18, 18, 18})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1630,7 +1630,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 9, 9, 9})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1658,7 +1658,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 144, 144, 144})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1686,7 +1686,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 36, 36, 36})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1714,7 +1714,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 72, 72, 72})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1742,7 +1742,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 18, 18, 18})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1770,7 +1770,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 36, 36, 36})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1798,7 +1798,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 72, 72, 72})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1826,7 +1826,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 
@@ -1854,7 +1854,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
-            ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
         ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
     ConvolutionBiasAddActivationLayerFiniteComparerTest::getTestCaseName);
 

@@ -3,8 +3,12 @@
 //
 #pragma once
 
-namespace CommonTestUtils {
+namespace ov {
+namespace test {
+namespace utils {
 
 const char DEVICE_NVIDIA[] = "NVIDIA";
 
-}  // namespace CommonTestUtils
+}  // namespace utils
+}  // namespace test
+}  // namespace ov

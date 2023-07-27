@@ -87,7 +87,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_01,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 const size_t smoke_batch_02 = 9;
@@ -107,7 +107,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP32,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP32),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
@@ -123,7 +123,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP16),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 // ------------- LPCNet shapes -------------
@@ -144,7 +144,7 @@ INSTANTIATE_TEST_CASE_P(GRUCell_LPCNet,
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 }  // namespace
@@ -161,7 +161,7 @@ const auto benchmark_params = ::testing::Combine(::testing::Values(should_decomp
                                                  ::testing::ValuesIn(WRBLayerTypes),
                                                  ::testing::ValuesIn(WRBLayerTypes),
                                                  ::testing::Values(net_precisions[0]),
-                                                 ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                 ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 namespace benchmark {
 

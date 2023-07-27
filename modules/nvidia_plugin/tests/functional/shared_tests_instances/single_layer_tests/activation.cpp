@@ -89,45 +89,45 @@ std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> preluBasic = {
     {{3, 2, 5, 7}, {{1}, {7}, {2}, {5, 7}, {2, 5, 7}, {2, 1, 1}, {1, 2, 1, 1}, {3, 2, 1, 1}, {3, 2, 5, 7}}},
 };
 
-const auto basicCases = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(activationTypes)),
+const auto basicCases = ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(activationTypes)),
                                            ::testing::ValuesIn(netPrecisions),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::ValuesIn(CommonTestUtils::combineParams(basic)),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                           ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 const auto basicPreluCases =
-    ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(preluActivationParamTypes)),
+    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(preluActivationParamTypes)),
                        ::testing::ValuesIn(netPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::ValuesIn(CommonTestUtils::combineParams(preluBasic)),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                       ::testing::ValuesIn(ov::test::utils::combineParams(preluBasic)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 const auto basicPReluConstParamCases =
-    ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(preluActivationParamTypes)),
+    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(preluActivationParamTypes)),
                        ::testing::ValuesIn(preluConstParamNetPrecisions),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::ValuesIn(CommonTestUtils::combineParams(preluBasic)),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                       ::testing::ValuesIn(ov::test::utils::combineParams(preluBasic)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 // TODO int parameter activation tests don't work for CUDA now
 // const auto basicIntegerOperations =
-//    ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(intActivationTypes)),
+//    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(intActivationTypes)),
 //                       ::testing::ValuesIn(intPrecisions),
 //                       ::testing::ValuesIn(intPrecisions),
 //                       ::testing::ValuesIn(intPrecisions),
 //                       ::testing::Values(InferenceEngine::Layout::ANY),
 //                       ::testing::Values(InferenceEngine::Layout::ANY),
-//                       ::testing::ValuesIn(CommonTestUtils::combineParams(basic)),
-//                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+//                       ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
+//                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 TEST_P(ActivationLayerTest, CompareWithRefs) { Run(); }
 

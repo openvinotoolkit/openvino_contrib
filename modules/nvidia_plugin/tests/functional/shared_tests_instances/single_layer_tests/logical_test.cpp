@@ -37,7 +37,7 @@ const auto LogicalTestParamsNot =
                        ::testing::Values(InferenceEngine::Precision::BOOL),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_LogicalNot, LogicalLayerTest, LogicalTestParamsNot, LogicalLayerTest::getTestCaseName);

@@ -52,22 +52,22 @@ std::vector<ngraph::helpers::InputLayerType> secondInputTypes = {
 std::map<std::string, std::string> additional_config = {};
 
 const auto smokeComparisonTestParams =
-    ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(smokeShapes)),
+    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(smokeShapes)),
                        ::testing::ValuesIn(inputsPrecisions),
                        ::testing::ValuesIn(comparisonOpTypes),
                        ::testing::ValuesIn(secondInputTypes),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
-const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(shapes)),
+const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(shapes)),
                                                      ::testing::ValuesIn(inputsPrecisions),
                                                      ::testing::ValuesIn(comparisonOpTypes),
                                                      ::testing::ValuesIn(secondInputTypes),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                                     ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                                     ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                                      ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_ComparisonCompareWithRefs,
