@@ -38,7 +38,10 @@ bool change_concat_to_concat_optimized(Matcher& m) {
     }
 
     const auto& outputShape = concat->get_output_shape(0);
-    const int64_t axis = concat->get_axis();
+    int64_t axis = concat->get_axis();
+    if (axis < 0) {
+        axis += outputShape.size();
+    }
     if (axis < 0 || axis >= outputShape.size()) {
         return false;
     }
@@ -74,7 +77,7 @@ bool change_concat_to_concat_optimized(Matcher& m) {
 
 ConcatTransformation::ConcatTransformation() {
     MATCHER_SCOPE(ConcatTransformation);
-    auto concat = wrap_type<ov::op::v0::Concat>();
+    auto concat = wrap_type<ov::op::v0::Concat>(has_static_shape());
 
     matcher_pass_callback callback = [](Matcher& m) { return change_concat_to_concat_optimized(m); };
 
