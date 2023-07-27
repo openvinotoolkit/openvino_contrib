@@ -29,13 +29,13 @@ std::pair<std::shared_ptr<ov::op::v0::MatMul>, std::shared_ptr<ov::op::v0::Const
 
 bool is_add_to_be_fused(const ov::Output<ov::Node>& output) {
     auto add_node = std::dynamic_pointer_cast<ov::op::v1::Add>(output.get_node_shared_ptr());
-    if (!add_node) {
+    if (!add_node || add_node->is_dynamic()) {
         return false;
     }
     std::shared_ptr<ov::op::v0::MatMul> matmul_node;
     std::shared_ptr<ov::op::v0::Constant> constant_node;
     std::tie(matmul_node, constant_node) = get_matmul_constant_nodes(add_node);
-    if (!matmul_node || !constant_node) {
+    if (!matmul_node || !constant_node || matmul_node->is_dynamic()) {
         return false;
     }
 

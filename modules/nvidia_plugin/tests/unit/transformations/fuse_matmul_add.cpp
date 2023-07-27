@@ -168,4 +168,24 @@ TEST(fuse_matmul_add, parameter_variadic_split_matmul_add_constant) {
     auto res = compare_functions(model, model_ref);
     ASSERT_TRUE(res.first) << res.second;
 }
+
+TEST(fuse_matmul_add, parameters_matmul_dynamic) {
+    shared_ptr<ov::Model> model;
+    {
+        auto input0 = make_shared<op::v0::Parameter>(element::f32, Shape{-1, 512});
+        auto input1 = make_shared<op::v0::Parameter>(element::f32, Shape{1024, 512});
+        auto matmul = make_shared<op::v0::MatMul>(input0, input1, false, true);
+        auto const_node = op::v0::Constant::create(element::f32, Shape{1, 1024}, {1});
+        auto add = make_shared<op::v1::Add>(matmul, const_node);
+        model = make_shared<Model>(add, ParameterVector{input0, input1});
+
+        pass::Manager pass_manager;
+        pass_manager.register_pass<pass::InitNodeInfo>();
+        pass_manager.register_pass<nvidia_gpu::pass::FullyConnectedTransformation>();
+        pass_manager.run_passes(model);
+
+        ASSERT_EQ(count_ops_of_type<op::v0::MatMul>(model), 1);
+    }
+}
+
 } // namespace testing
