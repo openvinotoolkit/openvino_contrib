@@ -12,7 +12,6 @@
 #include "fast_tokenizer/pretokenizers/pretokenizers.h"
 
 using namespace ov;
-using namespace ov::opset10;
 using namespace paddlenlp::fast_tokenizer;
 
 

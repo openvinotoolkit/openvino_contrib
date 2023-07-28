@@ -11,6 +11,7 @@
 #include "fast_tokenizer/normalizers/normalizers.h"
 
 using namespace ov;
+using namespace ov::opset10;
 
 namespace {
 

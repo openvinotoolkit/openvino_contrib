@@ -5,24 +5,32 @@
 #pragma once
 
 #include <openvino/op/op.hpp>
+#include "fast_tokenizer/models/models.h"
+
+using namespace paddlenlp::fast_tokenizer;
+
+#undef tokenizer
 
 class OPENVINO_API WordpieceTokenizer : public ov::op::Op {
 public:
     OPENVINO_OP("WordpieceTokenizer");
 
     WordpieceTokenizer () = default;
-
-    WordpieceTokenizer(const ov::OutputVector& arguments, const std::string& suffix_indicator = "##", int max_bytes_per_word = 100) :
-        ov::op::Op(arguments),
-        m_suffix_indicator(suffix_indicator),
-        m_max_bytes_per_word(max_bytes_per_word) {
-        constructor_validate_and_infer_types();
-    }
-
+    WordpieceTokenizer(
+        const ov::OutputVector& arguments,
+        const std::string& suffix_indicator = "##",
+        int max_bytes_per_word = 100
+    );
+    WordpieceTokenizer(
+        const ov::OutputVector& arguments,
+        const std::shared_ptr<models::FastWordPiece> tokenizer,
+        const std::string& suffix_indicator = "##",
+        int max_bytes_per_word = 100
+    );
     void validate_and_infer_types() override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
-        return std::make_shared<WordpieceTokenizer>(inputs, m_suffix_indicator, m_max_bytes_per_word);
+        return std::make_shared<WordpieceTokenizer>(inputs, m_tokenizer, m_suffix_indicator, m_max_bytes_per_word);
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
@@ -38,7 +46,7 @@ public:
     }
 
 private:
-
+    std::shared_ptr<models::FastWordPiece> m_tokenizer;
     std::string m_suffix_indicator = "##";
     int m_max_bytes_per_word = 100;   // TODO: Can it be done outside the op as preprocessing of the input?
 };

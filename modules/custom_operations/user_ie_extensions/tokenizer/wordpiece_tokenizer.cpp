@@ -2,14 +2,74 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "fast_tokenizer/normalizers/normalizers.h"
-#include "fast_tokenizer/models/models.h"
-#include "fast_tokenizer/pretokenizers/pretokenizers.h"
+//#include "fast_tokenizer/normalizers/normalizers.h"
+//
+//#include "fast_tokenizer/pretokenizers/pretokenizers.h"
 
 #include "wordpiece_tokenizer.hpp"
 #include "utils.hpp"
+#include "openvino/opsets/opset10.hpp"
 
 using namespace ov;
+using namespace ov::opset10;
+
+
+
+WordpieceTokenizer::WordpieceTokenizer(
+    const ov::OutputVector& arguments,
+    const std::string& suffix_indicator,
+    int max_bytes_per_word
+) :
+    ov::op::Op(arguments),
+    m_suffix_indicator(suffix_indicator),
+    m_max_bytes_per_word(max_bytes_per_word) {
+
+//    std::cerr << "Slow\n";
+
+    using namespace paddlenlp::fast_tokenizer;
+
+    auto vocab_begins_const = as_type_ptr<Constant>(arguments[5].get_node_shared_ptr());
+    auto vocab_begins = static_cast<const int32_t*>(vocab_begins_const->get_data_ptr());
+    auto vocab_size = vocab_begins_const->get_shape()[0];
+
+    auto vocab_ends_const = as_type_ptr<Constant>(arguments[6].get_node_shared_ptr());
+    auto vocab_ends = static_cast<const int32_t*>(vocab_ends_const->get_data_ptr());
+
+    auto vocab_chars_const = as_type_ptr<Constant>(arguments[7].get_node_shared_ptr());
+    auto vocab_chars = static_cast<const char*>(vocab_chars_const->get_data_ptr());
+
+    auto unk_token_id_const = as_type_ptr<Constant>(arguments[8].get_node_shared_ptr());
+    auto unk_token_id  = *static_cast<const int32_t*>(vocab_begins_const->get_data_ptr());
+
+    core::Vocab vocab;
+    std::string unk_token;
+    if(unk_token_id < 0)
+        unk_token_id += vocab_size;
+    for(size_t id = 0; id < vocab_size; ++id) {
+        auto token = std::string(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
+        vocab[token] = int32_t(id); // TODO: Check range
+        if(id == unk_token_id)
+            unk_token = token;
+    }
+
+    m_tokenizer = std::make_shared<models::FastWordPiece>(vocab, unk_token, m_max_bytes_per_word, m_suffix_indicator, true);
+    constructor_validate_and_infer_types();
+}
+
+WordpieceTokenizer::WordpieceTokenizer(
+    const ov::OutputVector& arguments,
+    const std::shared_ptr<models::FastWordPiece> tokenizer,
+    const std::string& suffix_indicator,
+    int max_bytes_per_word
+) :
+    ov::op::Op(arguments),
+    m_tokenizer(tokenizer),
+    m_suffix_indicator(suffix_indicator),
+    m_max_bytes_per_word(max_bytes_per_word) {
+
+//    std::cerr << "Fast\n";
+    constructor_validate_and_infer_types();
+}
 
 
 void WordpieceTokenizer::validate_and_infer_types() {
@@ -18,7 +78,6 @@ void WordpieceTokenizer::validate_and_infer_types() {
     set_ragged_output(this, 0, get_input_partial_shape(0), element::i32);
 }
 
-#undef tokenizer
 
 bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
     auto ragged_begins = inputs[0].data<const int32_t>();
@@ -26,16 +85,6 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     auto begins = inputs[2].data<const int32_t>();
     auto ends   = inputs[3].data<const int32_t>();
     auto chars  = inputs[4].data<const uint8_t>();
-
-    auto vocab_begins = inputs[5].data<const int32_t>();
-    auto vocab_ends   = inputs[6].data<const int32_t>();
-    auto vocab_chars  = inputs[7].data<const uint8_t>();
-
-    auto vocab_size = inputs[5].get_size();
-
-    OPENVINO_ASSERT(inputs.size() == 9, "Too few inputs passed to WordpieceTokenizer, it means it is not converted properly or it is not used in the supported pattern");
-
-    auto unk_token_id  = *inputs[8].data<const int32_t>();
 
     // Set output shapes
     outputs[0].set_shape(inputs[0].get_shape());
@@ -57,39 +106,18 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
 
     using namespace paddlenlp::fast_tokenizer;
 
-//    std::cerr << "[ WordpieceTokenizer ] Start vocab reading\n";
-    core::Vocab vocab;
-    std::string unk_token;
-    if(unk_token_id < 0)
-        unk_token_id += vocab_size;
-    for(size_t id = 0; id < vocab_size; ++id) {
-        auto token = std::string(vocab_chars + vocab_begins[id], vocab_chars + vocab_ends[id]);
-        vocab[token] = int32_t(id); // TODO: Check range
-        if(id == unk_token_id)
-            unk_token = token;
-    }
-
-//    std::cerr << "[ WordpieceTokenizer ] Finish vocab reading\n";
-//    std::cerr << "[ WordpieceTokenizer ] unk_token = " << unk_token << "\n";
-//    std::cerr << "[ WordpieceTokenizer ] Start tokenizer initialization\n";
-
-    auto tokenizer = models::FastWordPiece(vocab, unk_token, m_max_bytes_per_word, m_suffix_indicator, true);   // FIXME: why true?
-
-//    std::cerr << "[ WordpieceTokenizer ] Finish tokenizer initialization\n";
-
-
     for(size_t seq = 0; seq < num_rows; ++seq) {
         new_begins[seq] = ragged_offset;
 
         for(size_t ragged_col = ragged_begins[seq]; ragged_col < ragged_ends[seq]; ++ragged_col) {
 
             auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
-            std::vector<core::Token> results = tokenizer.Tokenize(str);
+            std::vector<core::Token> results = m_tokenizer->Tokenize(str);
 
 //            std::cerr << "[ WordpieceTokenizer ] String bytes: ";
-//            for (auto i = begins[ragged_col]; i < ends[ragged_col]; ++i) {
-//                std::cerr << static_cast<int> (chars[i]) << " ";
-//            }
+            for (auto i = begins[ragged_col]; i < ends[ragged_col]; ++i) {
+                std::cerr << static_cast<int> (chars[i]) << " ";
+            }
 //            std::cerr << "\n";
 //            std::cerr << "[ WordpieceTokenizer ] String: '" << str << "'\n";
 //            std::cerr << "[ WordpieceTokenizer ] String len: " << ends[ragged_col] - begins[ragged_col]  << "\n";
