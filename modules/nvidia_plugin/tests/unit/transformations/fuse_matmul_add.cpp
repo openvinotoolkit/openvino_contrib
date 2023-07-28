@@ -172,7 +172,7 @@ TEST(fuse_matmul_add, parameter_variadic_split_matmul_add_constant) {
 TEST(fuse_matmul_add, parameters_matmul_dynamic) {
     shared_ptr<ov::Model> model;
     {
-        auto input0 = make_shared<op::v0::Parameter>(element::f32, Shape{-1, 512});
+        auto input0 = make_shared<op::v0::Parameter>(element::f32, PartialShape{-1, 512});
         auto input1 = make_shared<op::v0::Parameter>(element::f32, Shape{1024, 512});
         auto matmul = make_shared<op::v0::MatMul>(input0, input1, false, true);
         auto const_node = op::v0::Constant::create(element::f32, Shape{1, 1024}, {1});

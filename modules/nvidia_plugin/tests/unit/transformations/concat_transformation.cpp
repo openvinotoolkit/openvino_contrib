@@ -116,8 +116,8 @@ TEST(concat_optimized, concat_dynamic_fail) {
     shared_ptr<ov::Model> model;
     int64_t axis = 1;
 
-    auto input0 = make_shared<op::v0::Parameter>(element::f32, Shape{-1, 1, 512});
-    auto input1 = make_shared<op::v0::Parameter>(element::f32, Shape{-1, 255, 512});
+    auto input0 = make_shared<op::v0::Parameter>(element::f32, PartialShape{-1, 1, 512});
+    auto input1 = make_shared<op::v0::Parameter>(element::f32, PartialShape{-1, 255, 512});
     auto concat = make_shared<op::v0::Concat>(NodeVector{input0, input1}, axis);
     model = make_shared<Model>(concat, ParameterVector{input0, input1});
 
