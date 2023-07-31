@@ -12,7 +12,8 @@ import weakref
 import numpy as np
 
 from openvino.runtime.exceptions import UserInputError, OVTypeError
-from openvino.runtime import Type, PartialShape, op, Model, Core, Output, Node, opset10
+from openvino.runtime import Type, PartialShape, op, Model, Output, Node, opset10
+from openvino.runtime.utils.node_factory import NodeFactory
 from openvino.runtime.utils.types import as_node, make_constant_node
 
 
@@ -36,9 +37,9 @@ def pack_string(s):
     )  # + ' ' is WA for CPU bug
 
 
-core = Core()
+factory = NodeFactory()
 # TODO: Use relative path
-core.add_extension("/home/apaniuko/python/openvino/bin/intel64/Debug/libuser_ov_extensions.so")
+factory.add_extension("/home/apaniuko/python/openvino/bin/intel64/Debug/libuser_ov_extensions.so")
 
 
 class BasePipelineStep:
@@ -76,7 +77,7 @@ class BasePipelineStep:
         else:
             # support only 1D strings for now
             ps = pack_strings(value)
-            return core.make_node("StringTensorUnpack", op.Constant(ps).outputs())
+            return factory.create("StringTensorUnpack", op.Constant(ps).outputs())
 
 
 @dataclass
@@ -89,7 +90,7 @@ class NormalizeUnicode(NormalizationStep):
     normalization_form: str = "NFD"
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return core.make_node(
+        return factory.create(
             "NormalizeUnicode", input_nodes, {"normalization_form": self.normalization_form}
         ).outputs()
 
@@ -97,7 +98,7 @@ class NormalizeUnicode(NormalizationStep):
 @dataclass
 class CaseFoldStep(NormalizationStep):
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return core.make_node("CaseFold", input_nodes).outputs()
+        return factory.create("CaseFold", input_nodes).outputs()
 
 
 @dataclass
@@ -129,7 +130,7 @@ class RegexNormalizationStep(NormalizationStep):
                 *self.create_string_constant_node(self.replace_term).outputs(),
             )
         )
-        return core.make_node(
+        return factory.create(
             "RegexNormalization",
             input_nodes
         ).outputs()
@@ -249,7 +250,7 @@ class RegexSplitStep(PreTokenizatinStep):
         input_nodes.extend(
             self.create_string_constant_node(self.split_pattern).outputs()
         )
-        return core.make_node(
+        return factory.create(
             "RegexSplit",
             input_nodes,
             {
@@ -276,7 +277,7 @@ class PunctuationSplitStep(PreTokenizatinStep):
 class BytesToCharsStep(PreTokenizatinStep):
     """Maps chars to other chars for Byte-level BPE Tokenizer"""
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return core.make_node(
+        return factory.create(
             "BytesToChars",
             input_nodes,
         ).outputs()
@@ -320,7 +321,7 @@ class WordPieceTokenizationStep(TokenizationModelStep):
                 *as_node(self.unk_token_id).outputs(),
             )
         )
-        return core.make_node(
+        return factory.create(
             "WordpieceTokenizer",
             input_nodes,
             {
@@ -360,7 +361,7 @@ class BPETokenizationStep(TokenizationModelStep):
                 *self.create_string_constant_node(self.merges).outputs(),
             )
         )
-        return core.make_node(
+        return factory.create(
             "BPETokenizer",
             input_nodes,
             {
@@ -592,7 +593,7 @@ class CombineSegmentsStep(PostTokenizationStep):
 
         # Decomposed implementation
 
-        return core.make_node('CombineSegments', op_inputs).outputs()
+        return factory.create('CombineSegments', op_inputs).outputs()
         print(input_nodes)
         assert len(input_nodes) == 3, '[ TOKENIZER PIPELINE CONVERSION ] CombineSegments can be converted for a single ragged input tensor only, this is temporary limitation'
         print('self.segment_ids:', self.segment_ids)
@@ -648,7 +649,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
             #print(input_nodes[3*i:3*(i+1)])
             #print(as_node(self.max_length).outputs())
             #print(as_node(np.array(0, dtype=int)).outputs())
-            cur_outputs = core.make_node(
+            cur_outputs = factory.create(
                 "RaggedToDense",
                 input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()
             ).outputs()
@@ -676,13 +677,13 @@ class VocabDecoderStep(DecodingStep):
 
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
         input_nodes.extend(self.get_vocab_node_outputs())
-        return core.make_node("VocabDecoder", input_nodes, {}).outputs()
+        return factory.create("VocabDecoder", input_nodes, {}).outputs()
 
 
 @dataclass
 class CharsToBytesStep(DecodingStep):
     def get_ov_subgraph(self, input_nodes: List[Output]) -> Node:
-        return core.make_node("CharsToBytes", input_nodes, {}).outputs()
+        return factory.create("CharsToBytes", input_nodes, {}).outputs()
 
 
 @dataclass
@@ -704,7 +705,7 @@ class RegexDecodingStep(DecodingStep):
                 *self.create_string_constant_node(self.replace_term).outputs(),
             )
         )
-        return core.make_node(
+        return factory.create(
             "RegexNormalization",
             input_nodes
         ).outputs()
@@ -768,7 +769,7 @@ class TokenizerPipeline:
         processing_pipelines_outputs = []
 
         for input_node in input_nodes:
-            input_node = core.make_node("StringTensorUnpack", input_node.outputs()).outputs()
+            input_node = factory.create("StringTensorUnpack", input_node.outputs()).outputs()
             for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
 
@@ -809,7 +810,7 @@ class TokenizerPipeline:
             pipeline_step = step.get_ov_subgraph(input_nodes)
             input_nodes = pipeline_step
 
-        return core.make_node("StringTensorPack", input_nodes).outputs()
+        return factory.create("StringTensorPack", input_nodes).outputs()
 
     def get_encoder_ov_subgraph(self) -> Model:
         input_nodes = [self.create_string_input() for _ in range(self.number_of_inputs)]
