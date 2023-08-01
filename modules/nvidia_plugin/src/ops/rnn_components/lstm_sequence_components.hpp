@@ -54,7 +54,7 @@ struct LSTMSequenceParams {
     size_t hidden_size_;
 
 private:
-    void validate(const ov::op::v5::LSTMSequence& node);
+    void validate(const ov::op::util::RNNCellBase& node);
 };
 
 }  // namespace ov::nvidia_gpu::RNN::Details

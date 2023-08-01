@@ -14,7 +14,23 @@ namespace nvidia_gpu {
 LSTMSequenceOpBase::LSTMSequenceOpBase(const CreationContext& context,
                                        const LSTMSequenceParams& params,
                                        const Config& config,
-                                       const NodeOp& node,
+                                       const ov::op::v5::LSTMSequence& node,
+                                       IndexCollection&& inputIds,
+                                       IndexCollection&& outputIds)
+    : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),
+      params_{params},
+      descs_{context, params_, config},
+      is_cuda_graph_compatible_{RNN::Details::isRNNSequenceCudaGraphCompatible(context.device())} {
+    ib_seq_lengths_.addRequest(immut_sizes_, descs_.seqLengthArraySizeBytes());
+    ib_weight_space_.addRequest(immut_sizes_, descs_.weightSpaceSize());
+
+    mb_work_space_.addRequest(mut_sizes_, descs_.workSpaceSize());
+}
+
+LSTMSequenceOpBase::LSTMSequenceOpBase(const CreationContext& context,
+                                       const LSTMSequenceParams& params,
+                                       const Config& config,
+                                       const ov::nvidia_gpu::nodes::LSTMSequenceOptimized& node,
                                        IndexCollection&& inputIds,
                                        IndexCollection&& outputIds)
     : OperationCuDnn(context, node, std::move(inputIds), std::move(outputIds)),

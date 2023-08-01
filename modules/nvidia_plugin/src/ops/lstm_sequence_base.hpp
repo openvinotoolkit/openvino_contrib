@@ -16,16 +16,20 @@ namespace nvidia_gpu {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
-    using NodeOp = ov::op::v5::LSTMSequence;
     using LSTMSequenceParams = RNN::Details::LSTMSequenceParams;
     using Config = RNN::Details::LSTMSequenceDescriptorsCuDnn::Config;
     LSTMSequenceOpBase(const CreationContext& context,
                        const LSTMSequenceParams& params,
                        const Config& config,
-                       const NodeOp& node,
+                       const ov::op::v5::LSTMSequence& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds);
-
+    LSTMSequenceOpBase(const CreationContext& context,
+                       const LSTMSequenceParams& params,
+                       const Config& config,
+                       const ov::nvidia_gpu::nodes::LSTMSequenceOptimized& node,
+                       IndexCollection&& inputIds,
+                       IndexCollection&& outputIds);
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
