@@ -148,6 +148,9 @@ ov::SoPtr<ov::IRemoteContext> Plugin::get_default_context(
 
 bool Plugin::is_operation_supported(const std::shared_ptr<ov::Node>& node, const Configuration& config) const {
     bool is_op_supported = false;
+    if (node->is_dynamic()) {
+        return false;
+    }
     if (OperationRegistry::getInstance().hasOperation(node)) {
         const TensorID dummyTensorID{0};
         const CreationContext context{CUDA::Device{config.get_device_id()}, false};
