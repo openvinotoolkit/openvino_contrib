@@ -23,7 +23,7 @@ public:
     RegexSplit(const ov::OutputVector& arguments, const std::string& behaviour = "remove", bool invert = false);
     RegexSplit(
         const ov::OutputVector& arguments,
-        const std::shared_ptr<pretokenizers::SplitPreTokenizer> pretokenizer,
+        const std::shared_ptr<pretokenizers::SplitPreTokenizer>& pretokenizer,
         const std::string& behaviour = "remove",
         bool invert = false
     );

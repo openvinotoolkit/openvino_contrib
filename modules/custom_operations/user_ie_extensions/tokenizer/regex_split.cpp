@@ -31,18 +31,13 @@ RegexSplit::RegexSplit(const ov::OutputVector& arguments, const std::string& beh
     ov::op::Op(arguments),
     m_behaviour(behaviour),
     m_invert(invert) {
-    auto split_pattern_const = as_type_ptr<Constant>(arguments[5].get_node_shared_ptr());
-    auto split_pattern_buf = static_cast<const char*>(split_pattern_const->get_data_ptr());
-    auto split_pattern = std::string(split_pattern_buf, split_pattern_const->get_byte_size());
-    auto m_pretokenizer = std::make_shared<pretokenizers::SplitPreTokenizer>(split_pattern, split_modes.at(behaviour), invert);
-
     constructor_validate_and_infer_types();
 }
 
 
 RegexSplit::RegexSplit(
     const ov::OutputVector& arguments,
-    const std::shared_ptr<pretokenizers::SplitPreTokenizer> pretokenizer,
+    const std::shared_ptr<pretokenizers::SplitPreTokenizer>& pretokenizer,
     const std::string& behaviour,
     bool invert
 ) :
@@ -50,6 +45,14 @@ RegexSplit::RegexSplit(
     m_pretokenizer(pretokenizer),
     m_behaviour(behaviour),
     m_invert(invert) {
+
+    if (m_pretokenizer == nullptr) {
+        auto split_pattern_const = as_type_ptr<Constant>(arguments[5].get_node_shared_ptr());
+        auto split_pattern_buf = static_cast<const char*>(split_pattern_const->get_data_ptr());
+        auto split_pattern = std::string(split_pattern_buf, split_pattern_const->get_byte_size());
+        m_pretokenizer = std::make_shared<pretokenizers::SplitPreTokenizer>(split_pattern, split_modes.at(behaviour), invert);
+    };
+
     constructor_validate_and_infer_types();
 }
 
@@ -62,6 +65,8 @@ void RegexSplit::validate_and_infer_types() {
 }
 
 bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
+    std::cerr << "[ RegexSplit ] Eval \n";
+
     auto ragged_begins = inputs[0].data<const int32_t>();
     auto ragged_ends   = inputs[1].data<const int32_t>();
     auto begins = inputs[2].data<const int32_t>();
@@ -72,8 +77,12 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     const size_t num_rows = inputs[0].get_size();
     const size_t num_chars = inputs[4].get_size();
 
+    std::cerr << "[ RegexSplit ] Before Shape \n";
+
     outputs[0].set_shape(inputs[0].get_shape());
     outputs[1].set_shape(inputs[1].get_shape());
+
+    std::cerr << "[ RegexSplit ] After Shape \n";
 
     outputs[2].set_shape(Shape{num_chars});
     outputs[3].set_shape(Shape{num_chars});

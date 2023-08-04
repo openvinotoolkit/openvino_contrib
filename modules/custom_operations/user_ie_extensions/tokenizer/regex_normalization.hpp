@@ -18,10 +18,10 @@ public:
     OPENVINO_OP("RegexNormalization");
 
     RegexNormalization () = default;
-    RegexNormalization(const ov::OutputVector& arguments);
+    RegexNormalization(const ov::OutputVector& arguments);  // does not used
     RegexNormalization(
         const ov::OutputVector& arguments,
-        const std::shared_ptr<re2::RE2> search_pattern_re,
+        const std::shared_ptr<re2::RE2>& search_pattern_re,
         const absl::string_view replace_pattern
     );
 
