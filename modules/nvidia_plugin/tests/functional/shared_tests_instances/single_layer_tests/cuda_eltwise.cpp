@@ -246,15 +246,15 @@ void CudaEltwiseLayerTest::SetUp() {
                         [](const auto& value) { return static_cast<int>(static_cast<float>(value)) == 0; },
                         1);
                 }
-                secondaryInput = ngraph::builder::makeConstant(netType, shape, data);
+                secondaryInput = ov::test::utils::builder::makeConstant(netType, shape, data);
                 break;
             }
             case ngraph::helpers::EltwiseTypes::POWER: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, {}, is_random, 3);
+                secondaryInput = ov::test::utils::builder::makeConstant<float>(netType, shape, {}, is_random, 3);
                 break;
             }
             default: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, data);
+                secondaryInput = ov::test::utils::builder::makeConstant<float>(netType, shape, data);
             }
         }
     }

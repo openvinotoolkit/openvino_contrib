@@ -220,9 +220,9 @@ protected:
         CUDA::Device device{};
         const bool optimizeOption = false;
         NodeVector params;
-        params.push_back(builder::makeConstant<decltype(start)>(Type(start_type), std::vector<size_t>(), {start}));
-        params.push_back(builder::makeConstant<decltype(stop)>(Type(Type_t::f32), std::vector<size_t>(), {stop}));
-        params.push_back(builder::makeConstant<decltype(step)>(Type(step_type), std::vector<size_t>(), {step}));
+        params.push_back(ov::test::utils::builder::makeConstant<decltype(start)>(Type(start_type), std::vector<size_t>(), {start}));
+        params.push_back(ov::test::utils::builder::makeConstant<decltype(stop)>(Type(Type_t::f32), std::vector<size_t>(), {stop}));
+        params.push_back(ov::test::utils::builder::makeConstant<decltype(step)>(Type(step_type), std::vector<size_t>(), {step}));
         params[0]->set_friendly_name("start");
         params[1]->set_friendly_name("stop");
         params[2]->set_friendly_name("step");

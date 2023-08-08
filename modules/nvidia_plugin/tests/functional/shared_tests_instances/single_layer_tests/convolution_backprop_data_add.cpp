@@ -95,7 +95,7 @@ protected:
         std::vector<size_t> filterWeightsShape = {shape[1], numOutChannels};
         filterWeightsShape.insert(filterWeightsShape.end(), filterSize.begin(), filterSize.end());
         auto filterWeightsNode =
-            ngraph::builder::makeConstant(type, filterWeightsShape, filterWeights, randomFilterWeights);
+            ov::test::utils::builder::makeConstant(type, filterWeightsShape, filterWeights, randomFilterWeights);
 
         return makeConvolutionBackpropData(in,
                                            filterWeightsNode,
@@ -149,7 +149,7 @@ protected:
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
         auto params = ov::test::utils::builder::makeParams(ngPrc, {inputShape});
         auto outputShapeNode =
-            ngraph::builder::makeConstant(ov::element::Type_t::i64, {outputShapeData.size()}, outputShapeData);
+            ov::test::utils::builder::makeConstant(ov::element::Type_t::i64, {outputShapeData.size()}, outputShapeData);
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
@@ -163,7 +163,7 @@ protected:
                                         dilation,
                                         padType,
                                         convOutChannels));
-        auto addConstant = ngraph::builder::makeConstant(ngPrc, outputShapeData, outputShapeData, true);
+        auto addConstant = ov::test::utils::builder::makeConstant(ngPrc, outputShapeData, outputShapeData, true);
         auto add = ngraph::builder::makeEltwise(convBackpropData, addConstant, ngraph::helpers::EltwiseTypes::ADD);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(add)};
         function = std::make_shared<ngraph::Function>(results, params, "convolutionBackpropData");
