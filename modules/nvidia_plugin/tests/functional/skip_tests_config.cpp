@@ -37,16 +37,6 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestIOBBlobTest.*secondCallGetOutputAfterInferSync.*)",
         // Old API cannot deallocate tensor
         R"(.*InferRequestIOBBlobTest.*canProcessDeallocatedOutputBlobAfterGetAndSetBlob.*)",
-        // 113390
-        R"(.*autogen_Convolution_efficientdet_d1_tf_opid641.*FP16.*)",
-        R"(.*autogen_Convolution_ssd_mobilenet_v2_coco_opid402.*FP16.*)",
-        R"(.*autogen_Convolution_yolo_v3_tf_opid181.*FP16.*)",
-        R"(.*resnet50_vgg16*.*)",
-        R"(.*autogen_FusedConvolution_2d_unet*.*)",
-        R"(.*autogen_FusedConvolution_3d_unet*.*)",
-        R"(.*LSTMSequence_Tacotron2_decoder_01.CUDALSTMSequenceTest*.*)",
-        R"(.*LSTMSequence_Tacotron2_decoder_02.CUDALSTMSequenceTest*.*)",
-        R"(.*LSTMSequence_Tacotron2_encoder_01.CUDALSTMSequenceTest*.*)",
     };
 
 #ifdef _WIN32
