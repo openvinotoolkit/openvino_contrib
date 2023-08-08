@@ -208,7 +208,7 @@ void CudaEltwiseLayerTest::SetUp() {
 
     init_input_shapes(shapes);
 
-    auto parameters = ngraph::builder::makeDynamicParams(netType, {inputDynamicShapes.front()});
+    auto parameters = ov::test::utils::builder::makeDynamicParams(netType, {inputDynamicShapes.front()});
 
     ov::PartialShape shape_input_secondary;
     switch (opType) {
@@ -229,7 +229,7 @@ void CudaEltwiseLayerTest::SetUp() {
 
     std::shared_ptr<ngraph::Node> secondaryInput;
     if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-        secondaryInput = ngraph::builder::makeDynamicParams(netType, {shape_input_secondary}).front();
+        secondaryInput = ov::test::utils::builder::makeDynamicParams(netType, {shape_input_secondary}).front();
         parameters.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(secondaryInput));
     } else {
         constexpr bool is_random = true;

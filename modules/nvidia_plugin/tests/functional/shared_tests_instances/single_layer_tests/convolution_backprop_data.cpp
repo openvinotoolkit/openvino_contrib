@@ -149,7 +149,7 @@ protected:
         std::tie(kernel, stride, padBegin, padEnd, dilation, convOutChannels, padType, outputPad) =
             convBackpropDataParams;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
+        auto params = ov::test::utils::builder::makeParams(ngPrc, {inputShape});
         auto outputShapeNode =
             ngraph::builder::makeConstant(ov::element::Type_t::i64, {outputShapeData.size()}, outputShapeData);
         auto paramOuts =
