@@ -9,14 +9,13 @@
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
 
 inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
-    ngraph::helpers::InputLayerType secondaryInputType = ngraph::helpers::InputLayerType::CONSTANT;
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
     auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
 
-    auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
+    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
         ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
     auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
@@ -63,14 +62,13 @@ public:
 };
 
 inline std::shared_ptr<ngraph::Function> CreateSuperOperationTestNetwork() {
-    ngraph::helpers::InputLayerType secondaryInputType = ngraph::helpers::InputLayerType::CONSTANT;
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
     auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
 
-    auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
+    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
         ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
     auto superOp = std::make_shared<SuperDummyOp>(paramOuts[0], secondaryInput);

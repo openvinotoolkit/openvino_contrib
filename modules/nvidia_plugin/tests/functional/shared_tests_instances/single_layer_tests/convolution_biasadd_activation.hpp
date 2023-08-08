@@ -120,8 +120,7 @@ protected:
         for (size_t i = 0; i < biasShape.size(); ++i) {
             if (i != channel_dim_index) biasShape[i] = 1;
         }
-        auto biasLayer =
-            ngraph::builder::makeInputLayer(ngNetPrc, ngraph::helpers::InputLayerType::CONSTANT, biasShape);
+        auto biasLayer = std::make_shared<ov::op::v0::Constant>(ngNetPrc, biasShape);
 
         auto biasAddLayer = ngraph::builder::makeEltwise(convLayer, biasLayer, ngraph::helpers::EltwiseTypes::ADD);
 
