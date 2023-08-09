@@ -13,7 +13,7 @@ inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
+    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
 
     auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
@@ -66,7 +66,7 @@ inline std::shared_ptr<ngraph::Function> CreateSuperOperationTestNetwork() {
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
+    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
 
     auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =

@@ -100,7 +100,9 @@ public:
         };
         m_max_seq_len_ = seq_lengths;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShapes[0], inputShapes[1]});
+        ov::ParameterVector params;
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShapes[0])));
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShapes[1])));
 
         ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};

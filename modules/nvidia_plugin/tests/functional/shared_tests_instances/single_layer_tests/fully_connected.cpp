@@ -83,7 +83,7 @@ protected:
         configuration.insert(additionalConfig.begin(), additionalConfig.end());
 
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {shapeRelatedParams.input1.first});
+        ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{shapeRelatedParams.input1.first})};
 
         std::shared_ptr<ov::Node> secondaryInput;
         if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
@@ -190,8 +190,9 @@ protected:
         configuration.insert(additionalConfig.begin(), additionalConfig.end());
 
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(
-            ngPrc, {shapeRelatedParams.matmul1_input1.first, shapeRelatedParams.matmul2_input1.first});
+        ov::ParameterVector params;
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul1_input1.first)));
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul2_input1.first)));
 
         std::shared_ptr<ov::Node> matmul0SecondaryInput;
         if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
