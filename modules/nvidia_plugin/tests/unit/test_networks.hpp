@@ -18,8 +18,7 @@ inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
     auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
         ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-    auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
-        ngraph::builder::makeMatMul(paramOuts[0], secondaryInput, false, false));
+    auto MatMul = std::make_shared<ov::op::v0::MatMul>(paramOuts[0], secondaryInput, false, false);
     ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(MatMul)};
     return std::make_shared<ngraph::Function>(results, params, "MatMul");
 }

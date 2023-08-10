@@ -3,7 +3,6 @@
 //
 
 #include <cuda_test_constants.hpp>
-#include <ngraph_functions/builders.hpp>
 #include <vector>
 
 #include "finite_comparer.hpp"
@@ -95,10 +94,8 @@ protected:
         auto thirdInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.input3);
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-        auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(ngraph::builder::makeMatMul(
-            paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second));
-        auto Add = std::dynamic_pointer_cast<ov::op::v1::Add>(
-            ngraph::builder::makeEltwise(MatMul, thirdInput, ngraph::helpers::EltwiseTypes::ADD));
+        auto MatMul = std::make_shared<ov::op::v0::MatMul>(paramOuts[0], secondaryInput, shapeRelatedParams.input1.second, shapeRelatedParams.input2.second);
+        auto Add = std::make_shared<ov::op::v1::Add>(MatMul, thirdInput);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }
@@ -210,20 +207,16 @@ protected:
             matmul1SecondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.matmul1_input2.first);
         }
 
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-        auto matMul0 = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
-            ngraph::builder::makeMatMul(paramOuts[0],
-                                        matmul0SecondaryInput,
-                                        shapeRelatedParams.matmul1_input1.second,
-                                        shapeRelatedParams.matmul1_input2.second));
-        auto matMul1 = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
-            ngraph::builder::makeMatMul(paramOuts[1],
-                                        matmul1SecondaryInput,
-                                        shapeRelatedParams.matmul2_input1.second,
-                                        shapeRelatedParams.matmul2_input2.second));
-        auto Add = std::dynamic_pointer_cast<ov::op::v1::Add>(
-            ngraph::builder::makeEltwise(matMul0, matMul1, ngraph::helpers::EltwiseTypes::ADD));
+        auto paramOuts = ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
+        auto matMul0 = std::make_shared<ov::op::v0::MatMul>(paramOuts[0],
+                                                            matmul0SecondaryInput,
+                                                            shapeRelatedParams.matmul1_input1.second,
+                                                            shapeRelatedParams.matmul1_input2.second);
+        auto matMul1 = std::make_shared<ov::op::v0::MatMul>(paramOuts[1],
+                                                            matmul1SecondaryInput,
+                                                            shapeRelatedParams.matmul2_input1.second,
+                                                            shapeRelatedParams.matmul2_input2.second);
+        auto Add = std::make_shared<ov::op::v1::Add>(matMul0, matMul1);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(Add)};
         function = std::make_shared<ngraph::Function>(results, params, "FullyConnected");
     }

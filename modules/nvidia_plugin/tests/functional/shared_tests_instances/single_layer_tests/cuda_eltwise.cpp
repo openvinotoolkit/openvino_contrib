@@ -208,7 +208,7 @@ void CudaEltwiseLayerTest::SetUp() {
 
     init_input_shapes(shapes);
 
-    ov::ParameterVector parameters {std::make_shared<ov::op::v0::Parameter>(netType, inputDynamicShapes.front)};
+    ov::ParameterVector parameters {std::make_shared<ov::op::v0::Parameter>(netType, inputDynamicShapes.front())};
 
     ov::PartialShape shape_input_secondary;
     switch (opType) {
@@ -247,15 +247,17 @@ void CudaEltwiseLayerTest::SetUp() {
                         [](const auto& value) { return static_cast<int>(static_cast<float>(value)) == 0; },
                         1);
                 }
-                secondaryInput = ngraph::builder::makeConstant(netType, shape, data);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(netType, shape, data);
                 break;
             }
             case ngraph::helpers::EltwiseTypes::POWER: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, {}, is_random, 3);
+                ov::Tensor random_tensor(netType, shape);
+                ov::test::utils::fill_tensor_random(random_tensor, 3, -3);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(random_tensor);
                 break;
             }
             default: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, data);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(netType, shape, data);
             }
         }
     }

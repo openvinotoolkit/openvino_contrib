@@ -92,12 +92,17 @@ protected:
                                                           bool addBiases = false,
                                                           const std::vector<float> &filterWeights = {},
                                                           const std::vector<float> &biasesWeights = {}) {
-        bool randomFilterWeights = filterWeights.empty();
         auto shape = in.get_shape();
         std::vector<size_t> filterWeightsShape = {shape[1], numOutChannels};
         filterWeightsShape.insert(filterWeightsShape.end(), filterSize.begin(), filterSize.end());
-        auto filterWeightsNode =
-            ngraph::builder::makeConstant(type, filterWeightsShape, filterWeights, randomFilterWeights);
+        std::shared_ptr<ov::op::v0::Constant> filterWeightsNode;
+        if (filterWeights.empty()) {
+                ov::Tensor random_tensor(type, filterWeightsShape);
+                ov::test::utils::fill_tensor_random(random_tensor);
+                auto constant = std::make_shared<ov::op::v0::Constant>(random_tensor);
+        } else {
+            filterWeightsNode = std::make_shared<ov::op::v0::Constant>(type, filterWeightsShape, filterWeights);
+        }
 
         return makeConvolutionBackpropData(in,
                                            filterWeightsNode,
@@ -149,10 +154,9 @@ protected:
         std::tie(kernel, stride, padBegin, padEnd, dilation, convOutChannels, padType, outputPad) =
             convBackpropDataParams;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape)))};
+        ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
 
-        auto outputShapeNode =
-            ngraph::builder::makeConstant(ov::element::Type_t::i64, {outputShapeData.size()}, outputShapeData);
+        auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
