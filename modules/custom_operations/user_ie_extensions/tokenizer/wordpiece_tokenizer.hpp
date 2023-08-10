@@ -23,7 +23,7 @@ public:
     );
     WordpieceTokenizer(
         const ov::OutputVector& arguments,
-        const std::shared_ptr<models::FastWordPiece> tokenizer,
+        const std::shared_ptr<models::FastWordPiece>& tokenizer,
         const std::string& suffix_indicator = "##",
         int max_bytes_per_word = 100
     );
