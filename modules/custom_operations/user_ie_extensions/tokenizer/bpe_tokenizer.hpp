@@ -5,13 +5,19 @@
 #pragma once
 
 #include <openvino/op/op.hpp>
+#include "fast_tokenizer/models/models.h"
+
+
+using namespace paddlenlp::fast_tokenizer;
+
+#undef tokenizer
+#undef m_tokenizer
 
 class OPENVINO_API BPETokenizer : public ov::op::Op {
 public:
     OPENVINO_OP("BPETokenizer");
 
     BPETokenizer () = default;
-
     BPETokenizer(
         const ov::OutputVector& arguments,
         const std::string& unk_token = "",
@@ -19,20 +25,21 @@ public:
         const std::string& suffix_indicator = "",
         const std::string& end_suffix = "",
         bool byte_fallback = false
-    ) :
-        ov::op::Op(arguments),
-        m_unk_token(unk_token),
-        m_fuse_unk(fuse_unk),
-        m_suffix_indicator(suffix_indicator),
-        m_end_suffix(end_suffix),
-        m_byte_fallback(byte_fallback) {
-        constructor_validate_and_infer_types();
-    }
+    );
+    BPETokenizer(
+        const ov::OutputVector& arguments,
+        const std::shared_ptr<models::BPE>& tokenizer,
+        const std::string& unk_token = "",
+        bool fuse_unk = false,
+        const std::string& suffix_indicator = "",
+        const std::string& end_suffix = "",
+        bool byte_fallback = false
+    );
 
     void validate_and_infer_types() override;
 
     std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& inputs) const override {
-        return std::make_shared<BPETokenizer>(inputs, m_unk_token, m_fuse_unk, m_suffix_indicator, m_end_suffix, m_byte_fallback);
+        return std::make_shared<BPETokenizer>(inputs, m_tokenizer, m_unk_token, m_fuse_unk, m_suffix_indicator, m_end_suffix, m_byte_fallback);
     }
 
     bool visit_attributes(ov::AttributeVisitor& visitor) override {
@@ -51,6 +58,7 @@ public:
     }
 
 private:
+    std::shared_ptr<models::BPE> m_tokenizer;
     std::string m_unk_token;
     bool m_fuse_unk = false;
     std::string m_suffix_indicator;
