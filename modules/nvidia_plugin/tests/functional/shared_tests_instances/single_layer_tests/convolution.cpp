@@ -7,27 +7,42 @@
 #include <cuda_test_constants.hpp>
 #include <vector>
 
+#include "average_finder.hpp"
 #include "common_test_utils/test_constants.hpp"
-#include "finite_comparer.hpp"
 
 using namespace LayerTestsDefinitions;
 
 namespace LayerTestsDefinitions {
 
-class ConvolutionLayerThresholdTest : public FiniteComparer<ConvolutionLayerTest> {
+constexpr uint32_t RANGE = 10;
+constexpr int32_t START_FROM = -5;
+constexpr int32_t RESOLUTION = 1;
+constexpr int SEED = 1;
+
+constexpr float THRESHOLD_BASE_FP32 = 1e-4f;
+constexpr float THRESHOLD_BASE_FP16 = 0.01f;
+
+class ConvolutionLayerThresholdTest : public AverageFinder<ConvolutionLayerTest> {
+public:
+    InferenceEngine::Blob::Ptr GenerateInput(const InferenceEngine::InputInfo& info) const override {
+        return FuncTestUtils::createAndFillBlob(info.getTensorDesc(), RANGE, START_FROM, RESOLUTION, SEED);
+    }
+
 protected:
     void SetUp() override {
         ConvolutionLayerTest::SetUp();
+
+        const auto& netPrecision = std::get<1>(this->GetParam());
+        if (netPrecision == InferenceEngine::Precision::FP32) {
+            this->threshold_base = THRESHOLD_BASE_FP32;
+        } else if (netPrecision == InferenceEngine::Precision::FP16) {
+            this->threshold_base = THRESHOLD_BASE_FP16;
+        }
     }
 };
 
 TEST_P(ConvolutionLayerThresholdTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
-
-    auto params = GetParam();
-    inPrc = std::get<2>(params);
-    outPrc = std::get<3>(params);
-
     Run();
 }
 
