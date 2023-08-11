@@ -99,7 +99,7 @@ protected:
         if (filterWeights.empty()) {
                 ov::Tensor random_tensor(type, filterWeightsShape);
                 ov::test::utils::fill_tensor_random(random_tensor);
-                auto constant = std::make_shared<ov::op::v0::Constant>(random_tensor);
+                filterWeightsNode = std::make_shared<ov::op::v0::Constant>(random_tensor);
         } else {
             filterWeightsNode = std::make_shared<ov::op::v0::Constant>(type, filterWeightsShape, filterWeights);
         }
