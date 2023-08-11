@@ -46,8 +46,12 @@ bool RegexNormalization::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     return evaluate_normalization_helper(
         outputs, inputs,
         [this](const std::string& str) {
-            std::string result;
-            re2::RE2::Extract(str, *m_search_pattern_re, m_replace_pattern, &result);
+            // FIXME: if regex is not valid re2, return string without changing (use another regex engine)
+            if (m_search_pattern_re->NumberOfCapturingGroups() == -1)
+                return str;
+
+            std::string result = str;
+            re2::RE2::GlobalReplace(&result, *m_search_pattern_re, m_replace_pattern);
             return result;
     });
 }

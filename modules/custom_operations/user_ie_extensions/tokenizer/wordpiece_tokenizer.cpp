@@ -99,9 +99,9 @@ bool WordpieceTokenizer::evaluate(ov::TensorVector& outputs, const ov::TensorVec
             auto str = std::string(chars + begins[ragged_col], chars + ends[ragged_col]);
             std::vector<core::Token> results = m_tokenizer->Tokenize(str);
 
-            for (auto i = begins[ragged_col]; i < ends[ragged_col]; ++i) {
-                std::cerr << static_cast<int> (chars[i]) << " ";
-            }
+//            for (auto i = begins[ragged_col]; i < ends[ragged_col]; ++i) {
+//                std::cerr << static_cast<int> (chars[i]) << " ";
+//            }
             for (const core::Token& token : results) {
                 OPENVINO_ASSERT(ragged_offset < outputs[2].get_size());
                 new_elems[ragged_offset++] = token.id_;

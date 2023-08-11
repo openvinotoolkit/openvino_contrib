@@ -65,7 +65,6 @@ void RegexSplit::validate_and_infer_types() {
 }
 
 bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    std::cerr << "[ RegexSplit ] Eval \n";
 
     auto ragged_begins = inputs[0].data<const int32_t>();
     auto ragged_ends   = inputs[1].data<const int32_t>();
@@ -77,12 +76,8 @@ bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     const size_t num_rows = inputs[0].get_size();
     const size_t num_chars = inputs[4].get_size();
 
-    std::cerr << "[ RegexSplit ] Before Shape \n";
-
     outputs[0].set_shape(inputs[0].get_shape());
     outputs[1].set_shape(inputs[1].get_shape());
-
-    std::cerr << "[ RegexSplit ] After Shape \n";
 
     outputs[2].set_shape(Shape{num_chars});
     outputs[3].set_shape(Shape{num_chars});

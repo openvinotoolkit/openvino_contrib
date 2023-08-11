@@ -47,7 +47,6 @@ BPETokenizer::BPETokenizer(
     m_byte_fallback(byte_fallback) {
 
     if (m_tokenizer == nullptr) {
-        std::cerr << "[ BPETokenizer ] Slow Init\n";
         // vocab constant folding doesn't work, get packed constant
         auto packed_vocab_const = as_type_ptr<Constant>(arguments[5].get_node_shared_ptr()->get_input_node_shared_ptr(0));
         auto packed_vocab_buf = static_cast<const char*>(packed_vocab_const->get_data_ptr());
