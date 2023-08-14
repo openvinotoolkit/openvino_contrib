@@ -26,14 +26,9 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
-                    const auto constant = ngraph::builder::makeConstant(op->get_element_type(),
-                                                                        op->get_shape(),
-                                                                        std::vector<float>{},
-                                                                        true,
-                                                                        up_to,
-                                                                        start_from,
-                                                                        counter++);
-                    function->replace_node(op, constant);
+                    ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
+                    ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, counter++);
+                    function->replace_node(op, std::make_shared<ov::op::v0::Constant>(random_tensor));
                 }
             }
         }

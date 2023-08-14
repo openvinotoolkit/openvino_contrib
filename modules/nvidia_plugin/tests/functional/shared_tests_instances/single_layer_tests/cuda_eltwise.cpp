@@ -208,7 +208,7 @@ void CudaEltwiseLayerTest::SetUp() {
 
     init_input_shapes(shapes);
 
-    auto parameters = ngraph::builder::makeDynamicParams(netType, {inputDynamicShapes.front()});
+    ov::ParameterVector parameters {std::make_shared<ov::op::v0::Parameter>(netType, inputDynamicShapes.front())};
 
     ov::PartialShape shape_input_secondary;
     switch (opType) {
@@ -229,8 +229,9 @@ void CudaEltwiseLayerTest::SetUp() {
 
     std::shared_ptr<ngraph::Node> secondaryInput;
     if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-        secondaryInput = ngraph::builder::makeDynamicParams(netType, {shape_input_secondary}).front();
-        parameters.push_back(std::dynamic_pointer_cast<ngraph::opset3::Parameter>(secondaryInput));
+        auto input = std::make_shared<ov::op::v0::Parameter>(netType, shape_input_secondary);
+        secondaryInput = input;
+        parameters.push_back(input);
     } else {
         constexpr bool is_random = true;
         ov::Shape shape = inputDynamicShapes.back().get_max_shape();
@@ -246,15 +247,17 @@ void CudaEltwiseLayerTest::SetUp() {
                         [](const auto& value) { return static_cast<int>(static_cast<float>(value)) == 0; },
                         1);
                 }
-                secondaryInput = ngraph::builder::makeConstant(netType, shape, data);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(netType, shape, data);
                 break;
             }
             case ngraph::helpers::EltwiseTypes::POWER: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, {}, is_random, 3);
+                ov::Tensor random_tensor(netType, shape);
+                ov::test::utils::fill_tensor_random(random_tensor, 3, -3);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(random_tensor);
                 break;
             }
             default: {
-                secondaryInput = ngraph::builder::makeConstant<float>(netType, shape, data);
+                secondaryInput = std::make_shared<ov::op::v0::Constant>(netType, shape, data);
             }
         }
     }

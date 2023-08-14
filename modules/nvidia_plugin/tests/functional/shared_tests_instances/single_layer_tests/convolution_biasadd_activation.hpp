@@ -120,16 +120,15 @@ protected:
         for (size_t i = 0; i < biasShape.size(); ++i) {
             if (i != channel_dim_index) biasShape[i] = 1;
         }
-        auto biasLayer =
-            ngraph::builder::makeInputLayer(ngNetPrc, ngraph::helpers::InputLayerType::CONSTANT, biasShape);
+        auto biasLayer = std::make_shared<ov::op::v0::Constant>(ngNetPrc, biasShape);
 
-        auto biasAddLayer = ngraph::builder::makeEltwise(convLayer, biasLayer, ngraph::helpers::EltwiseTypes::ADD);
+        auto biasAddLayer = std::make_shared<ov::op::v1::Add>(convLayer, biasLayer);
 
         std::shared_ptr<ov::Node> lastNode;
         if constexpr (HasAddNode) {
             auto addParam = std::make_shared<ngraph::opset1::Parameter>(ngNetPrc, convLayer->get_output_shape(0));
             params.push_back(addParam);
-            auto addLayer = ngraph::builder::makeEltwise(biasAddLayer, addParam, ngraph::helpers::EltwiseTypes::ADD);
+            auto addLayer = std::make_shared<ov::op::v1::Add>(biasAddLayer, addParam);
             lastNode = addLayer;
         } else {
             lastNode = biasAddLayer;
@@ -164,7 +163,8 @@ protected:
         }
 
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
+        ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
+
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         std::vector<float> filter_weights;

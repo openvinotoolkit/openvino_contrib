@@ -9,18 +9,16 @@
 #include <ngraph_functions/utils/ngraph_helpers.hpp>
 
 inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
-    ngraph::helpers::InputLayerType secondaryInputType = ngraph::helpers::InputLayerType::CONSTANT;
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
+    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
 
-    auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
+    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
         ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-    auto MatMul = std::dynamic_pointer_cast<ov::op::v0::MatMul>(
-        ngraph::builder::makeMatMul(paramOuts[0], secondaryInput, false, false));
+    auto MatMul = std::make_shared<ov::op::v0::MatMul>(paramOuts[0], secondaryInput, false, false);
     ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(MatMul)};
     return std::make_shared<ngraph::Function>(results, params, "MatMul");
 }
@@ -63,14 +61,13 @@ public:
 };
 
 inline std::shared_ptr<ngraph::Function> CreateSuperOperationTestNetwork() {
-    ngraph::helpers::InputLayerType secondaryInputType = ngraph::helpers::InputLayerType::CONSTANT;
     auto netPrecision = InferenceEngine::Precision::FP32;
     std::map<std::string, std::string> additionalConfig;
 
     auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    auto params = ngraph::builder::makeParams(ngPrc, {{3, 2, 10, 10}});
+    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
 
-    auto secondaryInput = ngraph::builder::makeInputLayer(ngPrc, secondaryInputType, {3, 2, 10, 20});
+    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
     auto paramOuts =
         ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
     auto superOp = std::make_shared<SuperDummyOp>(paramOuts[0], secondaryInput);

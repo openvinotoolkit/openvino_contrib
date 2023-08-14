@@ -27,9 +27,9 @@ public:
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
-                    const auto constant = ngraph::builder::makeConstant(
-                        op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
-                    function->replace_node(op, constant);
+                    ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
+                    ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
+                    function->replace_node(op, std::make_shared<ov::op::v0::Constant>(random_tensor));
                 }
             }
         }
@@ -57,9 +57,9 @@ public:
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
                 if (op->get_element_type() == ov::element::Type_t::f32) {
-                    const auto constant = ngraph::builder::makeConstant(
-                        op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
-                    function->replace_node(op, constant);
+                    ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
+                    ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
+                    function->replace_node(op, std::make_shared<ov::op::v0::Constant>(random_tensor));
                 }
             }
         }
@@ -100,7 +100,9 @@ public:
         };
         m_max_seq_len_ = seq_lengths;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShapes[0], inputShapes[1]});
+        ov::ParameterVector params;
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShapes[0])));
+        params.push_back(std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShapes[1])));
 
         ASSERT_EQ(InputLayerType::CONSTANT, WRBType);
         std::vector<ov::Shape> WRB = {inputShapes[3], inputShapes[4], inputShapes[5], inputShapes[2]};
