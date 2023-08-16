@@ -34,6 +34,8 @@
 #include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
+#include "transformations/op_conversions/convert_gelu.hpp"
+#include "transformations/op_conversions/gelu7_downgrade.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
 
@@ -77,6 +79,8 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::ConvertSubtract>();
     pass_config->disable<ov::pass::ConvertDivide>();
     pass_config->disable<ov::pass::ConvertMod>();
+    pass_config->disable<ov::pass::Gelu7Downgrade>();
+    pass_config->disable<ov::pass::ConvertGELU>();
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();

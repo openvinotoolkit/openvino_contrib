@@ -5,15 +5,15 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include "openvino/op/floor.hpp"
+#include "openvino/op/exp.hpp"
 
 #include "elementwise_unary.hpp"
-#include "kernels/floor.hpp"
+#include "kernels/exp.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-class FloorOp : public ElementwiseUnaryOp<ov::op::v0::Floor, kernel::Floor> {
+class ExpOp : public ElementwiseUnaryOp<ov::op::v0::Exp, kernel::Exp> {
 public:
     using ElementwiseUnaryOp::ElementwiseUnaryOp;
 };

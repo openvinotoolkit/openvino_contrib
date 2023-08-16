@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "floor.hpp"
+#include "sqrt.hpp"
 
 #include <cuda_operation_registry.hpp>
 
 namespace ov {
 namespace nvidia_gpu {
 
-OPERATION_REGISTER(FloorOp, Floor);
+OPERATION_REGISTER(SqrtOp, Sqrt);
 
 }  // namespace nvidia_gpu
 }  // namespace ov

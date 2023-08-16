@@ -88,12 +88,47 @@ inline __device__ T pow(T x, T y) {
 
 template <typename T>
 inline __device__ T sqrt(T a) {
-    return ::sqrt(a);
+    return static_cast<T>(::sqrtf(static_cast<float>(a)));
 }
 
 template <typename T>
 inline __device__ T abs(T a) {
-    return ::abs(a);
+    return static_cast<T>(::fabsf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T tanh(T a) {
+    return ::tanhf(a);
+}
+
+template <typename T>
+inline __device__ T erff(T a) {
+    return ::erff(a);
+}
+
+template <typename T>
+inline __device__ T sin(T a) {
+    return static_cast<T>(::sinf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T sinh(T a) {
+    return static_cast<T>(::sinhf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T cos(T a) {
+    return static_cast<T>(::cosf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T cosh(T a) {
+    return static_cast<T>(::coshf(static_cast<float>(a)));
+}
+
+template <typename T>
+inline __device__ T log(T a) {
+    return static_cast<T>(::logf(static_cast<float>(a)));
 }
 
 #ifdef __CUDACC__
@@ -121,6 +156,21 @@ inline __device__ __half sqrt<__half>(__half x) {
 template <>
 inline __device__ __half abs<__half>(__half x) {
     return ::__habs(x);
+}
+
+template <>
+inline __device__ __half sin<__half>(__half x) {
+    return ::hsin(x);
+}
+
+template <>
+inline __device__ __half cos<__half>(__half x) {
+    return ::hcos(x);
+}
+
+template <>
+inline __device__ __half log<__half>(__half x) {
+    return ::hlog(x);
 }
 
 #else  // defined (CUDA_HAS_HALF_MATH)
@@ -152,6 +202,21 @@ inline __device__ __half sqrt<__half>(__half x) {
 template <>
 inline __device__ __half abs<__half>(__half x) {
     return ::abs(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __half sin<__half>(__half x) {
+    return ::sin(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __half cos<__half>(__half x) {
+    return ::cos(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __half log<__half>(__half x) {
+    return ::log(static_cast<float>(x));
 }
 
 #endif  // defined (CUDA_HAS_HALF_MATH)
@@ -186,6 +251,21 @@ inline __device__ __nv_bfloat16 abs<__nv_bfloat16>(__nv_bfloat16 x) {
     return ::__habs(x);
 }
 
+template <>
+inline __device__ __nv_bfloat16 sin<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::hsin(x);
+}
+
+template <>
+inline __device__ __nv_bfloat16 cos<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::hcos(x);
+}
+
+template <>
+inline __device__ __nv_bfloat16 log<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::hlog(x);
+}
+
 #else  // defined (CUDA_HAS_BF16_MATH)
 
 inline __device__ __nv_bfloat16 floor(__nv_bfloat16 x) { return floor(static_cast<float>(x)); }
@@ -215,6 +295,21 @@ inline __device__ __nv_bfloat16 sqrt<__nv_bfloat16>(__nv_bfloat16 x) {
 template <>
 inline __device__ __nv_bfloat16 abs<__nv_bfloat16>(__nv_bfloat16 x) {
     return abs<float>(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __nv_bfloat16 sin<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::sin(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __nv_bfloat16 cos<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::cos(static_cast<float>(x));
+}
+
+template <>
+inline __device__ __nv_bfloat16 log<__nv_bfloat16>(__nv_bfloat16 x) {
+    return ::log(static_cast<float>(x));
 }
 
 #endif  // defined (CUDA_HAS_BF16_MATH)
