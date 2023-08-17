@@ -37,6 +37,7 @@
 #include "transformations/op_conversions/convert_gelu.hpp"
 #include "transformations/op_conversions/gelu7_downgrade.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
+#include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
 
 using namespace ov::nvidia_gpu;
@@ -81,6 +82,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::ConvertMod>();
     pass_config->disable<ov::pass::Gelu7Downgrade>();
     pass_config->disable<ov::pass::ConvertGELU>();
+    pass_config->disable<ov::pass::HSwishDecomposition>();
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
