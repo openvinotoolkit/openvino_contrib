@@ -14,7 +14,7 @@ namespace kernel {
 template <typename T>
 struct ExpOpImpl;
 /**
- * Elementwise Exp operatio
+ * Elementwise Exp operation
  */
 class Exp {
 public:
