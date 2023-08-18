@@ -69,6 +69,20 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorInt(JNIEnv *env, jo
     return 0;
 }
 
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Tensor_TensorLong(JNIEnv *env, jobject, jintArray shape, jlongArray data)
+{
+    JNI_METHOD(
+        "TensorLong",
+        Shape input_shape = jintArrayToVector(env, shape);
+        Tensor *ov_tensor = new Tensor(element::i64, input_shape);
+
+        env->GetLongArrayRegion(data, 0, ov_tensor->get_size(), (jlong*)ov_tensor->data());
+
+        return (jlong)ov_tensor;
+    );
+    return 0;
+}
+
 JNIEXPORT jint JNICALL Java_org_intel_openvino_Tensor_GetSize(JNIEnv *env, jobject, jlong addr)
 {
     JNI_METHOD(

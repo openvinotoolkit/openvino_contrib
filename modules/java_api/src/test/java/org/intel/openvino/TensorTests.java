@@ -30,4 +30,16 @@ public class TensorTests extends OVTest {
         assertArrayEquals(inputData, tensor.as_int());
         assertEquals(size, tensor.get_size());
     }
+
+    @Test
+    public void testGetTensorFromLong() {
+        int size = Arrays.stream(dimsArr).reduce((i, j) -> i * j).orElse(1);
+        long[] inputData = new long[size];
+        Arrays.fill(inputData, 1L);
+
+        Tensor tensor = new Tensor(dimsArr, inputData);
+
+        assertArrayEquals(dimsArr, tensor.get_shape());
+        assertEquals(size, tensor.get_size());
+    }
 }

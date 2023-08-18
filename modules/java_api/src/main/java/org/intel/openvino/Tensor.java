@@ -33,6 +33,16 @@ public class Tensor extends Wrapper {
     }
 
     /**
+     * Constructs a Long {@link Tensor} from the given long array.
+     *
+     * @param dims shape of the tensor
+     * @param data a long array containing the tensor data
+     */
+    public Tensor(int[] dims, long[] data) {
+        super(TensorLong(dims, data));
+    }
+
+    /**
      * Returns the total number of elements (a product of all the dims or 1 for scalar)
      *
      * @return The total number of elements
@@ -62,6 +72,8 @@ public class Tensor extends Wrapper {
     private static native long TensorFloat(int[] shape, float[] data);
 
     private static native long TensorInt(int[] shape, int[] data);
+
+    private static native long TensorLong(int[] shape, long[] data);
 
     private static native int[] GetShape(long addr);
 
