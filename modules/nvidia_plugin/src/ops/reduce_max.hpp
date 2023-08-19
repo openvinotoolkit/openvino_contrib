@@ -9,9 +9,9 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class ReduceSumOp : public ReduceOp {
+class ReduceMaxOp : public ReduceOp {
 public:
-    explicit ReduceSumOp(const CreationContext& context,
+    explicit ReduceMaxOp(const CreationContext& context,
                          const ov::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds);

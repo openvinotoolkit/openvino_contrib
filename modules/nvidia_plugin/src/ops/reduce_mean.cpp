@@ -3,18 +3,18 @@
 //
 
 #include "cuda_operation_registry.hpp"
-#include "reduce_sum.hpp"
+#include "reduce_mean.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-ReduceSumOp::ReduceSumOp(const CreationContext& context,
+ReduceMeanOp::ReduceMeanOp(const CreationContext& context,
                          const ov::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
-    : ReduceOp(context, node, move(inputIds), move(outputIds), CUDA::DnnReduceAddDescriptor(reduceCompType(node))) {}
+    : ReduceOp(context, node, move(inputIds), move(outputIds), CUDA::DnnReduceAvgDescriptor(reduceCompType(node))) {}
 
-OPERATION_REGISTER(ReduceSumOp, ReduceSum);
+OPERATION_REGISTER(ReduceMeanOp, ReduceMean);
 
 }  // namespace nvidia_gpu
 }  // namespace ov

@@ -20,6 +20,7 @@
 #include "transformations/init_node_info.hpp"
 #include "transformations/op_conversions/bidirectional_sequences_decomposition.hpp"
 #include "transformations/op_conversions/convert_mod.hpp"
+#include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp"
 #include "transformations/op_conversions/convert_ti_to_sequences.hpp"
 #include "transformer/convolution_asym_padding_transformation.hpp"
@@ -83,6 +84,22 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::Gelu7Downgrade>();
     pass_config->disable<ov::pass::ConvertGELU>();
     pass_config->disable<ov::pass::HSwishDecomposition>();
+
+    auto is_reduce_op_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
+        if (const auto &reduce_op = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node)) {
+            // Each dimension of the output tensor C must match the corresponding dimension
+            // of the input tensor A or must be equal to 1
+            return reduce_op->get_keep_dims() ||
+                   reduce_op->input(0).get_shape().size() == reduce_op->output(0).get_shape().size();
+        }
+        return false;
+    };
+    pass_config->set_callback<ov::pass::ConvertReduceMaxToPooling,
+                              ov::pass::ConvertReduceMeanToPooling,
+                              ov::pass::ConvertReduceSumToPooling>(
+            [is_reduce_op_supported](const std::shared_ptr<const ov::Node> &node) -> bool {
+                return is_reduce_op_supported(node);
+            });
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();

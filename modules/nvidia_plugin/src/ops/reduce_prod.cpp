@@ -3,18 +3,18 @@
 //
 
 #include "cuda_operation_registry.hpp"
-#include "reduce_sum.hpp"
+#include "reduce_prod.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-ReduceSumOp::ReduceSumOp(const CreationContext& context,
+ReduceProdOp::ReduceProdOp(const CreationContext& context,
                          const ov::Node& node,
                          IndexCollection&& inputIds,
                          IndexCollection&& outputIds)
-    : ReduceOp(context, node, move(inputIds), move(outputIds), CUDA::DnnReduceAddDescriptor(reduceCompType(node))) {}
+    : ReduceOp(context, node, move(inputIds), move(outputIds), CUDA::DnnReduceMulDescriptor(reduceCompType(node))) {}
 
-OPERATION_REGISTER(ReduceSumOp, ReduceSum);
+OPERATION_REGISTER(ReduceProdOp, ReduceProd);
 
 }  // namespace nvidia_gpu
 }  // namespace ov
