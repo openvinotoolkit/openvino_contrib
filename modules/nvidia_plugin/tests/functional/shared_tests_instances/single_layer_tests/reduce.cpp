@@ -18,9 +18,7 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {
 
 const std::vector<bool> keepDims = {
         true,
-        // Each dimension of the output tensor C must match
-        // the corresponding dimension of the input tensor A or must be equal to 1
-        // false
+        false
 };
 
 const std::vector<std::vector<size_t>> inputShapes = {

@@ -30,6 +30,7 @@
 #include "concat_transformation.hpp"
 #include "fuse_matmul_add.hpp"
 #include "matmul_transformations.hpp"
+#include "reduce_transformation.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/op_conversions/convert_divide.hpp"
@@ -84,22 +85,9 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::Gelu7Downgrade>();
     pass_config->disable<ov::pass::ConvertGELU>();
     pass_config->disable<ov::pass::HSwishDecomposition>();
-
-    auto is_reduce_op_supported = [](const std::shared_ptr<const ov::Node> &node) -> bool {
-        if (const auto &reduce_op = std::dynamic_pointer_cast<const ov::op::util::ArithmeticReductionKeepDims>(node)) {
-            // Each dimension of the output tensor C must match the corresponding dimension
-            // of the input tensor A or must be equal to 1
-            return reduce_op->get_keep_dims() ||
-                   reduce_op->input(0).get_shape().size() == reduce_op->output(0).get_shape().size();
-        }
-        return false;
-    };
-    pass_config->set_callback<ov::pass::ConvertReduceMaxToPooling,
-                              ov::pass::ConvertReduceMeanToPooling,
-                              ov::pass::ConvertReduceSumToPooling>(
-            [is_reduce_op_supported](const std::shared_ptr<const ov::Node> &node) -> bool {
-                return is_reduce_op_supported(node);
-            });
+    pass_config->disable<ov::pass::ConvertReduceMaxToPooling>();
+    pass_config->disable<ov::pass::ConvertReduceMeanToPooling>();
+    pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
@@ -154,6 +142,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::ReduceTransformation>();
     // Do we actually need to eliminate broadcast one more time at the end?
     pass_manager.register_pass<ov::pass::NopElimination>();
 
