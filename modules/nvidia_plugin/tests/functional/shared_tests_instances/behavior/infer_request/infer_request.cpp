@@ -29,7 +29,6 @@
 #include "ie_common.h"
 #include "ie_ngraph_utils.hpp"
 #include "ngraph/runtime/host_tensor.hpp"
-#include "ngraph/runtime/reference/convert.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/partial_shape.hpp"
 
