@@ -71,16 +71,16 @@ static __global__ void reverse(const size_t maxSize,
     buffer[offsetB] = tempVal;
 }
 
-template <typename T>
+template <typename T, typename T_INT>
 static __global__ void strideSlice(const size_t shapeSize,
-                                   const int64_t* srcMatrixSizes,
+                                   const T_INT* srcMatrixSizes,
                                    const T* src,
-                                   const int64_t* begin,
-                                   const int64_t* end,
-                                   const int64_t* stride,
-                                   const int64_t* dstMatrixSizes,
+                                   const T_INT* begin,
+                                   const T_INT* end,
+                                   const T_INT* stride,
+                                   const T_INT* dstMatrixSizes,
                                    T* dst) {
-    const int64_t dstIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    const T_INT dstIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (dstIdx >= dstMatrixSizes[0]) {
         return;
     }
@@ -92,10 +92,10 @@ static __global__ void strideSlice(const size_t shapeSize,
            INT(blockDim.x),
            INT(threadIdx.x));
 #endif
-    int64_t i = dstIdx;
-    int64_t srcOffset = 0;
-    int64_t coordIdx = 0;
-    int64_t dstCoord = 0;
+    T_INT i = dstIdx;
+    T_INT srcOffset = 0;
+    T_INT coordIdx = 0;
+    T_INT dstCoord = 0;
     for (size_t idx = 1; idx < shapeSize; ++idx, ++coordIdx) {
         dstCoord = i / dstMatrixSizes[idx];
         i -= dstCoord * dstMatrixSizes[idx];
@@ -127,33 +127,39 @@ static __global__ void strideSlice(const size_t shapeSize,
     dst[dstIdx] = src[srcOffset];
 }
 
-StridedSliceKernelOp::StridedSliceKernelOp(const std::vector<int64_t> src_matrix_sizes,
-                                           const std::vector<int64_t> dst_matrix_sizes,
-                                           const std::set<size_t> reverse_axes,
-                                           const unsigned max_threads_per_block,
-                                           const unsigned blocks_number,
-                                           const unsigned threads_per_block,
-                                           const Type_t element_type)
+template <typename T_INT>
+StridedSliceKernelOp<T_INT>::StridedSliceKernelOp(const std::vector<T_INT> src_matrix_sizes,
+                                                  const std::vector<T_INT> dst_matrix_sizes,
+                                                  const std::set<size_t> reverse_axes,
+                                                  const unsigned max_threads_per_block,
+                                                  const unsigned blocks_number,
+                                                  const unsigned threads_per_block,
+                                                  const Type_t element_type,
+                                                  const Type_t element_type_integer)
     : src_matrix_sizes_{src_matrix_sizes},
       dst_matrix_sizes_{dst_matrix_sizes},
       reverse_axes_{reverse_axes},
       max_threads_per_block_{max_threads_per_block},
       blocks_number_{blocks_number},
       threads_per_block_{threads_per_block},
-      element_type_{element_type} {
+      element_type_{element_type},
+      element_type_integer_{element_type_integer} {
     using StridedSliceElementTypesSwitch =
         ElementTypesSwitch<Type_t::f32, Type_t::i32, Type_t::f16, Type_t::i16, Type_t::i8, Type_t::u8>;
     TypeValidator<StridedSliceElementTypesSwitch>::check(element_type_);
+    using StridedSliceIntegerElementTypesSwitch = ElementTypesSwitch<Type_t::i32, Type_t::i64>;
+    TypeValidator<StridedSliceIntegerElementTypesSwitch>::check(element_type_integer_);
 }
 
-void StridedSliceKernelOp::operator()(const cudaStream_t stream,
-                                      const int64_t* src_matrix_sizes,
-                                      const void* src,
-                                      const int64_t* begin,
-                                      const int64_t* end,
-                                      const int64_t* stride,
-                                      const int64_t* dst_matrix_sizes,
-                                      void* dst) const {
+template <typename T_INT>
+void StridedSliceKernelOp<T_INT>::operator()(const cudaStream_t stream,
+                                             const T_INT* src_matrix_sizes,
+                                             const void* src,
+                                             const T_INT* begin,
+                                             const T_INT* end,
+                                             const T_INT* stride,
+                                             const T_INT* dst_matrix_sizes,
+                                             void* dst) const {
     switch (element_type_) {
         case Type_t::f32:
             return callKernels<float>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
@@ -173,40 +179,43 @@ void StridedSliceKernelOp::operator()(const cudaStream_t stream,
     }
 }
 
+template <typename T_INT>
 template <typename T>
-void StridedSliceKernelOp::callKernels(const cudaStream_t stream,
-                                       const int64_t* src_matrix_sizes,
-                                       const void* src,
-                                       const int64_t* begin,
-                                       const int64_t* end,
-                                       const int64_t* stride,
-                                       const int64_t* dst_matrix_sizes,
-                                       void* dst) const {
+void StridedSliceKernelOp<T_INT>::callKernels(const cudaStream_t stream,
+                                              const T_INT* src_matrix_sizes,
+                                              const void* src,
+                                              const T_INT* begin,
+                                              const T_INT* end,
+                                              const T_INT* stride,
+                                              const T_INT* dst_matrix_sizes,
+                                              void* dst) const {
     callStridedSliceKernel<T>(stream, src_matrix_sizes, src, begin, end, stride, dst_matrix_sizes, dst);
     callReverseAxesKernel<T>(stream, dst);
 }
 
+template <typename T_INT>
 template <typename T>
-void StridedSliceKernelOp::callStridedSliceKernel(const cudaStream_t stream,
-                                                  const int64_t* src_matrix_sizes,
-                                                  const void* src,
-                                                  const int64_t* begin,
-                                                  const int64_t* end,
-                                                  const int64_t* stride,
-                                                  const int64_t* dst_matrix_sizes,
-                                                  void* dst) const {
-    strideSlice<T><<<blocks_number_, threads_per_block_, 0, stream>>>(src_matrix_sizes_.size(),
-                                                                      src_matrix_sizes,
-                                                                      static_cast<const T*>(src),
-                                                                      begin,
-                                                                      end,
-                                                                      stride,
-                                                                      dst_matrix_sizes,
-                                                                      static_cast<T*>(dst));
-}
+void StridedSliceKernelOp<T_INT>::callStridedSliceKernel(const cudaStream_t stream,
+                                                         const T_INT* src_matrix_sizes,
+                                                         const void* src,
+                                                         const T_INT* begin,
+                                                         const T_INT* end,
+                                                         const T_INT* stride,
+                                                         const T_INT* dst_matrix_sizes,
+                                                         void* dst) const {
+    strideSlice<T, T_INT><<<blocks_number_, threads_per_block_, 0, stream>>>(src_matrix_sizes_.size(),
+                                                                             static_cast<const T_INT*>(src_matrix_sizes),
+                                                                             static_cast<const T*>(src),
+                                                                             static_cast<const T_INT*>(begin),
+                                                                             static_cast<const T_INT*>(end),
+                                                                             static_cast<const T_INT*>(stride),
+                                                                             static_cast<const T_INT*>(dst_matrix_sizes),
+                                                                             static_cast<T*>(dst));
+            }
 
+template <typename T_INT>
 template <typename T>
-void StridedSliceKernelOp::callReverseAxesKernel(const cudaStream_t stream, void* dst) const {
+void StridedSliceKernelOp<T_INT>::callReverseAxesKernel(const cudaStream_t stream, void* dst) const {
     for (auto axisIt = reverse_axes_.rbegin(); axisIt != reverse_axes_.rend(); ++axisIt) {
         const auto chunksNumber = *axisIt < dst_matrix_sizes_.size() - 1
                                       ? dst_matrix_sizes_[*axisIt] / dst_matrix_sizes_[*axisIt + 1]
