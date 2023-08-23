@@ -14,6 +14,7 @@
 #include "openvino/op/lstm_sequence.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
+#include "transformations/common_optimizations/shuffle_channels_fusion.hpp"
 #include "transformations/convert_precision.hpp"
 #include "transformations/fp16_compression/convert_compression_only_to_legacy.hpp"
 #include "transformations/fp16_compression/mark_decompression_convert_constant_folding.hpp"
@@ -88,6 +89,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::ConvertReduceMaxToPooling>();
     pass_config->disable<ov::pass::ConvertReduceMeanToPooling>();
     pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
+    pass_config->disable<ov::pass::ShuffleChannelsFusion>();
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
