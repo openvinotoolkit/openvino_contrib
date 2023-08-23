@@ -78,7 +78,7 @@ inline __device__ T max(T x, T y) {
 
 template <typename T>
 inline __device__ T exp(T x) {
-    return ::exp(x);
+    return static_cast<T>(::exp(static_cast<float>(x)));
 }
 
 template <typename T>
@@ -98,7 +98,7 @@ inline __device__ T abs(T a) {
 
 template <typename T>
 inline __device__ T tanh(T a) {
-    return ::tanhf(a);
+    return static_cast<T>(::tanhf(static_cast<float>(a)));
 }
 
 template <typename T>
