@@ -1,3 +1,10 @@
+# Samples
+
+The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
+- [Benchmark Application](#benchmark-application)
+- [Face Detection Java samples](#face-detection-java-samples)
+- [Hello Query Device](#hello-query-device-sample)
+
 # Benchmark Application
 
 This guide describes how to run the benchmark applications.
@@ -153,3 +160,39 @@ The application will show the image with detected objects enclosed in rectangles
 
 ### For ```face_detection_sample_async```
 The application will show the video with detected objects enclosed in rectangles in new window.
+
+
+# Hello Query Device Sample
+
+## How It Works
+
+This sample demonstrates how to show OpenVINO Runtime devices and print their metrics and default configuration values using the Query Device API feature.
+
+## Build
+
+Use Gradle to build **openvino-x-x-x.jar** with OpenVINO Java bindings in `java_api/build/libs` and **hello_query_device_sample.jar** in `java_api/samples/hello_query_device_sample/build/libs`:
+```bash
+cd openvino_contrib/modules/java_api
+gradle build -Pbuild_hello_query_device=true
+```
+
+## Running
+
+To run the sample use:
+```bash
+java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:samples/hello_query_device/build/libs/hello_query_device.jar" Main
+```
+
+## Running in Idea IntelliJ
+- Import the project in IntelliJ IDEA. See [here](../README.md#import-to-intellij-idea) for instructions.
+- In **Run/Debug Configurations** dropdown, click on **Edit Configurations**.
+- Click on **Add New Configuration** and select **Gradle** from the dropdown menu.
+- Give the configuration an appropriate name: "HelloQueryDeviceSample", and enter the following command in the **Tasks and arguments** input box.
+    ```bash
+    :samples:hello_query_device:run -Pbuild_hello_query_device=true
+    ```
+- Under **Environment Variables**, select **Edit environment variables** and add the following environment variables:
+
+  `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
+- Click on **OK** to save the configuration.
+- Select the saved configuration from the **Run/Debug Configurations**. Click on the **Run** button to run or the **Debug** button to run in debug mode.
