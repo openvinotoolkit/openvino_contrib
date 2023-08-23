@@ -147,6 +147,8 @@ extern "C"
 
     // ov::Any
     JNIEXPORT jint JNICALL Java_org_intel_openvino_Any_asInt(JNIEnv *, jobject, jlong);
+    JNIEXPORT jobject JNICALL Java_org_intel_openvino_Any_asList(JNIEnv *, jobject, jlong);
+    JNIEXPORT jstring JNICALL Java_org_intel_openvino_Any_asString(JNIEnv *, jobject, jlong);
 
     // ov::Model
     JNIEXPORT jstring JNICALL Java_org_intel_openvino_Model_getName(JNIEnv *, jobject, jlong);

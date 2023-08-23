@@ -17,6 +17,27 @@ JNIEXPORT jint JNICALL Java_org_intel_openvino_Any_asInt(JNIEnv *env, jobject ob
     return 0;
 }
 
+JNIEXPORT jobject JNICALL Java_org_intel_openvino_Any_asList(JNIEnv *env, jobject obj, jlong addr) {
+    JNI_METHOD("asList",
+        Any *obj = (Any *)addr;
+
+        if (obj->is<std::vector<ov::PropertyName>>()) {
+            return vectorToJavaList(env, obj->as<std::vector<ov::PropertyName>>());
+        }
+        return vectorToJavaList(env, obj->as<std::vector<std::string>>());
+    )
+    return 0;
+}
+
+JNIEXPORT jstring JNICALL Java_org_intel_openvino_Any_asString(JNIEnv *env, jobject obj, jlong addr) {
+    JNI_METHOD("asString",
+        Any *obj = (Any *)addr;
+        std::string n_string = obj->as<std::string>();
+        return env->NewStringUTF(n_string.c_str());
+    )
+    return 0;
+}
+
 JNIEXPORT void JNICALL Java_org_intel_openvino_Any_delete(JNIEnv *, jobject, jlong addr)
 {
     Any *obj = (Any *)addr;

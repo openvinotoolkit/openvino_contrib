@@ -202,3 +202,33 @@ static std::vector<size_t> jintArrayToVector(JNIEnv *env, jintArray dims)
 
     return std::vector<size_t>();
 }
+
+template<typename T>
+static jobject vectorToJavaList(JNIEnv *env, std::vector<T> items)
+{
+    static const char method_name[] = "vectorToJavaList";
+    try
+    {
+        jclass arrayClass = env->FindClass("java/util/ArrayList");
+        jmethodID arrayInit = env->GetMethodID(arrayClass, "<init>", "()V");
+        jobject arrayObj = env->NewObject(arrayClass, arrayInit);
+        jmethodID arrayAdd = env->GetMethodID(arrayClass, "add", "(Ljava/lang/Object;)Z");
+
+        for (const auto& item : items) {
+            jstring string = env->NewStringUTF(item.c_str());
+            env->CallObjectMethod(arrayObj, arrayAdd, string);
+        }
+
+        return arrayObj;
+    }
+    catch (const std::exception &e)
+    {
+        throwJavaException(env, &e, method_name);
+    }
+    catch (...)
+    {
+        throwJavaException(env, 0, method_name);
+    }
+
+    return nullptr;
+}
