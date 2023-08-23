@@ -46,7 +46,7 @@ const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes
     {Sinh,                  {}},
     {Sqrt,                  {}},
     //            {Tan,                   {}},
-    //            {Elu,                   {{0.1f}}},
+    {Elu,             {{0.1f}}},
     //            {Erf,                   {}},
     //            {HardSigmoid,           {{0.2f, 0.5f}}},
     //            {Selu,                  {{1.6732f, 1.0507f}}},

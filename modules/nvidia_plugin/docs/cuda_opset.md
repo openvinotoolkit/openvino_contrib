@@ -43,7 +43,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [DepthToSpace](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/DepthToSpace_1.md)                                    | Not Supported |
 | [DetectionOutput](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/detection/DetectionOutput_1.md)                             | Supported     |
 | [Divide](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Divide_1.md)                                              | Supported     |
-| [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                    | Not Supported |
+| [Elu](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/Elu_1.md)                                                    | Supported     |
 | [EmbeddingBagOffsetsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagOffsetsSum_3.md)                  | Not Supported |
 | [EmbeddingBagPackedSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingBagPackedSum_3.md)                    | Not Supported |
 | [EmbeddingSegmentsSum](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sparse/EmbeddingSegmentsSum_3.md)                      | Not Supported |
