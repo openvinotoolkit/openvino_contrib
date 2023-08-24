@@ -68,7 +68,7 @@ struct ConvParams {
     ov::op::PadType pad_type;
 };
 
-std::shared_ptr<ov::Model> createFunction(const ModelType& model_type,
+std::shared_ptr<ov::Model> createModel(const ModelType& model_type,
                                          const ActivationMode& act_type,
                                          const ConvParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
@@ -160,7 +160,7 @@ std::shared_ptr<ov::Model> createFunction(const ModelType& model_type,
 }
 
 template <typename TFusedConvolution>
-std::shared_ptr<ov::Model> createRefFunction(const ModelType& model_type,
+std::shared_ptr<ov::Model> createRefModel(const ModelType& model_type,
                                              const ActivationMode& act_type,
                                              const ConvParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
@@ -242,15 +242,15 @@ public:
         ConvParams conv_params;
         std::tie(model_type, act_type, conv_params) = this->GetParam();
         {
-            function = createFunction(model_type, act_type, conv_params);
+            model = createModel(model_type, act_type, conv_params);
         }
 
         {
-            function_ref = (conv_params.bias_shape == conv_params.eltwise_shape) ? function->clone() :
-                            createRefFunction<TFusedConvolution>(model_type, act_type, conv_params);
+            model_ref = (conv_params.bias_shape == conv_params.eltwise_shape) ? model->clone() :
+                            createRefModel<TFusedConvolution>(model_type, act_type, conv_params);
         }
         manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
-        manager.run_passes(function);
+        manager.run_passes(model);
     }
     static std::string getTestCaseName(testing::TestParamInfo<std::tuple<ModelType      /* model type */,
                                                                          ActivationMode /* act type */,
@@ -367,7 +367,7 @@ struct ConvBackPropParams {
     ov::CoordinateDiff output_pad;
 };
 
-std::shared_ptr<Result> createFunctionBackprop(const ModelType& model_type,
+std::shared_ptr<Result> createModelBackprop(const ModelType& model_type,
                                             const ov::Output<ov::Node>& input_node,
                                             const ConvBackPropParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
@@ -390,7 +390,7 @@ std::shared_ptr<Result> createFunctionBackprop(const ModelType& model_type,
     return std::make_shared<Result>(last_op);
 }
 
-std::shared_ptr<Result> createRefFunctionBackprop(const ModelType& model_type,
+std::shared_ptr<Result> createRefModelBackprop(const ModelType& model_type,
                                                   const ov::Output<ov::Node>& input_node,
                                                   const ConvBackPropParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
@@ -421,17 +421,17 @@ public:
         std::tie(model_type, conv_params) = this->GetParam();
         {
             auto input_params = std::make_shared<Parameter>(ov::element::f32, conv_params.input_shape);
-            auto result = createFunctionBackprop(model_type, input_params, conv_params);
-            function = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input_params});
+            auto result = createModelBackprop(model_type, input_params, conv_params);
+            model = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input_params});
         }
 
         {
             auto input_params = std::make_shared<Parameter>(ov::element::f32, conv_params.input_shape);
-            auto result = createRefFunctionBackprop(model_type, input_params, conv_params);
-            function_ref = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input_params});
+            auto result = createRefModelBackprop(model_type, input_params, conv_params);
+            model_ref = std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{input_params});
         }
         manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
-        manager.run_passes(function);
+        manager.run_passes(model);
     }
     static std::string getTestCaseName(testing::TestParamInfo<std::tuple<ModelType          /* model type */,
                                                                          ConvBackPropParams /* conv params */>> obj) {

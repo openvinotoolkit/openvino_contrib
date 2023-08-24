@@ -16,7 +16,7 @@ using namespace testing;
 TEST(TransformationTests, cuda_transformations_f16) {
     std::shared_ptr<ov::Model> model, model_ref;
     {
-        // Example function
+        // Example model
         auto data = std::make_shared<ov::opset10::Parameter>(ov::element::f32, ov::Shape{3, 1, 2});
         auto divide_constant = ov::opset10::Constant::create(ov::element::f32, ov::Shape{1}, {2});
         auto divide = std::make_shared<ov::opset10::Divide>(data, divide_constant);
@@ -37,7 +37,7 @@ TEST(TransformationTests, cuda_transformations_f16) {
     }
 
     {
-        // Example reference function
+        // Example reference model
         auto data = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 1, 2});
         auto convert_f16 = std::make_shared<ov::opset10::Convert>(data, ov::element::f16);
         auto mul_constant = ov::opset10::Constant::create(ov::element::f16, ov::Shape{1, 1, 1}, {0.5});
