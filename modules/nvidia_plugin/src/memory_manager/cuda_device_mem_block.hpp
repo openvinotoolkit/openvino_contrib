@@ -23,7 +23,7 @@ public:
     using Ptr = std::shared_ptr<DeviceMemBlock>;
 
     /**
-     * @throws InferenceEngineException if device memory block allocation
+     * @throws ov::Exception if device memory block allocation
      * failed.
      */
     DeviceMemBlock(MemoryModel::Ptr model);

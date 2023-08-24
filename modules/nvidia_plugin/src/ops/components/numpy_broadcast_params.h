@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "kernels/details/numpy_broadcast_mapper.cuh"
+#include "openvino/core/shape.hpp"
 #include "workbuffer_desc.hpp"
 
 namespace ov {

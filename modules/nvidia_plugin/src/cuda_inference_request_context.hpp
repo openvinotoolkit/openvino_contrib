@@ -13,8 +13,6 @@
 namespace ov {
 namespace nvidia_gpu {
 
-using Blob = InferenceEngine::Blob;
-
 class Profiler;
 
 class InferenceRequestContext {
@@ -44,8 +42,6 @@ public:
           cuda_graph_context_{cudaGraphContext},
           is_benchmark_mode_{isBenchmarkMode} {}
     // don't allow storing references to temporary
-    template <typename... Args>
-    InferenceRequestContext(InferenceEngine::BlobMap&& inputs, Args... args) = delete;
     template <typename... Args>
     InferenceRequestContext(std::vector<std::shared_ptr<ov::Tensor>>&& inputs,
                             std::map<std::string, std::size_t>&& inputMapping,

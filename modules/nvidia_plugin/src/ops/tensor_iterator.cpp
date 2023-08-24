@@ -4,8 +4,6 @@
 
 #include "tensor_iterator.hpp"
 
-#include <cpp/ie_cnn_network.h>
-
 #include <cstdint>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_profiler.hpp>
@@ -42,9 +40,6 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
     for (auto& output : op.outputs()) {
         outputs_info_.emplace_back(getTensorByteSize(output), output.get_element_type(), output.get_shape());
     }
-
-    // Get body topology from ngraph func1tion
-    InferenceEngine::CNNNetwork body_network(op.get_body());
 
     // Setup input_primitive_maps/ output_primitive_maps and back_edges
     const auto& loop_input_descs = op.get_input_descriptions();

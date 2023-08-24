@@ -10,7 +10,6 @@
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
-#include <ngraph/node.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/relu.hpp>
 #include <ops/parameter.hpp>
@@ -43,8 +42,8 @@ struct ReluTest : testing::Test {
     CUDA::Allocation outAlloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{inAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
-    std::map<std::string, std::size_t> emptyMapping;
+    std::vector<std::shared_ptr<ov::Tensor>> empty_tensor;
+    std::map<std::string, std::size_t> empty_mapping;
     ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         CUDA::Device device{};
         const bool optimizeOption = false;
@@ -67,7 +66,7 @@ TEST_F(ReluTest, canExecuteSync) {
     ov::nvidia_gpu::Profiler profiler{false, graph};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        empty_tensor, empty_mapping, empty_tensor, empty_mapping, threadContext, token, profiler, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::array<ElementType, length> in{-1, 1, -5, 5, 0};
     std::array<ElementType, length> correct;

@@ -11,7 +11,6 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <iomanip>
-#include <ngraph/node.hpp>
 #include <openvino/op/logical_not.hpp>
 #include <openvino/op/parameter.hpp>
 #include <ops/parameter.hpp>

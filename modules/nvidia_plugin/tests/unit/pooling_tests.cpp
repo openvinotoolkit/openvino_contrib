@@ -12,7 +12,6 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <gsl/span>
-#include <ngraph/node.hpp>
 #include <openvino/op/avg_pool.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/max_pool.hpp>
@@ -20,7 +19,6 @@
 #include <ops/maxpool.hpp>
 #include <type_traits>
 
-using namespace InferenceEngine;
 using namespace ov::nvidia_gpu;
 
 static const ov::Shape min_supported_pooling_shape{1, 1, 4, 4};
@@ -95,7 +93,7 @@ struct PoolingTest : testing::Test {
         Profiler profiler{false, graph};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+            empty_tensor, empty_mapping, empty_tensor, empty_mapping, threadContext, token, profiler, cudaGraphContext};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;
@@ -126,10 +124,11 @@ struct PoolingTest : testing::Test {
     std::vector<CUDA::Allocation> allocs;
     std::vector<CUDA::DevicePointer<const void*>> inputs;
     std::vector<CUDA::DevicePointer<void*>> outputs;
-    Blob::Ptr blob;
-    InferenceEngine::BlobMap blobs;
-    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
-    std::map<std::string, std::size_t> emptyMapping;
+    std::shared_ptr<ov::Tensor> tensor;
+    std::vector<std::shared_ptr<ov::Tensor>> tensors;
+    std::map<std::string, std::size_t> tensors_mapping;
+    std::vector<std::shared_ptr<ov::Tensor>> empty_tensor;
+    std::map<std::string, std::size_t> empty_mapping;
 };
 
 class MaxPoolRegistryTest : public PoolingRegistryTest<ov::op::v1::MaxPool, MaxPoolOp> {};

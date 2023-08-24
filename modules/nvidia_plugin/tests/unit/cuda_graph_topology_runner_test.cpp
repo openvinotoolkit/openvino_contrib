@@ -42,7 +42,7 @@ protected:
         return ret;
     }
 
-    std::shared_ptr<ov::Model> model_ {CreateMatMulTestNetwork()};
+    std::shared_ptr<ov::Model> model_ {create_matmul_test_model()};
     CreationContext creationContext_ {{}, false};
     ThreadContext threadContext_ {{}};
     CancellationToken cancellationToken_ {};

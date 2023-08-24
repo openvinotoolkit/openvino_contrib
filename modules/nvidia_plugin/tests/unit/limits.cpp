@@ -4,7 +4,6 @@
 
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
-#include <ie_blob.h>
 
 #include <array>
 #include <cancellation_token.hpp>
@@ -24,11 +23,10 @@
 #include <limits>
 #include <memory_manager/cuda_workbuffers.hpp>
 #include <memory_manager/tensor_types.hpp>
-#include <ngraph/node.hpp>
-#include <ngraph/op/divide.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/type/float16.hpp>
+#include "openvino/core/node.hpp"
+#include "openvino/core/type/element_type.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/parameter.hpp"
 #include <type_traits>
 #include <vector>
 
@@ -110,10 +108,10 @@ void run_zero_div_test() {
     ov::nvidia_gpu::OperationBase::Ptr operation = [&] {
         CUDA::Device device{};
         const bool optimizeOption = false;
-        const ngraph::element::Type ng_type = ngraph::element::from<T>();
-        auto param1 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{length});
-        auto param2 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{1});
-        auto node = std::make_shared<ngraph::op::v1::Divide>(param1->output(0), param2->output(0));
+        const ov::element::Type ng_type = ov::element::from<T>();
+        auto param1 = std::make_shared<ov::op::v0::Parameter>(ng_type, ov::PartialShape{length});
+        auto param2 = std::make_shared<ov::op::v0::Parameter>(ng_type, ov::PartialShape{1});
+        auto node = std::make_shared<ov::op::v1::Divide>(param1->output(0), param2->output(0));
         auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},
                                            node,
@@ -183,7 +181,7 @@ struct ZeroDivTest : testing::Test {};
 
 TEST_F(ZeroDivTest, canExecuteSync) {
     run_zero_div_test<float>();
-    run_zero_div_test<ngraph::float16>();
+    run_zero_div_test<ov::float16>();
     run_zero_div_test<int32_t>();
     run_zero_div_test<int16_t>();
     run_zero_div_test<uint8_t>();
