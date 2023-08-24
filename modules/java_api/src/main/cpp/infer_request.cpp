@@ -67,7 +67,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_InferRequest_GetTensor(JNIEnv *e
         InferRequest *infer_request = (InferRequest *)addr;
         Tensor *output_tensor = new Tensor();
 
-        std::string c_tensorName= jstringToString(env, tensorName);
+        std::string c_tensorName = jstringToString(env, tensorName);
         *output_tensor = infer_request->get_tensor(c_tensorName);
 
         return (jlong)output_tensor;

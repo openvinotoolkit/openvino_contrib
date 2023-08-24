@@ -10,7 +10,7 @@ import java.util.List;
 
 public class CompiledModelTests extends OVTest {
 
-    CompiledModel model;
+    private CompiledModel model;
 
     @Before
     public void init() {

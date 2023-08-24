@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class CoreTests extends OVTest {
@@ -91,5 +92,11 @@ public class CoreTests extends OVTest {
 
         config.put("CPU_THROUGHPUT_STREAMS", "1");
         core.set_property("CPU", config); // Restore
+    }
+
+    @Test
+    public void testAvailableDevices() {
+        List<String> availableDevices = core.get_available_devices();
+        assertNotNull(availableDevices);
     }
 }

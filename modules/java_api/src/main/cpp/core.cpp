@@ -124,11 +124,11 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel3(JNIEnv *env, 
     return 0;
 }
 
-JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel4(JNIEnv *env, jobject obj, jlong coreAddr, jlong netAddr, jstring device, jobject props)
+JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel4(JNIEnv *env, jobject obj, jlong coreAddr, jlong modelAddr, jstring device, jobject props)
 {
     JNI_METHOD("CompileModel4",
         std::string n_device = jstringToString(env, device);
-        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(netAddr);
+        std::shared_ptr<Model> *model = reinterpret_cast<std::shared_ptr<Model> *>(modelAddr);
         AnyMap map;
         for (const auto& it : javaMapToMap(env, props)) {
             map[it.first] = it.second;

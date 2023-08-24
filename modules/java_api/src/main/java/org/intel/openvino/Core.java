@@ -60,6 +60,9 @@ public class Core extends Wrapper {
      * Reads and loads a compiled model from the IR/ONNX/PDPD file to the default OpenVINO device
      * selected by the AUTO plugin.
      *
+     * <p>This can be more efficient, especially when caching is enabled and a cached model is
+     * available, than using the read_model followed by compile_model flow.
+     *
      * @param path Path to a model.
      * @return A compiled model.
      */
