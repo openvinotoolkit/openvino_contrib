@@ -3,6 +3,7 @@
 The OpenVINO samples are simple console applications that show how to utilize specific OpenVINO API capabilities within an application. The following samples are available
 - [Benchmark Application](#benchmark-application)
 - [Face Detection Java samples](#face-detection-java-samples)
+- [Face Detection Kotlin sample](./face_detection_kotlin_sample/README.md)
 - [Hello Query Device](#hello-query-device-sample)
 
 # Benchmark Application
@@ -170,7 +171,7 @@ This sample demonstrates how to show OpenVINO Runtime devices and print their me
 
 ## Build
 
-Use Gradle to build **openvino-x-x-x.jar** with OpenVINO Java bindings in `java_api/build/libs` and **hello_query_device_sample.jar** in `java_api/samples/hello_query_device_sample/build/libs`:
+Use Gradle to build **openvino-x-x-x.jar** with OpenVINO Java bindings in `java_api/build/libs` and **hello_query_device.jar** in `java_api/samples/hello_query_device/build/libs`:
 ```bash
 cd openvino_contrib/modules/java_api
 gradle build -Pbuild_hello_query_device=true
@@ -196,3 +197,31 @@ java -cp ".:${OV_JAVA_DIR}/openvino-x-x-x.jar:samples/hello_query_device/build/l
   `INTEL_OPENVINO_DIR=<path-to-openvino_install>`
 - Click on **OK** to save the configuration.
 - Select the saved configuration from the **Run/Debug Configurations**. Click on the **Run** button to run or the **Debug** button to run in debug mode.
+
+## Sample Output
+
+Below is a sample output for CPU device:
+
+```
+[INFO] Available devices:
+[INFO] CPU:
+[INFO]  SUPPORTED_PROPERTIES:
+[INFO]          AVAILABLE_DEVICES:
+[INFO]          RANGE_FOR_ASYNC_INFER_REQUESTS: 1 1 1
+[INFO]          RANGE_FOR_STREAMS: 1 20
+[INFO]          FULL_DEVICE_NAME: 12th Gen Intel(R) Core(TM) i7-12700H
+[INFO]          OPTIMIZATION_CAPABILITIES: FP32 FP16 INT8 BIN EXPORT_IMPORT
+[INFO]          CACHING_PROPERTIES: FULL_DEVICE_NAME
+[INFO]          NUM_STREAMS: 1
+[INFO]          AFFINITY: HYBRID_AWARE
+[INFO]          INFERENCE_NUM_THREADS: 0
+[INFO]          PERF_COUNT: NO
+[INFO]          INFERENCE_PRECISION_HINT: f32
+[INFO]          PERFORMANCE_HINT: LATENCY
+[INFO]          EXECUTION_MODE_HINT: PERFORMANCE
+[INFO]          PERFORMANCE_HINT_NUM_REQUESTS: 0
+[INFO]          ENABLE_CPU_PINNING: YES
+[INFO]          SCHEDULING_CORE_TYPE: ANY_CORE
+[INFO]          ENABLE_HYPER_THREADING: YES
+[INFO]          DEVICE_ID:
+```
