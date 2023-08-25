@@ -109,19 +109,20 @@ void Profiler::process_events() {
     auto result_ms = result_timing == layer_timing.cend() ? zero_time : time_per_infer_us(result_timing->second);
 
     // Adding some overall performance counters
-    auto stage_time_ms = [this](const Stages& stage) {
-        return std::chrono::microseconds(static_cast<long long>(durations_[stage].count()));
+    auto stage_time_ms = [this](PerfStages stage) {
+        const auto i = static_cast<std::size_t>(stage);
+        return std::chrono::microseconds(static_cast<long long>(durations_[i].count()));
     };
 
     auto insert_stage = [&](const std::pair<std::string, ov::ProfilingInfo>& value) {
         auto const result = stage_counters_.insert(value);
         if (!result.second) { result.first->second = value.second; }
     };
-    insert_stage(make_profile_info("1. input preprocessing", zero_time, stage_time_ms(Preprocess)));
+    insert_stage(make_profile_info("1. input preprocessing", zero_time, stage_time_ms(PerfStages::Preprocess)));
     insert_stage(make_profile_info("2. input transfer to a device", parameter_ms));
-    insert_stage(make_profile_info("3. execution time", time_per_infer_us(exec_timing_.measure()), stage_time_ms(StartPipeline)));
+    insert_stage(make_profile_info("3. execution time", time_per_infer_us(exec_timing_.measure()), stage_time_ms(PerfStages::StartPipeline)));
     insert_stage(make_profile_info("4. output transfer from a device", result_ms));
-    insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(Postprocess)));
+    insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(PerfStages::Postprocess)));
 }
 
 void Profiler::execute_sequence(const SubGraph* subGraphPtr,

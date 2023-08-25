@@ -19,6 +19,7 @@
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
+#include "cuda_perf_counts.hpp"
 #include "cuda_plugin.hpp"
 #include "memory_manager/cuda_immutable_memory_block_builder.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"

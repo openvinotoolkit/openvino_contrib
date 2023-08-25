@@ -12,21 +12,6 @@
 namespace ov {
 namespace nvidia_gpu {
 
-static const char PERF_COUNTER_NAME[] = "nvidia_perf_counter";
-
-struct PerfCounts {
-    std::chrono::microseconds total_duration;
-    uint32_t num;
-    std::string impl_type;
-    std::string runtime_precision;
-
-    PerfCounts() : total_duration{0}, num(0) {}
-
-    uint64_t average() const {
-        return (num == 0) ? 0 : total_duration.count() / num;
-    }
-};
-
 /**
  * Creates profiler sequence and stores profiler results.
  */
@@ -59,7 +44,7 @@ public:
      * Stop time measurement of stage
      * @param stage Stage for which time measurement was performed
      */
-    void stop_stage(Stages stage) override { durations_[stage] = Time::now() - start_; }
+    void stop_stage(PerfStages stage) override { durations_[static_cast<std::size_t>(stage)] = Time::now() - start_; }
 
     /**
      * Execute sequence from SubGraph/TensorIterator class
@@ -123,7 +108,7 @@ private:
     std::vector<std::string> execution_order_{};
     utils::PerformaceTiming exec_timing_{};
     // for performance counters
-    std::array<Duration, NumOfStages> durations_;
+    std::array<Duration, static_cast<std::size_t>(PerfStages::NumOfStages)> durations_;
     Time::time_point start_{};
     size_t infer_count_{};
     CUDA::Event::RecordMode cuda_event_record_mode_ {CUDA::Event::RecordMode::Default};

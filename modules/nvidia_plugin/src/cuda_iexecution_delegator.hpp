@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include "openvino/runtime/profiling_info.hpp"
-
-#include <cuda/runtime.hpp>
 #include <cuda/event.hpp>
+#include <cuda/runtime.hpp>
+#include <cuda_perf_counts.hpp>
 
+#include "openvino/runtime/profiling_info.hpp"
 #include "ops/subgraph.hpp"
 
 namespace ov {
@@ -19,8 +19,6 @@ namespace nvidia_gpu {
  */
 class IExecutionDelegator {
 public:
-    enum Stages { Preprocess, Postprocess, StartPipeline, WaitPipeline, NumOfStages };
-
     /**
      * Virtual destructor for the interface
      */
@@ -40,7 +38,7 @@ public:
      * Stop time measurement of stage
      * @param stage Stage for which time measurement was performed
      */
-    virtual void stop_stage(Stages stage) = 0;
+    virtual void stop_stage(PerfStages stage) = 0;
 
     /**
      * Execute sequence from SubGraph/TensorIterator class

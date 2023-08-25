@@ -4,18 +4,17 @@
 
 #pragma once
 
-#include "openvino/runtime/icompiled_model.hpp"
-#include "openvino/runtime/threading/itask_executor.hpp"
-
 #include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
-#include "cuda_itopology_runner.hpp"
 #include "cuda_infer_request.hpp"
+#include "cuda_itopology_runner.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
+#include "openvino/runtime/icompiled_model.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 #include "ops/subgraph.hpp"
 
 namespace ov {
