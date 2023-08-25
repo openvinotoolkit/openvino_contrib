@@ -256,7 +256,7 @@ size_t CompiledModel::get_optimal_number_of_streams(size_t const_blob_size,
 }
 
 std::shared_ptr<MemoryPool> CompiledModel::create_memory_pool() {
-    const auto& memory_manager = topology_runner_->GetSubGraph().memoryManager();
+    const auto& memory_manager = *(topology_runner_->GetSubGraph().memoryManager());
     const auto const_blob_size = memory_manager.immutableTensors().memoryModel()->deviceMemoryBlockSize();
     const auto immutable_work_buffers_size = memory_manager.immutableWorkbuffers().memoryModel()->deviceMemoryBlockSize();
     const auto& memory_model = memory_manager.mutableTensorsMemoryModel();

@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -38,12 +38,14 @@ public:
 
     bool IsCudaGraphCompatible() const override;
 
-    const MemoryManager& memoryManager() const { return *memory_manager_; }
+    inline std::shared_ptr<MemoryManager> memoryManager() const { return memory_manager_; }
+
+    inline const std::vector<OperationBase::Ptr>& getExecSequence() const { return exec_sequence_; }
+
+    inline const std::shared_ptr<const ov::Model> getModel() const { return model_; };
 
     const std::vector<OperationBase::Ptr>& getParams() const;
-    const std::vector<OperationBase::Ptr>& getExecSequence() const;
     const std::vector<OperationBase::Ptr>& getResults() const;
-    const std::shared_ptr<const ov::Model> getModel() const { return model_; };
 
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
@@ -83,9 +85,6 @@ protected:
     std::vector<OperationInfo> results_info_;
     std::shared_ptr<const ov::Model> model_;
 };
-
-
-inline const std::vector<OperationBase::Ptr>& SubGraph::getExecSequence() const { return exec_sequence_; }
 
 }  // namespace nvidia_gpu
 }  // namespace ov

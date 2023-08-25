@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -39,7 +39,7 @@ SubGraph::SubGraph(const CreationContext& context,
                    ExecSequence&& sequence,
                    std::shared_ptr<MemoryManager> memoryManager)
     : OperationBase{context, nullptr},
-      model_{model}
+      model_{model},
       exec_sequence_{sequence},
       memory_manager_{memoryManager} {}
 
@@ -137,14 +137,11 @@ void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    for (auto& op : profiler.create_exec_sequence(this)) {
+    for (auto& op : exec_sequence_) {
         auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
         auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
         auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->capture(context, inputTensors, outputTensors, workBuffers);
+        op->Capture(context, inputTensors, outputTensors, workBuffers);
     }
 }
 
@@ -158,14 +155,11 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    for (auto& op : profiler.create_exec_sequence(this)) {
+    for (auto& op : exec_sequence_) {
         auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
         auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
         auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->execute(context, inputTensors, outputTensors, workBuffers);
+        op->Execute(context, inputTensors, outputTensors, workBuffers);
     }
 }
 
