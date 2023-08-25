@@ -1,10 +1,11 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_layer_tests/lstm_cell.hpp"
 
 #include <cuda_graph_context.hpp>
+#include <cuda_eager_topology_runner.hpp>
 #include <cuda_profiler.hpp>
 #include <cuda_test_constants.hpp>
 #include <functional>

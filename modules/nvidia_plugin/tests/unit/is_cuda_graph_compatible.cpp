@@ -6,6 +6,7 @@
 #include <random>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_eager_topology_runner.hpp"
 #include "cuda_runtime.h"
 #include "cuda_operation_registry.hpp"
 #include "cuda_profiler.hpp"

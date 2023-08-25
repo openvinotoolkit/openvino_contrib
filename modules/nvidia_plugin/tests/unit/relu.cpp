@@ -9,6 +9,7 @@
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_eager_topology_runner.hpp>
 #include <cuda_profiler.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/relu.hpp>

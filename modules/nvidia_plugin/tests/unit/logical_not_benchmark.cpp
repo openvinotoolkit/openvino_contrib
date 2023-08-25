@@ -9,6 +9,7 @@
 #include <cuda_config.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
+#include <cuda_eager_topology_runner.hpp>
 #include <cuda_profiler.hpp>
 #include <iomanip>
 #include <openvino/op/logical_not.hpp>
