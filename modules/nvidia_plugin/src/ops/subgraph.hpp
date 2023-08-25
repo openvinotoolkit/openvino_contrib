@@ -15,7 +15,9 @@ namespace nvidia_gpu {
 
 class SubGraph : public OperationBase {
 public:
-    virtual ~SubGraph() = 0;
+    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
+
+    virtual ~SubGraph() = default;
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -49,7 +51,6 @@ protected:
              const SubGraphOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
-    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
 
     WorkbufferRequest GetWorkBufferRequest() const override;
 
@@ -76,7 +77,6 @@ protected:
     std::shared_ptr<const ov::Model> model_;
 };
 
-inline SubGraph::~SubGraph() {}
 
 inline const std::vector<OperationBase::Ptr>& SubGraph::getExecSequence() const { return exec_sequence_; }
 

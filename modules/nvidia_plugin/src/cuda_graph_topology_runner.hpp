@@ -9,7 +9,7 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class CudaGraphTopologyRunner final : public SubGraph, public ITopologyRunner {
+class CudaGraphTopologyRunner final : public ITopologyRunner {
 public:
     struct CudaGraphIncompatible : public std::runtime_error {
         using std::runtime_error::runtime_error;
@@ -25,6 +25,9 @@ public:
 private:
     void Capture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
     void UpdateCapture(InferenceRequestContext& context) const;
+
+    std::vector<SubGraph> subgraphs_;
+    SubGraph orig_subgraph_;
 };
 
 }  // namespace nvidia_gpu

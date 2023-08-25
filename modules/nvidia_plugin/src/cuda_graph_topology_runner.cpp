@@ -11,8 +11,8 @@ namespace ov {
 namespace nvidia_gpu {
 
 CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
-    : SubGraph(context, model) {
-    if (!IsCudaGraphCompatible())
+    : orig_subgraph_{context, model} {
+    if (!orig_subgraph_.IsCudaGraphCompatible())
         throw CudaGraphIncompatible{"The topology is incompatible with CUDA graphs."};
 }
 
@@ -28,7 +28,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
         context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
         Workbuffers workbuffers{};
         workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        SubGraph::Capture(context, {}, {}, workbuffers);
+        orig_subgraph_.Capture(context, {}, {}, workbuffers);
     }
     const auto& graph = capture.getGraph();
     context.getCudaGraphContext().graph.emplace(graph);
@@ -36,7 +36,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
 }
 
 const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
-    return *this;
+    return orig_subgraph_;
 }
 
 void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext &context, const DeviceMemBlock &memoryBlock) const {
@@ -49,8 +49,8 @@ void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext &context, co
 void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context) const {
     CudaGraphContext& graphContext = context.getCudaGraphContext();
     for (auto& pair : graphContext.parameterNodes)
-        pair.second.update_src(graphContext.graphExec.value(),
-                const_cast<const void*>(context.get_input_tensor(pair.first)->data()));
+        pair.second.updateSrc(graphContext.graphExec.value(),
+                (context.get_input_tensor(pair.first)->data()));
     for (auto& pair : graphContext.resultNodes)
         pair.second.update_dst(graphContext.graphExec.value(), context.get_output_tensor(pair.first)->data());
 }
