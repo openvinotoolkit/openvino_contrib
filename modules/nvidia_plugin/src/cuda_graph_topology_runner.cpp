@@ -47,17 +47,22 @@ void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const 
 
 void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
                                       const DeviceMemBlock &memoryBlock) const {
-    CUDA::GraphCapture capture{context.getThreadContext().stream()};
-    {
-        auto scope = capture.getScope();
-        context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
-        Workbuffers workbuffers{};
-        workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
-        orig_subgraph_.Capture(context, {}, {}, workbuffers);
+    context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
+    const auto& stream = context.getThreadContext().stream();
+    for (const auto& subgraph : subgraphs_) {
+        if (subgraph.IsCudaGraphCompatible()) {
+            CUDA::GraphCapture capture{stream};
+            {
+                auto scope = capture.getScope();
+                Workbuffers workbuffers{};
+                workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
+                subgraph.Capture(context, {}, {}, workbuffers);
+            }
+            const auto& graph = capture.getGraph();
+            context.getCudaGraphContext().graph.emplace_back(graph);
+            context.getCudaGraphContext().graphExec.emplace_back(graph);
+        }
     }
-    const auto& graph = capture.getGraph();
-    context.getCudaGraphContext().graph.emplace(graph);
-    context.getCudaGraphContext().graphExec.emplace(graph);
 }
 
 const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {

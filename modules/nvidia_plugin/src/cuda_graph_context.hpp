@@ -12,8 +12,8 @@ namespace ov {
 namespace nvidia_gpu {
 
 struct CudaGraphContext {
-    std::optional<CUDA::GraphExec> graphExec{};
-    std::optional<CUDA::Graph> graph{};
+    std::vector<CUDA::GraphExec> graphExec{};
+    std::vector<CUDA::Graph> graph{};
     std::map<std::string, CUDA::UploadNode> parameterNodes;
     std::map<std::string, CUDA::DownloadNode> resultNodes;
 };
