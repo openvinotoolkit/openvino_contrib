@@ -27,7 +27,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
-    bool IsCudaGraphCompatible() const override;
+    using SubGraph::IsCudaGraphCompatible;
 
     void Capture(InferenceRequestContext& context,
                  Inputs inputTensors,
