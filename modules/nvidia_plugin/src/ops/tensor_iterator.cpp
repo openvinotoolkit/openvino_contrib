@@ -155,7 +155,6 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
     }
 
-    const auto& execSequence = profiler.create_exec_sequence(this);
     for (int64_t iter = 0; iter < num_iterations_; ++iter) {
 
         // Input mapping of ports
@@ -166,12 +165,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
 
         // Inner loop
-        for (const auto& op : execSequence) {
-            auto inTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-            auto outTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-            auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-            op->execute(context, inTensors, outTensors, workBuffers);
-        }
+        profiler.execute_sequence(this, memoryManager, mutableBuffer, context);
 
         // Back-edge mapping
         for (auto& [resultIdx, paramIdx] : results_parameters_map_) {
