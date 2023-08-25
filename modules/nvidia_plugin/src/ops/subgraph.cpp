@@ -137,12 +137,9 @@ void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    for (auto& op : exec_sequence_) {
-        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->Capture(context, inputTensors, outputTensors, workBuffers);
-    }
+    auto& profiler = context.getProfiler();
+    profiler.set_stream(stream);
+    profiler.capture_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
@@ -155,12 +152,9 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    for (auto& op : exec_sequence_) {
-        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->Execute(context, inputTensors, outputTensors, workBuffers);
-    }
+    auto& profiler = context.getProfiler();
+    profiler.set_stream(stream);
+    profiler.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 bool SubGraph::IsCudaGraphCompatible() const {
