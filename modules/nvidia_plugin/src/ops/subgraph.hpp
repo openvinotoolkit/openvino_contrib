@@ -77,6 +77,8 @@ protected:
         ov::Shape shape_{};
     };
 
+    enum class CompatibleState { NOT_INITIALIZED = -1, NOT_COMPATIBLE, COMPATIBLE };
+
     std::shared_ptr<MemoryManager> memory_manager_;
     std::vector<OperationBase::Ptr> params_;
     std::vector<OperationInfo> params_info_;
@@ -84,6 +86,8 @@ protected:
     std::vector<OperationBase::Ptr> results_;
     std::vector<OperationInfo> results_info_;
     std::shared_ptr<const ov::Model> model_;
+
+    mutable CompatibleState is_cuda_graph_compatible_ = CompatibleState::NOT_INITIALIZED;
 };
 
 }  // namespace nvidia_gpu

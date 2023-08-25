@@ -164,12 +164,16 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
 }
 
 bool SubGraph::IsCudaGraphCompatible() const {
-    for (const auto& op : exec_sequence_) {
-        if (!op->IsCudaGraphCompatible()) {
-            return false;
+    if (is_cuda_graph_compatible_ == CompatibleState::NOT_INITIALIZED) {
+        is_cuda_graph_compatible_ = CompatibleState::COMPATIBLE;
+        for (const auto& op : exec_sequence_) {
+            if (!op->IsCudaGraphCompatible()) {
+                is_cuda_graph_compatible_ = CompatibleState::NOT_COMPATIBLE;
+                break;
+            }
         }
     }
-    return true;
+    return is_cuda_graph_compatible_ == CompatibleState::COMPATIBLE;
 }
 
 }  // namespace nvidia_gpu
