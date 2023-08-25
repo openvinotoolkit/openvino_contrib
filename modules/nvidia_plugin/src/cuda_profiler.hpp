@@ -95,7 +95,6 @@ private:
     Profiler::ProfilerSequence create_exec_sequence(const SubGraph* subGraphPtr);
 
     void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
-    void collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
     void collect_node_visitor(const OperationBase::Ptr& execStep,
                             std::vector<ProfileExecStep>& perfSteps,
                             std::vector<OperationBase::Ptr>& allExecSequence);

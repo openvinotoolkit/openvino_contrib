@@ -63,6 +63,8 @@ private:
                     std::size_t resultIdx,
                     std::size_t outputIdx) const;
 
+    void updateExecSequence();
+
     size_t max_threads_per_block_;
     const int64_t num_iterations_;
     std::vector<OperationInfo> inputs_info_;

@@ -41,14 +41,10 @@ public:
     virtual void stop_stage(PerfStages stage) override{};
 
     virtual void execute_sequence(const SubGraph* subGraphPtr,
-                                  const MemoryManager& memoryManager,
-                                  const Workbuffers::mutable_buffer& buffer,
-                                  const InferenceRequestContext& context) override {
-        const bool is_tensor_it = dynamic_cast<const TensorIteratorOp*>(subGraphPtr);
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          const InferenceRequestContext& context) override {
         for (auto& op : subGraphPtr->getExecSequence()) {
-            if (is_tensor_it && (dynamic_cast<const ParameterOp*>(op.get()) || dynamic_cast<const ResultOp*>(op.get()))) {
-                continue;
-            }
             const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
             const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
             const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
@@ -57,14 +53,10 @@ public:
     };
 
     virtual void capture_sequence(const SubGraph* subGraphPtr,
-                                  const MemoryManager& memoryManager,
-                                  const Workbuffers::mutable_buffer& buffer,
-                                  InferenceRequestContext& context) override {
-        const bool is_tensor_it = dynamic_cast<const TensorIteratorOp*>(subGraphPtr);
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          InferenceRequestContext& context) override {
         for (auto& op : subGraphPtr->getExecSequence()) {
-            if (is_tensor_it && (dynamic_cast<const ParameterOp*>(op.get()) || dynamic_cast<const ResultOp*>(op.get()))) {
-                continue;
-            }
             const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
             const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
             const auto& workBuffers = memoryManager.workBuffers(*op, buffer);

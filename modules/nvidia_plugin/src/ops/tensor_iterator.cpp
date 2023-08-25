@@ -131,6 +131,8 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
             kernelmap_outputs_.emplace(outputIdx, kernel::Insert(element_type, props, max_threads_per_block_));
         }
     }
+
+    updateExecSequence();
 }
 
 void TensorIteratorOp::Execute(const InferenceRequestContext& context,
@@ -297,6 +299,16 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
         start += iter * portMap.stride;
         insert(stream.get(), inputTensors[0].get(), output.get(), start);
     }
+}
+
+void TensorIteratorOp::updateExecSequence() {
+    std::vector<OperationBase::Ptr> newExecSequence;
+    for (const auto& op : exec_sequence_) {
+        if (!dynamic_cast<const ParameterOp*>(op.get()) && !dynamic_cast<const ResultOp*>(op.get())) {
+            newExecSequence.emplace_back(op);
+        }
+    }
+    exec_sequence_ = std::move(newExecSequence);
 }
 
 void TensorIteratorOp::Capture(InferenceRequestContext& context,

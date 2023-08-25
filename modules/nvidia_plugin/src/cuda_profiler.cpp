@@ -167,17 +167,6 @@ void Profiler::collect_subgraphs(const SubGraph& graph, std::vector<OperationBas
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
 }
 
-void Profiler::collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
-    std::vector<ProfileExecStep> perfSteps;
-    const auto& execSequence = graph.getExecSequence();
-    for (const auto& execStep : execSequence) {
-        if (!dynamic_cast<ParameterOp*>(execStep.get()) && !dynamic_cast<ResultOp*>(execStep.get())) {
-            collect_node_visitor(execStep, perfSteps, allExecSequence);
-        }
-    }
-    subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
-}
-
 void Profiler::collect_node_visitor(const OperationBase::Ptr& execStep,
                                     std::vector<ProfileExecStep>& perfSteps,
                                     std::vector<OperationBase::Ptr>& allExecSequence) {
