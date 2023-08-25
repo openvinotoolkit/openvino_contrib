@@ -21,6 +21,8 @@
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_plugin.hpp"
+#include "cuda_profiler.hpp"
+#include "cuda_simple_execution_delegator.hpp"
 #include "nvidia/properties.hpp"
 #include "openvino/runtime/make_tensor.hpp"
 
@@ -38,13 +40,23 @@ void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor, const ov::element::Typ
         tensor->set_shape(shape);
     }
 }
+
+inline std::unique_ptr<IExecutionDelegator> createExectutionDelegator(bool is_profiling_enabled,
+                                                                      const SubGraph& subGraph) {
+    if (is_profiling_enabled) {
+        return std::make_unique<Profiler>(subGraph);
+    }
+    return std::make_unique<SimpleExecutionDelegator>();
+}
+
 }  // namespace
 
 CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& compiled_model)
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
-      profiler_{compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
-          compiled_model->get_topology_runner().GetSubGraph()},
+      executionDelegator_{
+          createExectutionDelegator(compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
+                                    compiled_model->get_topology_runner().GetSubGraph())},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
 }
@@ -86,8 +98,8 @@ void CudaInferRequest::create_infer_request() {
 }
 
 void CudaInferRequest::infer_preprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::Preprocess]);
-    profiler_.start_stage();
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[PerfStages::Preprocess]);
+    executionDelegator_->start_stage();
 
     convert_batched_tensors();
     check_tensors();
@@ -133,13 +145,13 @@ void CudaInferRequest::infer_preprocess() {
         else
             output_tensors_.at(i) = std::make_shared<ov::Tensor>(element_type, shape);
     }
-    profiler_.stop_stage(Profiler::Preprocess);
+    executionDelegator_->stop_stage(PerfStages::Preprocess);
 }
 
 void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
     try {
-        OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::StartPipeline])
-        profiler_.start_stage();
+        OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[PerfStages::StartPipeline])
+        executionDelegator_->start_stage();
         auto compiled_model = get_nvidia_model();
         memory_proxy_ = compiled_model->memory_pool_->WaitAndGet(cancellation_token_);
         auto& memory = memory_proxy_->Get();
@@ -151,12 +163,12 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
                                                     compiled_model->output_index_,
                                                     threadContext,
                                                     cancellation_token_,
-                                                    profiler_,
+                                                    *executionDelegator_,
                                                     cudaGraphContext,
                                                     is_benchmark_mode_};
         topology_runner.UpdateContext(inferRequestContext, memory);
         topology_runner.Run(inferRequestContext, memory);
-        profiler_.stop_stage(Profiler::StartPipeline);
+        executionDelegator_->stop_stage(PerfStages::StartPipeline);
     } catch (...) {
         // TODO:
         // Log error once logger is available
@@ -166,17 +178,17 @@ void CudaInferRequest::start_pipeline(const ThreadContext& threadContext) {
 }
 
 void CudaInferRequest::wait_pipeline(const ThreadContext& threadContext) {
-    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::WaitPipeline])
-    profiler_.start_stage();
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[PerfStages::WaitPipeline])
+    executionDelegator_->start_stage();
     // TODO: probably all time will be spent in synchonize, out of reach of ThrowIfCanceled
     threadContext.stream().synchronize();
     memory_proxy_.reset();
-    profiler_.stop_stage(Profiler::WaitPipeline);
+    executionDelegator_->stop_stage(PerfStages::WaitPipeline);
 }
 
 void CudaInferRequest::infer_postprocess() {
-    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[Profiler::Postprocess]);
-    profiler_.start_stage();
+    OV_ITT_SCOPED_TASK(itt::domains::nvidia_gpu, _profilingTask[PerfStages::Postprocess]);
+    executionDelegator_->start_stage();
 
     OPENVINO_ASSERT(get_outputs().size() == output_tensors_.size());
     OPENVINO_ASSERT(get_outputs().size() == get_nvidia_model()->model_->get_results().size());
@@ -197,8 +209,8 @@ void CudaInferRequest::infer_postprocess() {
             OPENVINO_ASSERT(true, "NVIDIA plugin doesn't support RemoteTensor.");
         }
     }
-    profiler_.stop_stage(Profiler::Postprocess);
-    profiler_.process_events();
+    executionDelegator_->stop_stage(PerfStages::Postprocess);
+    executionDelegator_->process_events();
 }
 
 void CudaInferRequest::cancel() {
@@ -233,7 +245,7 @@ std::vector<ov::SoPtr<ov::IVariableState>> CudaInferRequest::query_state() const
 }
 
 std::vector<ov::ProfilingInfo> CudaInferRequest::get_profiling_info() const {
-    return profiler_.get_performance_counts();
+    return executionDelegator_->get_performance_counts();
 }
 }  // namespace nvidia_gpu
 }  // namespace ov

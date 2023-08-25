@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -6,7 +6,7 @@
 
 #include <cstdint>
 #include <cuda_op_buffers_extractor.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_iexecution_delegator.hpp>
 #include <kernels/details/cuda_type_traits.hpp>
 #include <kernels/details/tensor_helpers.hpp>
 #include <kernels/insert.hpp>
@@ -141,8 +141,8 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
     auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
 
     // First iteration
     for (const auto inputIdx : invariant_inputs_) {
@@ -165,7 +165,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
 
         // Inner loop
-        profiler.execute_sequence(this, memoryManager, mutableBuffer, context);
+        executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 
         // Back-edge mapping
         for (auto& [resultIdx, paramIdx] : results_parameters_map_) {

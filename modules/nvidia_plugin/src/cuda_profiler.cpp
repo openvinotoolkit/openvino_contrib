@@ -34,21 +34,19 @@ std::pair<std::string, ov::ProfilingInfo> make_profile_info(std::string stage_na
 }
 }  // namespace
 
-Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCount} {
+Profiler::Profiler(const SubGraph& graph) {
     std::vector<OperationBase::Ptr> execSequence;
     collect_subgraphs(graph, execSequence);
 
-    if (perf_count_) {
-        for (size_t i = 0; i < execSequence.size(); ++i) {
-            auto& op = *execSequence[i];
-            perf_counters_.emplace(make_profile_info(op));
-            execution_order_.push_back(op.GetName());
-        }
+    for (size_t i = 0; i < execSequence.size(); ++i) {
+        auto& op = *execSequence[i];
+        perf_counters_.emplace(make_profile_info(op));
+        execution_order_.push_back(op.GetName());
     }
 }
 
 void Profiler::process_events() {
-    if (!perf_count_ || infer_count_ == 0) return;
+    if (infer_count_ == 0) return;
     auto ms_to_us = [](float timing) {
         return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<float, std::milli>{timing});
     };

@@ -14,7 +14,7 @@
 namespace ov {
 namespace nvidia_gpu {
 
-class Profiler;
+class IExecutionDelegator;
 
 class InferenceRequestContext {
 public:
@@ -30,12 +30,12 @@ public:
                             const std::map<std::string, std::size_t>& outputMapping,
                             const ThreadContext& threadContext,
                             CancellationToken& token,
-                            Profiler& profiler,
+                            IExecutionDelegator& executionDelegator,
                             CudaGraphContext& cudaGraphContext,
                             bool isBenchmarkMode = false)
         : threadContext{threadContext},
           token{token},
-          profiler{profiler},
+          executionDelegator{executionDelegator},
           tensor_mapping_context_{inputs, inputMapping, outputs, outputMapping},
           cuda_graph_context_{cudaGraphContext},
           is_benchmark_mode_{isBenchmarkMode} {}
@@ -56,7 +56,7 @@ public:
 
     const ThreadContext& getThreadContext() const noexcept { return threadContext; }
     [[nodiscard]] ov::nvidia_gpu::CancellationToken& getCancellationToken() const noexcept { return token; }
-    [[nodiscard]] Profiler& getProfiler() const noexcept { return profiler; }
+    [[nodiscard]] IExecutionDelegator& getExecutionDelegator() const noexcept { return executionDelegator; }
     [[nodiscard]] bool isBenchmarkMode() const noexcept { return is_benchmark_mode_; }
     [[nodiscard]] const TensorMappingContext& getTensorMappingContext() const { return tensor_mapping_context_; }
     [[nodiscard]] const CudaGraphContext& getCudaGraphContext() const { return cuda_graph_context_; }
@@ -65,7 +65,7 @@ public:
 private:
     const ThreadContext& threadContext;
     CancellationToken& token;
-    Profiler& profiler;
+    IExecutionDelegator& executionDelegator;
     const TensorMappingContext tensor_mapping_context_;
     CudaGraphContext& cuda_graph_context_;
     bool is_benchmark_mode_;

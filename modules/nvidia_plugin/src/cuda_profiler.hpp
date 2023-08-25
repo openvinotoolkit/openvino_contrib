@@ -28,7 +28,7 @@ public:
      * Constructor of Profiler class
      * @param perfCount Option that indicates if performance counters are enabled
      */
-    explicit Profiler(bool perfCount, const SubGraph& graph);
+    explicit Profiler(const SubGraph& graph);
 
     /**
      * Start time measurement of stage
@@ -101,7 +101,6 @@ private:
                             std::vector<OperationBase::Ptr>& allExecSequence);
 
     const CUDA::Stream* active_stream_ = nullptr;
-    const bool perf_count_;
     std::vector<std::pair<const void*, std::vector<ProfileExecStep>>> subgraph_perf_steps_map_;
     PerformaceCounters perf_counters_{};
     PerformaceCounters stage_counters_{};
@@ -130,24 +129,16 @@ public:
      */
     template <typename... TArgs>
     void execute(TArgs&&... args) const {
-        if (this->profiler_.perf_count_) {
-            timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
-            exec_step_.Execute(std::forward<TArgs>(args)...);
-            timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
-        } else {
-            exec_step_.Execute(std::forward<TArgs>(args)...);
-        }
+        timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        exec_step_.Execute(std::forward<TArgs>(args)...);
+        timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 
     template <typename... TArgs>
     void capture(TArgs&&... args) const {
-        if (this->profiler_.perf_count_) {
-            timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
-            exec_step_.Capture(std::forward<TArgs>(args)...);
-            timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
-        } else {
-            exec_step_.Capture(std::forward<TArgs>(args)...);
-        }
+        timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        exec_step_.Capture(std::forward<TArgs>(args)...);
+        timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 
     /**
@@ -200,9 +191,7 @@ public:
      * @param stream CUDA stream
      */
     ProfilerSequence(Profiler& profiler, size_t index) : profiler_{profiler}, index_{index} {
-        if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStart(*profiler_.active_stream_, profiler.cuda_event_record_mode_);
-        }
+        profiler_.exec_timing_.setStart(*profiler_.active_stream_, profiler.cuda_event_record_mode_);
     }
 
     /**
@@ -210,9 +199,7 @@ public:
      * Stops time measurement
      */
     ~ProfilerSequence() {
-        if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStop(*profiler_.active_stream_, profiler_.cuda_event_record_mode_);
-        }
+        profiler_.exec_timing_.setStop(*profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 
     /**

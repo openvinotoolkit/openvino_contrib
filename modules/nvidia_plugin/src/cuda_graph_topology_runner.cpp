@@ -5,7 +5,6 @@
 #include "cuda_graph_topology_runner.hpp"
 
 #include "cuda/event.hpp"
-#include "cuda/graph.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -54,7 +53,8 @@ void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const 
     }
 }
 
-void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
+void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
+                                      const DeviceMemBlock& memoryBlock) const {
     const auto& stream = context.getThreadContext().stream();
     auto& graphContext = context.getCudaGraphContext();
 

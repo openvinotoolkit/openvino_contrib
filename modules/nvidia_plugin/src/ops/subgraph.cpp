@@ -8,7 +8,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_iexecution_delegator.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
@@ -38,10 +38,7 @@ SubGraph::SubGraph(const CreationContext& context,
                    const std::shared_ptr<const ov::Model>& model,
                    ExecSequence&& sequence,
                    std::shared_ptr<MemoryManager> memoryManager)
-    : OperationBase{context, nullptr},
-      model_{model},
-      exec_sequence_{sequence},
-      memory_manager_{memoryManager} {}
+    : OperationBase{context, nullptr}, model_{model}, exec_sequence_{sequence}, memory_manager_{memoryManager} {}
 
 void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
@@ -137,9 +134,9 @@ void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    profiler.capture_sequence(this, memoryManager, mutableBuffer, context);
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.capture_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
@@ -152,9 +149,9 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    profiler.execute_sequence(this, memoryManager, mutableBuffer, context);
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 bool SubGraph::IsCudaGraphCompatible() const {
