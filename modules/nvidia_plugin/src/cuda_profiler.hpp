@@ -1,21 +1,13 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <chrono>
-#include <map>
-
-#include "openvino/runtime/profiling_info.hpp"
-#include "openvino/runtime/exec_model_info.hpp"
-
 #include <ops/tensor_iterator.hpp>
 #include <utils/perf_timing.hpp>
-#include <vector>
 
-#include "cuda_eager_topology_runner.hpp"
-#include "cuda_operation_base.hpp"
+#include "cuda_iexecution_delegator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -38,10 +30,8 @@ struct PerfCounts {
 /**
  * Creates profiler sequence and stores profiler results.
  */
-class Profiler {
+class Profiler : public IExecutionDelegator {
 public:
-    enum Stages { Preprocess, Postprocess, StartPipeline, WaitPipeline, NumOfStages };
-
     using PerformaceCounters = std::map<std::string, ov::ProfilingInfo>;
     using Duration = std::chrono::duration<float, std::micro>;
     using Time = std::chrono::steady_clock;
@@ -58,49 +48,67 @@ public:
     /**
      * Start time measurement of stage
      */
-    void set_stream(const CUDA::Stream& stream) { active_stream_ = &stream; }
+    void set_stream(const CUDA::Stream& stream) override { active_stream_ = &stream; }
 
     /**
      * Start time measurement of stage
      */
-    void start_stage() { start_ = Time::now(); }
+    void start_stage() override { start_ = Time::now(); }
 
     /**
      * Stop time measurement of stage
      * @param stage Stage for which time measurement was performed
      */
-    void stop_stage(Stages stage) { durations_[stage] = Time::now() - start_; }
+    void stop_stage(Stages stage) override { durations_[stage] = Time::now() - start_; }
 
+    /**
+     * Execute sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    void execute_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          const InferenceRequestContext& context) override;
+
+    /**
+     * Capture sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    void capture_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          InferenceRequestContext& context) override;
+
+    /**
+     * Returns performance counters
+     * @return Performance counters
+     */
+    [[nodiscard]] const std::vector<ov::ProfilingInfo> get_performance_counts() const override;
+
+    /**
+     * Processes performance events into performance counters
+     */
+    void process_events() override;
+
+    /**
+     * Set CUDA event record mode
+     * @param mode Value of CUDA::Event::RecordMode to set
+     */
+    void set_cuda_event_record_mode(CUDA::Event::RecordMode mode) override { cuda_event_record_mode_ = mode; }
+
+private:
     /**
      * Creates profiler sequence and increase infer request counter
      * @return ProfilerSequence for single InferRequest
      */
     Profiler::ProfilerSequence create_exec_sequence(const SubGraph* subGraphPtr);
 
-    void execute_sequence(const SubGraph* subGraphPtr,
-                          const MemoryManager& memoryManager,
-                          const Workbuffers::mutable_buffer& buffer,
-                          const InferenceRequestContext& context);
-
-    void capture_sequence(const SubGraph* subGraphPtr,
-                          const MemoryManager& memoryManager,
-                          const Workbuffers::mutable_buffer& buffer,
-                          InferenceRequestContext& context);
-
-    /**
-     * Returns performance counters
-     * @return Performance counters
-     */
-    [[nodiscard]] const std::vector<ov::ProfilingInfo> get_performance_counts() const;
-
-    /**
-     * Processes performance events into performance counters
-     */
-    void process_events();
-
-    void set_cuda_event_record_mode(CUDA::Event::RecordMode mode) { cuda_event_record_mode_ = mode; }
-
-private:
     void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
     void collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
     void collect_node_visitor(const OperationBase::Ptr& execStep,

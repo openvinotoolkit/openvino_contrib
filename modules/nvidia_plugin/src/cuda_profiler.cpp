@@ -124,17 +124,6 @@ void Profiler::process_events() {
     insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(Postprocess)));
 }
 
-Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGraphPtr) {
-    OPENVINO_ASSERT(active_stream_);
-    ++infer_count_;
-    auto foundPerfStepsIter = std::find_if(subgraph_perf_steps_map_.begin(),
-                                           subgraph_perf_steps_map_.end(),
-                                           [subGraphPtr](const auto& ps) { return ps.first == subGraphPtr; });
-    OPENVINO_ASSERT(foundPerfStepsIter != subgraph_perf_steps_map_.end());
-    return ProfilerSequence{*this,
-                            static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
-}
-
 void Profiler::execute_sequence(const SubGraph* subGraphPtr,
                                 const MemoryManager& memoryManager,
                                 const Workbuffers::mutable_buffer& buffer,
@@ -157,6 +146,17 @@ void Profiler::capture_sequence(const SubGraph* subGraphPtr,
         const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
         op->capture(context, inputTensors, outputTensors, workBuffers);
     }
+}
+
+Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGraphPtr) {
+    OPENVINO_ASSERT(active_stream_);
+    ++infer_count_;
+    auto foundPerfStepsIter = std::find_if(subgraph_perf_steps_map_.begin(),
+                                           subgraph_perf_steps_map_.end(),
+                                           [subGraphPtr](const auto& ps) { return ps.first == subGraphPtr; });
+    OPENVINO_ASSERT(foundPerfStepsIter != subgraph_perf_steps_map_.end());
+    return ProfilerSequence{*this,
+                            static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
 }
 
 void Profiler::collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
