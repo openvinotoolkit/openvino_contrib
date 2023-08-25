@@ -5,11 +5,10 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include <cuda_eager_topology_runner.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <ops/result.hpp>
 #include <typeinfo>
 
@@ -79,11 +78,11 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
-    EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-    Profiler profiler{false, graph};
+    SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     InferenceRequestContext context{empty_tensor, empty_mapping, tensors, tensors_mapping, threadContext,
-        token, profiler, cudaGraphContext};
+        token, simpleExecutionDelegator, cudaGraphContext};
+    auto mem = blob->as<MemoryBlob>()->rmap();
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
@@ -95,11 +94,10 @@ TEST_F(ResultTest, canExecuteSync) {
 
 TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
-    EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-    Profiler profiler{false, graph};
+    SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     InferenceRequestContext context{empty_tensor, empty_mapping, tensors, tensors_mapping, threadContext,
-        token, profiler, cudaGraphContext};
+        token, simpleExecutionDelegator, cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});

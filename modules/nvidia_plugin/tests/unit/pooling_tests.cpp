@@ -10,8 +10,7 @@
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_eager_topology_runner.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <gsl/span>
 #include <openvino/op/avg_pool.hpp>
 #include <openvino/op/constant.hpp>
@@ -90,11 +89,16 @@ struct PoolingTest : testing::Test {
         CUDA::Device device{};
         const bool optimizeOption = false;
         CancellationToken token{};
-        EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            empty_tensor, empty_mapping, empty_tensor, empty_mapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{empty_tensor,
+                                        empty_mapping,
+                                        empty_tensor,
+                                        empty_mapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
         auto& registry{OperationRegistry::getInstance()};
         auto const_input = std::make_shared<ov::op::v0::Constant>(ov::element::f32, Shape{in_shape});
         const size_t spatial_dims = in_shape.size() - 2;

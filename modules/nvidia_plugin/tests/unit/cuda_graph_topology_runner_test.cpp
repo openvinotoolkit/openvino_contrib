@@ -7,7 +7,7 @@
 #include <cuda_graph_topology_runner.hpp>
 #include <ops/parameter.hpp>
 #include <ops/result.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include "test_networks.hpp"
 
 using namespace ov::nvidia_gpu;
@@ -48,7 +48,7 @@ protected:
     CancellationToken cancellationToken_ {};
     CudaGraphContext cudaGraphContext_ {};
     CudaGraphTopologyRunner runner_ {creationContext_, model_};
-    Profiler profiler_ {false, runner_.GetSubGraph()};
+    SimpleExecutionDelegator simpleExecutionDelegator_ {};
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors_ {PopulateTensors(model_->inputs())};
     std::vector<std::shared_ptr<ov::Tensor>> outputTensors_ {PopulateTensors(model_->outputs())};
     std::map<std::string, std::size_t> inputIndeces_ {PopulateInputIndices(model_)};
@@ -59,7 +59,7 @@ protected:
                                                 outputIndeces_,
                                                 threadContext_,
                                                 cancellationToken_,
-                                                profiler_,
+                                                simpleExecutionDelegator_,
                                                 cudaGraphContext_,
                                                 false};
     DeviceMemBlock deviceMemBlock_ {runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};
@@ -92,16 +92,16 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
     const auto oldCudaGraphContext = cudaGraphContext_;
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors{PopulateTensors(model_->inputs())};
-    std::vector<std::shared_ptr<ov::Tensor>> outputTensors {PopulateTensors(model_->outputs())};
+    std::vector<std::shared_ptr<ov::Tensor>> outputTensors{PopulateTensors(model_->outputs())};
     InferenceRequestContext inferRequestContext{inputTensors,
-                                                    inputIndeces_,
-                                                    outputTensors,
-                                                    outputIndeces_,
-                                                    threadContext_,
-                                                    cancellationToken_,
-                                                    profiler_,
-                                                    cudaGraphContext_,
-                                                    false};
+                                                inputIndeces_,
+                                                outputTensors,
+                                                outputIndeces_,
+                                                threadContext_,
+                                                cancellationToken_,
+                                                simpleExecutionDelegator_,
+                                                cudaGraphContext_,
+                                                false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
     EXPECT_NE(cudaGraphContext_, oldCudaGraphContext);
 }
@@ -115,7 +115,7 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreNotUpdatedIfPointersUncha
                                                 outputIndeces_,
                                                 threadContext_,
                                                 cancellationToken_,
-                                                profiler_,
+                                                simpleExecutionDelegator_,
                                                 cudaGraphContext_,
                                                 false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);

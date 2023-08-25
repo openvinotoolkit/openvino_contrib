@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "cuda_graph_topology_runner.hpp"
-#include "cuda_profiler.hpp"
+#include "cuda_simple_execution_delegator.hpp"
 #include "ngraph_functions/builders.hpp"
 #include "ngraph_functions/utils/data_utils.hpp"
 #include "ops/parameter.hpp"
@@ -217,7 +217,7 @@ protected:
                                                                          outputIndices_,
                                                                          threadContext_,
                                                                          cancellationToken_,
-                                                                         profiler_,
+                                                                         simpleExecutionDelegator_,
                                                                          cudaGraphContext_,
                                                                          false);
     }
@@ -245,7 +245,7 @@ protected:
     CancellationToken cancellationToken_{};
     CudaGraphContext cudaGraphContext_{};
     CudaGraphTopologyRunner runner_{creationContext_, model_};
-    Profiler profiler_{false, runner_.GetSubGraph()};
+    SimpleExecutionDelegator simpleExecutionDelegator_{};
     std::vector<std::shared_ptr<ov::Tensor>> inputTensors_{populateTensors(model_->inputs())};
     std::vector<std::shared_ptr<ov::Tensor>> outputTensors_{populateTensors(model_->outputs())};
     std::map<std::string, std::size_t> inputIndices_{populateInputIndices(model_)};
@@ -257,7 +257,7 @@ protected:
                                                   outputIndices_,
                                                   threadContext_,
                                                   cancellationToken_,
-                                                  profiler_,
+                                                  simpleExecutionDelegator_,
                                                   cudaGraphContext_,
                                                   false);
     DeviceMemBlock deviceMemBlock_{runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};

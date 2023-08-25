@@ -8,8 +8,7 @@
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_eager_topology_runner.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <ops/parameter.hpp>
 #include <typeinfo>
 
@@ -62,11 +61,16 @@ TEST_F(ParameterRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ParameterTest, canExecuteSync) {
     CancellationToken token{};
-    EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-    Profiler profiler{false, graph};
+    SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    InferenceRequestContext context{tensors, tensors_mapping, empty_tensor, empty_mapping, threadContext,
-        token, profiler, cudaGraphContext};
+    InferenceRequestContext context{tensors,
+                                    tensors_mapping,
+                                    empty_tensor,
+                                    empty_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
@@ -77,11 +81,16 @@ TEST_F(ParameterTest, canExecuteSync) {
 
 TEST_F(ParameterTest, canExecuteAsync) {
     CancellationToken token{};
-    ov::nvidia_gpu::EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    InferenceRequestContext context{tensors, tensors_mapping, empty_tensor, empty_mapping, threadContext,
-        token, profiler, cudaGraphContext};
+    InferenceRequestContext context{tensors,
+                                    tensors_mapping,
+                                    empty_tensor,
+                                    empty_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);

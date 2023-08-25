@@ -7,8 +7,7 @@
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_eager_topology_runner.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <numeric>
 #include <ops/concat.hpp>
 #include <typeinfo>
@@ -50,11 +49,16 @@ struct ConcatTest : testing::Test {
         auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
         ASSERT_TRUE(concatOp);
         CancellationToken token{};
-        EagerTopologyRunner graph{CreationContext{CUDA::Device{}, false}, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            empty_tensor, empty_mapping, empty_tensor, empty_mapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{empty_tensor,
+                                        empty_mapping,
+                                        emptyTensor,
+                                        emptyMapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};
