@@ -62,12 +62,12 @@ protected:
                                                 profiler_,
                                                 cudaGraphContext_,
                                                 false};
-    DeviceMemBlock deviceMemBlock_ {runner_.GetSubGraph().memoryManager().mutableTensorsMemoryModel()};
+    DeviceMemBlock deviceMemBlock_ {runner_.GetSubGraph().memoryManager()->mutableTensorsMemoryModel()};
 };
 
 TEST_F(CudaGraphTopologyRunnerTest, InstantiateGraphExec) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    EXPECT_TRUE(inferRequestContext_.getCudaGraphContext().graphExec.has_value());
+    EXPECT_TRUE(inferRequestContext_.getCudaGraphContext().isInitialized());
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, BasicRun) {
@@ -77,22 +77,21 @@ TEST_F(CudaGraphTopologyRunnerTest, BasicRun) {
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckGraphExecIsInstantiatedOnce) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    CUDA::GraphExec* exec = &inferRequestContext_.getCudaGraphContext().graphExec.value();
+    const auto oldCudaGraphContext = &inferRequestContext_.getCudaGraphContext();
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    EXPECT_EQ(&inferRequestContext_.getCudaGraphContext().graphExec.value(), exec);
+    EXPECT_EQ(&inferRequestContext_.getCudaGraphContext(), oldCudaGraphContext);
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesArePopulated) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    EXPECT_GT(inferRequestContext_.getCudaGraphContext().parameterNodes.size(), 0);
-    EXPECT_GT(inferRequestContext_.getCudaGraphContext().resultNodes.size(), 0);
+    EXPECT_GT(inferRequestContext_.getCudaGraphContext().getParamsCount(), 0);
+    EXPECT_GT(inferRequestContext_.getCudaGraphContext().getResultsCount(), 0);
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    auto paramNodes = cudaGraphContext_.parameterNodes;
-    auto resultNodes = cudaGraphContext_.resultNodes;
-    std::vector<std::shared_ptr<ov::Tensor>> inputTensors {PopulateTensors(model_->inputs())};
+    const auto oldCudaGraphContext = cudaGraphContext_;
+    std::vector<std::shared_ptr<ov::Tensor>> inputTensors{PopulateTensors(model_->inputs())};
     std::vector<std::shared_ptr<ov::Tensor>> outputTensors {PopulateTensors(model_->outputs())};
     InferenceRequestContext inferRequestContext{inputTensors,
                                                     inputIndeces_,
@@ -104,24 +103,21 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {
                                                     cudaGraphContext_,
                                                     false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
-    EXPECT_NE(cudaGraphContext_.parameterNodes, paramNodes);
-    EXPECT_NE(cudaGraphContext_.resultNodes, resultNodes);
+    EXPECT_NE(cudaGraphContext_, oldCudaGraphContext);
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreNotUpdatedIfPointersUnchanged) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    auto paramNodes = cudaGraphContext_.parameterNodes;
-    auto resultNodes = cudaGraphContext_.resultNodes;
+    const auto oldCudaGraphContext = cudaGraphContext_;
     InferenceRequestContext inferRequestContext{inputTensors_,
-                                                    inputIndeces_,
-                                                    outputTensors_,
-                                                    outputIndeces_,
-                                                    threadContext_,
-                                                    cancellationToken_,
-                                                    profiler_,
-                                                    cudaGraphContext_,
-                                                    false};
+                                                inputIndeces_,
+                                                outputTensors_,
+                                                outputIndeces_,
+                                                threadContext_,
+                                                cancellationToken_,
+                                                profiler_,
+                                                cudaGraphContext_,
+                                                false};
     runner_.UpdateContext(inferRequestContext, deviceMemBlock_);
-    EXPECT_EQ(cudaGraphContext_.parameterNodes, paramNodes);
-    EXPECT_EQ(cudaGraphContext_.resultNodes, resultNodes);
+    EXPECT_EQ(cudaGraphContext_, oldCudaGraphContext);
 }
