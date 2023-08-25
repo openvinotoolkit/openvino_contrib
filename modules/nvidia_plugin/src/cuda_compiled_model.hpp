@@ -9,7 +9,7 @@
 
 #include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
-#include "cuda_eager_topology_runner.hpp"
+#include "cuda_itopology_runner.hpp"
 #include "cuda_infer_request.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"

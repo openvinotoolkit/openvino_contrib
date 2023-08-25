@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "cuda_eager_topology_runner.hpp"
+#include "cuda_itopology_runner.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

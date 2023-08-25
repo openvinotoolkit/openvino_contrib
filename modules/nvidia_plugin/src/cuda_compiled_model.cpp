@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_eager_topology_runner.hpp"
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_itt.hpp"
 #include "cuda_operation_registry.hpp"
