@@ -77,6 +77,16 @@ public:
      */
     Profiler::ProfilerSequence create_exec_sequence(const SubGraph* subGraphPtr);
 
+    void execute_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          const InferenceRequestContext& context);
+
+    void capture_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          InferenceRequestContext& context);
+
     /**
      * Returns performance counters
      * @return Performance counters

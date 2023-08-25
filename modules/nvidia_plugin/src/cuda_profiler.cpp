@@ -135,6 +135,30 @@ Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGra
                             static_cast<size_t>(std::distance(subgraph_perf_steps_map_.begin(), foundPerfStepsIter))};
 }
 
+void Profiler::execute_sequence(const SubGraph* subGraphPtr,
+                                const MemoryManager& memoryManager,
+                                const Workbuffers::mutable_buffer& buffer,
+                                const InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->execute(context, inTensors, outTensors, workBuffers);
+    }
+}
+
+void Profiler::capture_sequence(const SubGraph* subGraphPtr,
+                                const MemoryManager& memoryManager,
+                                const Workbuffers::mutable_buffer& buffer,
+                                InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->capture(context, inputTensors, outputTensors, workBuffers);
+    }
+}
+
 void Profiler::collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
     std::vector<ProfileExecStep> perfSteps;
     const auto& execSequence = graph.getExecSequence();
