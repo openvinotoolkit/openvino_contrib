@@ -34,6 +34,15 @@ SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const o
     initExecuteSequence(context, false, false);
 }
 
+SubGraph::SubGraph(const CreationContext& context,
+                   const std::shared_ptr<const ov::Model>& model,
+                   ExecSequence&& sequence,
+                   std::shared_ptr<MemoryManager> memoryManager)
+    : OperationBase{context, nullptr},
+      model_{model}
+      exec_sequence_{sequence},
+      memory_manager_{memoryManager} {}
+
 void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 

@@ -15,7 +15,14 @@ namespace nvidia_gpu {
 
 class SubGraph : public OperationBase {
 public:
+    using ExecSequence = std::vector<OperationBase::Ptr>;
+
     SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
+
+    SubGraph(const CreationContext& context,
+             const std::shared_ptr<const ov::Model>& model,
+             ExecSequence&& sequence,
+             std::shared_ptr<MemoryManager> memoryManager);
 
     virtual ~SubGraph() = default;
 
@@ -68,7 +75,7 @@ protected:
         ov::Shape shape_{};
     };
 
-    std::unique_ptr<MemoryManager> memory_manager_;
+    std::shared_ptr<MemoryManager> memory_manager_;
     std::vector<OperationBase::Ptr> params_;
     std::vector<OperationInfo> params_info_;
     std::vector<OperationBase::Ptr> exec_sequence_;

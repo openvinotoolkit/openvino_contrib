@@ -14,6 +14,31 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     : orig_subgraph_{context, model} {
     if (!orig_subgraph_.IsCudaGraphCompatible())
         throw CudaGraphIncompatible{"The topology is incompatible with CUDA graphs."};
+
+    std::vector<SubGraph::ExecSequence> sequences;
+    SubGraph::ExecSequence currentSequence;
+    const auto& origSequence = orig_subgraph_.getExecSequence();
+    const auto totalSize = origSequence.size();
+    if (totalSize == 0) {
+        throw_ov_exception("ExecSequence size is 0");
+    }
+    bool isLastOpCompatible = origSequence[0]->IsCudaGraphCompatible();
+    currentSequence.push_back(origSequence[0]);
+    for (size_t i = 1; i < totalSize; ++i) {
+        const auto& op = origSequence[i];
+        if (op->IsCudaGraphCompatible() != isLastOpCompatible) {
+            isLastOpCompatible = !isLastOpCompatible;
+            sequences.emplace_back(std::move(currentSequence));
+            currentSequence.clear();
+        }
+        currentSequence.push_back(op);
+    }
+    sequences.emplace_back(std::move(currentSequence));
+
+    const auto& memoryManager = orig_subgraph_.memoryManager();
+    for (auto&& sequence : sequences) {
+        subgraphs_.emplace_back(context, model, std::move(sequence), memoryManager);
+    }
 }
 
 void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
