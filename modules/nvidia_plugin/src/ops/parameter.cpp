@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -27,8 +27,8 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
                           const Workbuffers&) const {
     OPENVINO_ASSERT(inputs.size() == 0, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
-    OPENVINO_ASSERT(context.has_input_tensor(input_tensor_name_), "Node name: ", GetName());
-    auto tensor = context.get_input_tensor(input_tensor_name_);
+    OPENVINO_ASSERT(context.getTensorMappingContext().has_input_tensor(input_tensor_name_), "Node name: ", GetName());
+    auto tensor = context.getTensorMappingContext().get_input_tensor(input_tensor_name_);
     context.getThreadContext().stream().upload(outputs[0], tensor->data(), tensor->get_byte_size());
 }
 
@@ -40,11 +40,10 @@ void ParameterOp::Capture(InferenceRequestContext &context, Inputs inputs, Outpu
                           const Workbuffers&) const {
     OPENVINO_ASSERT(inputs.size() == 0, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
-    OPENVINO_ASSERT(context.has_input_tensor(input_tensor_name_), "Node name: ", GetName());
-    auto tensor = context.get_input_tensor(input_tensor_name_);
-    CUDA::CaptureInfo captureInfo{context.getThreadContext().stream()};
-    context.getCudaGraphContext().parameterNodes.emplace(std::make_pair(input_tensor_name_,
-            captureInfo.addUploadNode(outputs[0], tensor->data(), tensor->get_byte_size())));
+    OPENVINO_ASSERT(context.getTensorMappingContext().has_input_tensor(input_tensor_name_), "Node name: ", GetName());
+    auto tensor = context.getTensorMappingContext().get_input_tensor(input_tensor_name_);
+    context.getCudaGraphContext().addParameter(
+        input_tensor_name_, context.getThreadContext().stream(), outputs[0], tensor->data(), tensor->get_byte_size());
 }
 
 OPERATION_REGISTER(ParameterOp, Parameter);

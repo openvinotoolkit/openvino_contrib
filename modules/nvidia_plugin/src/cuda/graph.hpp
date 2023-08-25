@@ -16,6 +16,8 @@ class Graph: public Handle<cudaGraph_t> {
 public:
     Graph(unsigned int flags);
 
+    friend bool operator==(const Graph& lhs, const Graph& rhs);
+
     friend GraphCapture;
 
 private:
@@ -26,6 +28,7 @@ private:
     static cudaGraph_t createNativeWithFlags(unsigned int flags);
 };
 
+bool operator==(const Graph& rhs, const Graph& lhs);
 
 class GraphExec: public Handle<cudaGraphExec_t> {
 public:
@@ -35,6 +38,8 @@ public:
 
     void launch(const Stream& stream) const;
 
+    friend bool operator==(const GraphExec& lhs, const GraphExec& rhs);
+
 #if !defined(NDEBUG) || defined(_DEBUG)
 private:
     static constexpr std::size_t kErrorStringLen = 1024;
@@ -42,6 +47,7 @@ private:
 #endif
 };
 
+bool operator==(const GraphExec& lhs, const GraphExec& rhs);
 
 class GraphCapture {
 public:

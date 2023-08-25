@@ -11,10 +11,6 @@ namespace nvidia_gpu {
 
 class CudaGraphTopologyRunner final : public ITopologyRunner {
 public:
-    struct CudaGraphIncompatible : public std::runtime_error {
-        using std::runtime_error::runtime_error;
-    };
-
     CudaGraphTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
     ~CudaGraphTopologyRunner() override = default;
 

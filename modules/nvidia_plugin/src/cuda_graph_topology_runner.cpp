@@ -3,18 +3,16 @@
 //
 
 #include "cuda_graph_topology_runner.hpp"
-#include "cuda/graph.hpp"
+
 #include "cuda/event.hpp"
-#include "cuda_profiler.hpp"
+#include "cuda/graph.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
+CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
+                                                 const std::shared_ptr<const ov::Model>& model)
     : orig_subgraph_{context, model} {
-    if (!orig_subgraph_.IsCudaGraphCompatible())
-        throw CudaGraphIncompatible{"The topology is incompatible with CUDA graphs."};
-
     std::vector<SubGraph::ExecSequence> sequences;
     SubGraph::ExecSequence currentSequence;
     const auto& origSequence = orig_subgraph_.getExecSequence();
@@ -42,15 +40,28 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
 }
 
 void CudaGraphTopologyRunner::Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
-    context.getCudaGraphContext().graphExec.value().launch(context.getThreadContext().stream());
+    const auto& stream = context.getThreadContext().stream();
+    std::size_t graphIndex = 0;
+    for (auto& subgraph : subgraphs_) {
+        if (subgraph.IsCudaGraphCompatible()) {
+            context.getCudaGraphContext().launch(graphIndex, stream);
+            graphIndex++;
+        } else {
+            Workbuffers workbuffers{};
+            workbuffers.mutable_buffers.emplace_back(memoryBlock.view().data());
+            subgraph.Execute(context, {}, {}, workbuffers);
+        }
+    }
 }
 
-void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
-                                      const DeviceMemBlock &memoryBlock) const {
-    context.getProfiler().set_cuda_event_record_mode(CUDA::Event::RecordMode::External);
+void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     const auto& stream = context.getThreadContext().stream();
+    auto& graphContext = context.getCudaGraphContext();
+
+    graphContext.reset();
     for (const auto& subgraph : subgraphs_) {
         if (subgraph.IsCudaGraphCompatible()) {
+            graphContext.startNextGraphAddition();
             CUDA::GraphCapture capture{stream};
             {
                 auto scope = capture.getScope();
@@ -59,8 +70,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext &context,
                 subgraph.Capture(context, {}, {}, workbuffers);
             }
             const auto& graph = capture.getGraph();
-            context.getCudaGraphContext().graph.emplace_back(graph);
-            context.getCudaGraphContext().graphExec.emplace_back(graph);
+            graphContext.addGraph(graph);
         }
     }
 }
@@ -69,20 +79,16 @@ const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
     return orig_subgraph_;
 }
 
-void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext &context, const DeviceMemBlock &memoryBlock) const {
-    if (context.getCudaGraphContext().graphExec)
+void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
+    if (context.getCudaGraphContext().isInitialized()) {
         UpdateCapture(context);
-    else
+    } else {
         Capture(context, memoryBlock);
+    }
 }
 
-void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext &context) const {
-    CudaGraphContext& graphContext = context.getCudaGraphContext();
-    for (auto& pair : graphContext.parameterNodes)
-        pair.second.updateSrc(graphContext.graphExec.value(),
-                (context.get_input_tensor(pair.first)->data()));
-    for (auto& pair : graphContext.resultNodes)
-        pair.second.update_dst(graphContext.graphExec.value(), context.get_output_tensor(pair.first)->data());
+void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext& context) const {
+    context.getCudaGraphContext().updateCapture(context.getTensorMappingContext());
 }
 
 }  // namespace nvidia_gpu

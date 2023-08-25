@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -35,8 +35,8 @@ void ResultOp::Execute(const InferenceRequestContext& context,
     OPENVINO_ASSERT(outputs.size() == 0, "Node name: ", GetName());
     std::shared_ptr<ov::Tensor> tensor;
     for (const auto& outputName : output_tensor_names_) {
-        if (context.has_output_tensor(outputName)) {
-            tensor = context.get_output_tensor(outputName);
+        if (context.getTensorMappingContext().has_output_tensor(outputName)) {
+            tensor = context.getTensorMappingContext().get_output_tensor(outputName);
             break;
         }
     }
@@ -121,16 +121,15 @@ void ResultOp::Capture(InferenceRequestContext& context,
     std::shared_ptr<ov::Tensor> tensor;
     std::string outputTensorName{};
     for (const auto& outputName : output_tensor_names_) {
-        if (context.has_output_tensor(outputName)) {
-            tensor = context.get_output_tensor(outputName);
+        if (context.getTensorMappingContext().has_output_tensor(outputName)) {
+            tensor = context.getTensorMappingContext().get_output_tensor(outputName);
             outputTensorName = outputName;
             break;
         }
     }
     OPENVINO_ASSERT(tensor != nullptr, "Node name: ", GetName());
-    CUDA::CaptureInfo captureInfo{context.getThreadContext().stream()};
-    context.getCudaGraphContext().resultNodes.emplace(std::make_pair(outputTensorName,
-            captureInfo.addDownloadNode(tensor->data(), inputs[0], tensor->get_byte_size())));
+    context.getCudaGraphContext().addResult(
+        outputTensorName, context.getThreadContext().stream(), tensor->data(), inputs[0], tensor->get_byte_size());
 }
 
 OPERATION_REGISTER(ResultOp, Result);

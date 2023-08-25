@@ -129,13 +129,7 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     const auto creationContext = CreationContext{device, opBenchOption};
 
     if (use_cuda_graph_) {
-        try {
-            topology_runner_ = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
-            // TODO: Add CudaGraphTopologyRunner validation
-        } catch (const CudaGraphTopologyRunner::CudaGraphIncompatible&) {
-            topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
-            use_cuda_graph_ = false;
-        }
+        topology_runner_ = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
     } else {
         topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
     }

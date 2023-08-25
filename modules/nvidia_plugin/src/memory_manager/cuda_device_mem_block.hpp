@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -12,6 +12,8 @@
 
 namespace ov {
 namespace nvidia_gpu {
+
+class CudaGraphContext;
 
 /**
  * @brief Allocates and owns continuous memory blob on CUDA device.
