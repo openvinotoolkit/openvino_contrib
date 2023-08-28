@@ -69,7 +69,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [HardSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HardSigmoid_1.md)                                    | Not Supported |
 | [HSigmoid](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSigmoid_5.md)                                          | Not Supported |
 | [HSwish](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/HSwish_4.md)                                              | Supported     |
-| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported     |
+| [Interpolate](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/image/Interpolate_4.md)                                         | Supported*    |
 | [Less](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/Less_1.md)                                                  | Supported     |
 | [LessEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/LessEqual_1.md)                                        | Supported     |
 | [Log](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Log_1.md)                                                    | Supported     |
@@ -96,7 +96,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
 | [NormalizeL2](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/normalization/NormalizeL2_1.md)                                 | Not Supported |
 | [NotEqual](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/comparison/NotEqual_1.md)                                          | Supported     |
 | [OneHot](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/sequence/OneHot_1.md)                                                | Not Supported |
-| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                      | Supported     |
+| [Pad](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/movement/Pad_1.md)                                                      | Supported*    |
 | [Parameter](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/infrastructure/Parameter_1.md)                                    | Supported     |
 | [Power](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/arithmetic/Power_1.md)                                                | Supported     |
 | [PReLU](https://github.com/openvinotoolkit/openvino/blob/master/docs/ops/activation/PReLU_1.md)                                                | Supported     |
@@ -197,3 +197,7 @@ The semantics match corresponding nGraph operation classes declared in `namespac
     * supported `auto_broadcast` types are: `NONE` and `NUMPY`;
 * `'Gather'`
     * supported range of values for indices tensor is `[0, data[axis] - 1]`, if a value is out of this range, CUDA runtime will crash during one of the subsequent operations.
+* `'Interpolate'`
+    * `nearest`, `linear`, `cubic` values of `mode` are supported only.
+* `'Pad'`
+    * `constant` value of `pad_mode` is supported only.
