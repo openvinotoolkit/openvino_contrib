@@ -16,9 +16,8 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     SubGraph::ExecSequence currentSequence;
     const auto& origSequence = orig_subgraph_.getExecSequence();
     const auto totalSize = origSequence.size();
-    if (totalSize == 0) {
-        throw_ov_exception("ExecSequence size is 0");
-    }
+    OPENVINO_ASSERT(totalSize != 0, "ExecSequence size is 0");
+
     bool isLastOpCompatible = origSequence[0]->IsCudaGraphCompatible();
     currentSequence.push_back(origSequence[0]);
     for (size_t i = 1; i < totalSize; ++i) {

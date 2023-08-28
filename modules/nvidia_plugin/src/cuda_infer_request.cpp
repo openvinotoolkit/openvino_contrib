@@ -41,8 +41,8 @@ void allocate_tensor_impl(ov::SoPtr<ov::ITensor>& tensor, const ov::element::Typ
     }
 }
 
-inline std::unique_ptr<IExecutionDelegator> createExectutionDelegator(bool is_profiling_enabled,
-                                                                      const SubGraph& subGraph) {
+inline std::unique_ptr<IExecutionDelegator> create_execution_delegator(bool is_profiling_enabled,
+                                                                       const SubGraph& subGraph) {
     if (is_profiling_enabled) {
         return std::make_unique<Profiler>(subGraph);
     }
@@ -55,8 +55,8 @@ CudaInferRequest::CudaInferRequest(const std::shared_ptr<const CompiledModel>& c
     : ov::ISyncInferRequest(compiled_model),
       cancellation_token_{[this] { memory_proxy_.reset(); }},
       executionDelegator_{
-          createExectutionDelegator(compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
-                                    compiled_model->get_topology_runner().GetSubGraph())},
+          create_execution_delegator(compiled_model->get_property(ov::enable_profiling.name()).as<bool>(),
+                                     compiled_model->get_topology_runner().GetSubGraph())},
       is_benchmark_mode_{compiled_model->get_property(ov::nvidia_gpu::operation_benchmark.name()).as<bool>()} {
     create_infer_request();
 }

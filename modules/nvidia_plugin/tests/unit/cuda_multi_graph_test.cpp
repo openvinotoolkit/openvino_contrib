@@ -35,8 +35,8 @@ void generateInput(ov::Tensor& tensor, int to = TO, int from = FROM, int seed = 
     // This test supports only FP16 precision
     EXPECT_EQ(tensor.get_element_type(), ov::element::Type_t::f16);
     auto* ptr = getMutablePtr(tensor);
-    std::mt19937 engine{seed};
-    std::uniform_real_distribution<float> dist{from, to};
+    std::mt19937 engine(seed);
+    std::uniform_real_distribution<float> dist(from, to);
     std::generate(ptr, ptr + tensor.get_size(), [&dist, &engine]() { return ov::float16{dist(engine)}; });
 }
 

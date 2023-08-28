@@ -31,7 +31,7 @@ SubGraph::SubGraph(const CreationContext& context,
 
 SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
     : OperationBase(context, nullptr), model_{model} {
-    initExecuteSequence(context, false, false);
+      initExecuteSequence(context, false, false);
 }
 
 SubGraph::SubGraph(const CreationContext& context,

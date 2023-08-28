@@ -41,9 +41,9 @@ public:
     virtual void stop_stage(PerfStages stage) override{};
 
     virtual void execute_sequence(const SubGraph* subGraphPtr,
-                          const MemoryManager& memoryManager,
-                          const Workbuffers::mutable_buffer& buffer,
-                          const InferenceRequestContext& context) override {
+                                  const MemoryManager& memoryManager,
+                                  const Workbuffers::mutable_buffer& buffer,
+                                  const InferenceRequestContext& context) override {
         for (auto& op : subGraphPtr->getExecSequence()) {
             const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
             const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
@@ -53,9 +53,9 @@ public:
     };
 
     virtual void capture_sequence(const SubGraph* subGraphPtr,
-                          const MemoryManager& memoryManager,
-                          const Workbuffers::mutable_buffer& buffer,
-                          InferenceRequestContext& context) override {
+                                  const MemoryManager& memoryManager,
+                                  const Workbuffers::mutable_buffer& buffer,
+                                  InferenceRequestContext& context) override {
         for (auto& op : subGraphPtr->getExecSequence()) {
             const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
             const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);

@@ -17,7 +17,7 @@ class SubGraph : public OperationBase {
 public:
     using ExecSequence = std::vector<OperationBase::Ptr>;
 
-    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
+    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
 
     SubGraph(const CreationContext& context,
              const std::shared_ptr<const ov::Model>& model,

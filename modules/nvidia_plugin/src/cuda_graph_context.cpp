@@ -22,9 +22,7 @@ void CudaGraphContext::addParameter(const std::string& tensorName,
                                     CUDA::DevicePointer<void*> dst,
                                     const void* src,
                                     std::size_t size) {
-    if (currentGraphIndex_ >= graphs_.size()) {
-        throw_ov_exception("Graph index/vector size incosistency");
-    }
+    OPENVINO_ASSERT(currentGraphIndex_ < graphs_.size(), "Graph index/vector size incosistency");
     graphs_[currentGraphIndex_].addParameter(tensorName, stream, dst, src, size);
 }
 
@@ -33,16 +31,12 @@ void CudaGraphContext::addResult(const std::string& tensorName,
                                  void* dst,
                                  CUDA::DevicePointer<const void*> src,
                                  std::size_t size) {
-    if (currentGraphIndex_ >= graphs_.size()) {
-        throw_ov_exception("Graph index/vector size incosistency");
-    }
+    OPENVINO_ASSERT(currentGraphIndex_ < graphs_.size(), "Graph index/vector size incosistency");
     graphs_[currentGraphIndex_].addResult(tensorName, stream, dst, src, size);
 }
 
 void CudaGraphContext::addGraph(const CUDA::Graph& graph) {
-    if (currentGraphIndex_ >= graphs_.size()) {
-        throw_ov_exception("Graph index/vector size incosistency");
-    }
+    OPENVINO_ASSERT(currentGraphIndex_ < graphs_.size(), "Graph index/vector size incosistency");
     graphs_[currentGraphIndex_].setGraph(graph);
 }
 
@@ -59,9 +53,7 @@ void CudaGraphContext::updateCapture(const TensorMappingContext& context) {
 
 void CudaGraphContext::launch(std::size_t index, const CUDA::Stream& stream) const {
     currentGraphIndex_ = index;
-    if (currentGraphIndex_ >= graphs_.size()) {
-        throw_ov_exception("Graph index/vector size incosistency");
-    }
+    OPENVINO_ASSERT(currentGraphIndex_ < graphs_.size(), "Graph index/vector size incosistency");
     graphs_[currentGraphIndex_].launch(stream);
 }
 

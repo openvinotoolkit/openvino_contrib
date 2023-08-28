@@ -15,7 +15,7 @@ namespace ov {
 namespace nvidia_gpu {
 
 /**
- * Interface for Pofiler class or other Delegators
+ * Interface for Profiler class or other Delegators
  */
 class IExecutionDelegator {
 public:
