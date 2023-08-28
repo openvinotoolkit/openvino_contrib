@@ -82,7 +82,6 @@ TEST_F(ResultTest, canExecuteSync) {
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     InferenceRequestContext context{empty_tensor, empty_mapping, tensors, tensors_mapping, threadContext,
         token, simpleExecutionDelegator, cudaGraphContext};
-    auto mem = blob->as<MemoryBlob>()->rmap();
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});

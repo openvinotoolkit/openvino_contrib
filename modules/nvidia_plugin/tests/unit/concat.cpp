@@ -53,8 +53,8 @@ struct ConcatTest : testing::Test {
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
         InferenceRequestContext context{empty_tensor,
                                         empty_mapping,
-                                        emptyTensor,
-                                        emptyMapping,
+                                        empty_tensor,
+                                        empty_mapping,
                                         threadContext,
                                         token,
                                         simpleExecutionDelegator,
