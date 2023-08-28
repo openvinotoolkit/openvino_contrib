@@ -109,8 +109,8 @@ void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());
@@ -340,8 +340,8 @@ void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::Dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());

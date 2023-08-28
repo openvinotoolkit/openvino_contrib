@@ -6,7 +6,6 @@
 
 #include <gtest/gtest.h>
 
-#include <details/ie_exception.hpp>
 #include <memory>
 #include <vector>
 
@@ -175,7 +174,7 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
     ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->inputTensorPointers(*this, allocation), "Assertion");
@@ -197,7 +196,7 @@ TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
     ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");
@@ -215,7 +214,7 @@ TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
     ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");

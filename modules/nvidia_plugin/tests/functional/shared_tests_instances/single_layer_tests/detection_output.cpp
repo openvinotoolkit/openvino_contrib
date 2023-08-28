@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "cuda_test_constants.hpp"
+#include "openvino/core/except.hpp"
 
 using namespace LayerTestsDefinitions;
 
@@ -97,16 +98,16 @@ private:
         }
         const auto precent = static_cast<float>(not_matched_ngraph_results.size()) / ngraph_results.size();
         if (precent > 0.5) {
-            IE_THROW() << "Too many elements not found in reference implementation "
-                       << "with relative comparison of values with threshold " << threshold;
+            OPENVINO_THROW("Too many elements not found in reference implementation ",
+                           "with relative comparison of values with threshold ", std::to_string(threshold));
         }
         for (const auto &[i, ref] : not_matched_ngraph_results) {
             auto res = std::find_if(ie_results.begin(), ie_results.end(), [ref = ref](const auto &res) {
                 return ref.data.conf == res.data.conf;
             });
             if (res == ie_results.end()) {
-                IE_THROW() << "Cannot find object (index=" << i
-                           << ") with relative comparison of values with threshold " << threshold << " failed";
+                OPENVINO_THROW("Cannot find object (index=", std::to_string(i),
+                               ") with relative comparison of values with threshold ", std::to_string(threshold), " failed");
             }
             ie_results.erase(res);
         }
@@ -126,7 +127,7 @@ public:
 
             const auto &expectedBuffer = expected.data();
             auto memory = InferenceEngine::as<InferenceEngine::MemoryBlob>(actual);
-            IE_ASSERT(memory);
+            OPENVINO_ASSERT(memory);
             const auto lockedMemory = memory->wmap();
             const auto actualBuffer = lockedMemory.as<const std::uint8_t *>();
 
@@ -155,12 +156,6 @@ TEST_P(CudaDetectionOutputLayerTest, CompareWithRefs) {
 }
 
 /* =============== Detection Output =============== */
-
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::BF16,
-};
 
 const int numClasses = 11;
 const int backgroundLabelId = 12;

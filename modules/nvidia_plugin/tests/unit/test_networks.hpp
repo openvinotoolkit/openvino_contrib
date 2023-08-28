@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ie_precision.hpp>
-#include <ie_ngraph_utils.hpp>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph_functions/builders.hpp>
-#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include "openvino/op/constant.hpp"
+#include "openvino/op/matmul.hpp"
+#include "openvino/core/type/element_type.hpp"
 
-inline std::shared_ptr<ngraph::Function> CreateMatMulTestNetwork() {
-    auto netPrecision = InferenceEngine::Precision::FP32;
-    std::map<std::string, std::string> additionalConfig;
-
-    auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
-
-    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
-    auto paramOuts =
-        ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-    auto MatMul = std::make_shared<ov::op::v0::MatMul>(paramOuts[0], secondaryInput, false, false);
-    ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(MatMul)};
-    return std::make_shared<ngraph::Function>(results, params, "MatMul");
+inline std::shared_ptr<ov::Model> create_matmul_test_model() {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 2, 10, 10});
+    auto constant = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3, 2, 10, 20});
+    auto matmul = std::make_shared<ov::op::v0::MatMul>(param, constant, false, false);
+    auto result = std::make_shared<ov::op::v0::Result>(matmul);
+    return std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{param}, "MatMul");
 }
 
 class SuperDummyOp : public ov::op::Op {
@@ -60,17 +51,10 @@ public:
     }
 };
 
-inline std::shared_ptr<ngraph::Function> CreateSuperOperationTestNetwork() {
-    auto netPrecision = InferenceEngine::Precision::FP32;
-    std::map<std::string, std::string> additionalConfig;
-
-    auto ngPrc = InferenceEngine::details::convertPrecision(netPrecision);
-    ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape{3, 2, 10, 10})};
-
-    auto secondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, ov::Shape{3, 2, 10, 20});
-    auto paramOuts =
-        ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
-    auto superOp = std::make_shared<SuperDummyOp>(paramOuts[0], secondaryInput);
-    ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(superOp)};
-    return std::make_shared<ngraph::Function>(results, params, "SuperOperation");
+inline std::shared_ptr<ov::Model> create_super_operation_test_model() {
+    auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 2, 10, 10});
+    auto constant = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3, 2, 10, 20});
+    auto super_op = std::make_shared<SuperDummyOp>(param, constant);
+    auto result = std::make_shared<ov::op::v0::Result>(super_op);
+    return std::make_shared<ov::Model>(ov::ResultVector{result}, ov::ParameterVector{param}, "SuperOperation");
 }

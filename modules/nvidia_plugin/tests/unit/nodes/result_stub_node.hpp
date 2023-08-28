@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
 #include <openvino/op/result.hpp>
 #include <typeinfo>
 

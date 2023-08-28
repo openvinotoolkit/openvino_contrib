@@ -273,7 +273,7 @@ void OperationBuffersExtractor::initConstantMemory(DeviceMemBlock::Ptr memory_bl
     for (const auto& buffer_id : memory_block->bufferIds()) {
         auto span = immutableBuffer(buffer_id);
         void* device_ptr = memory_block->deviceBufferPtr(buffer_id);
-        IE_ASSERT(device_ptr != nullptr);
+        OPENVINO_ASSERT(device_ptr != nullptr);
         throwIfError(::cudaMemcpy(device_ptr, span.data(), span.size_bytes(), cudaMemcpyHostToDevice));
     }
 }

@@ -10,7 +10,6 @@
 #include <cuda_operation_registry.hpp>
 #include <cuda_profiler.hpp>
 #include <iomanip>
-#include <ngraph/node.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/strided_slice.hpp>

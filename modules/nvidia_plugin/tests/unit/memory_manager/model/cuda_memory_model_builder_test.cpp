@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include <details/ie_exception.hpp>
+#include "openvino/core/except.hpp"
 
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
@@ -104,11 +104,11 @@ TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
 
 #ifdef NDEBUG
     ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
     ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
     ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1),
-                 InferenceEngine::details::InferenceEngineException);
+                 ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), "Assertion");
@@ -126,7 +126,7 @@ TEST(MemoryModelBuilder, HandleZeroAllocationSize) {
     const size_t size = 0;
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(buffer_id, 0, 1, size), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, 0, 1, size), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(buffer_id, 0, 1, size), "Assertion");

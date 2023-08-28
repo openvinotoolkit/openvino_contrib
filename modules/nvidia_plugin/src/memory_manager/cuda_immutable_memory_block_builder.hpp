@@ -30,7 +30,7 @@ public:
      * pointer is still valid when `ImmutableMemoryBlockBuilder::build()` method
      * is invoked.
      * @param [in] bsize Tensor memory size in bytes.
-     * @throws InferenceEngineException if
+     * @throws ov::Exception if
      *  - allocation size is zero
      *  - tensor with specified id is already added
      *  - data pointer is nullptr

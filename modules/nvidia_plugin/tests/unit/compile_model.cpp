@@ -13,7 +13,6 @@
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
 
-#include <ngraph/node.hpp>
 #include <nvidia/nvidia_config.hpp>
 #include <ops/matmul.hpp>
 
@@ -23,12 +22,12 @@ using namespace ov::nvidia_gpu;
 
 using PropertiesParams = ov::AnyMap;
 
-class ExecNetworkTest : public testing::Test,
+class CompileModelTest : public testing::Test,
                         public testing::WithParamInterface<PropertiesParams> {
     void SetUp() override {
         properties = this->GetParam();
-        function_ = CreateMatMulTestNetwork();
-        super_function_ = CreateSuperOperationTestNetwork();
+        model_ = create_matmul_test_model();
+        super_model_ = create_super_operation_test_model();
     }
 
     void TearDown() override {}
@@ -56,8 +55,8 @@ public:
         return compiled_model->get_memory_pool();
     }
 
-    std::shared_ptr<ov::Model> function_;
-    std::shared_ptr<ov::Model> super_function_;
+    std::shared_ptr<ov::Model> model_;
+    std::shared_ptr<ov::Model> super_model_;
     PropertiesParams properties;
 };
 
@@ -72,11 +71,11 @@ std::vector<PropertiesParams> default_properties = {
     },
 };
 
-using MatMulExecNetworkTest = ExecNetworkTest;
-TEST_P(MatMulExecNetworkTest, BuildExecutableSequence_MatMul_Success) {
+using MatMulCompileModelTest = CompileModelTest;
+TEST_P(MatMulCompileModelTest, BuildExecutableSequence_MatMul_Success) {
     auto plugin = std::make_shared<Plugin>();
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(
-        plugin->compile_model(function_, properties));
+        plugin->compile_model(model_, properties));
     const auto& execSequence = GetExecSequence(cuda_compiled_model);
     bool is_f32 = properties.at(ov::hint::inference_precision.name()).as<ov::element::Type>() == ov::element::f32;
     auto expected_ops = is_f32 ? 3 : 5; // +2 Converts for f16
@@ -85,21 +84,21 @@ TEST_P(MatMulExecNetworkTest, BuildExecutableSequence_MatMul_Success) {
     ASSERT_EQ(std::type_index(typeid(*execSequence[matmul_index].get())), std::type_index(typeid(MatMulOp)));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         MatMulExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         MatMulCompileModelTest,
                          ::testing::ValuesIn(default_properties),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);
 
-using ExecutableSequenceExecNetworkTest = ExecNetworkTest;
-TEST_P(ExecutableSequenceExecNetworkTest, BuildExecutableSequence_SuperOperation_Failed) {
+using ExecutableSequenceCompileModelTest = CompileModelTest;
+TEST_P(ExecutableSequenceCompileModelTest, BuildExecutableSequence_SuperOperation_Failed) {
     auto plugin = std::make_shared<Plugin>();
-    ASSERT_THROW(plugin->compile_model(super_function_, properties), ov::Exception);
+    ASSERT_THROW(plugin->compile_model(super_model_, properties), ov::Exception);
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         ExecutableSequenceExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         ExecutableSequenceCompileModelTest,
                          ::testing::ValuesIn(default_properties),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_1_properties = {
     {
@@ -126,12 +125,12 @@ std::vector<PropertiesParams> num_streams_1_properties = {
     },
 };
 
-using NumStreams1ExecNetworkTest = ExecNetworkTest;
-TEST_P(NumStreams1ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_1_Success) {
+using NumStreams1CompileModelTest = CompileModelTest;
+TEST_P(NumStreams1CompileModelTest, CompileModel_OptimalNumberInferRequests_1_Success) {
     using namespace std::chrono_literals;
     auto plugin = std::make_shared<Plugin>();
     constexpr auto total_streams = 1;
-    auto compiled_model = plugin->compile_model(function_, properties);
+    auto compiled_model = plugin->compile_model(model_, properties);
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
@@ -139,10 +138,10 @@ TEST_P(NumStreams1ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_1_
     ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         NumStreams1ExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         NumStreams1CompileModelTest,
                          ::testing::ValuesIn(num_streams_1_properties),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_8_properties = {
     {
@@ -165,12 +164,12 @@ std::vector<PropertiesParams> num_streams_8_properties = {
     },
 };
 
-using NumStreams8ExecNetworkTest = ExecNetworkTest;
-TEST_P(NumStreams8ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_Success) {
+using NumStreams8CompileModelTest = CompileModelTest;
+TEST_P(NumStreams8CompileModelTest, CompileModel_OptimalNumberInferRequests_8_Success) {
     using namespace std::chrono_literals;
     auto plugin = std::make_shared<Plugin>();
     constexpr auto total_streams = 8;
-    auto compiled_model = plugin->compile_model(function_, properties);
+    auto compiled_model = plugin->compile_model(model_, properties);
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
@@ -179,10 +178,10 @@ TEST_P(NumStreams8ExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_
 }
 
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         NumStreams8ExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         NumStreams8CompileModelTest,
                          ::testing::ValuesIn(num_streams_8_properties),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_8_properties_exclusive = {
     {
@@ -209,12 +208,12 @@ std::vector<PropertiesParams> num_streams_8_properties_exclusive = {
     },
 };
 
-using NumStreams8ExclusiveExecNetworkTest = ExecNetworkTest;
-TEST_P(NumStreams8ExclusiveExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_8_Success) {
+using NumStreams8ExclusiveCompileModelTest = CompileModelTest;
+TEST_P(NumStreams8ExclusiveCompileModelTest, CompileModel_OptimalNumberInferRequests_8_Success) {
     using namespace std::chrono_literals;
     auto plugin = std::make_shared<Plugin>();
     constexpr auto total_streams = 1;
-    auto compiled_model = plugin->compile_model(function_, properties);
+    auto compiled_model = plugin->compile_model(model_, properties);
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_EQ(memoryManagerPool->Size(), total_streams);
@@ -222,10 +221,10 @@ TEST_P(NumStreams8ExclusiveExecNetworkTest, LoadExecNetwork_OptimalNumberInferRe
     ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         NumStreams8ExclusiveExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         NumStreams8ExclusiveCompileModelTest,
                          ::testing::ValuesIn(num_streams_8_properties_exclusive),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);
 
 std::vector<PropertiesParams> num_streams_auto_properties = {
     {
@@ -242,17 +241,17 @@ std::vector<PropertiesParams> num_streams_auto_properties = {
     }
 };
 
-using NumStreamsAUTOExecNetworkTest = ExecNetworkTest;
-TEST_P(NumStreamsAUTOExecNetworkTest, LoadExecNetwork_OptimalNumberInferRequests_Auto_Success) {
+using NumStreamsAUTOCompileModelTest = CompileModelTest;
+TEST_P(NumStreamsAUTOCompileModelTest, CompileModel_OptimalNumberInferRequests_Auto_Success) {
     using namespace std::chrono_literals;
     auto plugin = std::make_shared<Plugin>();
-    auto compiled_model = plugin->compile_model(function_, properties);
+    auto compiled_model = plugin->compile_model(model_, properties);
     auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(compiled_model);
     auto& memoryManagerPool = GetMemoryManagerPool(cuda_compiled_model);
     ASSERT_GT(memoryManagerPool->Size(), 1);
 }
 
-INSTANTIATE_TEST_SUITE_P(ExecNetworkTest,
-                         NumStreamsAUTOExecNetworkTest,
+INSTANTIATE_TEST_SUITE_P(CompileModelTest,
+                         NumStreamsAUTOCompileModelTest,
                          ::testing::ValuesIn(num_streams_auto_properties),
-                         ExecNetworkTest::getTestCaseName);
+                         CompileModelTest::getTestCaseName);

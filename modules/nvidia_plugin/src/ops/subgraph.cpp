@@ -116,7 +116,7 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     result.reserve(ids.immutableIds.size());
     for (const auto immutable_id : ids.immutableIds) {
         void* ptr = memory_manager_->immutableWorkbuffers().deviceBufferPtr(immutable_id);
-        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
+        OPENVINO_ASSERT(ptr != nullptr, "Workbuffer not found. ID is " + std::to_string(immutable_id));
         result.emplace_back(ptr);
     }
     return result;
