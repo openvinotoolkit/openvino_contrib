@@ -42,7 +42,7 @@ void ParameterOp::Capture(InferenceRequestContext &context, Inputs inputs, Outpu
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
     OPENVINO_ASSERT(context.getTensorMappingContext().has_input_tensor(input_tensor_name_), "Node name: ", GetName());
     auto tensor = context.getTensorMappingContext().get_input_tensor(input_tensor_name_);
-    context.getCudaGraphContext().addParameter(
+    context.getCudaGraphContext().add_parameter(
         input_tensor_name_, context.getThreadContext().stream(), outputs[0], tensor->data(), tensor->get_byte_size());
 }
 

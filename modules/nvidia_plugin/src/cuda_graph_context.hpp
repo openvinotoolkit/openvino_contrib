@@ -14,31 +14,31 @@ class CudaGraphContext {
 public:
     void reset();
 
-    void startNextGraphAddition();
+    void start_next_graph_addition();
 
-    void addParameter(const std::string& tensorName,
-                      const CUDA::Stream& stream,
-                      CUDA::DevicePointer<void*> dst,
-                      const void* src,
-                      std::size_t size);
+    void add_parameter(const std::string& tensorName,
+                       const CUDA::Stream& stream,
+                       CUDA::DevicePointer<void*> dst,
+                       const void* src,
+                       std::size_t size);
 
-    void addResult(const std::string& tensorName,
-                   const CUDA::Stream& stream,
-                   void* dst,
-                   CUDA::DevicePointer<const void*> src,
-                   std::size_t size);
+    void add_result(const std::string& tensorName,
+                    const CUDA::Stream& stream,
+                    void* dst,
+                    CUDA::DevicePointer<const void*> src,
+                    std::size_t size);
 
-    void addGraph(const CUDA::Graph& graph);
+    void add_graph(const CUDA::Graph& graph);
 
-    bool isInitialized() const;
+    bool is_initialized() const;
 
-    void updateCapture(const TensorMappingContext& context);
+    void update_capture(const TensorMappingContext& context);
 
     void launch(std::size_t index, const CUDA::Stream& stream) const;
 
-    std::size_t getParamsCount() const;
-    std::size_t getResultsCount() const;
-    std::size_t getGraphsCount() const;
+    std::size_t get_params_count() const;
+    std::size_t get_results_count() const;
+    std::size_t get_graphs_count() const;
 
     friend bool operator==(const CudaGraphContext& lhs, const CudaGraphContext& rhs);
     friend bool operator!=(const CudaGraphContext& lhs, const CudaGraphContext& rhs);
@@ -46,28 +46,28 @@ public:
 private:
     class CudaGraphInfo {
     public:
-        void addParameter(const std::string& tensorName,
-                          const CUDA::Stream& stream,
-                          CUDA::DevicePointer<void*> dst,
-                          const void* src,
-                          std::size_t size);
+        void add_parameter(const std::string& tensorName,
+                           const CUDA::Stream& stream,
+                           CUDA::DevicePointer<void*> dst,
+                           const void* src,
+                           std::size_t size);
 
-        void addResult(const std::string& tensorName,
-                       const CUDA::Stream& stream,
-                       void* dst,
-                       CUDA::DevicePointer<const void*> src,
-                       std::size_t size);
+        void add_result(const std::string& tensorName,
+                        const CUDA::Stream& stream,
+                        void* dst,
+                        CUDA::DevicePointer<const void*> src,
+                        std::size_t size);
 
-        void setGraph(const CUDA::Graph& graph);
+        void set_graph(const CUDA::Graph& graph);
 
-        bool isInitialized() const;
+        bool is_initialized() const;
 
-        void updateCapture(const TensorMappingContext& context);
+        void update_capture(const TensorMappingContext& context);
 
         void launch(const CUDA::Stream& stream) const;
 
-        std::size_t getParamsCount() const;
-        std::size_t getResultsCount() const;
+        std::size_t get_params_count() const;
+        std::size_t get_results_count() const;
 
         friend bool operator==(const CudaGraphInfo& lhs, const CudaGraphInfo& rhs);
         friend bool operator!=(const CudaGraphInfo& lhs, const CudaGraphInfo& rhs);

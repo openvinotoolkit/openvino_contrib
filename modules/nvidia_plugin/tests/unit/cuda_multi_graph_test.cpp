@@ -73,7 +73,7 @@ public:
 
     static void checkContext(const CudaGraphContext& cudaGraphContext) {
         // AddMul network should have a single CUDA Graph
-        EXPECT_EQ(cudaGraphContext.getGraphsCount(), 1);
+        EXPECT_EQ(cudaGraphContext.get_graphs_count(), 1);
     }
 
     static void checkSubGraph(const SubGraph& subGraph) {
@@ -120,7 +120,7 @@ public:
 
     static void checkContext(const CudaGraphContext& cudaGraphContext) {
         // AddConcat network should have a more than one CUDA Graph
-        EXPECT_GT(cudaGraphContext.getGraphsCount(), 1);
+        EXPECT_GT(cudaGraphContext.get_graphs_count(), 1);
     }
 
     static void checkSubGraph(const SubGraph& subGraph) {

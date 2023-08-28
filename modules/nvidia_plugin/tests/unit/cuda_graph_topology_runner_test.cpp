@@ -67,7 +67,7 @@ protected:
 
 TEST_F(CudaGraphTopologyRunnerTest, InstantiateGraphExec) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    EXPECT_TRUE(inferRequestContext_.getCudaGraphContext().isInitialized());
+    EXPECT_TRUE(inferRequestContext_.getCudaGraphContext().is_initialized());
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, BasicRun) {
@@ -84,8 +84,8 @@ TEST_F(CudaGraphTopologyRunnerTest, CheckGraphExecIsInstantiatedOnce) {
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesArePopulated) {
     runner_.UpdateContext(inferRequestContext_, deviceMemBlock_);
-    EXPECT_GT(inferRequestContext_.getCudaGraphContext().getParamsCount(), 0);
-    EXPECT_GT(inferRequestContext_.getCudaGraphContext().getResultsCount(), 0);
+    EXPECT_GT(inferRequestContext_.getCudaGraphContext().get_params_count(), 0);
+    EXPECT_GT(inferRequestContext_.getCudaGraphContext().get_results_count(), 0);
 }
 
 TEST_F(CudaGraphTopologyRunnerTest, CheckMemcpyNodesAreUpdated) {

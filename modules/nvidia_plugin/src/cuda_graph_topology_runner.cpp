@@ -60,7 +60,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
     graphContext.reset();
     for (const auto& subgraph : subgraphs_) {
         if (subgraph.IsCudaGraphCompatible()) {
-            graphContext.startNextGraphAddition();
+            graphContext.start_next_graph_addition();
             CUDA::GraphCapture capture{stream};
             {
                 auto scope = capture.getScope();
@@ -69,7 +69,7 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
                 subgraph.Capture(context, {}, {}, workbuffers);
             }
             const auto& graph = capture.getGraph();
-            graphContext.addGraph(graph);
+            graphContext.add_graph(graph);
         }
     }
 }
@@ -79,7 +79,7 @@ const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
 }
 
 void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
-    if (context.getCudaGraphContext().isInitialized()) {
+    if (context.getCudaGraphContext().is_initialized()) {
         UpdateCapture(context);
     } else {
         Capture(context, memoryBlock);
@@ -87,7 +87,7 @@ void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext& context, co
 }
 
 void CudaGraphTopologyRunner::UpdateCapture(InferenceRequestContext& context) const {
-    context.getCudaGraphContext().updateCapture(context.getTensorMappingContext());
+    context.getCudaGraphContext().update_capture(context.getTensorMappingContext());
 }
 
 }  // namespace nvidia_gpu

@@ -128,7 +128,7 @@ void ResultOp::Capture(InferenceRequestContext& context,
         }
     }
     OPENVINO_ASSERT(tensor != nullptr, "Node name: ", GetName());
-    context.getCudaGraphContext().addResult(
+    context.getCudaGraphContext().add_result(
         outputTensorName, context.getThreadContext().stream(), tensor->data(), inputs[0], tensor->get_byte_size());
 }
 
