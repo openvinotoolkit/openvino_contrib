@@ -9,7 +9,7 @@
 #include "transformer/concat_transformation.hpp"
 #include "transformer/nodes/concat_optimized.hpp"
 
-#include "common_test_utils/ngraph_test_utils.hpp"
+#include "common_test_utils/ov_test_utils.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/pass/manager.hpp"
