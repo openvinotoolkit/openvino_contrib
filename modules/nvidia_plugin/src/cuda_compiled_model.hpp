@@ -77,6 +77,7 @@ private:
     std::shared_ptr<MemoryPool> memory_pool_;
     const bool loaded_from_cache_;
     bool use_cuda_graph_;
+    size_t number_of_cuda_graphs_;
 };
 
 }  // namespace nvidia_gpu

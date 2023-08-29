@@ -11,7 +11,8 @@ namespace nvidia_gpu {
 
 CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
                                                  const std::shared_ptr<const ov::Model>& model)
-    : orig_subgraph_{context, model} {
+    : orig_subgraph_{context, model},
+      cuda_graphs_count_{0} {
     std::vector<SubGraph::ExecSequence> sequences;
     SubGraph::ExecSequence currentSequence;
     const auto& origSequence = orig_subgraph_.getExecSequence();
@@ -34,6 +35,9 @@ CudaGraphTopologyRunner::CudaGraphTopologyRunner(const CreationContext& context,
     const auto& memoryManager = orig_subgraph_.memoryManager();
     for (auto&& sequence : sequences) {
         subgraphs_.emplace_back(context, model, std::move(sequence), memoryManager);
+        if (subgraphs_[subgraphs_.size() - 1].IsCudaGraphCompatible()) {
+            ++cuda_graphs_count_;
+        }
     }
 }
 
@@ -72,11 +76,15 @@ void CudaGraphTopologyRunner::Capture(InferenceRequestContext& context,
             graphContext.add_graph(graph);
         }
     }
+    OPENVINO_ASSERT(graphContext.get_graphs_count() == GetCudaGraphsCount(),
+                    "CudaGraphTopologyRunner/CudaGraphContext graphs count mismatch");
 }
 
 const SubGraph& CudaGraphTopologyRunner::GetSubGraph() const {
     return orig_subgraph_;
 }
+
+std::size_t CudaGraphTopologyRunner::GetCudaGraphsCount() const { return cuda_graphs_count_; }
 
 void CudaGraphTopologyRunner::UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const {
     if (context.getCudaGraphContext().is_initialized()) {

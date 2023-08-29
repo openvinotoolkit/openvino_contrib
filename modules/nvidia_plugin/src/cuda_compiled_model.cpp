@@ -57,7 +57,8 @@ CompiledModel::CompiledModel(const std::shared_ptr<const ov::Model>& model,
       cuda_stream_executor_(std::move(wait_executor)),
       loaded_from_cache_(loaded_from_cache),
       use_cuda_graph_{get_property(ov::nvidia_gpu::use_cuda_graph.name()).as<bool>() &&
-                      !get_property(ov::enable_profiling.name()).as<bool>()} {
+                      !get_property(ov::enable_profiling.name()).as<bool>()},
+      number_of_cuda_graphs_{0} {
     try {
         compile_model(model);
         init_executor();  // creates thread-based executor using for async requests
@@ -131,7 +132,9 @@ void CompiledModel::compile_model(const std::shared_ptr<const ov::Model>& model)
     const auto creationContext = CreationContext{device, opBenchOption};
 
     if (use_cuda_graph_) {
-        topology_runner_ = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
+        auto cudaGraphTopologyRunner = std::make_unique<CudaGraphTopologyRunner>(creationContext, model_);
+        number_of_cuda_graphs_ = cudaGraphTopologyRunner->GetCudaGraphsCount();
+        topology_runner_ = std::move(cudaGraphTopologyRunner);
     } else {
         topology_runner_ = std::make_unique<EagerTopologyRunner>(creationContext, model_);
     }
@@ -302,6 +305,8 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         supported_properties.push_back(
             ov::PropertyName(ov::optimal_number_of_infer_requests.name(), PropertyMutability::RO));
         supported_properties.push_back(ov::PropertyName(ov::loaded_from_cache.name(), PropertyMutability::RO));
+        supported_properties.push_back(ov::PropertyName(ov::nvidia_gpu::number_of_cuda_graphs.name(),
+                                       PropertyMutability::RO));
         auto rw_properties = config_.get_rw_properties();
         for (auto& rw_property : rw_properties)
             supported_properties.emplace_back(ov::PropertyName(rw_property, PropertyMutability::RO));
@@ -329,6 +334,8 @@ ov::Any CompiledModel::get_property(const std::string& name) const {
         return decltype(ov::execution_devices)::value_type{get_plugin()->get_device_name() + "." + std::to_string(config_.get_device_id())};
     } else if (ov::loaded_from_cache == name) {
         return decltype(ov::loaded_from_cache)::value_type{loaded_from_cache_};
+    } else if (ov::nvidia_gpu::number_of_cuda_graphs == name) {
+        return decltype(ov::nvidia_gpu::number_of_cuda_graphs)::value_type{number_of_cuda_graphs_};
     } else {
         return config_.get(name);
     }

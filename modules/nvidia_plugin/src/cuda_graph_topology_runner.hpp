@@ -18,12 +18,15 @@ public:
     void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
     const SubGraph& GetSubGraph() const override;
 
+    std::size_t GetCudaGraphsCount() const;
+
 private:
     void Capture(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const;
     void UpdateCapture(InferenceRequestContext& context) const;
 
     std::vector<SubGraph> subgraphs_;
     SubGraph orig_subgraph_;
+    std::size_t cuda_graphs_count_;
 };
 
 }  // namespace nvidia_gpu
