@@ -201,10 +201,10 @@ protected:
 
         std::shared_ptr<ov::Node> matmul1SecondaryInput;
         if (secondaryInputType == ngraph::helpers::InputLayerType::PARAMETER) {
-            matmul1SecondaryInput = std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul1_input2.first));
+            matmul1SecondaryInput = std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(shapeRelatedParams.matmul2_input2.first));
             params.push_back(std::static_pointer_cast<ov::op::v0::Parameter>(matmul1SecondaryInput));
         } else {
-            matmul1SecondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.matmul1_input2.first);
+            matmul1SecondaryInput = std::make_shared<ov::op::v0::Constant>(ngPrc, shapeRelatedParams.matmul2_input2.first);
         }
 
         auto paramOuts = ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
