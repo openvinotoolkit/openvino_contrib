@@ -29,11 +29,17 @@ bool is_reduce_to_be_transformed(const ov::Output<ov::Node>& output) {
     if (node->is_dynamic()) {
         return false;
     }
-    return !node->get_keep_dims();
+    if (!node->get_keep_dims()) {
+        return true;
+    }
+    const ov::Shape input_shape = node->input(0).get_shape();
+    const ov::Shape output_shape = node->output(0).get_shape();
+    return input_shape == output_shape;
 }
 
 bool transform_reduce(Matcher &m) {
     auto reduce = std::dynamic_pointer_cast<ov::op::util::ArithmeticReductionKeepDims>(m.get_match_root());
+    const ov::Shape input_shape = reduce->input(0).get_shape();
     const ov::Shape output_shape = reduce->output(0).get_shape();
     auto consumers = reduce->get_output_target_inputs(0);
 
@@ -52,12 +58,24 @@ bool transform_reduce(Matcher &m) {
         return false;
     }
     new_reduce->set_friendly_name(reduce->get_friendly_name());
-    auto reshape_const = std::make_shared<ov::op::v0::Constant>(element::i32, Shape{output_shape.size()}, output_shape);
-    auto reshape = std::make_shared<ov::op::v1::Reshape>(new_reduce, reshape_const, false);
-    for (auto consumer : consumers) {
-        consumer.replace_source_output(reshape);
+
+    ov::NodeVector new_ops;
+    const ov::Shape new_output_shape = new_reduce->output(0).get_shape();
+    if (input_shape != new_output_shape) {
+        auto reshape_const = std::make_shared<ov::op::v0::Constant>(element::i32, Shape{output_shape.size()}, output_shape);
+        auto reshape = std::make_shared<ov::op::v1::Reshape>(new_reduce, reshape_const, false);
+        for (auto consumer : consumers) {
+            consumer.replace_source_output(reshape);
+        }
+        new_ops = {new_reduce, reshape_const, reshape};
+    } else {
+        auto reshape_const = std::make_shared<ov::op::v0::Constant>(element::i32, Shape{output_shape.size()}, output_shape);
+        auto reshape = std::make_shared<ov::op::v1::Reshape>(reduce->input_value(0), reshape_const, false);
+        for (auto consumer : consumers) {
+            consumer.replace_source_output(reshape);
+        }
+        new_ops = {reshape_const, reshape};
     }
-    ov::NodeVector new_ops = {new_reduce, reshape_const, reshape};
     ov::copy_runtime_info(reduce, new_ops);
     for (auto& new_op : new_ops) {
         new_op->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = reduce->get_friendly_name();

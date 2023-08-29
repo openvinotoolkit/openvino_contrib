@@ -158,3 +158,26 @@ TEST(reduce_transformation, reduce_sum_keep_dims_false) {
     auto res = compare_functions(model, model_ref);
     ASSERT_TRUE(res.first) << res.second;
 }
+
+TEST(reduce_transformation, reduce_sum_keep_all_matched) {
+    shared_ptr<ov::Model> model, model_ref;
+    {
+        auto input = make_shared<op::v0::Parameter>(element::f32, Shape{10, 20, 1, 40});
+        auto axis = op::v0::Constant::create(element::i32, Shape{1}, {2});
+        auto reduce = make_shared<op::v1::ReduceSum>(input, axis, false);
+        model = make_shared<Model>(reduce, ParameterVector{input});
+    }
+    {
+        auto input = make_shared<op::v0::Parameter>(element::f32, Shape{10, 20, 1, 40});
+        auto reshape_const = op::v0::Constant::create(element::i32, Shape{3}, {10, 20, 40});
+        auto reshape = make_shared<op::v1::Reshape>(input, reshape_const, false);
+        model_ref = make_shared<Model>(reshape, ParameterVector{input});
+    }
+    pass::Manager pass_manager;
+    pass_manager.register_pass<pass::InitNodeInfo>();
+    pass_manager.register_pass<nvidia_gpu::pass::ReduceTransformation>();
+    pass_manager.run_passes(model);
+
+    auto res = compare_functions(model, model_ref);
+    ASSERT_TRUE(res.first) << res.second;
+}
