@@ -7,7 +7,7 @@
 #include <cuda/runtime.hpp>
 #include <memory>
 
-#include "common_test_utils/ngraph_test_utils.hpp"
+#include "common_test_utils/ov_test_utils.hpp"
 #include "openvino/opsets/opset10.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
