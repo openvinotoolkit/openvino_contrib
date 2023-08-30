@@ -120,7 +120,7 @@ protected:
         for (size_t i = 0; i < biasShape.size(); ++i) {
             if (i != channel_dim_index) biasShape[i] = 1;
         }
-        auto biasLayer = std::make_shared<ov::op::v0::Constant>(ngNetPrc, biasShape);
+        auto biasLayer = std::make_shared<ov::op::v0::Constant>(ngNetPrc, biasShape, std::vector<float>{1});
 
         auto biasAddLayer = std::make_shared<ov::op::v1::Add>(convLayer, biasLayer);
 
