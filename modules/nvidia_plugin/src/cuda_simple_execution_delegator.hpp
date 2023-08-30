@@ -14,32 +14,37 @@ namespace ov {
 namespace nvidia_gpu {
 
 /**
- * Creates profiler sequence and stores profiler results.
+ * Basic implementaion for IExecutionDelegator interface
  */
 class SimpleExecutionDelegator : public IExecutionDelegator {
 public:
     /**
-     * Constructor of Profiler class
-     * @param perfCount Option that indicates if performance counters are enabled
+     * Constructor of SimpleExecutionDelegator class
      */
     SimpleExecutionDelegator() = default;
 
     /**
-     * Start time measurement of stage
+     * Dummy set_stream implementation
      */
     void set_stream(const CUDA::Stream& stream) override{};
 
     /**
-     * Start time measurement of stage
+     * Dummy start_stage implementation
      */
     void start_stage() override {}
 
     /**
-     * Stop time measurement of stage
-     * @param stage Stage for which time measurement was performed
+     * Dummy stop_stage implementation
      */
     virtual void stop_stage(PerfStages stage) override{};
 
+    /**
+     * Execute sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
     virtual void execute_sequence(const SubGraph* subGraphPtr,
                                   const MemoryManager& memoryManager,
                                   const Workbuffers::mutable_buffer& buffer,
@@ -52,6 +57,13 @@ public:
         }
     };
 
+    /**
+     * Capture sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
     virtual void capture_sequence(const SubGraph* subGraphPtr,
                                   const MemoryManager& memoryManager,
                                   const Workbuffers::mutable_buffer& buffer,
@@ -65,17 +77,20 @@ public:
     };
 
     /**
-     * Returns performance counters
-     * @return Performance counters
+     * Dummy get_performance_counts implementation
      */
-    // [[nodiscard]]
-    virtual const std::vector<ov::ProfilingInfo> get_performance_counts() const override{};
+    virtual const std::vector<ov::ProfilingInfo> get_performance_counts() const override {
+        return std::vector<ov::ProfilingInfo>{};
+    };
 
     /**
-     * Processes performance events into performance counters
+     * Dummy process_events implementation
      */
     virtual void process_events() override{};
 
+    /**
+     * Dummy set_cuda_event_record_mode implementation
+     */
     virtual void set_cuda_event_record_mode(CUDA::Event::RecordMode mode) override{};
 };
 
