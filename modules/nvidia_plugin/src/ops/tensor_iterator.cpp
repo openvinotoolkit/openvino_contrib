@@ -191,6 +191,17 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     }
 }
 
+// TODO: Investigate problem with multi-graphs in some networks
+// benchmark_app may hang in throughput mode
+bool TensorIteratorOp::IsCudaGraphCompatible() const { return false; }
+
+void TensorIteratorOp::Capture(InferenceRequestContext& context,
+                               Inputs inputTensors,
+                               Outputs outputTensors,
+                               const Workbuffers& workbuffers) const {
+    Execute(context, inputTensors, outputTensors, workbuffers);
+}
+
 WorkbufferRequest TensorIteratorOp::GetWorkBufferRequest() const {
     std::vector<WorkbufferRequest::size_in_bytes_t> immutable_sizes;
     immutable_sizes.reserve(kernelmap_inputs_.size() + kernelmap_outputs_.size());
@@ -307,13 +318,6 @@ void TensorIteratorOp::updateExecSequence() {
         }
     }
     exec_sequence_ = std::move(newExecSequence);
-}
-
-void TensorIteratorOp::Capture(InferenceRequestContext& context,
-                               Inputs inputTensors,
-                               Outputs outputTensors,
-                               const Workbuffers& workbuffers) const {
-    Execute(context, inputTensors, outputTensors, workbuffers);
 }
 
 OPERATION_REGISTER(TensorIteratorOp, TensorIterator);
