@@ -78,9 +78,6 @@ bool fuse_matmul_and_add(Matcher &m) {
     fully_connected_node->set_friendly_name(add_node->get_friendly_name());
     ov::copy_runtime_info({matmul_node, add_node}, fully_connected_node);
 
-    const std::string original_layers = matmul_node->get_friendly_name() + "," + add_node->get_friendly_name();
-    fully_connected_node->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = original_layers;
-
     for (auto input : consumers) {
         input.replace_source_output(fully_connected_node);
     }
