@@ -20,54 +20,66 @@ const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::
 // TODO now for const parameter tests a slope node always is created with f32 precision
 const std::vector<InferenceEngine::Precision> preluConstParamNetPrecisions = {InferenceEngine::Precision::FP32};
 
-// TODO int parameter activation tests don't work for CUDA now
-// const std::vector<InferenceEngine::Precision> intPrecisions = {
-//        InferenceEngine::Precision::I32,
-//};
+const std::vector<InferenceEngine::Precision> intPrecisions = {
+    InferenceEngine::Precision::I32,
+};
 
 // TODO commented tests don't work for CUDA now.
 // The reason there are missing correspondent operations or transformation
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes = {
-    {Sigmoid, {}},
-    {Tanh, {}},
-    {Relu, {}},
-    //            {Exp,                   {}},
-    //            {Log,                   {}},
+    {Sigmoid,               {}},
+    {Tanh,                  {}},
+    {Relu,                  {}},
+    {Exp,                   {}},
+    {Log,                   {}},
     //            {Sign,                  {}},
-    //            {Abs,                   {}},
-    {Clamp, {{-2.0f, 2.0f}}},
-    {Negative, {}},
+    {Abs,                   {}},
+    {Clamp,    {{-2.0f, 2.0f}}},
+    {Negative,              {}},
     //            {Acos,                  {}},
     //            {Asin,                  {}},
     //            {Atan,                  {}},
-    //            {Cos,                   {}},
-    //            {Cosh,                  {}},
-    {Floor, {}},
-    //            {Sin,                   {}},
-    //            {Sinh,                  {}},
-    //            {Sqrt,                  {}},
+    {Cos,                   {}},
+    {Cosh,                  {}},
+    {Floor,                 {}},
+    {Sin,                   {}},
+    {Sinh,                  {}},
+    {Sqrt,                  {}},
     //            {Tan,                   {}},
-    //            {Elu,                   {{0.1f}}},
+    {Elu,             {{0.1f}}},
     //            {Erf,                   {}},
     //            {HardSigmoid,           {{0.2f, 0.5f}}},
     //            {Selu,                  {{1.6732f, 1.0507f}}},
     //            {Ceiling,               {}},
-    //            {Mish,                  {}},
-    {HSwish, {}},
+    {Mish,                  {}},
+    {Swish,           {{0.5f}}},
+    {HSwish,                {}},
     //            {SoftPlus,              {}},
-    {HSigmoid, {}},
+    {HSigmoid,              {}},
     //            {RoundHalfToEven,       {}},
     //            {RoundHalfAwayFromZero, {}},
-    //            {GeluErf,               {}},
-    //            {GeluTanh,              {}}
+    {Gelu,                  {}},
+    {GeluErf,               {}},
+    {GeluTanh,              {}}
 };
 
-// TODO tests below don't work for CUDA
+class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
+    void SetUp() override {
+        ActivationLayerTest::SetUp();
+        threshold = 1;
+    }
+};
+
 // List of operations that should be tested also with integer precision
-// const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
-//        {Sqrt,                  {}},
-//        {Tanh,                  {}},
-//};
+const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
+        {Abs,                   {}},
+        {Negative,              {}},
+        {Cos,                   {}},
+        {Cosh,                  {}},
+        {Sinh,                  {}},
+        {Sqrt,                  {}},
+        {Log,                   {}},
+};
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluActivationParamTypes = {
     {PReLu, {{}}},  // Slope will be filled with increasing values from -10 to match slope input shape
@@ -118,22 +130,23 @@ const auto basicPReluConstParamCases =
                        ::testing::ValuesIn(ov::test::utils::combineParams(preluBasic)),
                        ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
-// TODO int parameter activation tests don't work for CUDA now
-// const auto basicIntegerOperations =
-//    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(intActivationTypes)),
-//                       ::testing::ValuesIn(intPrecisions),
-//                       ::testing::ValuesIn(intPrecisions),
-//                       ::testing::ValuesIn(intPrecisions),
-//                       ::testing::Values(InferenceEngine::Layout::ANY),
-//                       ::testing::Values(InferenceEngine::Layout::ANY),
-//                       ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
-//                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
+const auto basicIntegerOperations =
+    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(intActivationTypes)),
+                       ::testing::ValuesIn(intPrecisions),
+                       ::testing::ValuesIn(intPrecisions),
+                       ::testing::ValuesIn(intPrecisions),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::Values(InferenceEngine::Layout::ANY),
+                       ::testing::ValuesIn(ov::test::utils::combineParams(basic)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 TEST_P(ActivationLayerTest, CompareWithRefs) { Run(); }
 
 TEST_P(ActivationParamLayerTest, CompareWithRefs) { Run(); }
 
 TEST_P(ActivationDynamicLayerTest, CompareWithRefs) { Run(); }
+
+TEST_P(CUDAActivationIntegerLayerTest, CompareWithRefs) { Run(); }
 
 INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_Basic,
                         ActivationLayerTest,
@@ -151,8 +164,9 @@ INSTANTIATE_TEST_CASE_P(smoke_Cuda_Activation_PRelu_Const,
                         ActivationLayerTest,
                         basicPReluConstParamCases,
                         ActivationLayerTest::getTestCaseName);
-// TODO Integer activation don't work for CUDA now
-// INSTANTIATE_TEST_CASE_P(smoke_Cuda_Integer_Activation_Basic, ActivationLayerTest, basicIntegerOperations,
-// ActivationLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Cuda_Integer_Activation_Basic,
+                        CUDAActivationIntegerLayerTest,
+                        basicIntegerOperations,
+                        CUDAActivationIntegerLayerTest::getTestCaseName);
 
 }  // namespace
