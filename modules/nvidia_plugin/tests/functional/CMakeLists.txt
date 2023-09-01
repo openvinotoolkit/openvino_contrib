@@ -12,7 +12,7 @@ else(ENABLE_INTEL_CPU)
     set(OPENVINO_ADDITIONAL_DEPENDENCIES)
 endif (ENABLE_INTEL_CPU)
 
-addIeTargetTest(
+ov_add_test_target(
         NAME
             ${TARGET_NAME}
         ROOT
@@ -27,6 +27,7 @@ addIeTargetTest(
             gmock
         INCLUDES
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ADD_CLANG_FORMAT
         LABELS
            CUDA
 )

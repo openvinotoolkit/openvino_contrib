@@ -20,7 +20,7 @@ file(GLOB_RECURSE
 	 CONFIGURE_DEPENDS
 	 *.cu
 )
-addIeTargetTest(
+ov_add_test_target(
         NAME
             ${TARGET_NAME}
         ROOT
@@ -38,6 +38,7 @@ addIeTargetTest(
             ngraphFunctions
             commonTestUtils
         ADD_CPPLINT
+        ADD_CLANG_FORMAT
         LABELS
             CUDA
 )
