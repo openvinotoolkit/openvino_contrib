@@ -60,15 +60,6 @@ bool change_concat_to_concat_optimized(Matcher& m) {
     auto concat_optimized = std::make_shared<ConcatOptimized>(inOuts, concat->get_axis());
     concat_optimized->set_friendly_name(concat->get_friendly_name());
     ov::copy_runtime_info(concat, concat_optimized);
-
-    auto& rt_info = concat->get_rt_info();
-    if (auto found = rt_info.find(ExecGraphInfoSerialization::ORIGINAL_NAMES); found != rt_info.end()) {
-        auto& rt_info_layer_names = found->second;
-        const auto original_names = rt_info_layer_names.as<std::string>();
-        const std::string original_names_with_activation = concat->get_friendly_name() + "," + original_names;
-        rt_info_layer_names = original_names_with_activation;
-    }
-
     ov::replace_node(concat, concat_optimized);
 
     return true;
