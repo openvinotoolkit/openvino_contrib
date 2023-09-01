@@ -22,7 +22,7 @@
 #include "cancellation_token.hpp"
 #include "cuda_config.hpp"
 #include "cuda_operation_base.hpp"
-#include "cuda_profiler.hpp"
+#include "cuda_iexecution_delegator.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "utils/perf_timing.hpp"
@@ -58,10 +58,10 @@ private:
     std::shared_ptr<const CompiledModel> get_nvidia_model();
     void create_infer_request();
 
-    std::array<openvino::itt::handle_t, Profiler::NumOfStages> _profilingTask;
+    std::array<openvino::itt::handle_t, static_cast<std::size_t>(PerfStages::NumOfStages)> _profilingTask;
     std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
-    Profiler profiler_;
+    std::unique_ptr<IExecutionDelegator> executionDelegator_;
     std::vector<std::shared_ptr<ov::Tensor>> input_tensors_;
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;
     bool is_benchmark_mode_;

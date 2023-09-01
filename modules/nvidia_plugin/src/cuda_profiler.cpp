@@ -34,21 +34,19 @@ std::pair<std::string, ov::ProfilingInfo> make_profile_info(std::string stage_na
 }
 }  // namespace
 
-Profiler::Profiler(bool perfCount, const SubGraph& graph) : perf_count_{perfCount} {
+Profiler::Profiler(const SubGraph& graph) {
     std::vector<OperationBase::Ptr> execSequence;
     collect_subgraphs(graph, execSequence);
 
-    if (perf_count_) {
-        for (size_t i = 0; i < execSequence.size(); ++i) {
-            auto& op = *execSequence[i];
-            perf_counters_.emplace(make_profile_info(op));
-            execution_order_.push_back(op.GetName());
-        }
+    for (size_t i = 0; i < execSequence.size(); ++i) {
+        auto& op = *execSequence[i];
+        perf_counters_.emplace(make_profile_info(op));
+        execution_order_.push_back(op.GetName());
     }
 }
 
 void Profiler::process_events() {
-    if (!perf_count_ || infer_count_ == 0) return;
+    if (infer_count_ == 0) return;
     auto ms_to_us = [](float timing) {
         return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::duration<float, std::milli>{timing});
     };
@@ -109,19 +107,44 @@ void Profiler::process_events() {
     auto result_ms = result_timing == layer_timing.cend() ? zero_time : time_per_infer_us(result_timing->second);
 
     // Adding some overall performance counters
-    auto stage_time_ms = [this](const Stages& stage) {
-        return std::chrono::microseconds(static_cast<long long>(durations_[stage].count()));
+    auto stage_time_ms = [this](PerfStages stage) {
+        const auto i = static_cast<std::size_t>(stage);
+        return std::chrono::microseconds(static_cast<long long>(durations_[i].count()));
     };
 
     auto insert_stage = [&](const std::pair<std::string, ov::ProfilingInfo>& value) {
         auto const result = stage_counters_.insert(value);
         if (!result.second) { result.first->second = value.second; }
     };
-    insert_stage(make_profile_info("1. input preprocessing", zero_time, stage_time_ms(Preprocess)));
+    insert_stage(make_profile_info("1. input preprocessing", zero_time, stage_time_ms(PerfStages::Preprocess)));
     insert_stage(make_profile_info("2. input transfer to a device", parameter_ms));
-    insert_stage(make_profile_info("3. execution time", time_per_infer_us(exec_timing_.measure()), stage_time_ms(StartPipeline)));
+    insert_stage(make_profile_info("3. execution time", time_per_infer_us(exec_timing_.measure()), stage_time_ms(PerfStages::StartPipeline)));
     insert_stage(make_profile_info("4. output transfer from a device", result_ms));
-    insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(Postprocess)));
+    insert_stage(make_profile_info("5. output postprocessing", zero_time, stage_time_ms(PerfStages::Postprocess)));
+}
+
+void Profiler::execute_sequence(const SubGraph* subGraphPtr,
+                                const MemoryManager& memoryManager,
+                                const Workbuffers::mutable_buffer& buffer,
+                                const InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->execute(context, inTensors, outTensors, workBuffers);
+    }
+}
+
+void Profiler::capture_sequence(const SubGraph* subGraphPtr,
+                                const MemoryManager& memoryManager,
+                                const Workbuffers::mutable_buffer& buffer,
+                                InferenceRequestContext& context) {
+    for (const auto& op : create_exec_sequence(subGraphPtr)) {
+        const auto& inputTensors = memoryManager.inputTensorPointers(*op, buffer);
+        const auto& outputTensors = memoryManager.outputTensorPointers(*op, buffer);
+        const auto& workBuffers = memoryManager.workBuffers(*op, buffer);
+        op->capture(context, inputTensors, outputTensors, workBuffers);
+    }
 }
 
 Profiler::ProfilerSequence Profiler::create_exec_sequence(const SubGraph* subGraphPtr) {
@@ -140,17 +163,6 @@ void Profiler::collect_subgraphs(const SubGraph& graph, std::vector<OperationBas
     const auto& execSequence = graph.getExecSequence();
     for (const auto& execStep : execSequence) {
         collect_node_visitor(execStep, perfSteps, allExecSequence);
-    }
-    subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
-}
-
-void Profiler::collect_subgraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence) {
-    std::vector<ProfileExecStep> perfSteps;
-    const auto& execSequence = graph.getExecSequence();
-    for (const auto& execStep : execSequence) {
-        if (!dynamic_cast<ParameterOp*>(execStep.get()) && !dynamic_cast<ResultOp*>(execStep.get())) {
-            collect_node_visitor(execStep, perfSteps, allExecSequence);
-        }
     }
     subgraph_perf_steps_map_.emplace_back(&graph, std::move(perfSteps));
 }

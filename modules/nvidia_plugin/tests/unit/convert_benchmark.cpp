@@ -8,7 +8,7 @@
 #include <cuda_config.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <iomanip>
 #include <openvino/op/convert.hpp>
 #include <openvino/op/parameter.hpp>
@@ -42,12 +42,11 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     constexpr int kNumAttempts = 200;
 
     auto& stream = threadContext.stream();
-    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, simpleExecutionDelegator, cudaGraphContext};
 
     using Type_t = ov::element::Type_t;
     constexpr Type_t supported_types[] = {Type_t::boolean,

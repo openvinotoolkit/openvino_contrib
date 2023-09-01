@@ -6,6 +6,7 @@
 #include <random>
 
 #include "cuda_compiled_model.hpp"
+#include "cuda_simple_execution_delegator.hpp"
 #include "cuda_runtime.h"
 #include "cuda_operation_registry.hpp"
 #include "cuda_profiler.hpp"
@@ -86,13 +87,18 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        EagerTopologyRunner graph{creationContext, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{emptyTensor,
+                                        emptyMapping,
+                                        emptyTensor,
+                                        emptyMapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
 
         // Generate input
         std::vector<ElementType> input(inSize);
@@ -163,13 +169,18 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        EagerTopologyRunner graph{creationContext, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{emptyTensor,
+                                        emptyMapping,
+                                        emptyTensor,
+                                        emptyMapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
 
         // Generate inputs
         std::vector<ElementType> input1(inSize1);

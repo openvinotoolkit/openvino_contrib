@@ -179,6 +179,9 @@ Please refer to OpenVINO documentation for details.
 
 All parameters must be set before calling `ov::Core::compile_model()` in order to take effect.
  
+### Plugin specific properties
+* `ov::nvidia_gpu::number_of_cuda_graphs` - Read-only property showing the number of CUDA Graphs, used for the current model
+
 ## Compile options
 
 During compilation of the openvino_nvidia_gpu_plugin, user could specify the following options:

@@ -6,10 +6,9 @@
 
 #include <fmt/format.h>
 
-#include <cuda_eager_topology_runner.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
 
@@ -713,13 +712,12 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
     ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, simpleExecutionDelegator, cudaGraphContext};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;

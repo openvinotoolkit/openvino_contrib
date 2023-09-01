@@ -3,7 +3,7 @@
 //
 #include "single_layer_tests/lstm_sequence.hpp"
 
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <functional>
 #include <vector>

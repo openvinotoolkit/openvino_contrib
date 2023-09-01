@@ -27,16 +27,22 @@ cudaGraph_t Graph::createNativeWithFlags(unsigned int flags) {
     return g;
 }
 
+bool operator==(const Graph &rhs, const Graph &lhs) { return rhs.get() == lhs.get(); }
+
 GraphExec::GraphExec(const Graph &g)
 #if !defined(NDEBUG) || defined(_DEBUG)
-try
+    try
 #endif
-:
-Handle(cudaGraphInstantiate, cudaGraphExecDestroy, g.get(), static_cast<cudaGraphNode_t*>(nullptr),
+    : Handle(cudaGraphInstantiate,
+             cudaGraphExecDestroy,
+             g.get(),
+             static_cast<cudaGraphNode_t *>(nullptr),
 #if !defined(NDEBUG) || defined(_DEBUG)
-       errorMsg_, kErrorStringLen)
+             errorMsg_,
+             kErrorStringLen)
 #else
-       static_cast<char*>(nullptr), static_cast<size_t>(0ul))
+             static_cast<char *>(nullptr),
+             static_cast<size_t>(0ul))
 #endif
 {
 }
@@ -56,8 +62,9 @@ void GraphExec::launch(const Stream &stream) const {
     throwIfError(cudaGraphLaunch(get(), stream.get()));
 }
 
-GraphCapture::GraphCaptureScope::GraphCaptureScope(GraphCapture &graphCapture) :
-        graphCapture_ { graphCapture } {
+bool operator==(const GraphExec &lhs, const GraphExec &rhs) { return rhs.get() == lhs.get(); }
+
+GraphCapture::GraphCaptureScope::GraphCaptureScope(GraphCapture &graphCapture) : graphCapture_{graphCapture} {
     throwIfError(cudaStreamBeginCapture(graphCapture_.stream_.get(), cudaStreamCaptureModeThreadLocal));
 }
 
