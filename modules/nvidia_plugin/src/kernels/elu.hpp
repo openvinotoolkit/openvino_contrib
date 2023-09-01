@@ -16,13 +16,13 @@ struct EluOpImpl;
 
 class Elu {
 public:
-    Elu(Type_t element_type, size_t max_threads_per_block, size_t num_elements, double beta);
+    Elu(Type_t element_type, size_t max_threads_per_block, size_t num_elements, float alpha);
 
     void operator()(cudaStream_t stream, const void* in, void* out) const;
 
 private:
     ElementwiseUnary<FloatElementTypesSwitch, EluOpImpl> impl_;
-    double alpha_;
+    float alpha_;
 };
 
 }  // namespace kernel

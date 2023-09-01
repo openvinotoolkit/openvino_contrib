@@ -29,7 +29,7 @@ EluOp::EluOp(const CreationContext& context,
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     const auto elu = dynamic_cast<const ov::op::v0::Elu*>(&node);
     OPENVINO_ASSERT(elu, "Node name: ", GetName());
-    const auto alpha = elu->get_alpha();
+    const auto alpha = static_cast<float>(elu->get_alpha());
     kernel_ = kernel::Elu{
         convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements, alpha};
 }

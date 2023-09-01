@@ -14,12 +14,12 @@ namespace kernel {
 namespace cumath = CUDA::math;
 template <typename T>
 struct EluOpImpl {
-    __device__ static inline T op(T x, double alpha) {
+    __device__ static inline T op(T x, float alpha) {
         return x >= static_cast<T>(0.0) ? x : static_cast<T>(alpha) * (cumath::exp(x) - static_cast<T>(1.0));
     }
 };
 
-Elu::Elu(Type_t element_type, size_t max_threads_per_block, size_t num_elements, double alpha)
+Elu::Elu(Type_t element_type, size_t max_threads_per_block, size_t num_elements, float alpha)
     : impl_{element_type, max_threads_per_block, num_elements}, alpha_{alpha} {}
 
 void Elu::operator()(cudaStream_t stream, const void* in, void* out) const { impl_(stream, in, out, alpha_); }
