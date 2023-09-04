@@ -73,9 +73,11 @@ private:
 class ConvolutionDescriptorsCuDnn {
 public:
     ConvolutionDescriptorsCuDnn(const CreationContext& context,
-                                const Convolution::Details::ConvolutionParamsCuDnn& params);
+                                const Convolution::Details::ConvolutionParamsCuDnn& params,
+                                const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF, CUDNN_DATA_FLOAT});
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
+    cudnnDataType_t DescType() const { return conv_desc_type_; }
     const CUDA::DnnTensorDescriptor& Input() const { return input_; }
     const CUDA::DnnFilterDescriptor& Filter() const { return filter_; }
     const CUDA::DnnTensorDescriptor& Output() const { return output_; }
@@ -103,11 +105,13 @@ private:
 private:
     ConvolutionParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
+    cudnnDataType_t conv_desc_type_;
     CUDA::DnnTensorDescriptor input_;
     CUDA::DnnFilterDescriptor filter_;
     CUDA::DnnTensorDescriptor output_;
     CUDA::DnnConvolutionDescriptor conv_;
     cudnnConvolutionFwdAlgoPerf_t algo_perf_;
+    std::vector<cudnnDataType_t> half_desc_types_;
 };
 
 /**
@@ -116,9 +120,11 @@ private:
 class ConvolutionBackpropDataDescriptorCuDnn {
 public:
     ConvolutionBackpropDataDescriptorCuDnn(const CreationContext& context,
-                                           const Convolution::Details::ConvolutionBackpropDataParamsCuDnn& params);
+                                           const Convolution::Details::ConvolutionBackpropDataParamsCuDnn& params,
+                                           const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF, CUDNN_DATA_FLOAT});
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
+    cudnnDataType_t DescType() const { return conv_desc_type_; }
     const CUDA::DnnTensorDescriptor& dOutput() const { return doutput_desc_; }
     const CUDA::DnnFilterDescriptor& Filter() const { return filter_desc_; }
     const CUDA::DnnTensorDescriptor& dInput() const { return dinput_desc_; }
@@ -146,11 +152,13 @@ private:
 private:
     ConvolutionBackpropDataParamsCuDnn params_;
     cudnnDataType_t tensor_element_type_;
+    cudnnDataType_t conv_desc_type_;
     CUDA::DnnFilterDescriptor filter_desc_;
     CUDA::DnnTensorDescriptor doutput_desc_;
     CUDA::DnnTensorDescriptor dinput_desc_;
     CUDA::DnnConvolutionDescriptor conv_;
     cudnnConvolutionBwdDataAlgoPerf_t algo_perf_;
+    std::vector<cudnnDataType_t> half_desc_types_;
 };
 
 std::shared_ptr<CUDA::DnnTensorDescriptor> MakeFusedAddDescriptor(const ov::Shape& shape,
