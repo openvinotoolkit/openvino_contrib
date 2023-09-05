@@ -124,6 +124,7 @@ jobs:
       -DENABLE_PYTHON=OFF
       -DENABLE_NVIDIA=ON
       -DENABLE_TESTS=ON
+      -DENABLE_DATA=OFF
       /root/repos/openvino &&
       /root/w/ninja -v ov_nvidia_func_tests ov_nvidia_unit_tests"
     workingDirectory: $(WORK_DIR)
