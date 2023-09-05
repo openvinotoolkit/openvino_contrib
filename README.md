@@ -12,6 +12,7 @@ This list gives an overview of all modules available inside the contrib reposito
 * [**java_api**](./modules/java_api): Inference Engine Java API -- provides Java wrappers for Inference Engine public API.
 * [**custom_operations**](./modules/custom_operations/): Collection of Custom Operations -- implement Custom Operations with OpenVINO Extensibility Mechanism.
 * [**Token Merging**](./modules/token_merging/): adaptation of [Token Merging method](https://arxiv.org/abs/2210.09461) for OpenVINO.
+* [**OpenVINO Code**](./modules/openvino_code): VSCode extension for AI code completion with OpenVINO.
 
 ## How to build OpenVINO with extra modules
 You can build OpenVINO, so it will include the modules from this repository. Contrib modules are under constant development and it is recommended to use them alongside the master branch or latest releases of OpenVINO.
