@@ -22,7 +22,8 @@ FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
                                              IndexCollection&& outputIds,
                                              Convolution::Details::FusedConvolutionParams params)
     : OperationCuDnn{context, node, std::move(inputIds), std::move(outputIds)},
-      conv_descs_{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_)},
+      conv_descs_{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_,
+        std::vector<cudnnDataType_t>{CUDNN_DATA_HALF, CUDNN_DATA_FLOAT})}, // 119703: investigate whether we need HALF here
       bias_desc_{Convolution::Details::MakeFusedAddDescriptor(params.bias_shape_, params.conv_.element_type_)},
       add_desc_{params.add_shape_ ? Convolution::Details::MakeFusedAddDescriptor(params.add_shape_.value(),
                                                                                  params.conv_.element_type_)
@@ -65,18 +66,18 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     cudnnTensorDescriptor_t zTensorDesc;
     const void* zTensorIn = nullptr;
     if (includesOnlyBiasAdd) {
-        alpha2 = &CUDA::NumericConst<CUDA::constants::zero>(conv_descs_->ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::zero>(conv_descs_->DescType());
         zTensorDesc = conv_descs_->Output().get();
         zTensorIn = outputs[ArgIndices::output].get();
     } else {
-        alpha2 = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->DescType());
         zTensorDesc = add_desc_->get();
         zTensorIn = inputs[ArgIndices::add].get();
     }
 
     throwIfError(
         ::cudnnConvolutionBiasActivationForward(dnnHandle.get(),
-                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->DescType()),
                                                 conv_descs_->Input().get(),
                                                 inputs[ArgIndices::input].get(),
                                                 conv_descs_->Filter().get(),
