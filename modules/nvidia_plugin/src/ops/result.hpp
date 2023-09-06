@@ -35,8 +35,6 @@ public:
 
 private:
     static std::optional<std::size_t> GetOutputTensorSubIndex(const ov::Output<ov::Node>& node);
-    static std::optional<std::string> GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
-                                                               const std::string& resultName);
 
     std::vector<std::string> output_tensor_names_;
 };

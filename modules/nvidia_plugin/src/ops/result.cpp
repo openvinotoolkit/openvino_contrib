@@ -10,7 +10,6 @@
 #include <exec_graph_info.hpp>
 #include <openvino/core/except.hpp>
 #include <transformations/rt_info/fused_names_attribute.hpp>
-#include <transformer/cuda_rt_info.hpp>
 #include <utility>
 
 #include "nop_op.hpp"
@@ -46,33 +45,6 @@ void ResultOp::Execute(const InferenceRequestContext& context,
 
 bool ResultOp::IsCudaGraphCompatible() const { return true; }
 
-std::optional<std::string> ResultOp::GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
-                                                              const std::string& resultName) {
-    if (auto found = rtInfo.find(RtInfo::CUDA_FUSED_NAMES_MAPPING); found != rtInfo.end()) {
-        const auto& original_names = found->second.as<std::string>();
-        const auto foundPos = original_names.find("FUSED:");
-        if (foundPos == 0) {
-            auto original_names_mapping = original_names.substr(std::strlen("FUSED:"));
-            auto foundNextMappingPos = original_names_mapping.find(';', 0);
-            while (foundNextMappingPos != std::string::npos) {
-                const auto& mapping = original_names_mapping.substr(0, foundNextMappingPos);
-                const auto foundMappingPos = mapping.find('=');
-                if (foundMappingPos == std::string::npos) {
-                    break;
-                }
-                const auto& mappingResultName = mapping.substr(0, foundMappingPos);
-                const auto& mappingOutputName = mapping.substr(foundMappingPos + 1);
-                if (mappingResultName == resultName) {
-                    return mappingOutputName;
-                }
-                original_names_mapping = original_names_mapping.substr(foundNextMappingPos + 1);
-                foundNextMappingPos = original_names_mapping.find(';');
-            }
-        }
-    }
-    return std::nullopt;
-}
-
 std::optional<std::size_t> ResultOp::GetOutputTensorSubIndex(const ov::Output<ov::Node>& node) {
     const auto& opRegistry = OperationRegistry::getInstance();
     const auto& opType = opRegistry.getOperationType(node.get_node()->shared_from_this());
@@ -98,10 +70,6 @@ std::vector<std::string> ResultOp::GetOutputTensorName(const ov::op::v0::Result&
     outputNames.push_back(name);
 
     auto resultName = node.get_friendly_name();
-    const auto foundName = GetFusedOutputTensorName(input.get_node()->get_rt_info(), resultName);
-    if (foundName) {
-        outputNames.push_back(foundName.value());
-    }
 
     // NOTE: New way of getting the fused names for OpenVINO 2.0 API
     // TODO: When support for old OpenVINO API will be stopped, consider using only this approach.

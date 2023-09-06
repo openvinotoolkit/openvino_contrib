@@ -40,9 +40,6 @@ LSTMSequenceOptimizedOp::LSTMSequenceOptimizedOp(const CreationContext& context,
             */
             validateSequenceMajorArgShapes(node);
             setupSequenceMajorLayoutAdapters();
-            throw_ov_exception(
-                "'ov::nvidia_gpu::nodes::LSTMSequenceOptimized::SequenceMajor': This mode has never been used with real "
-                "model.");
             break;
         default:
             OPENVINO_ASSERT(false, "Node name: ", GetName());

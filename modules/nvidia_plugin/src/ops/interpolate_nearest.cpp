@@ -17,10 +17,14 @@ namespace {
 std::vector<float> getScalesVector(const ov::nvidia_gpu::InterpolateNearestOp::NodeOp& node) {
     // for calculation scale for nearest mode see
     // https://docs.openvino.ai/2021.1/openvino_docs_ops_image_Interpolate_4.html
-    const auto scales = ov::as_type_ptr<op::v0::Constant>(node.input_value(2).get_node_shared_ptr())->cast_vector<float>();
+    const auto scales_const = ov::as_type_ptr<op::v0::Constant>(node.input_value(2).get_node_shared_ptr());
+    OPENVINO_ASSERT(scales_const);
+    const auto scales = scales_const->cast_vector<float>();
     std::vector<int64_t> axis;
     if (node.inputs().size() > 3) {
-        axis = ov::as_type_ptr<op::v0::Constant>(node.input_value(3).get_node_shared_ptr())->cast_vector<int64_t>();
+        const auto axis_const = ov::as_type_ptr<op::v0::Constant>(node.input_value(3).get_node_shared_ptr());
+        OPENVINO_ASSERT(axis_const);
+        axis = axis_const->cast_vector<int64_t>();
     } else {
         axis.resize(node.get_input_partial_shape(0).rank().get_length());
         std::iota(axis.begin(), axis.end(), 0);

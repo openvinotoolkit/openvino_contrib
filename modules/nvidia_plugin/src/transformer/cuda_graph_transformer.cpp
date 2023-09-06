@@ -91,6 +91,12 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
     pass_config->disable<ov::pass::ShuffleChannelsFusion>();
 
+    // Skip decomposition for LSTMSequence and GRUSequence
+    pass_config->disable<ov::pass::BidirectionalLSTMSequenceDecomposition>();
+    pass_config->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
+    // TODO: Uncomment when support for RNNSequence will be added
+    //pass_config->disable<ov::pass::BidirectionalRNNSequenceDecomposition>();
+
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
 
@@ -104,7 +110,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     // relies on number of outputs of original model
     // pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
-    pass_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(pass_config);
+    pass_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>();
     pass_manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
 
     // Sequences supported by the plugin shouldn't be converted to TensorIterator.

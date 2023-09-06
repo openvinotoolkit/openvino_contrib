@@ -94,7 +94,7 @@ LSTMSequenceParams::LSTMSequenceParams(const ov::nvidia_gpu::nodes::LSTMSequence
     validate(node);
 }
 
-void LSTMSequenceParams::validate(const ov::op::v5::LSTMSequence& node) {
+void LSTMSequenceParams::validate(const ov::op::util::RNNCellBase& node) {
     const auto& sl_shape = node.get_input_shape(LSTMSequenceArgIndices::sequence_lengths);
     OPENVINO_ASSERT(sl_shape.size() == 1);
     OPENVINO_ASSERT(sl_shape[0] == batch_size_);
