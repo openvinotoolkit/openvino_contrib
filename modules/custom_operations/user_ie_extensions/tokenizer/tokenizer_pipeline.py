@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
-import os
 from dataclasses import dataclass, field
 from functools import singledispatchmethod
-from itertools import chain
+from itertools import chain, islice
 from typing import List, Optional, Any, Dict
-from unittest.mock import MagicMock
 import weakref
 
 import numpy as np
@@ -39,7 +37,7 @@ def pack_string(s):
 
 factory = NodeFactory()
 # TODO: Use relative path
-factory.add_extension("/home/apaniuko/python/openvino/bin/intel64/Debug/libuser_ov_extensions.so")
+factory.add_extension("/home/apaniuko/python/openvino/bin/intel64/Release/libuser_ov_extensions.so")
 
 
 class BasePipelineStep:
@@ -536,6 +534,9 @@ class CombineSegmentsStep(PostTokenizationStep):
     def from_hf_json_roberta_processor(
             cls, tokenizer_json: Dict[str, Any], number_of_inputs: int = 1
     ) -> "CombineSegmentsStep":
+        if number_of_inputs == 2:
+            raise UserInputError("Two inputs not supported for RoBERTa processor")
+
         post_processor_dict = tokenizer_json["post_processor"]
 
         inputs: List[TokenWithTypeId] = [Sequence(token_type_id=0)]
@@ -547,61 +548,33 @@ class CombineSegmentsStep(PostTokenizationStep):
             0, AddToken(token=post_processor_dict["cls"][0], token_type_id=0)
         )
         inputs.append(AddToken(token=post_processor_dict["sep"][0], token_type_id=0))
-
-        if number_of_inputs == 2:
-            print("WARNING: Pair of inputs not supported for RoBERTa postprocessor")
-
         return cls(inputs)
 
-    def get_ov_subgraph(self, input_nodes):
+    def validate_inputs(self, input_nodes: List[Output]) -> None:
         number_of_sequence_inputs = sum(
             1 for input_ in self.inputs if isinstance(input_, Sequence)
         )
-        #print('number_of_sequence_inputs:', number_of_sequence_inputs)
-        if number_of_sequence_inputs != len(input_nodes)/3:
+        if number_of_sequence_inputs != len(input_nodes) / 3:
             raise UserInputError(
                 f"Number of input nodes: {len(input_nodes)}, must be equal to {number_of_sequence_inputs}"
             )
 
-        op_inputs = []
-        i = 0
+    def get_ov_subgraph(self, input_nodes):
+        self.validate_inputs(input_nodes)
 
+        op_inputs = []
+        input_nodes_iter = iter(input_nodes)
         for node in self.inputs:
             if isinstance(node, Sequence):
-                op_inputs += input_nodes[3*i:3*(i+1)]
-                i += 1
+                op_inputs.extend(islice(input_nodes_iter, 3))
             else:
                 # Put a scalar as a ragged tensor with scalar shape and a single element
-                op_inputs += make_constant_node(0, Type.i32).outputs()
-                op_inputs += make_constant_node(1, Type.i32).outputs()
-                #print('Should be scalar:', op_inputs[-1])
-                #print('token', node._token_id)
+                op_inputs.extend(make_constant_node(0, Type.i32).outputs())
+                op_inputs.extend(make_constant_node(1, Type.i32).outputs())
                 op_inputs.append(make_constant_node(np.array([node._token_id]), Type.i32).output(0))
 
         op_inputs.append(make_constant_node(self.segment_ids, Type.i32).output(0))
-
-        #print('op_inputs:', op_inputs)
-
-        # FIXME: Disabled for now, no implementation
-        # operation = string_ops.CombineSegments(
-        #     *op_inputs,
-        #     self.segment_ids,
-        #     self.axis,
-        # )
-        # operation.configure_mock(**{"outputs.return_value": [MagicMock()]})
-        # return operation
-
-        # Decomposed implementation
-
         return factory.create('CombineSegments', op_inputs).outputs()
-        print(input_nodes)
-        assert len(input_nodes) == 3, '[ TOKENIZER PIPELINE CONVERSION ] CombineSegments can be converted for a single ragged input tensor only, this is temporary limitation'
-        print('self.segment_ids:', self.segment_ids)
-        # Make another ragged tensor with identical structure but with all values filled with self.segment_ids[0]
-        segment_ids_output = [input_nodes[0], input_nodes[1], opset10.broadcast(make_constant_node(self.segment_ids[0], Type.i32), opset10.shape_of(input_nodes[2])).output(0)]
-        print('[ TOKENIZER PIPELINE CONVERSION ] [ DEBUG ] CombineSegments outputs:', input_nodes + segment_ids_output)
-        return input_nodes + segment_ids_output
-
 
 
 @dataclass
@@ -621,20 +594,19 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
             # TODO: Initialize max_length
         )
 
-    def get_ov_subgraph(self, input_nodes):
+    @staticmethod
+    def validate_inputs(input_nodes) -> None:
         # Suppose input_nodes may have multiple tuples each with 3 tensors represented decomposed ragged tensors
         # We suppose that all ragged tensors represent the same structure and produce the mask only once
-        assert len(input_nodes) % 3 == 0
-        assert len(input_nodes) >= 3
+        if len(input_nodes) % 3 != 0 or len(input_nodes) < 3:
+            raise UserInputError(
+                f"Number of input nodes should be divisible by 3 and bigger or equal 3. Got {len(input_nodes)}"
+            )
 
-        #lens = opset10.subtract(input_nodes[1], input_nodes[2])
-        #max_len = opset10.reduce_max(lens)
-        #padded_len =
+    def get_ov_subgraph(self, input_nodes):
+        self.validate_inputs(input_nodes)
+
         outputs = []
-        #print(self.token)
-        #print('max_length =', self.max_length)
-        #print('ERRROR: SETTING MAX_LENGTH = 100')
-        #print('ERROR: Ignoring pad token and set it to id = 0')
 
         if self.max_length == -1 or self.max_length >= 2 ** 31:
             # Calculate max_length as the maximum ragged length
@@ -642,13 +614,8 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         else:
             max_length = make_constant_node(self.max_length, Type.i32)
 
-        #if self.token_type_id == -1:
-        #    self.token_type_id = 0
         names = ["input_ids", "token_type_ids"]
-        for i, name in zip(range(len(input_nodes)//3), names):
-            #print(input_nodes[3*i:3*(i+1)])
-            #print(as_node(self.max_length).outputs())
-            #print(as_node(np.array(0, dtype=int)).outputs())
+        for i, name in enumerate(names):
             cur_outputs = factory.create(
                 "RaggedToDense",
                 input_nodes[3*i:3*(i+1)] + max_length.outputs() + make_constant_node(0, Type.i32).outputs()
