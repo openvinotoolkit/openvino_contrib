@@ -99,15 +99,19 @@ private:
         const auto precent = static_cast<float>(not_matched_ngraph_results.size()) / ngraph_results.size();
         if (precent > 0.5) {
             OPENVINO_THROW("Too many elements not found in reference implementation ",
-                           "with relative comparison of values with threshold ", std::to_string(threshold));
+                           "with relative comparison of values with threshold ",
+                           std::to_string(threshold));
         }
         for (const auto &[i, ref] : not_matched_ngraph_results) {
             auto res = std::find_if(ie_results.begin(), ie_results.end(), [ref = ref](const auto &res) {
                 return ref.data.conf == res.data.conf;
             });
             if (res == ie_results.end()) {
-                OPENVINO_THROW("Cannot find object (index=", std::to_string(i),
-                               ") with relative comparison of values with threshold ", std::to_string(threshold), " failed");
+                OPENVINO_THROW("Cannot find object (index=",
+                               std::to_string(i),
+                               ") with relative comparison of values with threshold ",
+                               std::to_string(threshold),
+                               " failed");
             }
             ie_results.erase(res);
         }

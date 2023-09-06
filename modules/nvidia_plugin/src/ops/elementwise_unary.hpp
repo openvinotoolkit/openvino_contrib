@@ -31,8 +31,8 @@ public:
         OPENVINO_ASSERT(input_shape == output_shape, "Node name: ", GetName());
         size_t num_elements = ov::shape_size(input_shape);
         const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
-        kernel_ =
-            Kernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements};
+        kernel_ = Kernel{
+            convertDataType<ov::nvidia_gpu::kernel::Type_t>(input_element_type), max_threads_per_block, num_elements};
     }
 
     void Execute(const InferenceRequestContext& context,

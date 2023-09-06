@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "transformer/reduce_transformation.hpp"
+
 #include <gtest/gtest.h>
 
 #include "common_test_utils/ov_test_utils.hpp"
@@ -11,7 +13,6 @@
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/utils/utils.hpp"
-#include "transformer/reduce_transformation.hpp"
 
 using namespace ov;
 using namespace std;
@@ -27,9 +28,7 @@ Shape get_output_shape(const ov::Shape& input_shape, const std::vector<int32_t>&
     return output_shape;
 }
 template <typename T>
-shared_ptr<Model> create_model(const Shape& input_shape,
-                               const vector<int32_t>& axis,
-                               bool keep_dims = false) {
+shared_ptr<Model> create_model(const Shape& input_shape, const vector<int32_t>& axis, bool keep_dims = false) {
     auto input = make_shared<op::v0::Parameter>(element::f32, input_shape);
     auto axis_const = op::v0::Constant::create(element::i32, Shape{axis.size()}, axis);
     auto reduce = make_shared<T>(input, axis_const, keep_dims);
@@ -40,15 +39,15 @@ shared_ptr<Model> create_ref_model(const Shape& input_shape,
                                    const vector<int32_t>& axis,
                                    const Shape& output_shape,
                                    bool skip_reduce = false) {
-        auto input = make_shared<op::v0::Parameter>(element::f32, input_shape);
-        std::shared_ptr<ov::Node> last_node = input;
-        if (!skip_reduce) {
-            auto axis_const = op::v0::Constant::create(element::i32, Shape{axis.size()}, axis);
-            last_node = make_shared<T>(input, axis_const, true);
-        }
-        auto reshape_const = op::v0::Constant::create(element::i64, Shape{output_shape.size()}, output_shape);
-        auto reshape = make_shared<op::v1::Reshape>(last_node, reshape_const, false);
-        return make_shared<Model>(reshape, ParameterVector{input});
+    auto input = make_shared<op::v0::Parameter>(element::f32, input_shape);
+    std::shared_ptr<ov::Node> last_node = input;
+    if (!skip_reduce) {
+        auto axis_const = op::v0::Constant::create(element::i32, Shape{axis.size()}, axis);
+        last_node = make_shared<T>(input, axis_const, true);
+    }
+    auto reshape_const = op::v0::Constant::create(element::i64, Shape{output_shape.size()}, output_shape);
+    auto reshape = make_shared<op::v1::Reshape>(last_node, reshape_const, false);
+    return make_shared<Model>(reshape, ParameterVector{input});
 }
 }  // namespace
 

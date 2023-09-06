@@ -6,8 +6,8 @@
 
 #include <cuda_test_constants.hpp>
 
-#include "openvino/runtime/properties.hpp"
 #include "nvidia/properties.hpp"
+#include "openvino/runtime/properties.hpp"
 
 using namespace ov::test::behavior;
 
@@ -65,16 +65,14 @@ INSTANTIATE_TEST_SUITE_P(smoke_AutoBatch_BehaviorTests,
                                             ::testing::ValuesIn(auto_batch_inproperties)),
                          OVCompiledModelPropertiesIncorrectTests::getTestCaseName);
 
-const std::vector<ov::AnyMap> default_properties = {
-    {ov::num_streams(1)},
-    {ov::hint::num_requests(0)},
-    {ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)},
-    {ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE)},
-    {ov::enable_profiling(false)},
-    {ov::device::id("0")},
-    {ov::nvidia_gpu::operation_benchmark(false)},
-    {ov::nvidia_gpu::use_cuda_graph(true)}
-};
+const std::vector<ov::AnyMap> default_properties = {{ov::num_streams(1)},
+                                                    {ov::hint::num_requests(0)},
+                                                    {ov::hint::performance_mode(ov::hint::PerformanceMode::LATENCY)},
+                                                    {ov::hint::execution_mode(ov::hint::ExecutionMode::PERFORMANCE)},
+                                                    {ov::enable_profiling(false)},
+                                                    {ov::device::id("0")},
+                                                    {ov::nvidia_gpu::operation_benchmark(false)},
+                                                    {ov::nvidia_gpu::use_cuda_graph(true)}};
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          OVCompiledModelPropertiesDefaultTests,

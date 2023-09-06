@@ -7,9 +7,9 @@
 #include <memory_manager/cuda_device_mem_block.hpp>
 
 #include "cancellation_token.hpp"
+#include "cuda_graph_context.hpp"
 #include "cuda_tensor_mapping_context.hpp"
 #include "cuda_thread_context.hpp"
-#include "cuda_graph_context.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

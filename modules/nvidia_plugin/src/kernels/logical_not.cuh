@@ -16,7 +16,10 @@ namespace kernel {
 
 class LogicalNot {
 public:
-    LogicalNot(Type_t element_type, const eltwise::KernelExecAttrs& kernelExecAttrs, std::size_t payloadRank, std::size_t len);
+    LogicalNot(Type_t element_type,
+               const eltwise::KernelExecAttrs& kernelExecAttrs,
+               std::size_t payloadRank,
+               std::size_t len);
 
     void operator()(cudaStream_t stream, const bool* src, bool* dst) const;
 

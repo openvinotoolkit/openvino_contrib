@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include "openvino/op/subtract.hpp"
-
 #include "elementwise_binary.hpp"
 #include "kernels/subtract.hpp"
+#include "openvino/op/subtract.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

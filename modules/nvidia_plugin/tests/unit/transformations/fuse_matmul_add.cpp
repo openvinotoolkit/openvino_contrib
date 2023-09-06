@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "transformer/fuse_matmul_add.hpp"
+
 #include <gtest/gtest.h>
 
 #include <tuple>
-
-#include "transformer/fuse_matmul_add.hpp"
-#include "transformer/nodes/fully_connected.hpp"
 
 #include "common_test_utils/ov_test_utils.hpp"
 #include "openvino/core/model.hpp"
@@ -15,6 +14,7 @@
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/utils/utils.hpp"
+#include "transformer/nodes/fully_connected.hpp"
 
 using ov::nvidia_gpu::nodes::FullyConnected;
 using namespace ov;
@@ -137,8 +137,8 @@ TEST(fuse_matmul_add, parameter_variadic_split_matmul_add_constant) {
     {
         auto input = make_shared<op::v0::Parameter>(element::f32, Shape{197, 128});
         auto split = make_shared<op::v1::VariadicSplit>(input,
-                                                     op::v0::Constant::create(element::i32, {}, {0}),
-                                                     op::v0::Constant::create(element::i32, Shape{2}, {196, 1}));
+                                                        op::v0::Constant::create(element::i32, {}, {0}),
+                                                        op::v0::Constant::create(element::i32, Shape{2}, {196, 1}));
         auto const_node0 = op::v0::Constant::create(element::f32, Shape{128, 128}, {1});
         auto matmul = make_shared<op::v0::MatMul>(split->output(1), const_node0, false, true);
         auto const_node1 = op::v0::Constant::create(element::f32, Shape{1, 128}, {2});
@@ -156,8 +156,8 @@ TEST(fuse_matmul_add, parameter_variadic_split_matmul_add_constant) {
     {
         auto input = make_shared<op::v0::Parameter>(element::f32, Shape{197, 128});
         auto split = make_shared<op::v1::VariadicSplit>(input,
-                                                     op::v0::Constant::create(element::i32, {}, {0}),
-                                                     op::v0::Constant::create(element::i32, Shape{2}, {196, 1}));
+                                                        op::v0::Constant::create(element::i32, {}, {0}),
+                                                        op::v0::Constant::create(element::i32, Shape{2}, {196, 1}));
         auto const_node0 = op::v0::Constant::create(element::f32, Shape{128, 128}, {1});
         auto const_node1 = op::v0::Constant::create(element::f32, Shape{1, 128}, {2});
         auto fc = make_shared<FullyConnected>(split->output(1), const_node0, const_node1, false, true);
@@ -188,4 +188,4 @@ TEST(fuse_matmul_add, parameters_matmul_dynamic) {
     }
 }
 
-} // namespace testing
+}  // namespace testing

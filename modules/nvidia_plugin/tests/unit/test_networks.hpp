@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "openvino/core/type/element_type.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/op/matmul.hpp"
-#include "openvino/core/type/element_type.hpp"
 
 inline std::shared_ptr<ov::Model> create_matmul_test_model() {
     auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape{3, 2, 10, 10});

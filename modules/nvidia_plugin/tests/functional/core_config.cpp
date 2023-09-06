@@ -3,9 +3,9 @@
 //
 
 #include "functional_test_utils/core_config.hpp"
-#include "shared_test_classes/base/ov_subgraph.hpp"
 
 #include "cuda_test_constants.hpp"
+#include "shared_test_classes/base/ov_subgraph.hpp"
 
 void CoreConfiguration(LayerTestsUtils::LayerTestsCommon* test) {
     std::shared_ptr<InferenceEngine::Core> core = PluginCache::get().ie();
@@ -16,7 +16,8 @@ void CoreConfiguration(LayerTestsUtils::LayerTestsCommon* test) {
             break;
         }
     }
-    // Set inference_precision hint to run fp32 model in fp32 runtime precision as default plugin execution precision may vary
+    // Set inference_precision hint to run fp32 model in fp32 runtime precision as default plugin execution precision
+    // may vary
     std::map<std::string, std::string> config = {{ov::hint::inference_precision.name(), hint.get_type_name()}};
     core->SetConfig(config, ov::test::utils::DEVICE_NVIDIA);
 }
@@ -32,8 +33,10 @@ void core_configuration(ov::test::SubgraphBaseTest* test) {
             break;
         }
     }
-    // Set inference_precision hint to run fp32 model in fp32 runtime precision as default plugin execution precision may vary
-    test->core->set_property(ov::test::utils::DEVICE_NVIDIA, {{ov::hint::inference_precision.name(), hint.get_type_name()}});
+    // Set inference_precision hint to run fp32 model in fp32 runtime precision as default plugin execution precision
+    // may vary
+    test->core->set_property(ov::test::utils::DEVICE_NVIDIA,
+                             {{ov::hint::inference_precision.name(), hint.get_type_name()}});
 }
 
 }  // namespace test

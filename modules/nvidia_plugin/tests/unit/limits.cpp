@@ -22,12 +22,13 @@
 #include <limits>
 #include <memory_manager/cuda_workbuffers.hpp>
 #include <memory_manager/tensor_types.hpp>
+#include <type_traits>
+#include <vector>
+
 #include "openvino/core/node.hpp"
 #include "openvino/core/type/element_type.hpp"
 #include "openvino/op/divide.hpp"
 #include "openvino/op/parameter.hpp"
-#include <type_traits>
-#include <vector>
 
 namespace {
 
@@ -150,8 +151,14 @@ void run_zero_div_test() {
     ov::nvidia_gpu::CancellationToken token{};
     ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, simpleExecutionDelegator, cudaGraphContext};
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));

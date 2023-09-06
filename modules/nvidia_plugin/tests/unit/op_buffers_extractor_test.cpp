@@ -60,8 +60,7 @@ class OperationBufferExtractorTest : public testing::Test {
         auto relu = std::make_shared<ov::op::v0::Relu>(unsqueeze);
 
         std::vector<int32_t> squeeze_axes_values = {1};
-        auto squeeze_axes =
-            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{1}, squeeze_axes_values);
+        auto squeeze_axes = std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{1}, squeeze_axes_values);
         auto squeeze = std::make_shared<ov::op::v0::Squeeze>(relu, squeeze_axes);
         auto squeeze_id = squeeze->get_instance_id();
 
@@ -465,8 +464,8 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
             std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
         auto add_0 = std::make_shared<ov::op::v1::Add>(multiplier, adder_0);
 
-        auto reshape_const = std::make_shared<ov::op::v0::Constant>(
-            ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
+        auto reshape_const =
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
         auto reshape0 = std::make_shared<ov::op::v1::Reshape>(multiply, reshape_const, true);
 
         auto concat = std::make_shared<ov::nvidia_gpu::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);

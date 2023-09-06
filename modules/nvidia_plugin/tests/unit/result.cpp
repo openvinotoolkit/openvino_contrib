@@ -80,8 +80,14 @@ TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
     SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    InferenceRequestContext context{empty_tensor, empty_mapping, tensors, tensors_mapping, threadContext,
-        token, simpleExecutionDelegator, cudaGraphContext};
+    InferenceRequestContext context{empty_tensor,
+                                    empty_mapping,
+                                    tensors,
+                                    tensors_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
@@ -95,8 +101,14 @@ TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
     SimpleExecutionDelegator simpleExecutionDelegator{};
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-    InferenceRequestContext context{empty_tensor, empty_mapping, tensors, tensors_mapping, threadContext,
-        token, simpleExecutionDelegator, cudaGraphContext};
+    InferenceRequestContext context{empty_tensor,
+                                    empty_mapping,
+                                    tensors,
+                                    tensors_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});

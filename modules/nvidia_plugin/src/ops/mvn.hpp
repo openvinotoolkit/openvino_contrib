@@ -6,10 +6,9 @@
 
 #include <cuda_operation_base.hpp>
 
-#include "openvino/op/mvn.hpp"
-
 #include "converters.hpp"
 #include "kernels/variance_normalization_factor.hpp"
+#include "openvino/op/mvn.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

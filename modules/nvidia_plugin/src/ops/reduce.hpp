@@ -26,6 +26,7 @@ public:
     WorkbufferRequest GetWorkBufferRequest() const override;
 
     static cudnnDataType_t reduceCompType(const ov::Node& node);
+
 private:
     cudnnDataType_t comp_type_;
     CUDA::DnnReduceTensorDescriptor reduce_desc_;

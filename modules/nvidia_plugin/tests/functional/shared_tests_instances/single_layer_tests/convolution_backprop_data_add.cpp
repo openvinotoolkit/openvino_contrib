@@ -96,9 +96,9 @@ protected:
 
         std::shared_ptr<ov::Node> filterWeightsNode;
         if (filterWeights.empty()) {
-                ov::Tensor random_tensor(type, filterWeightsShape);
-                ov::test::utils::fill_tensor_random(random_tensor);
-                filterWeightsNode = std::make_shared<ov::op::v0::Constant>(random_tensor);
+            ov::Tensor random_tensor(type, filterWeightsShape);
+            ov::test::utils::fill_tensor_random(random_tensor);
+            filterWeightsNode = std::make_shared<ov::op::v0::Constant>(random_tensor);
         } else {
             filterWeightsNode = std::make_shared<ov::op::v0::Constant>(type, filterWeightsShape, filterWeights);
         }
@@ -152,9 +152,10 @@ protected:
         std::tie(kernel, stride, padBegin, padEnd, dilation, convOutChannels, padType, outputPad) =
             convBackpropDataParams;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        ov::ParameterVector params {std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
+        ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
 
-        auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
+        auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
+            ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(

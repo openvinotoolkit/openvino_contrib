@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuda/graph.hpp>
+
 #include "cuda_tensor_mapping_context.hpp"
 
 namespace ov {

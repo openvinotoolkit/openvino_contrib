@@ -345,7 +345,7 @@ TEST_F(smoke_InferenceRequestTest, ParameterResult) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, "NVIDIA", {{ "INFERENCE_PRECISION_HINT", "f32"}});
+    auto execNet = ie.LoadNetwork(testNet, "NVIDIA", {{"INFERENCE_PRECISION_HINT", "f32"}});
     InferenceEngine::InferRequest request{execNet.CreateInferRequest()};
 
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};

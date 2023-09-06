@@ -27,41 +27,40 @@ const std::vector<InferenceEngine::Precision> intPrecisions = {
 // TODO commented tests don't work for CUDA now.
 // The reason there are missing correspondent operations or transformation
 const std::map<ActivationTypes, std::vector<std::vector<float>>> activationTypes = {
-    {Sigmoid,               {}},
-    {Tanh,                  {}},
-    {Relu,                  {}},
-    {Exp,                   {}},
-    {Log,                   {}},
+    {Sigmoid, {}},
+    {Tanh, {}},
+    {Relu, {}},
+    {Exp, {}},
+    {Log, {}},
     //            {Sign,                  {}},
-    {Abs,                   {}},
-    {Clamp,    {{-2.0f, 2.0f}}},
-    {Negative,              {}},
+    {Abs, {}},
+    {Clamp, {{-2.0f, 2.0f}}},
+    {Negative, {}},
     //            {Acos,                  {}},
     //            {Asin,                  {}},
     //            {Atan,                  {}},
-    {Cos,                   {}},
-    {Cosh,                  {}},
-    {Floor,                 {}},
-    {Sin,                   {}},
-    {Sinh,                  {}},
-    {Sqrt,                  {}},
+    {Cos, {}},
+    {Cosh, {}},
+    {Floor, {}},
+    {Sin, {}},
+    {Sinh, {}},
+    {Sqrt, {}},
     //            {Tan,                   {}},
-    {Elu,             {{0.1f}}},
+    {Elu, {{0.1f}}},
     //            {Erf,                   {}},
     //            {HardSigmoid,           {{0.2f, 0.5f}}},
     //            {Selu,                  {{1.6732f, 1.0507f}}},
     //            {Ceiling,               {}},
-    {Mish,                  {}},
-    {Swish,           {{0.5f}}},
-    {HSwish,                {}},
+    {Mish, {}},
+    {Swish, {{0.5f}}},
+    {HSwish, {}},
     //            {SoftPlus,              {}},
-    {HSigmoid,              {}},
+    {HSigmoid, {}},
     //            {RoundHalfToEven,       {}},
     //            {RoundHalfAwayFromZero, {}},
-    {Gelu,                  {}},
-    {GeluErf,               {}},
-    {GeluTanh,              {}}
-};
+    {Gelu, {}},
+    {GeluErf, {}},
+    {GeluTanh, {}}};
 
 class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
     void SetUp() override {
@@ -72,13 +71,13 @@ class CUDAActivationIntegerLayerTest : public ActivationLayerTest {
 
 // List of operations that should be tested also with integer precision
 const std::map<ActivationTypes, std::vector<std::vector<float>>> intActivationTypes = {
-        {Abs,                   {}},
-        {Negative,              {}},
-        {Cos,                   {}},
-        {Cosh,                  {}},
-        {Sinh,                  {}},
-        {Sqrt,                  {}},
-        {Log,                   {}},
+    {Abs, {}},
+    {Negative, {}},
+    {Cos, {}},
+    {Cosh, {}},
+    {Sinh, {}},
+    {Sqrt, {}},
+    {Log, {}},
 };
 
 const std::map<ActivationTypes, std::vector<std::vector<float>>> preluActivationParamTypes = {

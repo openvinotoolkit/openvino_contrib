@@ -14,8 +14,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "openvino/core/node.hpp"
 #include "memory_manager/cuda_workbuffers.hpp"
+#include "openvino/core/node.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

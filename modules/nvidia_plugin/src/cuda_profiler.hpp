@@ -96,8 +96,8 @@ private:
 
     void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
     void collect_node_visitor(const OperationBase::Ptr& execStep,
-                            std::vector<ProfileExecStep>& perfSteps,
-                            std::vector<OperationBase::Ptr>& allExecSequence);
+                              std::vector<ProfileExecStep>& perfSteps,
+                              std::vector<OperationBase::Ptr>& allExecSequence);
 
     const CUDA::Stream* active_stream_ = nullptr;
     std::vector<std::pair<const void*, std::vector<ProfileExecStep>>> subgraph_perf_steps_map_;
@@ -109,7 +109,7 @@ private:
     std::array<Duration, static_cast<std::size_t>(PerfStages::NumOfStages)> durations_;
     Time::time_point start_{};
     size_t infer_count_{};
-    CUDA::Event::RecordMode cuda_event_record_mode_ {CUDA::Event::RecordMode::Default};
+    CUDA::Event::RecordMode cuda_event_record_mode_{CUDA::Event::RecordMode::Default};
 };
 
 class Profiler::ProfileExecStep {

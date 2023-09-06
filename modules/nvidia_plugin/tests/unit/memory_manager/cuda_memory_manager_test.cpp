@@ -60,9 +60,7 @@ public:  // ov::nvidia_gpu::IOperationMeta
         static constexpr std::string_view empty{""};
         return empty;
     }
-    const ov::element::Type& GetRuntimePrecision() const override {
-        return ov::element::undefined;
-    }
+    const ov::element::Type& GetRuntimePrecision() const override { return ov::element::undefined; }
     gsl::span<const ov::nvidia_gpu::TensorID> GetInputIds() const override { return inputIds_; }
     gsl::span<const ov::nvidia_gpu::TensorID> GetOutputIds() const override { return outputIds_; }
 };
@@ -173,8 +171,7 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
-    ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation),
-                 ov::Exception);
+    ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->inputTensorPointers(*this, allocation), "Assertion");
@@ -195,8 +192,7 @@ TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
-    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation),
-                 ov::Exception);
+    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");
@@ -213,8 +209,7 @@ TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
 #ifdef NDEBUG
-    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation),
-                 ov::Exception);
+    ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");

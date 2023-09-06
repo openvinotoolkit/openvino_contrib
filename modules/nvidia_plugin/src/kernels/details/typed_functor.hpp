@@ -68,8 +68,8 @@ struct TypedFunctor : private std::array<TypedFunctor<TFunctor, TFunPtr, Dimensi
         const size_t type_idx = static_cast<size_t>(type) - type_t_first_value;
         if (type_idx >= this->size()) {
             throw_ov_exception(fmt::format("TypedFunctor[Dimension={}]: Type = {} is not supported by TypedFunctor !!",
-                                         DIM_1D,
-                                         static_cast<Type_t>(type_idx)));
+                                           DIM_1D,
+                                           static_cast<Type_t>(type_idx)));
         }
         return std::array<TypedFunctor<TFunctor, TFunPtr, Dimension(D - 1)>, type_count>::operator[](type_idx);
     }
@@ -92,8 +92,8 @@ struct TypedFunctor<TFunctor, TFunPtr, DIM_1D> : private std::array<TFunPtr, typ
         const size_t type_idx = static_cast<size_t>(type) - type_t_first_value;
         if (type_idx >= this->size()) {
             throw_ov_exception(fmt::format("TypedFunctor[Dimension={}]: Type = {} is not supported by TypedFunctor !!",
-                                         DIM_1D,
-                                         static_cast<Type_t>(type_idx)));
+                                           DIM_1D,
+                                           static_cast<Type_t>(type_idx)));
         }
         return std::array<TFunPtr, type_count>::operator[](type_idx);
     }

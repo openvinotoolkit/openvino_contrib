@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <cuda_graph_context.hpp>
 #include <cuda/runtime.hpp>
+#include <cuda_graph_context.hpp>
 #include <gsl/pointers>
 
 #include "memory_manager/model/cuda_memory_model.hpp"
@@ -56,9 +56,7 @@ public:
 
     MemoryModel::Ptr memoryModel() const { return model_; }
 
-    CudaGraphContext& cudaGraphContext() {
-        return cuda_graph_context_;
-    }
+    CudaGraphContext& cudaGraphContext() { return cuda_graph_context_; }
 
 private:
     MemoryModel::Ptr model_;

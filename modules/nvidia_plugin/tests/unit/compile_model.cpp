@@ -5,25 +5,21 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <nvidia/nvidia_config.hpp>
+#include <ops/matmul.hpp>
 #include <typeinfo>
-
-#include "openvino/runtime/internal_properties.hpp"
 
 #include "cuda_compiled_model.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
-
-#include <nvidia/nvidia_config.hpp>
-#include <ops/matmul.hpp>
-
+#include "openvino/runtime/internal_properties.hpp"
 #include "test_networks.hpp"
 
 using namespace ov::nvidia_gpu;
 
 using PropertiesParams = ov::AnyMap;
 
-class CompileModelTest : public testing::Test,
-                        public testing::WithParamInterface<PropertiesParams> {
+class CompileModelTest : public testing::Test, public testing::WithParamInterface<PropertiesParams> {
     void SetUp() override {
         properties = this->GetParam();
         model_ = create_matmul_test_model();
@@ -74,11 +70,10 @@ std::vector<PropertiesParams> default_properties = {
 using MatMulCompileModelTest = CompileModelTest;
 TEST_P(MatMulCompileModelTest, BuildExecutableSequence_MatMul_Success) {
     auto plugin = std::make_shared<Plugin>();
-    auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(
-        plugin->compile_model(model_, properties));
+    auto cuda_compiled_model = std::dynamic_pointer_cast<CompiledModel>(plugin->compile_model(model_, properties));
     const auto& execSequence = GetExecSequence(cuda_compiled_model);
     bool is_f32 = properties.at(ov::hint::inference_precision.name()).as<ov::element::Type>() == ov::element::f32;
-    auto expected_ops = is_f32 ? 3 : 5; // +2 Converts for f16
+    auto expected_ops = is_f32 ? 3 : 5;  // +2 Converts for f16
     auto matmul_index = is_f32 ? 1 : 2;
     ASSERT_EQ(execSequence.size(), expected_ops);
     ASSERT_EQ(std::type_index(typeid(*execSequence[matmul_index].get())), std::type_index(typeid(MatMulOp)));
@@ -177,7 +172,6 @@ TEST_P(NumStreams8CompileModelTest, CompileModel_OptimalNumberInferRequests_8_Su
     ASSERT_EQ(cuda_compiled_model->get_property(ov::optimal_number_of_infer_requests.name()), uint32_t(total_streams));
 }
 
-
 INSTANTIATE_TEST_SUITE_P(CompileModelTest,
                          NumStreams8CompileModelTest,
                          ::testing::ValuesIn(num_streams_8_properties),
@@ -238,8 +232,7 @@ std::vector<PropertiesParams> num_streams_auto_properties = {
     {
         {ov::device::id.name(), "0"},
         {ov::hint::performance_mode.name(), ov::util::to_string(ov::hint::PerformanceMode::THROUGHPUT)},
-    }
-};
+    }};
 
 using NumStreamsAUTOCompileModelTest = CompileModelTest;
 TEST_P(NumStreamsAUTOCompileModelTest, CompileModel_OptimalNumberInferRequests_Auto_Success) {

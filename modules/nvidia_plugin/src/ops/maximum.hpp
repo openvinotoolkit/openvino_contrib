@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include "openvino/op/maximum.hpp"
-
 #include "elementwise_binary.hpp"
 #include "kernels/maximum.hpp"
+#include "openvino/op/maximum.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

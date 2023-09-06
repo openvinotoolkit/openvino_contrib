@@ -7,10 +7,10 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
-#include "openvino/core/except.hpp"
 #include <vector>
 
 #include "memory_manager/cuda_device_mem_block.hpp"
+#include "openvino/core/except.hpp"
 
 TEST(ImmutableMemoryBlockBuilder, BuildEmpty) {
     using namespace ov::nvidia_gpu;
@@ -64,10 +64,8 @@ TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
     builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size());
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()),
-                 ov::Exception);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()),
-                 ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), "Assertion");
