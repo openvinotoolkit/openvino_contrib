@@ -4,13 +4,12 @@
 
 #pragma once
 
+#include "cuda_compiled_model.hpp"
+#include "cuda_config.hpp"
+#include "cuda_thread_pool.hpp"
 #include "openvino/runtime/icompiled_model.hpp"
 #include "openvino/runtime/iplugin.hpp"
 #include "openvino/runtime/threading/itask_executor.hpp"
-
-#include "cuda_config.hpp"
-#include "cuda_compiled_model.hpp"
-#include "cuda_thread_pool.hpp"
 #include "transformer/cuda_graph_transformer.hpp"
 
 namespace ov {

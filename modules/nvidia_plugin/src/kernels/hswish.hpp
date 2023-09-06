@@ -29,5 +29,3 @@ private:
 }  // namespace kernel
 }  // namespace nvidia_gpu
 }  // namespace ov
-
-

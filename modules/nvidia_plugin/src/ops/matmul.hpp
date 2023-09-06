@@ -4,13 +4,12 @@
 
 #pragma once
 
-#include "openvino/op/matmul.hpp"
-
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 
 #include "cuda/constant_factory.hpp"
+#include "openvino/op/matmul.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

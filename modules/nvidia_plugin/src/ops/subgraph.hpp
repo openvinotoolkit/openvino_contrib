@@ -8,6 +8,7 @@
 #include <cuda_operation_base.hpp>
 #include <memory_manager/cuda_memory_manager.hpp>
 #include <memory_manager/cuda_memory_pool.hpp>
+
 #include "openvino/op/util/sub_graph_base.hpp"
 
 namespace ov {

@@ -18,23 +18,23 @@ namespace {
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassExecutableNetworkGetMetricTest,
                          IEClassExecutableNetworkGetMetricTest_SUPPORTED_CONFIG_KEYS,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */"HETERO:NVIDIA"));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */ "HETERO:NVIDIA"));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassExecutableNetworkGetMetricTest,
                          IEClassExecutableNetworkGetMetricTest_SUPPORTED_METRICS,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */"HETERO:NVIDIA"));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */ "HETERO:NVIDIA"));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassExecutableNetworkGetMetricTest,
                          IEClassExecutableNetworkGetMetricTest_NETWORK_NAME,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*""MULTI:NVIDIA", */"HETERO:NVIDIA"));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*""MULTI:NVIDIA", */ "HETERO:NVIDIA"));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassExecutableNetworkGetMetricTest,
                          IEClassExecutableNetworkGetMetricTest_OPTIMAL_NUMBER_OF_INFER_REQUESTS,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */"HETERO:NVIDIA"));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */ "HETERO:NVIDIA"));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassExecutableNetworkGetMetricTest_ThrowsUnsupported,
                          IEClassExecutableNetworkGetMetricTest,
-                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */"HETERO:NVIDIA"));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA, /*"MULTI:NVIDIA", */ "HETERO:NVIDIA"));
 //
 // Executable Network GetConfig / SetConfig
 //

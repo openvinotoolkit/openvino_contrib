@@ -11,7 +11,7 @@
 namespace ov {
 namespace nvidia_gpu {
 
-template <typename  T>
+template <typename T>
 class StridedSliceOp : public OperationBase {
 public:
     using NodeOp = ov::op::v1::StridedSlice;

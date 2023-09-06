@@ -86,8 +86,7 @@ struct ConcatTest : testing::Test {
     template <typename T>
     void fill_tensor(ov::Tensor& tensor, T value) const {
         T* data = tensor.data<T>();
-        for (size_t i = 0; i < tensor.get_size(); i++)
-            data[i] = static_cast<T>(value);
+        for (size_t i = 0; i < tensor.get_size(); i++) data[i] = static_cast<T>(value);
     }
     void allocate(size_t axis) {
         for (int i = 0; i < tensors.size(); i++) {

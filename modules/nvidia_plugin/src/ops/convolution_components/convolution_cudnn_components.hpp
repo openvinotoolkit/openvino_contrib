@@ -74,7 +74,8 @@ class ConvolutionDescriptorsCuDnn {
 public:
     ConvolutionDescriptorsCuDnn(const CreationContext& context,
                                 const Convolution::Details::ConvolutionParamsCuDnn& params,
-                                const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF, CUDNN_DATA_FLOAT});
+                                const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF,
+                                                                                      CUDNN_DATA_FLOAT});
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
     cudnnDataType_t DescType() const { return conv_desc_type_; }
@@ -121,7 +122,8 @@ class ConvolutionBackpropDataDescriptorCuDnn {
 public:
     ConvolutionBackpropDataDescriptorCuDnn(const CreationContext& context,
                                            const Convolution::Details::ConvolutionBackpropDataParamsCuDnn& params,
-                                           const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF, CUDNN_DATA_FLOAT});
+                                           const std::vector<cudnnDataType_t> half_desc_types = {CUDNN_DATA_HALF,
+                                                                                                 CUDNN_DATA_FLOAT});
 
     cudnnDataType_t ElementType() const { return tensor_element_type_; }
     cudnnDataType_t DescType() const { return conv_desc_type_; }

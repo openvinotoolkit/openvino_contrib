@@ -22,7 +22,8 @@ template <>
 class AttributeAdapter<nvidia_gpu::nodes::ActivationMode>
     : public EnumAttributeAdapterBase<nvidia_gpu::nodes::ActivationMode> {
 public:
-    AttributeAdapter(nvidia_gpu::nodes::ActivationMode& value): EnumAttributeAdapterBase<nvidia_gpu::nodes::ActivationMode>(value) {}
+    AttributeAdapter(nvidia_gpu::nodes::ActivationMode& value)
+        : EnumAttributeAdapterBase<nvidia_gpu::nodes::ActivationMode>(value) {}
 
     OPENVINO_RTTI("AttributeAdapter<ActivationMode>");
 };

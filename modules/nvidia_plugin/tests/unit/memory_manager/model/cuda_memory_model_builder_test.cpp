@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-#include "openvino/core/except.hpp"
-
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
+#include "openvino/core/except.hpp"
 
 /*
   Let's assume we have 5 nodes: parameter, result and 3 operations
@@ -103,12 +102,9 @@ TEST(MemoryModelBuilder, HandleDuplicateAllocation) {
     builder.addAllocation(duplicate_buffer_id, 0, 1, size1);
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1),
-                 ov::Exception);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2),
-                 ov::Exception);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1),
-                 ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 0, 1, size2), ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, 1, 2, size1), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, 0, 1, size1), "Assertion");

@@ -6,16 +6,14 @@
 
 #include <condition_variable>
 #include <memory>
+#include <ops/parameter.hpp>
+#include <ops/result.hpp>
 #include <random>
 #include <typeinfo>
 
 #include "cuda_compiled_model.hpp"
 #include "cuda_operation_registry.hpp"
 #include "cuda_plugin.hpp"
-
-#include <ops/parameter.hpp>
-#include <ops/result.hpp>
-
 #include "nodes/parameter_stub_node.hpp"
 #include "nodes/result_stub_node.hpp"
 #include "test_networks.hpp"
@@ -44,16 +42,14 @@ TEST_F(PluginTest, CompileModel_Success) {
 TEST_F(PluginTest, CompileModel_NegativeId_Failed) {
     auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
-    ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), "-1"}}),
-                 ov::Exception);
+    ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), "-1"}}), ov::Exception);
 }
 
 TEST_F(PluginTest, CompileModel_OutRangeId_Failed) {
     auto dummyFunction = std::make_shared<ov::Model>(ov::NodeVector{}, ov::ParameterVector{});
     auto plugin = std::make_shared<Plugin>();
-    ASSERT_THROW(
-        plugin->compile_model(dummyFunction, {{ov::device::id.name(), std::to_string(CUDA::Device::count())}}),
-        ov::Exception);
+    ASSERT_THROW(plugin->compile_model(dummyFunction, {{ov::device::id.name(), std::to_string(CUDA::Device::count())}}),
+                 ov::Exception);
 }
 
 TEST_F(PluginTest, CompileModel_CudaThreadPool_Success) {

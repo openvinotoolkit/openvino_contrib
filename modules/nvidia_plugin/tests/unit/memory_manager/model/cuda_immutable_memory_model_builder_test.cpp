@@ -6,9 +6,8 @@
 
 #include <gtest/gtest.h>
 
-#include "openvino/core/except.hpp"
-
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
+#include "openvino/core/except.hpp"
 
 TEST(ImmutableMemoryModelBuilder, BuildEmpty) {
     using namespace ov::nvidia_gpu;

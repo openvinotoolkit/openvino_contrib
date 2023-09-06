@@ -2671,8 +2671,14 @@ struct ClampBenchmark : testing::Test {
         ov::nvidia_gpu::CancellationToken token{};
         ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
-        ov::nvidia_gpu::InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, simpleExecutionDelegator, cudaGraphContext};
+        ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                        emptyMapping,
+                                                        emptyTensor,
+                                                        emptyMapping,
+                                                        threadContext,
+                                                        token,
+                                                        simpleExecutionDelegator,
+                                                        cudaGraphContext};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;

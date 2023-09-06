@@ -130,8 +130,8 @@ inline void callCompare(const std::pair<ov::element::Type, std::vector<std::uint
                 infinity_value);
             break;
         case ov::element::Type_t::i4: {
-            auto expectedOut = ngraph::helpers::convertOutputPrecision(
-                expected.second, expected.first, ov::element::Type_t::i8, size);
+            auto expectedOut =
+                ngraph::helpers::convertOutputPrecision(expected.second, expected.first, ov::element::Type_t::i8, size);
             FiniteLayerComparer::Compare<T_IE, int8_t>(reinterpret_cast<const int8_t *>(expectedOut.data()),
                                                        actualBuffer,
                                                        size,
@@ -141,8 +141,8 @@ inline void callCompare(const std::pair<ov::element::Type, std::vector<std::uint
             break;
         }
         case ov::element::Type_t::u4: {
-            auto expectedOut = ngraph::helpers::convertOutputPrecision(
-                expected.second, expected.first, ov::element::Type_t::u8, size);
+            auto expectedOut =
+                ngraph::helpers::convertOutputPrecision(expected.second, expected.first, ov::element::Type_t::u8, size);
             FiniteLayerComparer::Compare<T_IE, uint8_t>(reinterpret_cast<const uint8_t *>(expectedOut.data()),
                                                         actualBuffer,
                                                         size,
@@ -176,8 +176,7 @@ void FiniteLayerComparer::Compare(const std::pair<ov::element::Type, std::vector
     // W/A for int4, uint4
     if (expected.first == ov::element::Type_t::u4 || expected.first == ov::element::Type_t::i4) {
         k /= 2;
-    } else if (expected.first == ov::element::Type_t::undefined ||
-               expected.first == ov::element::Type_t::dynamic) {
+    } else if (expected.first == ov::element::Type_t::undefined || expected.first == ov::element::Type_t::dynamic) {
         k = 1;
     }
     ASSERT_EQ(expected.second.size(), actual->byteSize() * k);

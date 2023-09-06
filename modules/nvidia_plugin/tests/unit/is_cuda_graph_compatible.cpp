@@ -3,14 +3,15 @@
 //
 
 #include <gtest/gtest.h>
+
 #include <random>
 
+#include "cuda/graph.hpp"
 #include "cuda_compiled_model.hpp"
-#include "cuda_simple_execution_delegator.hpp"
-#include "cuda_runtime.h"
 #include "cuda_operation_registry.hpp"
 #include "cuda_profiler.hpp"
-#include "cuda/graph.hpp"
+#include "cuda_runtime.h"
+#include "cuda_simple_execution_delegator.hpp"
 #include "openvino/op/concat.hpp"
 #include "openvino/op/parameter.hpp"
 #include "openvino/op/relu.hpp"
@@ -143,7 +144,8 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
             std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(), shape2)};
 
         constexpr int64_t axis = 0;
-        auto node = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{params[0]->output(0), params[1]->output(0)}, axis);
+        auto node =
+            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{params[0]->output(0), params[1]->output(0)}, axis);
 
         CUDA::Device device{};
         constexpr bool optimizeOption = false;

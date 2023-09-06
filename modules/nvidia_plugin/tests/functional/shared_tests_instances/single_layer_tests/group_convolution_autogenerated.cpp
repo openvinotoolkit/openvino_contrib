@@ -15,9 +15,7 @@ namespace LayerTestsDefinitions {
 
 class GroupConvolutionLayerThresholdTest : public FiniteComparer<GroupConvolutionLayerTest> {
 protected:
-    void SetUp() override {
-        GroupConvolutionLayerTest::SetUp();
-    }
+    void SetUp() override { GroupConvolutionLayerTest::SetUp(); }
 };
 
 TEST_P(GroupConvolutionLayerThresholdTest, CompareWithRefs) {

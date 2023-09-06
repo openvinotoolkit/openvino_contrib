@@ -5,6 +5,7 @@
 #pragma once
 
 #include <ops/subgraph.hpp>
+
 #include "cuda_itopology_runner.hpp"
 
 namespace ov {
@@ -16,7 +17,7 @@ public:
     ~EagerTopologyRunner() override = default;
 
     void Run(const InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override;
-    void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override {};
+    void UpdateContext(InferenceRequestContext& context, const DeviceMemBlock& memoryBlock) const override{};
     const SubGraph& GetSubGraph() const override;
 };
 

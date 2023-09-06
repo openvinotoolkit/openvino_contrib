@@ -35,23 +35,23 @@ class CUDALSTMSequenceTest : public UnsymmetricalComparer<LSTMSequenceTest> {
     }
 };
 
-using LSTMSequenceOptimizedParams = typename std::tuple<
-        ngraph::helpers::SequenceTestsMode,                        // pure Sequence or TensorIterator
-        size_t,                                                    // seq_lengths
-        size_t,                                                    // batch
-        size_t,                                                    // hidden size
-        size_t,                                                    // input size
-        std::vector<std::string>,                                  // activations
-        float,                                                     // clip
-        std::string,                                               // major batch
-        ngraph::helpers::InputLayerType,                           // WRB input type (Constant or Parameter)
-        InferenceEngine::Precision,                                // Network precision
-        std::string>;                                              // Device name
+using LSTMSequenceOptimizedParams =
+    typename std::tuple<ngraph::helpers::SequenceTestsMode,  // pure Sequence or TensorIterator
+                        size_t,                              // seq_lengths
+                        size_t,                              // batch
+                        size_t,                              // hidden size
+                        size_t,                              // input size
+                        std::vector<std::string>,            // activations
+                        float,                               // clip
+                        std::string,                         // major batch
+                        ngraph::helpers::InputLayerType,     // WRB input type (Constant or Parameter)
+                        InferenceEngine::Precision,          // Network precision
+                        std::string>;                        // Device name
 
 class CUDALSTMSequenceOptimizedTest : public testing::WithParamInterface<LSTMSequenceOptimizedParams>,
                                       virtual public LayerTestsUtils::LayerTestsCommon {
 public:
-    static std::string getTestCaseName(const testing::TestParamInfo<LSTMSequenceOptimizedParams> &obj) {
+    static std::string getTestCaseName(const testing::TestParamInfo<LSTMSequenceOptimizedParams>& obj) {
         ngraph::helpers::SequenceTestsMode mode;
         size_t seq_lengths;
         size_t batch;
@@ -65,11 +65,24 @@ public:
         ngraph::helpers::InputLayerType WRBType;
         InferenceEngine::Precision netPrecision;
         std::string targetDevice;
-        std::tie(mode, seq_lengths, batch, hidden_size, input_size, activations, clip, major_batch,
-                 WRBType, netPrecision, targetDevice) = obj.param;
+        std::tie(mode,
+                 seq_lengths,
+                 batch,
+                 hidden_size,
+                 input_size,
+                 activations,
+                 clip,
+                 major_batch,
+                 WRBType,
+                 netPrecision,
+                 targetDevice) = obj.param;
         std::vector<std::vector<size_t>> input_shapes = {
-                {{batch, input_size}, {batch, hidden_size}, {batch, hidden_size}, {4 * hidden_size, input_size},
-                        {4 * hidden_size, hidden_size}, {4 * hidden_size}},
+            {{batch, input_size},
+             {batch, hidden_size},
+             {batch, hidden_size},
+             {4 * hidden_size, input_size},
+             {4 * hidden_size, hidden_size},
+             {4 * hidden_size}},
         };
         std::ostringstream result;
         result << "mode=" << mode << "_";
@@ -89,8 +102,8 @@ public:
 
 protected:
     void GenerateInputs() override {
-        for (const auto &input : executableNetwork.GetInputsInfo()) {
-            const auto &info = input.second;
+        for (const auto& input : executableNetwork.GetInputsInfo()) {
+            const auto& info = input.second;
             auto blob = GenerateInput(*info);
             if (input.first == "seq_lengths") {
                 blob = FuncTestUtils::createAndFillBlob(info->getTensorDesc(), m_max_seq_len, 0);
@@ -118,14 +131,29 @@ protected:
         std::string major_batch;
         ngraph::helpers::InputLayerType WRBType;
         InferenceEngine::Precision netPrecision;
-        std::tie(m_mode, seq_lengths, batch, hidden_size, input_size, activations, clip, major_batch,
-                 WRBType, netPrecision, targetDevice) = this->GetParam();
+        std::tie(m_mode,
+                 seq_lengths,
+                 batch,
+                 hidden_size,
+                 input_size,
+                 activations,
+                 clip,
+                 major_batch,
+                 WRBType,
+                 netPrecision,
+                 targetDevice) = this->GetParam();
         size_t num_directions = 2;
         m_max_seq_len = seq_lengths;
-        auto x_shape = (major_batch == "BatchMajor") ? ov::Shape{batch, seq_lengths, input_size} : ov::Shape{seq_lengths, batch, input_size};
+        auto x_shape = (major_batch == "BatchMajor") ? ov::Shape{batch, seq_lengths, input_size}
+                                                     : ov::Shape{seq_lengths, batch, input_size};
         std::vector<ov::Shape> input_shapes = {
-                {x_shape, {batch, num_directions, hidden_size}, {batch, num_directions, hidden_size},
-                {batch}, {num_directions, 4 * hidden_size, input_size}, {num_directions, 4 * hidden_size, hidden_size}, {num_directions, 4 * hidden_size}},
+            {x_shape,
+             {batch, num_directions, hidden_size},
+             {batch, num_directions, hidden_size},
+             {batch},
+             {num_directions, 4 * hidden_size, input_size},
+             {num_directions, 4 * hidden_size, hidden_size},
+             {num_directions, 4 * hidden_size}},
         };
 
         const auto& W_shape = input_shapes[4];
@@ -138,13 +166,13 @@ protected:
                                    std::make_shared<ov::op::v0::Parameter>(ngPrc, input_shapes[2])};
         std::shared_ptr<ov::Node> x_node = params[0];
         if (major_batch == "SequenceMajor") {
-            x_node = std::make_shared<ov::op::v1::Transpose>(params[0],
-                     ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
+            x_node = std::make_shared<ov::op::v1::Transpose>(
+                params[0], ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
         }
         std::shared_ptr<ov::Node> seq_lengths_node;
-        bool is_pure_sequence = (m_mode == SequenceTestsMode::PURE_SEQ ||
-                                 m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_PARAM ||
-                                 m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST);
+        bool is_pure_sequence =
+            (m_mode == SequenceTestsMode::PURE_SEQ || m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_PARAM ||
+             m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST);
         EXPECT_EQ(is_pure_sequence, true);
         if (m_mode == SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_PARAM) {
             auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::i64, input_shapes[3]);
@@ -152,8 +180,8 @@ protected:
             seq_lengths_node->set_friendly_name("seq_lengths");
             params.push_back(param);
         } else if (m_mode == ngraph::helpers::SequenceTestsMode::PURE_SEQ_RAND_SEQ_LEN_CONST) {
-            seq_lengths_node = ngraph::builder::makeConstant<int64_t>(ov::element::i64, input_shapes[3], {}, true,
-                                                                    static_cast<int64_t>(seq_lengths), 0.f);
+            seq_lengths_node = ngraph::builder::makeConstant<int64_t>(
+                ov::element::i64, input_shapes[3], {}, true, static_cast<int64_t>(seq_lengths), 0.f);
         } else {
             std::vector<int64_t> lengths(input_shapes[3][0], seq_lengths);
             seq_lengths_node = ngraph::builder::makeConstant(ov::element::i64, input_shapes[3], lengths, false);
@@ -175,8 +203,19 @@ protected:
             B = ngraph::builder::makeConstant(ngPrc, B_shape, {}, true, up_to, start_from, counter++);
         }
 
-        auto lstm_sequence = std::make_shared<ov::op::v5::LSTMSequence>(x_node, params[1], params[2], seq_lengths_node, W, R, B, hidden_size, direction,
-                std::vector<float>{}, std::vector<float>{}, activations, clip);
+        auto lstm_sequence = std::make_shared<ov::op::v5::LSTMSequence>(x_node,
+                                                                        params[1],
+                                                                        params[2],
+                                                                        seq_lengths_node,
+                                                                        W,
+                                                                        R,
+                                                                        B,
+                                                                        hidden_size,
+                                                                        direction,
+                                                                        std::vector<float>{},
+                                                                        std::vector<float>{},
+                                                                        activations,
+                                                                        clip);
 
         std::shared_ptr<ov::Node> transpose_y;
         std::shared_ptr<ov::Node> transpose_ho;
@@ -184,34 +223,46 @@ protected:
         if (major_batch == "BatchMajor") {
             if (1 == seq_lengths) {
                 auto shape = lstm_sequence->output(0).get_shape();
-                transpose_y = std::make_shared<ov::op::v1::Reshape>(lstm_sequence->output(0),
-                    ov::op::v0::Constant::create(ov::element::i32, ov::Shape{4}, {shape[0], shape[2], shape[1], shape[3]}), true);
+                transpose_y = std::make_shared<ov::op::v1::Reshape>(
+                    lstm_sequence->output(0),
+                    ov::op::v0::Constant::create(
+                        ov::element::i32, ov::Shape{4}, {shape[0], shape[2], shape[1], shape[3]}),
+                    true);
             } else {
-                transpose_y = std::make_shared<ov::op::v1::Transpose>(lstm_sequence->output(0),
+                transpose_y = std::make_shared<ov::op::v1::Transpose>(
+                    lstm_sequence->output(0),
                     ov::op::v0::Constant::create(ov::element::i32, ov::Shape{4}, {0, 2, 1, 3}));
             }
         } else {
             if (1 == seq_lengths) {
                 auto shape = lstm_sequence->output(0).get_shape();
-                transpose_y = std::make_shared<ov::op::v1::Reshape>(lstm_sequence->output(0),
-                    ov::op::v0::Constant::create(ov::element::i32, ov::Shape{4}, {shape[2], shape[0], shape[1], shape[3]}), true);
+                transpose_y = std::make_shared<ov::op::v1::Reshape>(
+                    lstm_sequence->output(0),
+                    ov::op::v0::Constant::create(
+                        ov::element::i32, ov::Shape{4}, {shape[2], shape[0], shape[1], shape[3]}),
+                    true);
             } else {
-                transpose_y = std::make_shared<ov::op::v1::Transpose>(lstm_sequence->output(0),
+                transpose_y = std::make_shared<ov::op::v1::Transpose>(
+                    lstm_sequence->output(0),
                     ov::op::v0::Constant::create(ov::element::i32, ov::Shape{4}, {2, 0, 1, 3}));
             }
         }
         transpose_y->set_friendly_name("output_0");
         if (1 == batch) {
             auto shape = lstm_sequence->output(1).get_shape();
-            transpose_ho = std::make_shared<ov::op::v1::Reshape>(lstm_sequence->output(1),
-                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {shape[1], shape[0], shape[2]}), true);
-            transpose_co = std::make_shared<ov::op::v1::Reshape>(lstm_sequence->output(2),
-                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {shape[1], shape[0], shape[2]}), true);
+            transpose_ho = std::make_shared<ov::op::v1::Reshape>(
+                lstm_sequence->output(1),
+                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {shape[1], shape[0], shape[2]}),
+                true);
+            transpose_co = std::make_shared<ov::op::v1::Reshape>(
+                lstm_sequence->output(2),
+                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {shape[1], shape[0], shape[2]}),
+                true);
         } else {
-            transpose_ho = std::make_shared<ov::op::v1::Transpose>(lstm_sequence->output(1),
-                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
-            transpose_co = std::make_shared<ov::op::v1::Transpose>(lstm_sequence->output(2),
-                ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
+            transpose_ho = std::make_shared<ov::op::v1::Transpose>(
+                lstm_sequence->output(1), ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
+            transpose_co = std::make_shared<ov::op::v1::Transpose>(
+                lstm_sequence->output(2), ov::op::v0::Constant::create(ov::element::i32, ov::Shape{3}, {1, 0, 2}));
         }
         transpose_ho->set_friendly_name("output_1");
         transpose_co->set_friendly_name("output_2");

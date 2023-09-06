@@ -38,8 +38,8 @@ public:
 
         const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
         const size_t out_num_elements = ov::shape_size(node.get_output_shape(0));
-        kernel_ =
-            Kernel{convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), out_num_elements, max_threads_per_block};
+        kernel_ = Kernel{
+            convertDataType<ov::nvidia_gpu::kernel::Type_t>(element_type), out_num_elements, max_threads_per_block};
     }
 
     void Execute(const InferenceRequestContext& context,

@@ -28,10 +28,8 @@ public:
 
     CudaNodeId() = default;
 
-    bool is_copyable() const override {
-        return false;
-    }
+    bool is_copyable() const override { return false; }
 };
-} // namespace rt_info
-} // namespace nvidia_gpu
-} // namespace ov
+}  // namespace rt_info
+}  // namespace nvidia_gpu
+}  // namespace ov

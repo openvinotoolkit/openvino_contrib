@@ -208,7 +208,7 @@ void CudaEltwiseLayerTest::SetUp() {
 
     init_input_shapes(shapes);
 
-    ov::ParameterVector parameters {std::make_shared<ov::op::v0::Parameter>(netType, inputDynamicShapes.front())};
+    ov::ParameterVector parameters{std::make_shared<ov::op::v0::Parameter>(netType, inputDynamicShapes.front())};
 
     ov::PartialShape shape_input_secondary;
     switch (opType) {

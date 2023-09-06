@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "transformer/remove_redundant_convert_transformation.hpp"
+
 #include <gtest/gtest.h>
 
 #include "common_test_utils/ov_test_utils.hpp"
@@ -11,7 +13,6 @@
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/utils/utils.hpp"
-#include "transformer/remove_redundant_convert_transformation.hpp"
 
 using namespace ov;
 using namespace std;

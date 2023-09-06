@@ -5,10 +5,10 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include "openvino/op/abs.hpp"
 
 #include "elementwise_unary.hpp"
 #include "kernels/abs.hpp"
+#include "openvino/op/abs.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
