@@ -69,12 +69,12 @@ def parse_split_step(pretokenizer_dict: Dict[str, Any]) -> RegexSplitStep:
     return RegexSplitStep(
         split_pattern=split_pattern,
         invert=pretokenizer_dict["invert"],
-        behaviour=pretokenizer_dict["behavior"].lower().rstrip("d")
+        behaviour=pretokenizer_dict["behavior"].lower().rstrip("d"),
     )
 
 
 def parse_byte_level_pretokenization_step(
-        pretokenizer_dict: Dict[str, Any]
+    pretokenizer_dict: Dict[str, Any]
 ) -> List[Union[NormalizationStep, PreTokenizatinStep]]:
     steps = []
     if pretokenizer_dict.get("add_prefix_space"):
@@ -117,7 +117,10 @@ class TransformersTokenizerPipelineParser:
 
         return self.pipeline
 
-    normalizers_map: Dict[str, Callable[[Dict[str, Any]], Union[NormalizationStep, List[NormalizationStep]]]] = {
+    normalizers_map: Dict[
+        str,
+        Callable[[Dict[str, Any]], Union[NormalizationStep, List[NormalizationStep]]],
+    ] = {
         "NFC": lambda step_dict: NormalizeUnicode("NFC"),
         "NFD": lambda step_dict: NormalizeUnicode("NFD"),
         "NFKC": lambda step_dict: NormalizeUnicode("NFKC"),
@@ -146,7 +149,10 @@ class TransformersTokenizerPipelineParser:
         else:
             self.parse_normalizer_step(self.tokenizer_json["normalizer"])
 
-    pre_tokenization_map: Dict[str, Callable[[Dict[str, Any]], Union[PreTokenizatinStep, List[PreTokenizatinStep]]]] = {
+    pre_tokenization_map: Dict[
+        str,
+        Callable[[Dict[str, Any]], Union[PreTokenizatinStep, List[PreTokenizatinStep]]],
+    ] = {
         "BertPreTokenizer": lambda step_dict: RegexSplitStep.bert_splitter(),
         "Whitespace": lambda step_dict: RegexSplitStep.whitespace_splitter(),
         "WhitespaceSplit": lambda step_dict: WhitespaceSplitStep(),
@@ -155,7 +161,7 @@ class TransformersTokenizerPipelineParser:
         "ByteLevel": parse_byte_level_pretokenization_step,
         "Digits": lambda step_dict: RegexSplitStep.digits_splitter(
             "isolate" if step_dict["individual_digits"] else "contiguous"
-        )
+        ),
     }
 
     def parse_pre_tokenization_step(self, step_dict: Dict[str, Any]) -> None:
@@ -186,8 +192,8 @@ class TransformersTokenizerPipelineParser:
 
     def post_tokenization(self) -> None:
         if (
-                self.tokenizer_json["post_processor"] is None
-                or self.tokenizer_json["post_processor"]["type"] == "ByteLevel"
+            self.tokenizer_json["post_processor"] is None
+            or self.tokenizer_json["post_processor"]["type"] == "ByteLevel"
         ):
             self.add_truncation()
             self.add_padding()
