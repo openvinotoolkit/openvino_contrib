@@ -1,0 +1,40 @@
+name: Code Style NVIDIA
+on:
+  push:
+    paths:
+      - 'modules/nvidia_plugin/**'
+  pull_request:
+    paths:
+      - 'modules/nvidia_plugin/**'
+      - '.github/workflows/code_style_nvidia.yml'
+
+jobs:
+    clang-format:
+        runs-on: ubuntu-20.04
+        permissions:
+            pull-requests: write
+        steps:
+        - name: checkout master branch
+          uses: actions/checkout@v3
+          with:
+            ref: master
+            fetch-depth: 0
+
+        - name: Install clang-format-9
+          run: |
+            sudo apt update
+            sudo apt --assume-yes install clang-format-9
+
+        - name: CMake configure
+          run: cmake -DENABLE_PYTHON=OFF -DENABLE_TESTS=ON -B build
+
+        - name: Create code style diff
+          run: cmake --build build --target clang_format_fix_all -j8
+
+        - name: suggester / clang-format
+          if: startsWith(github.event_name, 'pull_request')
+          uses: reviewdog/action-suggester@v1
+          with:
+            github_token: ${{ secrets.GITHUB_TOKEN }}
+            level: warning
+            fail_on_error: true

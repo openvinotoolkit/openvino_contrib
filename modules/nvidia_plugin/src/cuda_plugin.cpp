@@ -24,6 +24,7 @@ using namespace ov::nvidia_gpu;
 
 Plugin::Plugin() {
     set_device_name("NVIDIA");
+
     for (int i = 0; i < CUDA::Device::count(); ++i) {
         CUDA::Device device{i};
         const size_t num_concurrent_streams = max_concurrent_streams(device);
@@ -34,8 +35,7 @@ Plugin::Plugin() {
     }
 }
 
-Plugin::~Plugin() {
-}
+Plugin::~Plugin() {}
 
 std::shared_ptr<ov::threading::ITaskExecutor> Plugin::get_stream_executor(const Configuration& config) const {
     auto device_id = std::to_string(config.get_device_id());
