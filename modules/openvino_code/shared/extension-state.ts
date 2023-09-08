@@ -1,4 +1,5 @@
 import { ExtensionConfiguration } from '../src/configuration';
+import { Features } from './features';
 import { ServerState } from './server-state';
 
 export enum ConnectionStatus {
@@ -7,10 +8,16 @@ export enum ConnectionStatus {
   PENDING = 'PENDING',
 }
 
+interface IStateFeatures {
+  get supportedList(): Features[];
+  get isSummarizationSupported(): boolean;
+}
+
 export interface IExtensionState {
   isLoading: boolean;
   connectionStatus: ConnectionStatus;
   server: ServerState;
   get isServerAvailable(): boolean;
   get config(): ExtensionConfiguration;
+  features: IStateFeatures;
 }

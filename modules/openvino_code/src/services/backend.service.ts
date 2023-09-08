@@ -15,6 +15,20 @@ interface IGenerateRequest {
   };
 }
 
+interface IGenerateDocStringRequest {
+  inputs: string;
+  template: string;
+  definition: string;
+  format?: string;
+  parameters: {
+    temperature: number;
+    top_k: number;
+    top_p: number;
+    min_new_tokens: number;
+    max_new_tokens: number;
+  };
+}
+
 interface IGenerateResponse {
   generated_text: string;
 }
@@ -25,7 +39,7 @@ interface RequestOptions {
   timeout: number;
 }
 
-class ServerError extends Error {}
+class ServerError extends Error { }
 
 const skipEmptyGeneratedText = (response: IGenerateResponse | null) => !response?.generated_text.trim();
 
@@ -62,7 +76,7 @@ class BackendService {
     return this._sendRequest<IGenerateRequest, IGenerateResponse>(this._endpoints.generate, 'POST', data);
   }
 
-  async generateSummarization(data: IGenerateRequest): Promise<IGenerateResponse | null> {
+  async generateSummarization(data: IGenerateDocStringRequest): Promise<IGenerateResponse | null> {
     return this._sendRequest<IGenerateRequest, IGenerateResponse>(this._endpoints.summarize, 'POST', data);
   }
 

@@ -9,6 +9,7 @@ export enum SidePanelMessageTypes {
   CHECK_CONNECTION_CLICK = `${sidePanelMessagePrefix}.checkConnectionClick`,
   GENERATE_COMPLETION_CLICK = `${sidePanelMessagePrefix}.generateCompletionClick`,
   SETTINGS_CLICK = `${sidePanelMessagePrefix}.settingsClick`,
+  MODEL_CHANGE = `${sidePanelMessagePrefix}.modelChange`,
 }
 
 export interface ISidePanelMessage<P = unknown> {

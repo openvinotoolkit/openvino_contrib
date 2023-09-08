@@ -1,9 +1,11 @@
-import { window } from "vscode";
-import { AutoDocstring } from "./generate-docstring";
+import { window } from 'vscode';
+import { AutoDocstring } from './generate-docstring';
+import { extensionState } from '../state';
 
 export function generateCommandHandler() {
+  const { isSummarizationSupported } = extensionState.state.features;
   const editor = window.activeTextEditor;
-  if (!editor) {
+  if (!isSummarizationSupported || !editor) {
     return;
   }
 

@@ -5,6 +5,10 @@ import { CONFIG_KEY } from './constants';
 import { IExtensionComponent } from './extension-component.interface';
 import { IExtensionState, ConnectionStatus } from '@shared/extension-state';
 import { INITIAL_SERVER_STATE, ServerStatus } from '@shared/server-state';
+import { MODEL_SUPPORTED_FEATURES } from '@shared/model';
+import { Features } from '@shared/features';
+
+const getConfig = () => workspace.getConfiguration(CONFIG_KEY) as ExtensionConfiguration;
 
 class ExtensionState implements IExtensionComponent {
   private readonly _state: IExtensionState = {
@@ -15,7 +19,16 @@ class ExtensionState implements IExtensionComponent {
       return this.server.status === ServerStatus.STARTED && this.connectionStatus === ConnectionStatus.AVAILABLE;
     },
     get config(): ExtensionConfiguration {
-      return workspace.getConfiguration(CONFIG_KEY) as ExtensionConfiguration;
+      return getConfig();
+    },
+    features: {
+      get supportedList(): Features[] {
+        const config = getConfig();
+        return MODEL_SUPPORTED_FEATURES[config.model];
+      },
+      get isSummarizationSupported(): boolean {
+        return this.supportedList.includes(Features.SUMMARIZATION);
+      },
     },
   };
 
@@ -36,11 +49,25 @@ class ExtensionState implements IExtensionComponent {
   activate(extensionContext: ExtensionContext): void {
     // Might be used to store configuration in `extensionContext.globalState`
     this._extensionContext = extensionContext;
+
+    workspace.onDidChangeConfiguration(
+      (event) => {
+        if (event.affectsConfiguration(CONFIG_KEY)) {
+          this._emitCurrentState();
+        }
+      },
+      null,
+      extensionContext.subscriptions
+    );
+  }
+
+  private _emitCurrentState(): void {
+    this._emitter.emit(ExtensionState._stateChangedEvent, this._state);
   }
 
   set<K extends keyof IExtensionState>(key: K, value: IExtensionState[K]): void {
     this._state[key] = value;
-    this._emitter.emit(ExtensionState._stateChangedEvent, this._state);
+    this._emitCurrentState();
   }
 
   get<K extends keyof IExtensionState>(key: K): IExtensionState[K] {

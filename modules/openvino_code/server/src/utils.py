@@ -17,26 +17,44 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-default_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+def setup_logger():
+    logging.setLoggerClass(ServerLogger)
+    _set_uvicorn_log_format(ServerLogger.default_formatter._fmt)
 
 
 def get_logger(
     name: str,
     level: int = logging.DEBUG,
-    formatter: logging.Formatter = default_formatter,
 ) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
-
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.addFilter(lambda record: record.levelno <= logging.WARNING)
-    stdout_handler.setFormatter(formatter)
-
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setLevel(logging.ERROR)
-    stderr_handler.setFormatter(formatter)
-
-    logger.addHandler(stdout_handler)
-    logger.addHandler(stderr_handler)
-
     return logger
+
+
+class ServerLogger(logging.Logger):
+    _server_log_prefix = "[OpenVINO Code Server Log]"
+
+    default_formatter = logging.Formatter(f"{_server_log_prefix} %(asctime)s %(levelname)s %(message)s")
+
+    def __init__(self, name):
+        super(ServerLogger, self).__init__(name)
+
+        self.propagate = False
+
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.addFilter(lambda record: record.levelno <= logging.WARNING)
+        stdout_handler.setFormatter(self.default_formatter)
+
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setLevel(logging.ERROR)
+        stderr_handler.setFormatter(self.default_formatter)
+
+        self.addHandler(stdout_handler)
+        self.addHandler(stderr_handler)
+
+
+def _set_uvicorn_log_format(format: str):
+    from uvicorn.config import LOGGING_CONFIG
+
+    LOGGING_CONFIG["formatters"]["access"]["fmt"] = format
+    LOGGING_CONFIG["formatters"]["default"]["fmt"] = format

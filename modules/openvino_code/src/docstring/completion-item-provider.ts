@@ -1,11 +1,12 @@
-import { CompletionItemProvider, CompletionItem, TextDocument, Position, CompletionItemKind, Range } from "vscode";
-import { validDocstringPrefix, docstringIsClosed } from "./parse";
-import { extensionState } from "../state";
-import { COMMANDS } from "../constants";
+import { CompletionItemProvider, CompletionItem, TextDocument, Position, CompletionItemKind, Range } from 'vscode';
+import { validDocstringPrefix, docstringIsClosed } from './parse';
+import { extensionState } from '../state';
+import { COMMANDS } from '../constants';
 
 export const completionItemProvider: CompletionItemProvider = {
   provideCompletionItems: (document: TextDocument, position: Position) => {
-    if (validEnterActivation(document, position)) {
+    const { isSummarizationSupported } = extensionState.state.features;
+    if (isSummarizationSupported && validEnterActivation(document, position)) {
       return [new AutoDocstringCompletionItem(document, position)];
     }
     return;
@@ -30,16 +31,16 @@ function validEnterActivation(document: TextDocument, position: Position): boole
  */
 class AutoDocstringCompletionItem extends CompletionItem {
   constructor(_: TextDocument, position: Position) {
-    super("Generate Docstring", CompletionItemKind.Snippet);
-    this.insertText = "";
+    super('Generate Docstring', CompletionItemKind.Snippet);
+    this.insertText = '';
     this.filterText = getQuoteStyle();
-    this.sortText = "\0";
+    this.sortText = '\0';
 
     this.range = new Range(new Position(position.line, 0), position);
 
     this.command = {
       command: COMMANDS.GENERATE_DOC_STRING,
-      title: "Generate Docstring",
+      title: 'Generate Docstring',
     };
   }
 }

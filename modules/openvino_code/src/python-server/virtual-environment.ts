@@ -1,23 +1,18 @@
 import { join } from 'path';
 import { execCommand } from './commands-runner';
 import { OS } from './detect-os';
-import { PythonExecutable } from './detect-python';
 import type { PythonServerConfiguration } from './python-server-runner';
-import { LogOutputChannel } from 'vscode';
 import { stat } from 'fs/promises';
 
-export async function createVenv(
-  python: PythonExecutable,
-  directory: string,
-  venvName: string,
-  logger: LogOutputChannel
-) {
+export async function createVenv(config: PythonServerConfiguration) {
+  const { logger, python, serverDir, venvDirName, abortSignal } = config;
   logger.info('Creating virtual environment...');
 
-  const command = `${python} -m venv ${venvName}`;
+  const command = `${python} -m venv ${venvDirName}`;
   await execCommand(command, {
-    cwd: directory,
+    cwd: serverDir,
     logger,
+    abortSignal,
   });
 
   logger.info('Virtual environment created');
@@ -28,6 +23,7 @@ export async function checkActivatedVenv(config: PythonServerConfiguration) {
   await execCommand(activateCommand, {
     cwd: config.serverDir,
     logger: config.logger,
+    abortSignal: config.abortSignal,
   });
 }
 

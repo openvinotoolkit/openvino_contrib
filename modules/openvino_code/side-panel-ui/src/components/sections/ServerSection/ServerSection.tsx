@@ -5,6 +5,8 @@ import { ServerStatus as ServerStatusEnum } from '@shared/server-state';
 import { StartingStages } from './StartingStages/StartingStages';
 import { ServerStatus } from './ServerStatus/ServerStatus';
 import './ServerSection.css';
+import { ModelSelect } from './ModelSelect/ModelSelect';
+import { ModelName } from '@shared/model';
 
 interface ServerSectionProps {
   state: IExtensionState | null;
@@ -35,14 +37,34 @@ export function ServerSection({ state }: ServerSectionProps): JSX.Element {
     });
   };
 
-  const isServerStopped = state?.server.status === ServerStatusEnum.STOPPED;
-  const isServerStarting = state?.server.status === ServerStatusEnum.STARTING;
+  const handleModelChange = (modelName: ModelName) => {
+    vscode.postMessage({
+      type: SidePanelMessageTypes.MODEL_CHANGE,
+      payload: {
+        modelName,
+      },
+    });
+  };
+
+  if (!state) {
+    return <>Extension state is not available</>;
+  }
+
+  const isServerStopped = state.server.status === ServerStatusEnum.STOPPED;
+  const isServerStarting = state.server.status === ServerStatusEnum.STARTING;
 
   return (
     <section className="server-section">
       <h3>OpenVINO Code Server</h3>
-      {state && <ServerStatus status={state.server.status} connectionStatus={state.connectionStatus}></ServerStatus>}
-      {isServerStarting && state && <StartingStages currentStage={state.server.stage}></StartingStages>}
+      <ServerStatus status={state.server.status} connectionStatus={state.connectionStatus}></ServerStatus>
+      <ModelSelect
+        disabled={!isServerStopped}
+        onChange={handleModelChange}
+        selectedModelName={state.config.model}
+        supportedFeatures={state.features.supportedList}
+        serverStatus={state.server.status}
+      ></ModelSelect>
+      {isServerStarting && <StartingStages currentStage={state.server.stage}></StartingStages>}
       <div className="button-group">
         {isServerStopped && <button onClick={handleStartServerClick}>Start Server</button>}
         {!isServerStopped && (

@@ -1,7 +1,8 @@
-import { ExtensionContext, commands } from 'vscode';
+import { ConfigurationTarget, ExtensionContext, commands } from 'vscode';
 import { COMMANDS, CONFIG_KEY, EXTENSION_PACKAGE, EXTENSION_DISPLAY_NAME } from '../constants';
 import { CustomConfiguration } from '../configuration';
 import { IExtensionComponent } from '../extension-component.interface';
+import { extensionState } from '../state';
 
 class SettingsService implements IExtensionComponent {
   activate(context: ExtensionContext): void {
@@ -26,6 +27,10 @@ class SettingsService implements IExtensionComponent {
   openSettings(key?: keyof CustomConfiguration): void {
     const configKey = key ? [CONFIG_KEY, key].join('.') : CONFIG_KEY;
     void commands.executeCommand('workbench.action.openSettings', configKey);
+  }
+
+  updateSetting<K extends keyof CustomConfiguration>(key: K, value: CustomConfiguration[K]): void {
+    void extensionState.config.update(key, value, ConfigurationTarget.Global);
   }
 }
 

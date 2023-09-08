@@ -1,3 +1,5 @@
+import './OverviewSection.css';
+
 export function OverviewSection(): JSX.Element {
   return (
     <section className="overview-section">
@@ -7,7 +9,7 @@ export function OverviewSection(): JSX.Element {
           <li>Inline Code Completion</li>
           <li>Summarization via docstring</li>
         </ul>
-        To use OpenVINO Code please start the server
+        To use OpenVINO Code please start the server.
       </span>
     </section>
   );

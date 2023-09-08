@@ -16,9 +16,11 @@ initApp();
 
 function App(): JSX.Element {
   const [state] = useExtensionState();
+  // TODO Check if state is defined to prevent nested optional chaining
 
   const isServerStopped = state?.server.status === ServerStatus.STOPPED;
   const isServerStarted = state?.server.status === ServerStatus.STARTED;
+  const isSummarizationSupported = state?.features.isSummarizationSupported;
 
   return (
     <>
@@ -28,7 +30,7 @@ function App(): JSX.Element {
       {isServerStarted && (
         <>
           <CompletionSection isLoading={state?.isLoading}></CompletionSection>
-          <SummarizationSection></SummarizationSection>
+          {isSummarizationSupported && <SummarizationSection></SummarizationSection>}
         </>
       )}
       <ActionsSection></ActionsSection>

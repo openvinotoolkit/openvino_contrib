@@ -3,7 +3,7 @@ from typing import Dict, Union
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import RedirectResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.generators import GeneratorFunctor
 from src.utils import get_logger
@@ -26,6 +26,35 @@ class GenerationRequest(BaseModel):
     parameters: GenerationParameters
 
 
+class GenerationDocStringRequest(BaseModel):
+    inputs: str = Field(
+        ...,
+        description="Function or Class body",
+        example=(
+            "def fibonacci(n):\n    if n == 0:\n        return 0\n    elif n == 1:\n"
+            "        return 1\n    else:\n        return fibonacci(n-1) + fibonacci(n-2)"
+        ),
+    )
+    template: str = Field(
+        ...,
+        description=(
+            "Doc string template with tab stops in format ${tab_stop_number:value[type | int | str | description]}"
+        ),
+        example=(
+            '    """\n    ${1:}\n\n    Parameters\n    ----------\n    n : ${2:int}\n'
+            "        ${3:[description]}\n\n    Returns\n    -------\n    ${4:[type]}\n"
+            '        ${5:[description]}\n    """'
+        ),
+    )
+    format: str = Field(
+        ...,
+        description="Doc string format passed from extension settings [google | numpy | sphinx | dockblockr | ...]",
+        example="numpy",
+    )
+    definition: str = Field("", description="Function signature", example="def fibonacci(n):")
+    parameters: GenerationParameters
+
+
 class GenerationResponse(BaseModel):
     generated_text: str
 
@@ -40,7 +69,7 @@ def get_generator_dummy():
 @app.on_event("startup")
 async def startup_event():
     # This print is a anchor for vs code extension to track that server is started
-    SERVER_STARTED_STDOUT_ANCHOR = 'OpenVINO Code Server started'
+    SERVER_STARTED_STDOUT_ANCHOR = "OpenVINO Code Server started"
     logger.info(SERVER_STARTED_STDOUT_ANCHOR)
 
 
@@ -59,7 +88,7 @@ async def generate(
     request: GenerationRequest,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ) -> Dict[str, Union[int, str]]:
-    logger.info(request)
+    logger.info(f"Request:\n{request}")
 
     start = perf_counter()
     generated_text: str = generator(request.inputs, request.parameters.model_dump())
@@ -70,7 +99,7 @@ async def generate(
     else:
         logger.info(f"Elapsed: {elapsed:.3f}s")
 
-    logger.info(f"Response: {generated_text}")
+    logger.info(f"Response:\n{generated_text}")
     return {"generated_text": generated_text}
 
 
@@ -85,16 +114,15 @@ async def generate_stream(
 
 @app.post("/api/summarize", status_code=200, response_model=GenerationResponse)
 async def summarize(
-    request: GenerationRequest,
+    request: GenerationDocStringRequest,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ):
     logger.info(request)
 
-    generation_params = request.parameters.model_dump()
-    generation_params["repetition_penalty"] = 1.15
-
     start = perf_counter()
-    generated_text: str = generator.summarize(request.inputs, generation_params)
+    generated_text: str = generator.summarize(
+        request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+    )
     stop = perf_counter()
 
     if (elapsed := stop - start) > 1.5:
@@ -108,12 +136,12 @@ async def summarize(
 
 @app.post("/api/summarize_stream", status_code=200)
 async def summarize_stream(
-    request: GenerationRequest,
+    request: GenerationDocStringRequest,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ) -> StreamingResponse:
     logger.info(request)
-
-    generation_params = request.parameters.model_dump()
-    generation_params["repetition_penalty"] = 1.15
-
-    return StreamingResponse(generator.summarize_stream(request.inputs, generation_params))
+    return StreamingResponse(
+        generator.summarize_stream(
+            request.inputs, request.template, request.definition, request.format, request.parameters.model_dump()
+        )
+    )

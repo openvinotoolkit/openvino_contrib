@@ -16,7 +16,7 @@ export async function getPythonExecutable(
 
   for (const executable of executables) {
     try {
-      await verifyPythonVersion(executable, requriedVersion, logger);
+      await verifyPythonVersion(executable, requriedVersion);
       result = executable;
     } catch (e) {
       errors.push(e);
@@ -31,24 +31,19 @@ export async function getPythonExecutable(
   const errorMessage = ['Cannot find python executable.'];
   if (errors.length) {
     errorMessage.push(' Next error(s) occured:\n');
-    errorMessage.push(`${String(errors[0])}\n`);
-  }
-
-  if (errors[1]) {
-    errorMessage.push(`${String(errors[1])}\n`);
+    for (const error of errors) {
+      errorMessage.push(`${String(error)}\n`);
+    }
   }
 
   throw new Error(errorMessage.join(''));
 }
 
-async function verifyPythonVersion(
-  executable: PythonExecutable,
-  requriedVersion: Version,
-  logger: LogOutputChannel
-): Promise<void> {
+async function verifyPythonVersion(executable: PythonExecutable, requriedVersion: Version): Promise<void> {
   const command = `${executable} --version`;
+
   const commandResult = await execCommand(command, {
-    logger,
+    logger: null, // Prevent showing stderr output for `python --version` command (e.g. "/bin/sh: 1: python: not found")
   });
 
   if (!commandResult) {

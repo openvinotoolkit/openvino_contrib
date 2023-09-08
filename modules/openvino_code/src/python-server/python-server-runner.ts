@@ -1,16 +1,17 @@
-import { spawnCommand } from './commands-runner';
+import { isAbortError, spawnCommand } from './commands-runner';
 import { getVenvPythonPath } from './virtual-environment';
 import { PythonExecutable, Version, getPythonExecutable } from './detect-python';
 import { OS, detectOs } from './detect-os';
 import { createVenv, checkActivatedVenv } from './virtual-environment';
 import { upgradePip, installRequirements } from './pip';
-import { StopSignal, StopController } from './stop-controller';
 import { ProxyEnv, getProxyEnv } from './proxy';
 import { ServerStateController } from './server-state-controller';
 import { ServerStatus, ServerStartingStage } from '@shared/server-state';
 import { EXTENSION_SERVER_DISPLAY_NAME } from '../constants';
 import { LogOutputChannel, window } from 'vscode';
 import { join } from 'path';
+import { MODEL_NAME_TO_ID_MAP, ModelName } from '@shared/model';
+import { extensionState } from '../state';
 
 const SERVER_STARTED_STDOUT_ANCHOR = 'OpenVINO Code Server started';
 
@@ -18,8 +19,8 @@ interface ServerHooks {
   onStarted: () => void;
 }
 
-async function runServer(config: PythonServerConfiguration, hooks?: ServerHooks) {
-  const { serverDir, proxyEnv, stopSignal, logger } = config;
+async function runServer(modelName: ModelName, config: PythonServerConfiguration, hooks?: ServerHooks) {
+  const { serverDir, proxyEnv, abortSignal, logger } = config;
   logger.info('Starting server...');
 
   const venvPython = await getVenvPythonPath(config);
@@ -33,13 +34,16 @@ async function runServer(config: PythonServerConfiguration, hooks?: ServerHooks)
     if (data.includes(SERVER_STARTED_STDOUT_ANCHOR)) {
       hooks?.onStarted();
       started = true;
+      logger.info('Server started');
     }
   }
 
-  await spawnCommand(venvPython, ['main.py', '--model', 'chgk13/decicoder-1b-openvino-int8'], {
+  const model = MODEL_NAME_TO_ID_MAP[modelName];
+
+  await spawnCommand(venvPython, ['main.py', '--model', model], {
     logger,
     cwd: serverDir,
-    stopSignal,
+    abortSignal,
     env: { ...proxyEnv },
     listeners: { stdout: stdoutListener },
   });
@@ -55,7 +59,7 @@ export interface PythonServerConfiguration {
   venvDirName: string;
   serverDir: string;
   proxyEnv?: ProxyEnv;
-  stopSignal: StopSignal;
+  abortSignal: AbortSignal;
   logger: LogOutputChannel;
 }
 
@@ -63,7 +67,7 @@ export class NativePythonServerRunner {
   static readonly REQUIRED_PYTHON_VERSION: Version = [3, 8];
   static readonly VENV_DIR_NAME = '.venv';
 
-  private _stopController = new StopController();
+  private _abortController = new AbortController();
 
   private readonly _stateController = new ServerStateController();
   get stateReporter() {
@@ -79,16 +83,20 @@ export class NativePythonServerRunner {
     this._stateController.setStatus(ServerStatus.STARTING);
 
     try {
-      logger.info('Strating Server using python vitual environment...');
+      logger.info('Starting Server using python virtual environment...');
       await this._start();
-      logger.info('Server stopped');
     } catch (e) {
-      const error = e instanceof Error ? e : String(e);
+      const error = e instanceof Error ? e : new Error(String(e));
+      if (isAbortError(error)) {
+        logger.debug('Server launch was aborted');
+        return;
+      }
       logger.error(`Server stopped with error:`);
       logger.error(error);
     } finally {
       this._stateController.setStage(null);
       this._stateController.setStatus(ServerStatus.STOPPED);
+      logger.info('Server stopped');
     }
   }
 
@@ -103,10 +111,6 @@ export class NativePythonServerRunner {
       logger
     );
 
-    this._stateController.setStage(ServerStartingStage.CREATE_VENV);
-
-    await createVenv(python, SERVER_DIR, NativePythonServerRunner.VENV_DIR_NAME, logger);
-
     const proxyEnv = getProxyEnv();
     if (proxyEnv) {
       logger.info('Applying proxy settings:');
@@ -116,12 +120,16 @@ export class NativePythonServerRunner {
     const config: PythonServerConfiguration = {
       python,
       os,
-      proxyEnv: getProxyEnv(),
+      proxyEnv,
       serverDir: SERVER_DIR,
       venvDirName: NativePythonServerRunner.VENV_DIR_NAME,
-      stopSignal: this._stopController.signal,
+      abortSignal: this._abortController.signal,
       logger,
     };
+
+    this._stateController.setStage(ServerStartingStage.CREATE_VENV);
+
+    await createVenv(config);
 
     this._stateController.setStage(ServerStartingStage.CHECK_VENV_ACTIVATION);
 
@@ -137,7 +145,9 @@ export class NativePythonServerRunner {
 
     this._stateController.setStage(ServerStartingStage.START_SERVER);
 
-    await runServer(config, {
+    const modelName = extensionState.config.model;
+
+    await runServer(modelName, config, {
       onStarted: () => {
         this._stateController.setStatus(ServerStatus.STARTED);
         this._stateController.setStage(null);
@@ -147,7 +157,7 @@ export class NativePythonServerRunner {
 
   stop() {
     logger.info('Stopping...');
-    this._stopController.stop();
-    this._stopController = new StopController();
+    this._abortController.abort();
+    this._abortController = new AbortController();
   }
 }

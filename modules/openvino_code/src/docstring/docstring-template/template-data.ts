@@ -1,8 +1,8 @@
-import { Argument, Decorator, DocstringParts, Exception, KeywordArgument, Returns, Yields } from "./docstring-parts";
+import { Argument, Decorator, DocstringParts, Exception, KeywordArgument, Returns, Yields } from './docstring-parts';
 
 export class TemplateData {
   public name: string;
-  public summary?: string;
+  public summary: string;
   public decorators: Decorator[];
   public args: Argument[];
   public kwargs: KeywordArgument[];
@@ -14,6 +14,7 @@ export class TemplateData {
   private includeName: boolean;
   private includeExtendedSummary: boolean;
   type: string | undefined = undefined;
+  private static DEFAULT_TYPE_PLACEHOLDER = '[type]';
 
   constructor(
     docstringParts: DocstringParts,
@@ -22,7 +23,7 @@ export class TemplateData {
     includeExtendedSummary: boolean
   ) {
     this.name = docstringParts.name;
-    this.summary = docstringParts.summary;
+    this.summary = docstringParts.summary || '';
     this.decorators = docstringParts.decorators;
     this.args = docstringParts.args;
     this.kwargs = docstringParts.kwargs;
@@ -38,37 +39,41 @@ export class TemplateData {
       this.removeTypes();
     }
 
-    this.addDefaultTypePlaceholders("[type]");
+    this.addDefaultTypePlaceholders(TemplateData.DEFAULT_TYPE_PLACEHOLDER);
   }
 
   public placeholder() {
     return (text: string, render: (text: string) => string) => {
-      return "${@@@:" + render(text) + "}";
+      return '${@@@:' + render(text) + '}';
     };
   }
 
   public summaryPlaceholder(): string {
     if (this.includeName) {
-      return this.name + " ${@@@:" + this.summary + "}";
+      return this.name + ' ${@@@:' + this.summary + '}';
     }
 
-    return "${@@@:" + this.summary + "}";
+    return '${@@@:' + this.summary + '}';
   }
 
   public extendedSummaryPlaceholder(): string {
     if (this.includeExtendedSummary) {
-      return "${@@@:[extended_summary]}";
+      return '${@@@:[extended_summary]}';
     }
 
-    return "";
+    return '';
   }
 
   public typePlaceholder(): string {
-    return "${@@@:" + this.type + "}";
+    // skip tabstop for guessed types
+    if (this.type === TemplateData.DEFAULT_TYPE_PLACEHOLDER) {
+      return '${@@@:' + this.type + '}';
+    }
+    return `${this.type}`;
   }
 
   public descriptionPlaceholder(): string {
-    return "${@@@:[description]}";
+    return '${@@@:[description]}';
   }
 
   public argsExist(): boolean {

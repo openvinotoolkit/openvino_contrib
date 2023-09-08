@@ -1,9 +1,11 @@
+import { ModelName } from '@shared/model';
 import { WorkspaceConfiguration } from 'vscode';
 
 /**
  * Extension configuration should match `contributes.configuration` properties in package.json
  */
 export type CustomConfiguration = {
+  model: ModelName;
   serverUrl: string;
   serverRequestTimeout: number;
   fillInTheMiddleMode: boolean;
