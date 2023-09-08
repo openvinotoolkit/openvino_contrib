@@ -12,5 +12,8 @@
 # OpenVINO NVIDIA plugin:
 /modules/nvidia_plugin/ @openvinotoolkit/openvino_contrib-nvidia_plugin-maintainters
 
+# OpenVINO VS Code extension:
+/modules/openvino_code/ @openvinotoolkit/openvino_contrib-vscode-extension-maintainters
+
 # AI extension for OVMS:
 /modules/ovms_ai_extension/ @openvinotoolkit/openvino_contrib-ovms_ai_extension-maintainers
