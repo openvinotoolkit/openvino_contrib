@@ -7,7 +7,7 @@
   "icon": "media/logo.png",
   "author": "",
   "contributors": [],
-  "license": "License at https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino_code",
+  "license": "https://github.com/openvinotoolkit/openvino_contrib/blob/master/LICENSE",
   "homepage": "https://docs.openvino.ai/",
   "repository": {
     "type": "git",
