@@ -6,13 +6,12 @@ import {
   WebviewView,
   WebviewViewProvider,
   WebviewViewResolveContext,
-  commands,
 } from 'vscode';
-import { COMMANDS, SIDE_PANEL_VIEW_ID } from '../constants';
-import { ISidePanelMessage, SidePanelMessageTypes } from '@shared/side-panel-message';
-import { settingsService } from '../settings/settings.service';
+import { SIDE_PANEL_VIEW_ID } from '../constants';
+import { ISidePanelMessage } from '@shared/side-panel-message';
 import { extensionState } from '../state';
 import { IExtensionState } from '@shared/extension-state';
+import { handleSidePanelMessage } from './side-panel-message-handler';
 
 export class SidePanelViewProvider implements WebviewViewProvider {
   static viewId = SIDE_PANEL_VIEW_ID;
@@ -78,41 +77,9 @@ export class SidePanelViewProvider implements WebviewViewProvider {
   }
 
   private _subscribeToWebviewMessages<M extends ISidePanelMessage>(webview: Webview): void {
-    // TODO Consider moving outside of provider
     webview.onDidReceiveMessage(
-      ({ type }: M) => {
-        if (type === SidePanelMessageTypes.GET_EXTENSION_STATE) {
-          void webview.postMessage(extensionState.state);
-          return;
-        }
-        if (type === SidePanelMessageTypes.SETTINGS_CLICK) {
-          settingsService.openSettings();
-          return;
-        }
-        if (type === SidePanelMessageTypes.START_SERVER_CLICK) {
-          void commands.executeCommand(COMMANDS.START_SERVER_NATIVE);
-          return;
-        }
-        if (type === SidePanelMessageTypes.STOP_SERVER_CLICK) {
-          void commands.executeCommand(COMMANDS.STOP_SERVER_NATIVE);
-          return;
-        }
-        if (type === SidePanelMessageTypes.SHOW_SERVER_LOG_CLICK) {
-          void commands.executeCommand(COMMANDS.SHOW_SERVER_LOG);
-          return;
-        }
-        if (type === SidePanelMessageTypes.SHOW_EXTENSION_LOG_CLICK) {
-          void commands.executeCommand(COMMANDS.SHOW_EXTENSION_LOG);
-          return;
-        }
-        if (type === SidePanelMessageTypes.CHECK_CONNECTION_CLICK) {
-          void commands.executeCommand(COMMANDS.CHECK_CONNECTION);
-          return;
-        }
-        if (type === SidePanelMessageTypes.GENERATE_COMPLETION_CLICK) {
-          void commands.executeCommand(COMMANDS.GENERATE_INLINE_COPMLETION);
-          return;
-        }
+      (message: M) => {
+        handleSidePanelMessage(message, webview);
       },
       null,
       this._disposables

@@ -1,5 +1,5 @@
 /* eslint-disable no-useless-escape */
-import { guessType } from ".";
+import { guessType } from '.';
 import {
   Argument,
   Decorator,
@@ -8,7 +8,8 @@ import {
   KeywordArgument,
   Returns,
   Yields,
-} from "../docstring-template/docstring-parts";
+} from '../docstring-template/docstring-parts';
+import { preprocessLines } from './utilities';
 
 export function parseParameters(
   parameterTokens: string[],
@@ -16,14 +17,15 @@ export function parseParameters(
   functionName: string,
   code: string[] = []
 ): DocstringParts {
+  const bodyWithoutIndentation = preprocessLines(body);
   return {
     name: functionName,
     decorators: parseDecorators(parameterTokens),
     args: parseArguments(parameterTokens),
     kwargs: parseKeywordArguments(parameterTokens),
-    returns: parseReturn(parameterTokens, body),
-    yields: parseYields(parameterTokens, body),
-    exceptions: parseExceptions(body),
+    returns: parseReturn(parameterTokens, bodyWithoutIndentation),
+    yields: parseYields(parameterTokens, bodyWithoutIndentation),
+    exceptions: parseExceptions(bodyWithoutIndentation),
     code: code,
   };
 }
@@ -49,13 +51,13 @@ function parseDecorators(parameters: string[]): Decorator[] {
 
 function parseArguments(parameters: string[]): Argument[] {
   const args: Argument[] = [];
-  const excludedArgs = ["self", "cls"];
+  const excludedArgs = ['self', 'cls'];
   const pattern = /^(\w+)/;
 
   for (const param of parameters) {
     const match = param.trim().match(pattern);
 
-    if (match == null || param.includes("=") || inArray(param, excludedArgs)) {
+    if (match == null || param.includes('=') || inArray(param, excludedArgs)) {
       continue;
     }
 
@@ -128,7 +130,7 @@ function parseReturnFromDefinition(parameters: string[]): Returns | null {
     }
 
     // Skip "-> None" annotations
-    return match[1] === "None" ? null : { type: match[1] };
+    return match[1] === 'None' ? null : { type: match[1] };
   }
 
   return null;
@@ -151,7 +153,7 @@ function parseExceptions(body: string[]): Exception[] {
   return exceptions;
 }
 
-export function inArray<type>(item: type, array: type[]) {
+export function inArray<T>(item: T, array: T[]) {
   return array.some((x) => item === x);
 }
 
@@ -174,5 +176,5 @@ function parseFromBody(body: string[], pattern: RegExp): Returns | Yields | unde
  * @param type The annotated type
  */
 function isIterator(type: string): boolean {
-  return type.startsWith("Generator") || type.startsWith("Iterator");
+  return type.startsWith('Generator') || type.startsWith('Iterator');
 }

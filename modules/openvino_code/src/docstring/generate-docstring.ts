@@ -19,16 +19,15 @@ export class AutoDocstring {
     const position = this.editor.selection.active;
     const document = this.editor.document.getText();
 
-    // fixme: docstring parts doesn't includes decorators
-    const docstringParts = parse(document, position.line);
-    const indentation = getDocstringIndentation(
-      document,
-      position.line,
-      getDefaultIndentation(this.editor.options.insertSpaces as boolean, this.editor.options.tabSize as number)
+    const defaultIndentation = getDefaultIndentation(
+      this.editor.options.insertSpaces as boolean,
+      this.editor.options.tabSize as number
     );
+    const { docstringParts, definition } = parse(document, position.line, defaultIndentation.length);
+    const indentation = getDocstringIndentation(document, position.line, defaultIndentation);
 
     return this._insertGenerationPlaceholder(indentation)
-      .then(() => this._insertDocstring(docstringParts, indentation, position))
+      .then(() => this._generateDocstring(docstringParts, definition, indentation, position))
       .then(
         () => extensionState.set('isLoading', false),
         () => extensionState.set('isLoading', false)
@@ -46,15 +45,26 @@ export class AutoDocstring {
     return this.editor.insertSnippet(generationPlaceholderSnippet, insertPosition);
   }
 
-  private _insertDocstring(docstringParts: DocstringParts, indentation: string, position: vs.Position) {
-    const removeGenerationPlaceholder = () =>
-      this.editor.edit((builder) => {
-        builder.delete(this.editor.document.lineAt(position).range);
-      });
+  private _removeGenerationPlaceholder(position: vs.Position) {
+    return this.editor.edit((builder) => {
+      builder.delete(this.editor.document.lineAt(position).range);
+    });
+  }
+
+  private _generateDocstring(
+    docstringParts: DocstringParts,
+    definition: string,
+    indentation: string,
+    position: vs.Position
+  ) {
+    const template = this.generateTemplate(docstringParts, indentation);
 
     return backendService
       .generateSummarization({
-        inputs: docstringParts.code.join(' '),
+        inputs: docstringParts.code.join('\n'),
+        template: template,
+        definition: definition,
+        format: extensionState.config.docstringFormat,
         parameters: {
           temperature: extensionState.config.temperature,
           top_k: extensionState.config.topK,
@@ -64,29 +74,19 @@ export class AutoDocstring {
         },
       })
       .then((response) => {
-        docstringParts.summary = response?.generated_text || '';
-        const docstringSnippet = this.generateDocstringSnippet(docstringParts, indentation);
+        const docstringSnippet = new vs.SnippetString(response?.generated_text);
 
-        return removeGenerationPlaceholder().then(() =>
+        return this._removeGenerationPlaceholder(position).then(() =>
           this.editor.insertSnippet(docstringSnippet, position.with(position.line, 0))
         );
       });
   }
 
-  private generateDocstringSnippet(docstringParts: DocstringParts, indentation: string): vs.SnippetString {
-    const config = extensionState.config;
+  private generateTemplate(docstringParts: DocstringParts, indentation: string): string {
+    const { quoteStyle, docstringFormat } = extensionState.config;
 
-    const docstringFactory = new DocstringFactory(
-      getTemplate(extensionState.config.docstringFormat),
-      config.quoteStyle,
-      true,
-      false,
-      false,
-      true
-    );
+    const docstringFactory = new DocstringFactory(getTemplate(docstringFormat), quoteStyle, true, false, false, true);
 
-    const docstring = docstringFactory.generateDocstring(docstringParts, indentation);
-
-    return new vs.SnippetString(docstring);
+    return docstringFactory.generateDocstring(docstringParts, indentation);
   }
 }

@@ -1,7 +1,9 @@
+import re
 from functools import lru_cache
+from io import StringIO
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Container, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Container, Dict, Generator, List, Optional, Type, Union
 
 import torch
 from huggingface_hub.utils import EntryNotFoundError
@@ -9,7 +11,6 @@ from optimum.intel import OVModelForCausalLM, OVModelForSeq2SeqLM
 from transformers import (
     AutoConfig,
     AutoTokenizer,
-    AutoModelForCausalLM,
     GenerationConfig,
     StoppingCriteria,
     StoppingCriteriaList,
@@ -26,13 +27,8 @@ OVModel = Union[OVModelForSeq2SeqLM, OVModelForCausalLM]
 model_dir = Path("models")
 model_dir.mkdir(exist_ok=True)
 
-INSTRUCTION_WITH_INPUT = (
-    "Below is an instruction that describes a task, paired with an input that provides further context. "
-    "Write a response that appropriately completes the request.\n\n"
-    "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:\n"
-)
-SUMMARIZE_INSTRUCTION = "The function description in numpy style"
-SUMMARIZE_STOP_TOKENS = ("\n", ".\n")
+SUMMARIZE_INSTRUCTION = "{function}\n\n# The function with {style} style docstring\n\n{signature}\n"
+SUMMARIZE_STOP_TOKENS = ("\r\n", "\n")
 
 
 def get_model_class(checkpoint: Union[str, Path]) -> Type[OVModel]:
@@ -53,7 +49,9 @@ def get_model(checkpoint: str, device: str = "CPU") -> OVModel:
     else:
         model_class = get_model_class(checkpoint)
         try:
-            model = model_class.from_pretrained(checkpoint, ov_config=ov_config, compile=False, device=device, trust_remote_code=True)
+            model = model_class.from_pretrained(
+                checkpoint, ov_config=ov_config, compile=False, device=device, trust_remote_code=True
+            )
         except EntryNotFoundError:
             model = model_class.from_pretrained(
                 checkpoint, ov_config=ov_config, export=True, compile=False, device=device, trust_remote_code=True
@@ -70,6 +68,12 @@ class GeneratorFunctor:
     async def generate_stream(self, input_text: str, parameters: Dict[str, Any]):
         raise NotImplementedError
 
+    def summarize(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]):
+        raise NotImplementedError
+
+    def summarize_stream(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]):
+        raise NotImplementedError
+
 
 class OVGenerator(GeneratorFunctor):
     def __init__(
@@ -82,7 +86,6 @@ class OVGenerator(GeneratorFunctor):
     ) -> None:
         self.device = device
         self.model = get_model(checkpoint, device)
-        # self.model = AutoModelForCausalLM.from_pretrained(checkpoint, trust_remote_code=True)
 
         self.tokenizer: AutoTokenizer = AutoTokenizer.from_pretrained(
             tokenizer_checkpoint if tokenizer_checkpoint is not None else checkpoint,
@@ -97,13 +100,15 @@ class OVGenerator(GeneratorFunctor):
         self.assistant_model_config = {}
         if assistant_checkpoint is not None:
             self.assistant_model = get_model(assistant_checkpoint, device)
-            # self.assistant_model = AutoModelForSeq2SeqLM.from_pretrained(assistant_checkpoint)
             self.assistant_model_config["assistant_model"] = self.assistant_model
 
         self.summarize_stopping_criteria = None
         if summarize_stop_tokens:
-            stop_tokens_ids = self.tokenizer(summarize_stop_tokens).input_ids
-            self.summarize_stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_tokens_ids)])
+            stop_tokens = []
+            for token_id in self.tokenizer.vocab.values():
+                if any(stop_word in self.tokenizer.decode(token_id) for stop_word in summarize_stop_tokens):
+                    stop_tokens.append(token_id)
+            self.summarize_stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_tokens)])
 
     def __call__(
         self, input_text: str, parameters: Dict[str, Any], stopping_criteria: Optional[StoppingCriteriaList] = None
@@ -135,20 +140,88 @@ class OVGenerator(GeneratorFunctor):
         for token in streamer:
             yield token
 
-    def summarization_input(self, input_text: str) -> str:
-        return INSTRUCTION_WITH_INPUT.format(
-            instruction=SUMMARIZE_INSTRUCTION,
-            input=input_text,
+    def generate_between(
+        self,
+        input_parts: List[str],
+        parameters: Dict[str, Any],
+        stopping_criteria: Optional[StoppingCriteriaList] = None,
+    ) -> str:
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
+
+        prompt = torch.tensor([[]], dtype=torch.int64)
+        buffer = StringIO()
+        for text_input in input_parts[:-1]:
+            buffer.write(text_input)
+
+            tokenized_input = self.tokenizer.encode(text_input, return_tensors="pt")
+            prompt = torch.concat((prompt, tokenized_input), dim=1)
+            prev_len = prompt.shape[-1]
+
+            prompt = self.model.generate(
+                prompt, generation_config=config, stopping_criteria=stopping_criteria, **self.assistant_model_config
+            )[
+                :, :-1
+            ]  # skip the last token - stop token
+
+            decoded = self.tokenizer.decode(prompt[0, prev_len:], skip_special_tokens=True)
+            buffer.write(decoded.lstrip(" "))  # hack to delete leadding spaces if there are any
+
+        buffer.write(input_parts[-1])
+        return buffer.getvalue()
+
+    async def generate_between_stream(
+        self,
+        input_parts: List[str],
+        parameters: Dict[str, Any],
+        stopping_criteria: Optional[StoppingCriteriaList] = None,
+    ) -> Generator[str, None, None]:
+        config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
+
+        prompt = self.tokenizer.encode(input_parts[0], return_tensors="pt")
+        for text_input in input_parts[1:-1]:
+            yield text_input
+
+            tokenized_input = self.tokenizer.encode(text_input, return_tensors="pt")
+            prompt = torch.concat((prompt, tokenized_input), dim=1)
+            prev_len = prompt.shape[-1]
+
+            prompt = self.model.generate(
+                prompt, generation_config=config, stopping_criteria=stopping_criteria, **self.assistant_model_config
+            )[
+                :, :-1
+            ]  # skip the last token - stop token
+
+            decoded = self.tokenizer.decode(prompt[0, prev_len:], skip_special_tokens=True)
+            yield decoded.lstrip(" ")  # hack to delete leadding spaces if there are any
+
+        yield input_parts[-1]
+
+    @staticmethod
+    def summarization_input(function: str, signature: str, style: str) -> str:
+        return SUMMARIZE_INSTRUCTION.format(
+            function=function,
+            style=style,
+            signature=signature,
         )
 
-    def summarize(self, input_text: str, parameters: Dict[str, Any]) -> str:
-        return self(
-            self.summarization_input(input_text), parameters, stopping_criteria=self.summarize_stopping_criteria
-        )
+    def summarize(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]) -> str:
+        prompt = self.summarization_input(input_text, signature, style)
+        splited_template = re.split(r"\$\{.*\}", template)
+        splited_template[0] = prompt + splited_template[0]
 
-    async def summarize_stream(self, input_text: str, parameters: Dict[str, Any]):
-        async for token in self.generate_stream(
-            self.summarization_input(input_text), parameters, stopping_criteria=self.summarize_stopping_criteria
+        return self.generate_between(splited_template, parameters, stopping_criteria=self.summarize_stopping_criteria)[
+            len(prompt) :
+        ]
+
+    async def summarize_stream(
+        self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]
+    ):
+        prompt = self.summarization_input(input_text, signature, style)
+        splited_template = re.split(r"\$\{.*\}", template)
+        splited_template = [prompt] + splited_template
+
+        async for token in self.generate_between_stream(
+            splited_template, parameters, stopping_criteria=self.summarize_stopping_criteria
         ):
             yield token
 
@@ -169,11 +242,8 @@ def get_generator_dependency(
 
 
 class StopOnTokens(StoppingCriteria):
-    def __init__(self, token_ids: List[List[int]]) -> None:
-        self.token_ids = [torch.tensor(ids, requires_grad=False) for ids in token_ids]
+    def __init__(self, token_ids: List[int]) -> None:
+        self.token_ids = torch.tensor(token_ids, requires_grad=False)
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        return any(
-            torch.all(input_ids[0][-len(stopping_token_ids) :] == stopping_token_ids)
-            for stopping_token_ids in self.token_ids
-        )
+        return torch.any(torch.eq(input_ids[0, -1], self.token_ids)).item()

@@ -18,6 +18,10 @@ export function preprocessLines(lines: string[]): string[] {
   return lines.map((line) => line.trim()).filter((line) => !line.startsWith("#"));
 }
 
+export function filterComments(lines: string[]): string[] {
+  return lines.filter((line) => !line.startsWith("#"));
+}
+
 export function indentationOf(line: string): number {
   return getIndentation(line).length;
 }

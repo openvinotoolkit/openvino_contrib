@@ -1,12 +1,12 @@
 import { ChildProcess, spawn, exec } from 'child_process';
-import { StopSignal } from './stop-controller';
 import { LogOutputChannel } from 'vscode';
+import { logServerMessage } from './server-log';
 
 export interface RunCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  stopSignal?: StopSignal;
-  logger: LogOutputChannel;
+  abortSignal?: AbortSignal;
+  logger: LogOutputChannel | null;
   listeners?: Listeners;
 }
 
@@ -14,48 +14,52 @@ interface Listeners {
   stdout: (data: string) => void;
 }
 
+export const isAbortError = (error: Error): boolean => error.name === 'AbortError';
+
 const pidMessagePrefixer = (pid?: number) => (message: string) => `[Process: ${pid}] ${message}`;
 
 export function spawnCommand(command: string, args: string[], options: RunCommandOptions) {
-  const { env, cwd, stopSignal, logger, listeners } = options;
+  const { env, cwd, abortSignal, logger, listeners } = options;
 
-  if (stopSignal?.stopped) {
-    logger.debug(`running command: ${command} ${args ? args?.join(' ') : ''} is skipped. Received stop signal`);
+  if (abortSignal?.aborted) {
+    logger?.debug(`running command: ${command} ${args ? args?.join(' ') : ''} is skipped. Received stop signal`);
     return;
   }
 
-  logger.debug(`running command: ${command} ${args ? args?.join(' ') : ''}`);
+  logger?.debug(`running command: ${command} ${args ? args?.join(' ') : ''}`);
 
   const process = spawn(command, args, {
     cwd,
     env,
+    signal: abortSignal,
   });
 
-  return waitForChildProcess(process, logger, stopSignal, listeners);
+  return waitForChildProcess(process, logger, abortSignal, listeners);
 }
 
 export function execCommand(command: string, options: RunCommandOptions) {
-  const { env, cwd, stopSignal, logger, listeners } = options;
+  const { env, cwd, abortSignal, logger, listeners } = options;
 
-  if (stopSignal?.stopped) {
-    logger.debug(`running command: ${command} is skipped. Received stop signal`);
+  if (abortSignal?.aborted) {
+    logger?.debug(`running command: ${command} is skipped. Received stop signal`);
     return;
   }
 
-  logger.debug(`running command: ${command}`);
+  logger?.debug(`running command: ${command}`);
 
   const process = exec(command, {
     cwd,
     env,
+    signal: abortSignal,
   });
 
-  return waitForChildProcess(process, logger, stopSignal, listeners);
+  return waitForChildProcess(process, logger, abortSignal, listeners);
 }
 
 async function waitForChildProcess(
   process: ChildProcess,
-  logger: LogOutputChannel,
-  stopSignal?: StopSignal,
+  logger: RunCommandOptions['logger'],
+  abortSignal?: AbortSignal,
   listeners?: Listeners
 ) {
   let result: string = '';
@@ -63,16 +67,20 @@ async function waitForChildProcess(
   const prefixMessage = pidMessagePrefixer(process.pid);
 
   const stopSignalHandler = () => {
-    logger.debug(prefixMessage('killing process'));
+    logger?.debug(prefixMessage('killing process'));
+    // TODO Consider removing explicit process kill and rely on AbortSignal only
     process.kill();
   };
-  stopSignal?.once(stopSignalHandler);
+
+  abortSignal?.addEventListener('abort', stopSignalHandler, { once: true });
 
   return new Promise<string | null>((resolve, reject) => {
     process.stdout?.on('data', (data) => {
       const textData = String(data).trim();
 
-      logger.debug(prefixMessage(textData));
+      if (logger) {
+        logServerMessage(logger, textData, prefixMessage);
+      }
 
       if (listeners?.stdout) {
         listeners?.stdout(textData);
@@ -84,20 +92,25 @@ async function waitForChildProcess(
 
     process.stderr?.on('data', (data) => {
       const textData = String(data).trim();
-      logger.error(prefixMessage(textData));
+      logger?.error(prefixMessage(textData));
       if (!error) {
         error = new Error(textData);
       }
     });
 
     process.on('error', (err) => {
-      logger.error(prefixMessage(err.message));
+      if (isAbortError(err)) {
+        logger?.debug(prefixMessage(err.message));
+      } else {
+        logger?.error(prefixMessage(err.message));
+      }
       error = err;
     });
 
     process.on('close', (code, signal) => {
-      logger.debug(prefixMessage(`exited with code: ${code} and signal: ${signal}`));
-      stopSignal?.removeListener(stopSignalHandler);
+      logger?.debug(prefixMessage(`exited with code: ${code} and signal: ${signal}`));
+
+      abortSignal?.removeEventListener('abort', stopSignalHandler);
 
       if (code === 0) {
         resolve(result);

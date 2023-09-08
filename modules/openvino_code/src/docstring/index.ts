@@ -7,6 +7,7 @@ import { completionItemProvider } from './completion-item-provider';
 class DocString implements IExtensionComponent {
   activate(context: ExtensionContext): void {
     const commandDisposable = commands.registerCommand(COMMANDS.GENERATE_DOC_STRING, generateCommandHandler);
+
     const providerDisposable = languages.registerCompletionItemProvider(
       'python',
       completionItemProvider,
@@ -14,6 +15,7 @@ class DocString implements IExtensionComponent {
       "'",
       '#'
     );
+
     context.subscriptions.push(commandDisposable, providerDisposable);
   }
   deactivate(): void {}

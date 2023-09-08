@@ -21,7 +21,7 @@ function getTypeFromTyping(parameter: string): string | undefined {
     return undefined;
   }
 
-  return typeHint[1].replace(/['"]+/g, "").trim();
+  return typeHint[1].replace(/['"]+/g, '').trim();
 }
 
 function guessTypeFromDefaultValue(parameter: string): string | undefined {
@@ -35,63 +35,63 @@ function guessTypeFromDefaultValue(parameter: string): string | undefined {
   const defaultValue = defaultValueMatch[1];
 
   if (isInteger(defaultValue)) {
-    return "int";
+    return 'int';
   }
 
   if (isFloat(defaultValue)) {
-    return "float";
+    return 'float';
   }
 
   if (isHexadecimal(defaultValue)) {
-    return "hexadecimal";
+    return 'hexadecimal';
   }
 
   if (isString(defaultValue)) {
-    return "str";
+    return 'str';
   }
 
   if (isBool(defaultValue)) {
-    return "bool";
+    return 'bool';
   }
 
   if (isList(defaultValue)) {
-    return "list";
+    return 'list';
   }
 
   if (isTuple(defaultValue)) {
-    return "tuple";
+    return 'tuple';
   }
 
   if (isDict(defaultValue)) {
-    return "dict";
+    return 'dict';
   }
 
   if (isRegexp(defaultValue)) {
-    return "regexp";
+    return 'regexp';
   }
 
   if (isUnicode(defaultValue)) {
-    return "unicode";
+    return 'unicode';
   }
 
   if (isBytes(defaultValue)) {
-    return "bytes";
+    return 'bytes';
   }
 
   if (isFunction(defaultValue)) {
-    return "function";
+    return 'function';
   }
 
   return undefined;
 }
 
 function guessTypeFromName(parameter: string): string | undefined {
-  if (parameter.startsWith("is") || parameter.startsWith("has")) {
-    return "bool";
+  if (parameter.startsWith('is') || parameter.startsWith('has')) {
+    return 'bool';
   }
 
-  if (inArray(parameter, ["cb", "callback", "done", "next", "fn"])) {
-    return "function";
+  if (inArray(parameter, ['cb', 'callback', 'done', 'next', 'fn'])) {
+    return 'function';
   }
 
   return undefined;
@@ -103,7 +103,7 @@ function hasTypeHint(parameter: string): boolean {
 }
 
 function isKwarg(parameter: string): boolean {
-  return parameter.includes("=");
+  return parameter.includes('=');
 }
 
 function isInteger(value: string): boolean {
@@ -166,6 +166,6 @@ function isFunction(value: string): boolean {
   return pattern.test(value);
 }
 
-export function inArray<type>(item: type, array: type[]) {
+export function inArray<T>(item: T, array: T[]) {
   return array.some((x) => item === x);
 }

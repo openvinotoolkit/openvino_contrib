@@ -1,13 +1,13 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
   "author": "",
   "contributors": [],
-  "license": "License at https://github.com/openvinotoolkit/openvino_contrib/tree/master/modules/openvino_code",
+  "license": "https://github.com/openvinotoolkit/openvino_contrib/blob/master/LICENSE",
   "homepage": "https://docs.openvino.ai/",
   "repository": {
     "type": "git",
@@ -51,6 +51,7 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "lint:side-panel": "npm run lint -w side-panel-ui",
+    "lint:all": "npm run lint && npm run lint --workspaces",
     "test": "node ./out/test/runTest.js",
     "vsce:package": "vsce package",
     "vsce:publish": "vsce publish",
@@ -164,6 +165,16 @@
       {
         "title": "OpenVINO Code",
         "properties": {
+          "openvinoCode.model": {
+            "order": 0,
+            "type": "string",
+            "default": "codet5p-220m-py",
+            "enum": [
+              "codet5p-220m-py",
+              "decicoder-1b-openvino-int8"
+            ],
+            "description": "Which model to use for code generation."
+          },
           "openvinoCode.serverUrl": {
             "order": 1,
             "type": "string",
@@ -238,6 +249,7 @@
             "description": "(Optional) Stop token."
           },
           "openvinoCode.quoteStyle": {
+            "order": 11,
             "type": "string",
             "default": "\"\"\"",
             "enum": [
@@ -247,6 +259,7 @@
             "description": "Style of quote used with generate docstring command"
           },
           "openvinoCode.docstringFormat": {
+            "order": 12,
             "type": "string",
             "default": "google_summary_only",
             "enum": [
