@@ -16,9 +16,9 @@ void StringTensorUnpack::validate_and_infer_types() {
     auto output_shape = PartialShape::dynamic();
 
     // In case of explicit string tensors the shape is carried by input tensor itself
-    // OPENVINO_ASSERT(
-    //     input_shape == PartialShape::dynamic(),
-    //     "Excplicitly set shape for a string tensor in the unpacking is not supported");
+//     OPENVINO_ASSERT(
+//         input_shape == PartialShape::dynamic(),
+//         "Excplicitly set shape for a string tensor in the unpacking is not supported");
 
     // There are three cases that affect expected element type of the input tensor:
     // - when string tensor is passed and we are before the hack is applied (element::string) and

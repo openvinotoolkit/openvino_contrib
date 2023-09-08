@@ -26,11 +26,9 @@ public:
         return std::make_shared<BytesToChars>(inputs);
     }
 
-//    bool visit_attributes(ov::AttributeVisitor& visitor) override {
-//        visitor.on_attribute("suffix_indicator", m_suffix_indicator);
-//        visitor.on_attribute("max_bytes_per_word", m_max_bytes_per_word);
-//        return true;
-//    }
+    bool visit_attributes(ov::AttributeVisitor& visitor) override {
+        return true;
+    }
 
     bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
 

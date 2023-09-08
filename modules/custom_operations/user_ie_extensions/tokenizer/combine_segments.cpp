@@ -28,8 +28,6 @@ void CombineSegments::validate_and_infer_types() {
         OPENVINO_ASSERT(element::Type::merge(et, et, get_input_element_type(3*i + 1)));
     }
 
-    //std::cerr << ps << '\n';
-
     set_ragged_output(this, 0, ps, et);
     // TODO: Avoid emitting ragged indices for the second ragged tensor, they should be identical to the first output ragged tensor
     set_ragged_output(this, 3, ps, get_input_element_type(get_input_size() - 1));
@@ -54,15 +52,11 @@ bool CombineSegments::evaluate(ov::TensorVector& outputs, const ov::TensorVector
         begins.push_back(inputs[3*i + 0].data<const int32_t>());
         ends.push_back(inputs[3*i + 1].data<const int32_t>());
         nelems.push_back(inputs[3*i + 0].get_size());
-        //std::cerr << "inputs[3*i + 0].get_size() = " << inputs[3*i + 0].get_size() << "\n";
         elems.push_back(reinterpret_cast<const char*>(inputs[3*i + 2].data()));
         // TODO: Get rank from a tensor instead of partial_shape. This is a WA for CPU bug that gives 1D tensors instead of 0D tensors.
         if(get_input_partial_shape(3*i + 0).rank().get_length() > 0) {
             ps = inputs[3*i + 0].get_shape();
-            //std::cerr << "updated\n";
         }
-        //std::cerr << "ps = " << ps << "\nget_input_partial_shape(3*i) = " << get_input_partial_shape(3*i) << "\n";
-        //OPENVINO_ASSERT(ps.merge_into(ps, get_input_partial_shape(3*i)));
         max_nelems = std::max(max_nelems, nelems.back());
     }
 
@@ -70,7 +64,6 @@ bool CombineSegments::evaluate(ov::TensorVector& outputs, const ov::TensorVector
     // This is only an estimation, not the exact output size, because ragged tensor may have gaps in the representation
 
     for(size_t i = 0; i < num_of_ragged; ++i) {
-        //std::cerr << "max_nelems = " << max_nelems << "\n";
         if(nelems[i] == 1) {
             flat_out_size += max_nelems * inputs[3*i + 2].get_size(); // broadcast
         } else {

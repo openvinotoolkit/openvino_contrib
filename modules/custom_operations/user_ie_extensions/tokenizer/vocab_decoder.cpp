@@ -12,7 +12,6 @@
 using namespace ov;
 
 void VocabDecoder::validate_and_infer_types() {
-//    check_ragged_string_input(this, 0);
     check_string_input(this, 1);
     const auto shape = get_input_partial_shape(0);
     set_ragged_string_output(this, 0, {shape[0]});

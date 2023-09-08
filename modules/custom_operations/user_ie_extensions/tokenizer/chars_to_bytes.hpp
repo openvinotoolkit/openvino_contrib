@@ -38,4 +38,7 @@ public:
 private:
     const std::array<std::array<uint8_t, 64>, 4> m_pair_map = create_pair_map();
     const uint8_t m_one_byte_border = 128;  // if char > 128 => it is two byte char
+    //
+    const uint8_t m_first_byte_offset = 194;
+    const uint8_t m_second_byte_offset = 128;
 };

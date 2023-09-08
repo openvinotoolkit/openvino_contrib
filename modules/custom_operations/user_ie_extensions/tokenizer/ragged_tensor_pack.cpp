@@ -21,17 +21,10 @@ void RaggedTensorPack::validate_and_infer_types() {
 
 
 bool RaggedTensorPack::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-    // Implementation for debuggin purposes: directly print ragged indices to std::cout and pass the base tensor with elements throug.
-
     auto input_shape = inputs[0].get_shape();
-    //std::cout << "[ DEBUG ] RaggedTensorPack: shape = " << input_shape << "\n";
     auto begins = inputs[0].data<const int32_t>();
     auto ends   = inputs[1].data<const int32_t>();
     auto num_elements = shape_size(input_shape);
-
-    //for(size_t i = 0; i < num_elements; ++i) {
-    //std::cout << "[ DEBUG ]     [" << i << "] " << begins[i] << ":" << ends[i] << " with size = " << ends[i] - begins[i] << "\n";
-    //}
 
     inputs[2].copy_to(outputs[0]);
 

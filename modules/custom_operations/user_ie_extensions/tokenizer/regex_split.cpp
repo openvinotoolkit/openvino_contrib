@@ -4,7 +4,6 @@
 
 #include "openvino/op/util/framework_node.hpp"
 #include "openvino/opsets/opset10.hpp"
-//
 
 #include "regex_split.hpp"
 #include "utils.hpp"
@@ -65,7 +64,6 @@ void RegexSplit::validate_and_infer_types() {
 }
 
 bool RegexSplit::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const {
-
     auto ragged_begins = inputs[0].data<const int32_t>();
     auto ragged_ends   = inputs[1].data<const int32_t>();
     auto begins = inputs[2].data<const int32_t>();

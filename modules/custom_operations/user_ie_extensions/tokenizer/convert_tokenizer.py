@@ -85,7 +85,7 @@ def connect_models(
     new_inputs = first.get_parameters()
     remaining_inputs = [input_ for input_ in second.inputs if input_ not in aligned_second_inputs]
     if keep_unaligned_inputs:
-        new_inputs.expend(remaining_inputs)
+        new_inputs.extend(remaining_inputs)
     elif remaining_inputs:
         logger.info(
             "Some inputs of the second model were left uncovered and not included in the connected model: "

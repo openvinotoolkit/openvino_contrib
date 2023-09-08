@@ -156,14 +156,10 @@ OutputVector pre_translate_ragged_tensor_input(ov::Output<ov::Node> input) {
 }
 
 OutputVector pre_translate_ragged_string_tensor_input(ov::Output<ov::Node> input) {
-    // auto ragged_pack = dynamic_cast<RaggedTensorPack*>(node.get_input(input_index).get_node());
-    // OPENVINO_ASSERT(ragged_pack, "Expected RaggedTensorPack but didn't find it");
     auto ragged_inputs = pre_translate_ragged_tensor_input(input);
     auto string_inputs = pre_translate_string_tensor_input(ragged_inputs[2]);
     ragged_inputs.pop_back();
     ragged_inputs.insert(ragged_inputs.end(), string_inputs.begin(), string_inputs.end());
-    // auto string_pack = dynamic_cast<StringTensorPack*>(ragged_pack->get_input_node_ptr(2));
-    // OPENVINO_ASSERT(string_pack, "Expected StringTensorPack as a base for RaggedTensorPack but didn't find it");
     return ragged_inputs;
 }
 

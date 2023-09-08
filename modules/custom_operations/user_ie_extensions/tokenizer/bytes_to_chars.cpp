@@ -274,7 +274,6 @@ const std::array<std::vector<uint8_t>, 256> create_bytes_to_chars_map() {
 
 void BytesToChars::validate_and_infer_types() {
     check_ragged_string_input(this, 0);
-//    check_string_input(this, 5);
     set_ragged_string_output(this, 0, get_input_partial_shape(0));
 }
 

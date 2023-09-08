@@ -4,11 +4,8 @@
 
 #pragma once
 
-#include "normalizer.h" // for absl::string_view
-
 #include <openvino/op/op.hpp>
 #include "openvino/opsets/opset10.hpp"
-#include "fast_tokenizer/normalizers/normalizers.h"  // for re2::RE2
 #include "fast_tokenizer/pretokenizers/pretokenizers.h"
 
 using namespace ov;

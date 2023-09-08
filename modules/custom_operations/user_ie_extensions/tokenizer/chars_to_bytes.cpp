@@ -39,11 +39,6 @@ bool CharsToBytes::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
     auto ends   = inputs[3].data<const int32_t>();
     auto chars  = inputs[4].data<const uint8_t>();
 
-    OPENVINO_ASSERT(inputs.size() == 5, "Too few inputs passed to CharsToBytes, it means it is not converted properly or it is not used in the supported pattern");
-
-    // Set output shapes
-//    outputs[0] = inputs[0];
-//    outputs[1] = inputs[1];
     outputs[0].set_shape(inputs[0].get_shape());
     outputs[1].set_shape(inputs[1].get_shape());
     outputs[2].set_shape(Shape({inputs[4].get_size()}));
@@ -66,7 +61,7 @@ bool CharsToBytes::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
                     new_chars[char_pointer++] = first_byte;
                 } else {
                     const auto second_byte = chars[begins[col] + (++k)];
-                    new_chars[char_pointer++] = m_pair_map[first_byte - 194][second_byte - 128];
+                    new_chars[char_pointer++] = m_pair_map[first_byte - m_first_byte_offset][second_byte - m_second_byte_offset];
                 }
             }
         };
