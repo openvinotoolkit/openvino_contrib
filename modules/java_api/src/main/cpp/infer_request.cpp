@@ -80,7 +80,7 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_InferRequest_SetTensor(JNIEnv *en
     JNI_METHOD("SetTensor",
         InferRequest *infer_request = (InferRequest *)addr;
 
-        std::string c_tensorName= jstringToString(env, tensorName);
+        std::string c_tensorName = jstringToString(env, tensorName);
         const Tensor *tensor = (Tensor *)tensorAddr;
         infer_request->set_tensor(c_tensorName, *tensor);
     )

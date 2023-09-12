@@ -203,8 +203,7 @@ static std::vector<size_t> jintArrayToVector(JNIEnv *env, jintArray dims)
     return std::vector<size_t>();
 }
 
-template<typename T>
-static jobject vectorToJavaList(JNIEnv *env, std::vector<T> items)
+static jobject vectorToJavaList(JNIEnv *env, std::vector<std::string> items)
 {
     static const char method_name[] = "vectorToJavaList";
     try

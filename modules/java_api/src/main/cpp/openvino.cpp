@@ -15,8 +15,8 @@ JNIEXPORT void JNICALL Java_org_intel_openvino_Openvino_serialize(JNIEnv *env, j
     JNI_METHOD("serialize",
         std::string xml_path = jstringToString(env, xmlPath);
         std::string bin_path = jstringToString(env, binPath);
-        std::shared_ptr<const Model> *model = reinterpret_cast<std::shared_ptr<const Model> *>(modelAddr);
+        std::shared_ptr<const Model> model = std::make_shared<const Model>(modelAddr);
 
-        serialize(*model, xml_path, bin_path);
+        serialize(model, xml_path, bin_path);
     )
 }

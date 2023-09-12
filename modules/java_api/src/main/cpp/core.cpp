@@ -116,6 +116,7 @@ JNIEXPORT jlong JNICALL Java_org_intel_openvino_Core_CompileModel3(JNIEnv *env, 
         }
 
         Core *core = (Core *)coreAddr;
+        // AnyMap will be copied inside compile_model, so we don't have to track the lifetime of this object
         CompiledModel *compiled_model = new CompiledModel();
         *compiled_model = core->compile_model(n_path, n_device, map);
 
