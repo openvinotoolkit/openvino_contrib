@@ -204,19 +204,19 @@
             "order": 5,
             "type": "number",
             "default": 0.2,
-            "description": "Sampling temperature."
+            "description": "Non-zero value. The higher the value, the more diverse the code suggestions and the lower temperature emphasizes the most likely words."
           },
           "openvinoCode.topK": {
             "order": 5,
             "type": "integer",
             "default": 10,
-            "description": "Top K."
+            "description": "Select the next word during suggestion generation from the top K candidates. Improves diversity of generated suggestions."
           },
           "openvinoCode.topP": {
             "order": 5,
             "type": "number",
             "default": 1,
-            "description": "Top P."
+            "description": "A value between 0 and 1. Similar to Top K, it adjusts the number of candidate words based on their probability. Candidates will be added for selection until the cumulative probability exceeds P."
           },
           "openvinoCode.minNewTokens": {
             "order": 6,
