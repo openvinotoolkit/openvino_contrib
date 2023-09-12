@@ -30,6 +30,7 @@ class SettingsService implements IExtensionComponent {
   }
 
   updateSetting<K extends keyof CustomConfiguration>(key: K, value: CustomConfiguration[K]): void {
+    // FIXME, TODO: model selection configuration update doesn't work if configuration is in .vscode/settings.json
     void extensionState.config.update(key, value, ConfigurationTarget.Global);
   }
 }

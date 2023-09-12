@@ -1,7 +1,7 @@
 import { InlineCompletionItem, Position, Range, TextDocument, window } from 'vscode';
-import { backendService } from '../services/backend.service';
-import { extensionState } from '../state';
 import { EXTENSION_DISPLAY_NAME } from '../constants';
+import { IGenerateRequest, backendService } from '../services/backend.service';
+import { extensionState } from '../state';
 
 const outputChannel = window.createOutputChannel(EXTENSION_DISPLAY_NAME, { log: true });
 const logCompletionInput = (input: string): void => outputChannel.append(`Completion input:\n${input}\n\n`);
@@ -66,6 +66,41 @@ class CompletionService {
 
     const completionItem = new InlineCompletionItem(generatedText, new Range(position, position.translate(0, 1)));
     return [completionItem];
+  }
+
+  async getCompletionStream(
+    document: TextDocument,
+    position: Position,
+    onDataChunk: (chunk: string) => unknown,
+    signal?: AbortSignal
+  ) {
+    const textBeforeCursor = this._getTextBeforeCursor(document, position);
+    const textAfterCursor = this._getTextAfterCursor(document, position);
+    const completionInput = this._prepareCompletionInput(textBeforeCursor, textAfterCursor);
+    logCompletionInput(completionInput);
+
+    const { temperature, topK, topP, minNewTokens, maxNewTokens } = extensionState.config;
+
+    const request: IGenerateRequest = {
+      inputs: completionInput,
+      parameters: {
+        temperature,
+        top_k: topK,
+        top_p: topP,
+        min_new_tokens: minNewTokens,
+        max_new_tokens: maxNewTokens,
+      },
+    };
+
+    outputChannel.append(`Completion output:\n`);
+    return backendService.generateCompletionStream(
+      request,
+      (chunk) => {
+        outputChannel.append(chunk);
+        onDataChunk(chunk);
+      },
+      signal
+    );
   }
 }
 

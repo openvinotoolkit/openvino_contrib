@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -188,38 +188,44 @@
             "default": 30,
             "markdownDescription": "Server request timeout in seconds after which request will be aborted."
           },
-          "openvinoCode.fillInTheMiddleMode": {
+          "openvinoCode.streamInlineCompletion": {
             "order": 3,
+            "type": "boolean",
+            "default": "false",
+            "description": "When checked inline complention will be generated in streaming mode"
+          },
+          "openvinoCode.fillInTheMiddleMode": {
+            "order": 4,
             "type": "boolean",
             "default": false,
             "markdownDescription": "When checked, text before (above) and after (below) the cursor will be used for completion generation. When unckecked, only text before (above) the cursor will be used."
           },
           "openvinoCode.temperature": {
-            "order": 4,
+            "order": 5,
             "type": "number",
             "default": 0.2,
-            "description": "Sampling temperature."
+            "description": "Non-zero value. The higher the value, the more diverse the code suggestions and the lower temperature emphasizes the most likely words."
           },
           "openvinoCode.topK": {
-            "order": 4,
+            "order": 5,
             "type": "integer",
             "default": 10,
-            "description": "Top K."
+            "description": "Select the next word during suggestion generation from the top K candidates. Improves diversity of generated suggestions."
           },
           "openvinoCode.topP": {
-            "order": 4,
+            "order": 5,
             "type": "number",
             "default": 1,
-            "description": "Top P."
+            "description": "A value between 0 and 1. Similar to Top K, it adjusts the number of candidate words based on their probability. Candidates will be added for selection until the cumulative probability exceeds P."
           },
           "openvinoCode.minNewTokens": {
-            "order": 5,
+            "order": 6,
             "type": "number",
             "default": 1,
             "description": "Minimum of new generated tokens."
           },
           "openvinoCode.maxNewTokens": {
-            "order": 5,
+            "order": 6,
             "type": "number",
             "default": 100,
             "description": "Maximum of new generated tokens."
@@ -280,6 +286,12 @@
         "key": "ctrl+alt+space",
         "mac": "ctrl+alt+space",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "openvinoCode.stopGeneration",
+        "key": "escape",
+        "mac": "escape",
+        "when": "openvinoCode.generating"
       }
     ]
   },

@@ -1,3 +1,4 @@
+import asyncio
 import re
 from functools import lru_cache
 from io import StringIO
@@ -6,6 +7,7 @@ from threading import Thread
 from typing import Any, Callable, Container, Dict, Generator, List, Optional, Type, Union
 
 import torch
+from fastapi import Request
 from huggingface_hub.utils import EntryNotFoundError
 from optimum.intel import OVModelForCausalLM, OVModelForSeq2SeqLM
 from transformers import (
@@ -61,11 +63,15 @@ def get_model(checkpoint: str, device: str = "CPU") -> OVModel:
     return model
 
 
+# TODO: generator needs running flag or cancellation on new generation request
+# generator cannot handle concurrent requests - fails and stalls process
+# RuntimeError: Exception from src/inference/src/infer_request.cpp:189:
+# [ REQUEST_BUSY ]
 class GeneratorFunctor:
     def __call__(self, input_text: str, parameters: Dict[str, Any]) -> str:
         raise NotImplementedError
 
-    async def generate_stream(self, input_text: str, parameters: Dict[str, Any]):
+    async def generate_stream(self, input_text: str, parameters: Dict[str, Any], request: Request):
         raise NotImplementedError
 
     def summarize(self, input_text: str, template: str, signature: str, style: str, parameters: Dict[str, Any]):
@@ -122,23 +128,44 @@ class OVGenerator(GeneratorFunctor):
         logger.info(f"Number of input tokens: {prompt_len}; generated {len(output_ids)} tokens")
         return self.tokenizer.decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
-    async def generate_stream(
-        self, input_text: str, parameters: Dict[str, Any], stopping_criteria: Optional[StoppingCriteriaList] = None
-    ):
+    async def generate_stream(self, input_text: str, parameters: Dict[str, Any], request: Request = None):
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
         streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
         parameters["streamer"] = streamer
         config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
+
+        stop_on_tokens = StopOnTokens([])
+
         generation_kwargs = dict(
             input_ids=input_ids,
             streamer=streamer,
-            stopping_criteria=stopping_criteria,
+            stopping_criteria=StoppingCriteriaList([stop_on_tokens]),
             **config.to_dict(),
         )
+
+        # listen disconnect event so generation can be stopped
+        def listen_for_disconnect():
+            async def listen():
+                message = await request.receive()
+                if message.get("type") == "http.disconnect":
+                    stop_on_tokens.cancelled = True
+            asyncio.create_task(listen())
+
+
+        listen_thread = Thread(target=listen_for_disconnect)
+        # thread.run doesn't actually start a new thread
+        # it runs the thread function in current thread context
+        # thread.start() doesn't work here
+        listen_thread.run()
+
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
+
         for token in streamer:
+            await asyncio.sleep(0.01)
             yield token
+
+        thread.join()
 
     def generate_between(
         self,
@@ -243,7 +270,10 @@ def get_generator_dependency(
 
 class StopOnTokens(StoppingCriteria):
     def __init__(self, token_ids: List[int]) -> None:
+        self.cancelled = False
         self.token_ids = torch.tensor(token_ids, requires_grad=False)
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        if self.cancelled:
+            return True
         return torch.any(torch.eq(input_ids[0, -1], self.token_ids)).item()

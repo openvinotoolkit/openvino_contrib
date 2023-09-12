@@ -8,6 +8,7 @@ export type CustomConfiguration = {
   model: ModelName;
   serverUrl: string;
   serverRequestTimeout: number;
+  streamInlineCompletion: boolean;
   fillInTheMiddleMode: boolean;
   temperature: number;
   topK: number;
