@@ -3,8 +3,9 @@ import { extensionState } from '../state';
 import { notificationService } from './notification.service';
 import { lruCache } from '../lru-cache.decorator';
 import { ConnectionStatus } from '@shared/extension-state';
+import { streamingRequest } from './request';
 
-interface IGenerateRequest {
+export interface IGenerateRequest {
   inputs: string;
   parameters: {
     temperature: number;
@@ -39,7 +40,7 @@ interface RequestOptions {
   timeout: number;
 }
 
-class ServerError extends Error { }
+class ServerError extends Error {}
 
 const skipEmptyGeneratedText = (response: IGenerateResponse | null) => !response?.generated_text.trim();
 
@@ -74,6 +75,20 @@ class BackendService {
   @lruCache<IGenerateResponse>({ skipAddToCache: skipEmptyGeneratedText })
   async generateCompletion(data: IGenerateRequest): Promise<IGenerateResponse | null> {
     return this._sendRequest<IGenerateRequest, IGenerateResponse>(this._endpoints.generate, 'POST', data);
+  }
+
+  async generateCompletionStream(
+    data: IGenerateRequest,
+    onDataChunk: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return streamingRequest(`${this._apiUrl}/generate_stream`, onDataChunk, {
+      method: 'POST',
+      timeout: this._requestTimeoutMs,
+      headers: this._headers,
+      body: data,
+      signal: signal,
+    });
   }
 
   async generateSummarization(data: IGenerateDocStringRequest): Promise<IGenerateResponse | null> {

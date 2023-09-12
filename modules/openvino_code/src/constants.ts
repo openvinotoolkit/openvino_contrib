@@ -24,4 +24,9 @@ export const COMMANDS = {
   STOP_SERVER_NATIVE: 'openvinoCode.stopServerNative',
   SHOW_SERVER_LOG: 'openvinoCode.showServerLog',
   SHOW_EXTENSION_LOG: 'openvinoCode.showExtensionLog',
+  STOP_GENERATION: 'openvinoCode.stopGeneration',
+};
+
+export const EXTENSION_CONTEXT_STATE = {
+  GENERATING: 'openvinoCode.generating',
 };

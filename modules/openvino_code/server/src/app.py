@@ -1,9 +1,9 @@
 from time import perf_counter
 from typing import Dict, Union
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
 from src.generators import GeneratorFunctor
 from src.utils import get_logger
@@ -105,11 +105,12 @@ async def generate(
 
 @app.post("/api/generate_stream", status_code=200)
 async def generate_stream(
-    request: GenerationRequest,
+    request: Request,
     generator: GeneratorFunctor = Depends(get_generator_dummy),
 ) -> StreamingResponse:
-    logger.info(request)
-    return StreamingResponse(generator.generate_stream(request.inputs, request.parameters.model_dump()))
+    generation_request = TypeAdapter(GenerationRequest).validate_python(await request.json())
+    logger.info(generation_request)
+    return StreamingResponse(generator.generate_stream(generation_request.inputs, generation_request.parameters.model_dump(), request))
 
 
 @app.post("/api/summarize", status_code=200, response_model=GenerationResponse)

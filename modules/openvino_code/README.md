@@ -13,7 +13,7 @@ OpenVINO Code provides the following features:
 
 1. Create a new python file
 2. Try typing `def main():`
-3. Press shortcut buttons (TBD) for code completion
+3. Press shortcut button `ctrl+alt+space` for code completion
 
 ### Checking output
 

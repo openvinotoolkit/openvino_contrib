@@ -1,48 +1,39 @@
-import { Disposable, ExtensionContext, commands, languages, window } from 'vscode';
+import { IExtensionState } from '@shared/extension-state';
+import { ExtensionContext } from 'vscode';
 import { IExtensionComponent } from '../extension-component.interface';
-import { CommandInlineCompletionItemProvider } from './command-inline-completion-provider';
-import { COMMANDS } from '../constants';
 import { extensionState } from '../state';
-import { notificationService } from '../services/notification.service';
+import { inlineCompletion as baseInlineCompletion } from './inline-completion-component';
+import { streamingInlineCompletion } from './streaming-inline-completion-component';
 
 class InlineCompletion implements IExtensionComponent {
+  private _context: ExtensionContext | null = null;
+  private _listener = ({ config }: IExtensionState) => this.activateCompletion(config.streamInlineCompletion);
+
   activate(context: ExtensionContext): void {
-    // Register Inline Completion triggered by command
-    const commandInlineCompletionProvider = new CommandInlineCompletionItemProvider();
-
-    let commandInlineCompletionDisposable: Disposable;
-
-    const commandDisposable = commands.registerCommand(COMMANDS.GENERATE_INLINE_COPMLETION, () => {
-      if (!extensionState.get('isServerAvailable')) {
-        notificationService.showServerNotAvailableMessage(extensionState.state);
-        return;
-      }
-      if (extensionState.get('isLoading') && window.activeTextEditor) {
-        void window.showTextDocument(window.activeTextEditor.document);
-        return;
-      }
-
-      extensionState.set('isLoading', true);
-
-      if (commandInlineCompletionDisposable) {
-        commandInlineCompletionDisposable.dispose();
-      }
-
-      commandInlineCompletionDisposable = languages.registerInlineCompletionItemProvider(
-        { pattern: '**' },
-        commandInlineCompletionProvider
-      );
-
-      void commandInlineCompletionProvider.triggerCompletion(() => {
-        commandInlineCompletionDisposable.dispose();
-        extensionState.set('isLoading', false);
-      });
-    });
-
-    context.subscriptions.push(commandDisposable);
+    this._context = context;
+    this.activateCompletion(extensionState.config.streamInlineCompletion);
+    extensionState.subscribe(this._listener);
   }
 
-  deactivate(): void {}
+  deactivate(): void {
+    streamingInlineCompletion.deactivate();
+    baseInlineCompletion.deactivate();
+    extensionState.unsubscribe(this._listener);
+  }
+
+  activateCompletion(streaming: boolean) {
+    if (!this._context) {
+      return;
+    }
+    baseInlineCompletion.deactivate();
+    streamingInlineCompletion.deactivate();
+
+    if (streaming) {
+      streamingInlineCompletion.activate(this._context);
+    } else {
+      baseInlineCompletion.activate(this._context);
+    }
+  }
 }
 
 export const inlineCompletion = new InlineCompletion();
