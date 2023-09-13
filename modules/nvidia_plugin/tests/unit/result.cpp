@@ -5,38 +5,20 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include <cuda_graph.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
-#include <ngraph/function.hpp>
-#include <ngraph/node.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <ops/result.hpp>
 #include <typeinfo>
 
+#include "common_test_utils/data_utils.hpp"
 #include "nodes/parameter_stub_node.hpp"
 #include "nodes/result_stub_node.hpp"
 
-using namespace InferenceEngine;
 using namespace ov::nvidia_gpu;
 using devptr_t = DevicePointer<void*>;
 using cdevptr_t = DevicePointer<const void*>;
-
-/**
- * @brief Fill InferenceEngine blob with random values
- */
-template <typename T>
-void fillBlobRandom(Blob::Ptr& inputBlob) {
-    MemoryBlob::Ptr minput = as<MemoryBlob>(inputBlob);
-    // locked memory holder should be alive all time while access to its buffer happens
-    auto minputHolder = minput->wmap();
-
-    auto inputBlobData = minputHolder.as<T*>();
-    for (size_t i = 0; i < inputBlob->size(); i++) {
-        auto rand_max = RAND_MAX;
-        inputBlobData[i] = (T)rand() / static_cast<T>(rand_max) * 10;
-    }
-}
 
 template <>
 class ov::Output<ParameterStubNode> : public ov::Output<ov::Node> {
@@ -73,27 +55,21 @@ struct ResultTest : testing::Test {
         ASSERT_TRUE(operation);
         auto resultOp = dynamic_cast<ResultOp*>(operation.get());
         ASSERT_TRUE(resultOp);
-        allocate();
-        fillBlobRandom<uint8_t>(blob);
-        blobsMapping[paramNode->get_friendly_name()] = 0;
-        blobs.push_back(std::make_shared<ngraph::HostTensor>(
-            ngraph::element::Type_t::u8, blob->getTensorDesc().getDims(), blob->buffer().as<uint8_t*>()));
-    }
-    void allocate() {
-        TensorDesc desc{Precision::U8, {size}, Layout::C};
-        blob = InferenceEngine::make_shared_blob<uint8_t>(desc);
-        blob->allocate();
+        tensor = std::make_shared<ov::Tensor>(ov::element::u8, ov::Shape{size});
+        ov::test::utils::fill_tensor_random(*tensor.get());
+        tensors_mapping[paramNode->get_friendly_name()] = 0;
+        tensors.push_back(tensor);
     }
     ThreadContext threadContext{{}};
     CUDA::Allocation inAlloc = threadContext.stream().malloc(size);
     OperationBase::Ptr operation;
     std::vector<cdevptr_t> inputs{inAlloc};
     IOperationExec::Outputs outputs;
-    Blob::Ptr blob;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> blobs;
-    std::map<std::string, std::size_t> blobsMapping;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
-    std::map<std::string, std::size_t> emptyMapping;
+    std::shared_ptr<ov::Tensor> tensor;
+    std::vector<std::shared_ptr<ov::Tensor>> tensors;
+    std::map<std::string, std::size_t> tensors_mapping;
+    std::vector<std::shared_ptr<ov::Tensor>> empty_tensor;
+    std::map<std::string, std::size_t> empty_mapping;
 };
 
 TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
@@ -102,30 +78,42 @@ TEST_F(ResultRegistryTest, GetOperationBuilder_Available) {
 
 TEST_F(ResultTest, canExecuteSync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
-    Profiler profiler{false, graph};
-    InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
-    auto mem = blob->as<MemoryBlob>()->rmap();
+    SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    InferenceRequestContext context{empty_tensor,
+                                    empty_mapping,
+                                    tensors,
+                                    tensors_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
-    stream.upload(inputs[0].as_mutable(), mem, size);
+    stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
     stream.download(data.get(), inputs[0], size);
     stream.synchronize();
-    ASSERT_EQ(0, memcmp(data.get(), mem, size));
+    ASSERT_EQ(0, memcmp(data.get(), tensor->data(), size));
 }
 
 TEST_F(ResultTest, canExecuteAsync) {
     CancellationToken token{};
-    CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
-    Profiler profiler{false, graph};
-    InferenceRequestContext context{emptyTensor, emptyMapping, blobs, blobsMapping, threadContext, token, profiler};
+    SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    InferenceRequestContext context{empty_tensor,
+                                    empty_mapping,
+                                    tensors,
+                                    tensors_mapping,
+                                    threadContext,
+                                    token,
+                                    simpleExecutionDelegator,
+                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
-    auto mem = blob->as<MemoryBlob>()->rmap();
-    stream.upload(inputs[0].as_mutable(), mem, size);
+    stream.upload(inputs[0].as_mutable(), tensor->data(), size);
     operation->Execute(context, inputs, outputs, {});
     auto data = std::make_unique<uint8_t[]>(size);
     stream.download(data.get(), inputs[0], size);
     ASSERT_NO_THROW(stream.synchronize());
-    ASSERT_EQ(0, memcmp(data.get(), mem, size));
+    ASSERT_EQ(0, memcmp(data.get(), tensor->data(), size));
 }

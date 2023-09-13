@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
-
 #include "cuda_operation_base.hpp"
 #include "kernels/comparison.hpp"
 
@@ -19,6 +17,8 @@ public:
                IndexCollection&& inputIds,
                IndexCollection&& outputIds,
                kernel::Comparison::Op_t operation_type);
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     void calculateOffsets();

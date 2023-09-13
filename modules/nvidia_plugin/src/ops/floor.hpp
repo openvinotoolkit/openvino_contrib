@@ -6,25 +6,16 @@
 
 #include <cuda_operation_base.hpp>
 
+#include "elementwise_unary.hpp"
 #include "kernels/floor.hpp"
+#include "openvino/op/floor.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
-class FloorOp : public OperationBase {
+class FloorOp : public ElementwiseUnaryOp<ov::op::v0::Floor, kernel::Floor> {
 public:
-    FloorOp(const CreationContext& context,
-            const ov::Node& node,
-            IndexCollection&& inputIds,
-            IndexCollection&& outputIds);
-
-    void Execute(const InferenceRequestContext& context,
-                 Inputs inputTensors,
-                 Outputs outputTensors,
-                 const Workbuffers& workbuffers) const override;
-
-private:
-    std::optional<kernel::Floor> kernel_;
+    using ElementwiseUnaryOp::ElementwiseUnaryOp;
 };
 
 }  // namespace nvidia_gpu

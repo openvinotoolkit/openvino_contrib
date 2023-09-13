@@ -6,10 +6,10 @@
 
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
-#include <ngraph/shape.hpp>
 #include <transformer/nodes/fully_connected.hpp>
 
 #include "cuda/constant_factory.hpp"
+#include "openvino/op/matmul.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -17,15 +17,19 @@ namespace nvidia_gpu {
 class MatMulOp : public OperationCuBlas {
 public:
     using NodeOp = ov::op::v0::MatMul;
+
     template <typename TOperation>
     MatMulOp(const CreationContext& context,
              const TOperation& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
     int GetBatchCount() const { return batch_count_; }
 

@@ -27,6 +27,13 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
+
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+
 private:
     struct PortMap {
         int64_t start{0};
@@ -55,6 +62,8 @@ private:
                     int64_t iter,
                     std::size_t resultIdx,
                     std::size_t outputIdx) const;
+
+    void updateExecSequence();
 
     size_t max_threads_per_block_;
     const int64_t num_iterations_;

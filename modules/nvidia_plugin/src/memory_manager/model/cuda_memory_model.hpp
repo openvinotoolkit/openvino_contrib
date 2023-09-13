@@ -9,6 +9,7 @@
 #include <memory>
 #include <memory_manager/tensor_types.hpp>
 #include <unordered_map>
+#include <vector>
 
 namespace ov {
 namespace nvidia_gpu {

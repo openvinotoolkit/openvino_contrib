@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 
 #if !defined(__CUDACC__)
-#include <ngraph/shape.hpp>
+#include "openvino/core/shape.hpp"
 #endif
 
 namespace ov {

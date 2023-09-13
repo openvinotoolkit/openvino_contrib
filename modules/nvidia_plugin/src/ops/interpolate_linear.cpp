@@ -15,19 +15,19 @@ namespace {
 
 void checkLimitations(const InterpolateLinearOp::NodeOp& node) {
     if (node.get_input_shape(0).size() > kernel::InterpolateLinear::MAX_SHAPE_RANK) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported shape rank {}. InterpolateLinearOp operation supports up to {} dimensions.",
                         node.get_input_shape(0).size(),
                         kernel::InterpolateLinear::MAX_SHAPE_RANK));
     }
     if (!std::all_of(
             node.get_attrs().pads_begin.cbegin(), node.get_attrs().pads_begin.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported begin pads. InterpolateLinearOp operation supports all pads equal to 0."));
     }
     if (!std::all_of(
             node.get_attrs().pads_end.cbegin(), node.get_attrs().pads_end.cend(), [](int i) { return i == 0; })) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Unsupported end pads. InterpolateLinearOp operation supports all pads equal to 0."));
     }
 }
@@ -40,7 +40,7 @@ InterpolateLinearOp::InterpolateLinearOp(const CreationContext& context,
                                          IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     OPENVINO_ASSERT(
-        node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::linear, "Node name: ", GetName());
+        node.get_attrs().mode == ov::op::v4::Interpolate::InterpolateMode::LINEAR, "Node name: ", GetName());
     checkLimitations(node);
 
     std::vector<size_t> axes;
@@ -68,6 +68,8 @@ void InterpolateLinearOp::Execute(const InferenceRequestContext& context,
                                   const Workbuffers& workbuffers) const {
     (*interpolate_)(context.getThreadContext().stream().get(), inputs[0].get(), outputs[0].get());
 }
+
+bool InterpolateLinearOp::IsCudaGraphCompatible() const { return true; }
 
 WorkbufferRequest InterpolateLinearOp::GetWorkBufferRequest() const {
     return {interpolate_->immutableWorkbufferSizes(), {}};

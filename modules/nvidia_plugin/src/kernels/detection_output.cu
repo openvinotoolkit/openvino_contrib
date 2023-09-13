@@ -1041,7 +1041,7 @@ std::vector<size_t> DetectionOutput::getMutableWorkbufferSizes() const {
         case Type_t::f64:
             return getMutableWorkbufferSizes<double>();
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
                             static_cast<Type_t>(element_type_)));
@@ -1079,7 +1079,7 @@ void DetectionOutput::operator()(const CUDA::Stream& stream,
             return call<double>(
                 stream, location, confidence, priors, armLocation, armConfidence, mutableWorkbuffers, result);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by Split operation "
                             "!!",
                             static_cast<Type_t>(element_type_)));

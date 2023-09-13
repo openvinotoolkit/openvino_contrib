@@ -24,6 +24,8 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     std::optional<kernel::Swish> kernel_;
 };

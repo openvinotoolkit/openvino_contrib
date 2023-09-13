@@ -4,15 +4,8 @@
 
 #include <gtest/gtest.h>
 
-#include <condition_variable>
-#include <cuda_executable_network.hpp>
-#include <cuda_plugin.hpp>
-#include <memory>
-#include <memory_manager/model/cuda_memory_model.hpp>
-#include <ngraph/function.hpp>
-#include <ngraph/node.hpp>
-#include <threading/ie_executor_manager.hpp>
-#include <typeinfo>
+#include "memory_manager/cuda_memory_pool.hpp"
+#include "memory_manager/model/cuda_memory_model.hpp"
 
 using namespace ov::nvidia_gpu;
 

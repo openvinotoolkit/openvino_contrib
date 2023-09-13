@@ -21,7 +21,7 @@ INSTANTIATE_TEST_CASE_P(
 {%- if op.has_outputshape_input %}
         ::testing::Values(InferenceEngine::SizeVector {{op.cpp_list_output_shape}}), // Output shape
 {%- endif %}
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)), // Device name
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)), // Device name
     {{op.cpp_test_class_name}}::getTestCaseName);
 
 {% endfor -%}

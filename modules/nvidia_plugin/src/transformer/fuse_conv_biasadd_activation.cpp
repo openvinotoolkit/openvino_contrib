@@ -5,7 +5,7 @@
 #include <utility>
 #include <memory>
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "fuse_conv_biasadd_activation.hpp"
 
 #include "exec_graph_info.hpp"
@@ -24,7 +24,7 @@
 #include "openvino/pass/pattern/op/wrap_type.hpp"
 
 
-#include "nodes/cuda_plugin_custom_node_types.hpp"
+#include "nodes/activation_type.hpp"
 #include "nodes/fused_convolution.hpp"
 #include "nodes/fused_convolution_backprop_data.hpp"
 #include "rt_info/cuda_node_id.hpp"
@@ -98,9 +98,6 @@ struct FusedConvCallbacks {
         ov::copy_runtime_info({m_conv, eltwise}, new_conv.get_node_shared_ptr());
         set_node_id(new_conv.get_node_shared_ptr(), get_node_id(eltwise));
 
-        const std::string originalLayers = eltwise->get_friendly_name() + "," + m_conv->get_friendly_name();
-        fused_conv->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
-
         ov::replace_node(m.get_match_root(), new_conv.get_node_shared_ptr());
         return true;
     }
@@ -168,14 +165,6 @@ struct FusedConvCallbacks {
         ov::copy_runtime_info({node, fused_conv}, fused_conv_add);
         set_node_id(fused_conv_add, get_node_id(add));
 
-        auto &rt_info = fused_conv->get_rt_info();
-        if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
-            auto &rt_info_layer_names = rt_info[ExecGraphInfoSerialization::ORIGINAL_NAMES];
-            const auto original_names = rt_info_layer_names.template as<std::string>();
-            const std::string original_names_with_activation = add->get_friendly_name() + "," + original_names;
-            rt_info_layer_names = original_names_with_activation;
-        }
-
         ov::replace_node(fused_conv, fused_conv_add);
         ov::replace_node(m.get_match_root(), fused_conv_add);
 
@@ -204,15 +193,6 @@ struct FusedConvCallbacks {
 
         fused_conv->set_friendly_name(activationNode->get_friendly_name());
         set_node_id(fused_conv, get_node_id(activationNode));
-
-        auto &rt_info = fused_conv->get_rt_info();
-        if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
-            auto &rt_info_layer_names = rt_info[ExecGraphInfoSerialization::ORIGINAL_NAMES];
-            const auto original_names = rt_info_layer_names.template as<std::string>();
-            const std::string original_names_with_activation =
-                activationNode->get_friendly_name() + "," + original_names;
-            rt_info_layer_names = original_names_with_activation;
-        }
 
         ov::replace_node(m.get_match_root(), fused_conv);
 
@@ -274,14 +254,6 @@ bool fuse_convolution_backprop_data_with_add(Matcher &m) {
 
     fused_conv_backprop_data_add->set_friendly_name(add->get_friendly_name());
     ov::copy_runtime_info({conv_backprop_data, add}, fused_conv_backprop_data_add);
-
-    auto &rt_info = conv_backprop_data->get_rt_info();
-    if (rt_info.count(ExecGraphInfoSerialization::ORIGINAL_NAMES) > 0) {
-        auto &rt_info_layer_names = rt_info[ExecGraphInfoSerialization::ORIGINAL_NAMES];
-        const auto original_names = rt_info_layer_names.as<std::string>();
-        const std::string original_names_with_activation = add->get_friendly_name() + "," + original_names;
-        rt_info_layer_names = original_names_with_activation;
-    }
 
     ov::replace_node(add, fused_conv_backprop_data_add);
     ov::replace_node(conv_backprop_data, fused_conv_backprop_data_add);

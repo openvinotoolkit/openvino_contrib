@@ -224,7 +224,7 @@ void InterpolateNearest::operator()(const cudaStream_t stream,
             return callKernel<uint8_t>(
                 stream, src, input_strides, output_strides, scales, input_shape, output_shape, dst);
         default:
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Element type = {} is not supported by InterpolateNearest operation !!", element_type_));
     }
 }

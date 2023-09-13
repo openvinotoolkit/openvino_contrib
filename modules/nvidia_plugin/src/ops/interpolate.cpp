@@ -12,14 +12,12 @@
 #include "interpolate_cubic.hpp"
 #include "interpolate_linear.hpp"
 #include "interpolate_nearest.hpp"
-#include "ngraph/shape.hpp"
-#include "ngraph/validation_util.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 static OperationBase::Ptr interpolateFactory(const CreationContext& context,
-                                             const std::shared_ptr<ngraph::Node>& in_node,
+                                             const std::shared_ptr<ov::Node>& in_node,
                                              OperationBase::IndexCollection&& inputIds,
                                              OperationBase::IndexCollection&& outputIds) {
     auto node = std::dynamic_pointer_cast<ov::op::v4::Interpolate>(in_node);
@@ -30,7 +28,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
     std::stringstream exception_msg;
 
     switch (node->get_attrs().mode) {
-        case InterpolateMode::nearest:
+        case InterpolateMode::NEAREST:
             try {
                 return std::make_shared<InterpolateNearestOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
@@ -38,7 +36,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                 exception_msg << "failed to create InterpolateNearestOp: " << e.what() << "\n";
             }
             break;
-        case InterpolateMode::linear:
+        case InterpolateMode::LINEAR:
             try {
                 return std::make_shared<InterpolateLinearOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
@@ -46,7 +44,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
                 exception_msg << "failed to create InterpolateLinearOp: " << e.what() << "\n";
             }
             break;
-        case InterpolateMode::cubic:
+        case InterpolateMode::CUBIC:
             try {
                 return std::make_shared<InterpolateCubicOp>(
                     context, *node, IndexCollection{inputIds}, IndexCollection{outputIds});
@@ -59,7 +57,7 @@ static OperationBase::Ptr interpolateFactory(const CreationContext& context,
             break;
     };
 
-    throwIEException(fmt::format("Interpolate node is not supported: {}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Interpolate node is not supported: {}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(interpolateFactory, Interpolate);

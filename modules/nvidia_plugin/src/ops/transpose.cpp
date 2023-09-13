@@ -65,10 +65,10 @@ TransposeOp::TransposeOp(const CreationContext& context,
       inputElementsType_{convertDataType<cudaDataType_t>(node->input(0).get_element_type())},
       permutationElementsType_{extractPermutationElementsType(*node)} {
     if (!isInputElementsTypeSupported(inputElementsType_)) {
-        throwIEException(fmt::format("TransposeOp: unsupported inputElementsType_: {}", toString(inputElementsType_)));
+        throw_ov_exception(fmt::format("TransposeOp: unsupported inputElementsType_: {}", toString(inputElementsType_)));
     }
     if (!isPermutationElementsTypeSupported(permutationElementsType_)) {
-        throwIEException(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
+        throw_ov_exception(fmt::format("TransposeOp: unsupported permutationElementsType_: {}",
                                      ov::element::Type{permutationElementsType_}.get_type_name()));
     }
     inputExtents_.size();
@@ -112,6 +112,8 @@ void TransposeOp::Execute(const InferenceRequestContext& context,
                                      inputElementsType_,
                                      context.getThreadContext().stream().get()));
 }
+
+bool TransposeOp::IsCudaGraphCompatible() const { return true; }
 
 std::vector<std::int64_t> TransposeOp::extractInputExtents(const ov::Node& node) {
     std::vector<std::int64_t> result;
@@ -208,7 +210,7 @@ std::vector<int> TransposeOp::permutation(const InferenceRequestContext& context
             case Type_t::u64:
                 return downloadPermutationVector<std::uint64_t>(context, inputTensors[1], dimsNumber_);
             default:
-                throwIEException("Permutation vector is not of integer type.");
+                throw_ov_exception("Permutation vector is not of integer type.");
         }
     }
 }

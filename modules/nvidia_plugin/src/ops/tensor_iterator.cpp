@@ -1,14 +1,12 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "tensor_iterator.hpp"
 
-#include <cpp/ie_cnn_network.h>
-
 #include <cstdint>
 #include <cuda_op_buffers_extractor.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_iexecution_delegator.hpp>
 #include <kernels/details/cuda_type_traits.hpp>
 #include <kernels/details/tensor_helpers.hpp>
 #include <kernels/insert.hpp>
@@ -42,9 +40,6 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
     for (auto& output : op.outputs()) {
         outputs_info_.emplace_back(getTensorByteSize(output), output.get_element_type(), output.get_shape());
     }
-
-    // Get body topology from ngraph func1tion
-    InferenceEngine::CNNNetwork body_network(op.get_body());
 
     // Setup input_primitive_maps/ output_primitive_maps and back_edges
     const auto& loop_input_descs = op.get_input_descriptions();
@@ -136,6 +131,8 @@ TensorIteratorOp::TensorIteratorOp(const CreationContext& context,
             kernelmap_outputs_.emplace(outputIdx, kernel::Insert(element_type, props, max_threads_per_block_));
         }
     }
+
+    updateExecSequence();
 }
 
 void TensorIteratorOp::Execute(const InferenceRequestContext& context,
@@ -146,8 +143,8 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
     auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.SetStream(stream);
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
 
     // First iteration
     for (const auto inputIdx : invariant_inputs_) {
@@ -160,9 +157,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
     }
 
-    const auto& execSequence = profiler.CreateExecSequence(this);
     for (int64_t iter = 0; iter < num_iterations_; ++iter) {
-        cancellationToken.Check();
 
         // Input mapping of ports
         for (auto& it : portmap_inputs_) {
@@ -172,12 +167,7 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
         }
 
         // Inner loop
-        for (const auto& op : execSequence) {
-            auto inTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-            auto outTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-            auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-            op->Execute(context, inTensors, outTensors, workBuffers);
-        }
+        executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 
         // Back-edge mapping
         for (auto& [resultIdx, paramIdx] : results_parameters_map_) {
@@ -199,6 +189,17 @@ void TensorIteratorOp::Execute(const InferenceRequestContext& context,
             }
         }
     }
+}
+
+// TODO: Investigate problem with multi-graphs in some networks
+// benchmark_app may hang in throughput mode
+bool TensorIteratorOp::IsCudaGraphCompatible() const { return false; }
+
+void TensorIteratorOp::Capture(InferenceRequestContext& context,
+                               Inputs inputTensors,
+                               Outputs outputTensors,
+                               const Workbuffers& workbuffers) const {
+    Execute(context, inputTensors, outputTensors, workbuffers);
 }
 
 WorkbufferRequest TensorIteratorOp::GetWorkBufferRequest() const {
@@ -307,6 +308,16 @@ void TensorIteratorOp::copyResult(const CUDA::Stream& stream,
         start += iter * portMap.stride;
         insert(stream.get(), inputTensors[0].get(), output.get(), start);
     }
+}
+
+void TensorIteratorOp::updateExecSequence() {
+    std::vector<OperationBase::Ptr> newExecSequence;
+    for (const auto& op : exec_sequence_) {
+        if (!dynamic_cast<const ParameterOp*>(op.get()) && !dynamic_cast<const ResultOp*>(op.get())) {
+            newExecSequence.emplace_back(op);
+        }
+    }
+    exec_sequence_ = std::move(newExecSequence);
 }
 
 OPERATION_REGISTER(TensorIteratorOp, TensorIterator);

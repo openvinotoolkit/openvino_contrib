@@ -95,6 +95,8 @@ void ConcatOp::Execute(const InferenceRequestContext& context,
                       outputs[0].get());
 }
 
+bool ConcatOp::IsCudaGraphCompatible() const { return false; }
+
 OPERATION_REGISTER(ConcatOp, Concat);
 }  // namespace nvidia_gpu
 }  // namespace ov

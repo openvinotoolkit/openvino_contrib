@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <gsl/span_ext>
+
 #include "convolution_components.hpp"
 
-#include <openvino/core/except.hpp>
-#include <gsl/span_ext>
-#include <ngraph/validation_util.hpp>
-#include <openvino/op/group_conv.hpp>
+#include "openvino/core/except.hpp"
+#include "openvino/core/validation_util.hpp"
+#include "openvino/op/group_conv.hpp"
 
 namespace ov::nvidia_gpu::Convolution::Details {
 

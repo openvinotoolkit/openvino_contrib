@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "matmul_transformations.hpp"
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <exec_graph_info.hpp>
 #include <gsl/span_ext>
+#include "openvino/core/rt_info.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
-#include <openvino/op/matmul.hpp>
-#include <openvino/op/transpose.hpp>
+#include "openvino/op/matmul.hpp"
+#include "openvino/op/transpose.hpp"
 
 using namespace ov::pass::pattern;
 
@@ -112,10 +112,6 @@ bool fuse_transpose_with_matmul(Matcher &m) {
     newMatMul->set_friendly_name(matmul->get_friendly_name());
 
     ov::copy_runtime_info({transpose, matmul}, newMatMul);
-
-    const std::string originalLayers = transpose->get_friendly_name() + "," + matmul->get_friendly_name();
-    newMatMul->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
-
     ov::replace_node(matmul, newMatMul);
 
     return true;

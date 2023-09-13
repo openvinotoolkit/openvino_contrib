@@ -10,7 +10,6 @@
 
 #include "dnn_be.hpp"
 #include "event.hpp"
-#include "ie_common.h"
 
 namespace CUDA {
 
@@ -27,7 +26,7 @@ inline std::vector<std::shared_ptr<DnnBEExecutionPlan>> getAllExecutionPlansFrom
             try {
                 auto plan = CUDA::DnnBEExecutionPlanBuilder().setDnnHandle(dnnHandle).setEngineConfig(config).build();
                 plans.push_back(std::move(plan));
-            } catch (const InferenceEngine::Exception&) {
+            } catch (const ov::Exception&) {
                 continue;
             }
         }
@@ -42,7 +41,7 @@ inline std::vector<std::shared_ptr<DnnBEExecutionPlan>> getAllExecutionPlansFrom
                 auto plan =
                     CUDA::DnnBEExecutionPlanBuilder().setDnnHandle(dnnHandle).setEngineConfig(engineConfig).build();
                 plans.push_back(std::move(plan));
-            } catch (const InferenceEngine::Exception&) {
+            } catch (const ov::Exception&) {
                 continue;
             }
         }

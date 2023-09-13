@@ -41,33 +41,38 @@ std::vector<InferenceEngine::Precision> inputsPrecisions = {
 };
 
 std::vector<ngraph::helpers::ComparisonTypes> comparisonOpTypes = {
+    ngraph::helpers::ComparisonTypes::EQUAL,
+    ngraph::helpers::ComparisonTypes::NOT_EQUAL,
     ngraph::helpers::ComparisonTypes::GREATER,
+    ngraph::helpers::ComparisonTypes::GREATER_EQUAL,
     ngraph::helpers::ComparisonTypes::LESS,
+    ngraph::helpers::ComparisonTypes::LESS_EQUAL,
 };
 
 std::vector<ngraph::helpers::InputLayerType> secondInputTypes = {
+    ngraph::helpers::InputLayerType::CONSTANT,
     ngraph::helpers::InputLayerType::PARAMETER,
 };
 
 std::map<std::string, std::string> additional_config = {};
 
 const auto smokeComparisonTestParams =
-    ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(smokeShapes)),
+    ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(smokeShapes)),
                        ::testing::ValuesIn(inputsPrecisions),
                        ::testing::ValuesIn(comparisonOpTypes),
                        ::testing::ValuesIn(secondInputTypes),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                        ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
-const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(CommonTestUtils::combineParams(shapes)),
+const auto comparisonTestParams = ::testing::Combine(::testing::ValuesIn(ov::test::utils::combineParams(shapes)),
                                                      ::testing::ValuesIn(inputsPrecisions),
                                                      ::testing::ValuesIn(comparisonOpTypes),
                                                      ::testing::ValuesIn(secondInputTypes),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                                      ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                                     ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                                     ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                                      ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_ComparisonCompareWithRefs,

@@ -5,11 +5,11 @@
 
 #include <fmt/format.h>
 
-#include <openvino/op/constant.hpp>
+#include "openvino/op/constant.hpp"
 
 #include "converters.hpp"
 #include "cuda_operation_registry.hpp"
-#include "ngraph/shape.hpp"
+
 
 namespace ov {
 namespace nvidia_gpu {
@@ -28,7 +28,7 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
                          IndexCollection&& outputIds)
     : OperationBase(context, node, std::move(inputIds), std::move(outputIds)) {
     const auto out_shape = node.get_output_shape(0);
-    ngraph::Shape in_shape = node.get_input_shape(0);
+    ov::Shape in_shape = node.get_input_shape(0);
     OPENVINO_ASSERT(in_shape.size() <= out_shape.size(), "Node name: ", GetName());
 
     switch (node.get_broadcast_spec().m_type) {
@@ -45,14 +45,14 @@ BroadcastOp::BroadcastOp(const CreationContext& context,
             in_shape = in_shape_reshaped;
         } break;
         default:
-            throwIEException(fmt::format("Unsupported broadcast mode {}.", node.get_broadcast_spec().m_type));
+            throw_ov_exception(fmt::format("Unsupported broadcast mode {}.", node.get_broadcast_spec().m_type));
     }
 
     broadcast_params_ = NumpyBroadcastParams::create(in_shape, out_shape);
     broadcast_params_->addWorkbufferRequests(immutable_buffer_sizes_);
 
     const auto element_type = convertDataType<ov::nvidia_gpu::kernel::Type_t>(node.get_input_element_type(0));
-    const size_t dst_num_elements = ngraph::shape_size(out_shape);
+    const size_t dst_num_elements = ov::shape_size(out_shape);
     const size_t max_threads_per_block = context.device().props().maxThreadsPerBlock;
     kernel_.emplace(element_type, dst_num_elements, max_threads_per_block);
 }
@@ -64,6 +64,8 @@ void BroadcastOp::Execute(const InferenceRequestContext& context,
     const cudaStream_t stream = context.getThreadContext().stream().get();
     (*kernel_)(stream, inputs[0].get(), broadcast_params_->mapper(workbuffers.immutable_buffers), outputs[0].get());
 }
+
+bool BroadcastOp::IsCudaGraphCompatible() const { return true; }
 
 WorkbufferRequest BroadcastOp::GetWorkBufferRequest() const { return {immutable_buffer_sizes_, {}}; }
 

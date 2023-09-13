@@ -1,10 +1,11 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "single_layer_tests/lstm_cell.hpp"
 
-#include <cuda_profiler.hpp>
+#include <cuda_graph_context.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <functional>
 #include <vector>
@@ -15,22 +16,38 @@
 
 namespace LayerTestsDefinitions {
 
+constexpr int SEED_FIRST = 10;
+constexpr float THRESHOLD_FP16 = 0.06f;
+
 class CUDNNLSTMCellTest : public LSTMCellTest {
 public:
     void SetUp() override {
         LSTMCellTest::SetUp();
-        constexpr float up_to = 5.0f;
-        constexpr float start_from = -5.0f;
+
+        const auto hiddenSize = std::get<2>(this->GetParam());
+
+        // All the weights and biases are initialized from u(-sqrt(k), sqrt(k)), where k = 1 / hidden_size
+        // https://pytorch.org/docs/stable/generated/torch.nn.LSTMCell.html
+        const auto k_root = std::sqrt(1.0f / static_cast<float>(hiddenSize));
+
+        const float up_to = k_root;
+        const float start_from = -k_root;
 
         const auto& ops = function->get_ordered_ops();
-        int seed = 1;
+        int seed = SEED_FIRST;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                const auto constant = ngraph::builder::makeConstant(
-                    op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed);
+                ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
+                ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed);
+                auto constant = std::make_shared<ov::op::v0::Constant>(random_tensor);
                 function->replace_node(op, constant);
                 ++seed;
             }
+        }
+
+        const auto& netPrecision = std::get<InferenceEngine::Precision>(this->GetParam());
+        if (netPrecision == InferenceEngine::Precision::FP16) {
+            this->threshold = THRESHOLD_FP16;
         }
     }
 };
@@ -49,6 +66,7 @@ const bool should_decompose = false;
 const std::vector<std::string> activations{"sigmoid", "tanh", "tanh"};
 const std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
                                                                InferenceEngine::Precision::FP16};
+const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batch{1, 5};
@@ -68,8 +86,11 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_01,
                                            ::testing::ValuesIn(smoke_input_sizes_01),
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(smoke_clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 const std::vector<size_t> smoke_input_sizes_02{2, 3, 30};
@@ -83,8 +104,11 @@ INSTANTIATE_TEST_CASE_P(smoke_LSTMCell_02,
                                            ::testing::ValuesIn(smoke_input_sizes_02),
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(smoke_clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Other shapes -------------
@@ -106,8 +130,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_01,
                                            ::testing::Values(tacotron2_dec_01.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_dec_01.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_dec_02{1, 1536, 1024, 0.0f};
@@ -120,8 +147,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_dec_02,
                                            ::testing::Values(tacotron2_dec_02.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_dec_02.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams tacotron2_enc_01{1, 512, 256, 0.0f};
@@ -134,8 +164,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Tacotron2_enc_01,
                                            ::testing::Values(tacotron2_enc_01.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(tacotron2_enc_01.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Big shapes -------------
@@ -149,8 +182,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_OV_Doc_01,
                                            ::testing::Values(ov_doc_01.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(ov_doc_01.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_01{10, 2048, 2048, 0.0f};
@@ -163,8 +199,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_01,
                                            ::testing::Values(big_01.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(big_01.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_02{1, 8192, 4096, 0.0f};
@@ -177,8 +216,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_02,
                                            ::testing::Values(big_02.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(big_02.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 LSTMCellTestParams big_03{3, 1781, 5003, 0.0f};
@@ -191,8 +233,11 @@ INSTANTIATE_TEST_CASE_P(LSTMCell_Big_03,
                                            ::testing::Values(big_03.input_size),
                                            ::testing::Values(activations),
                                            ::testing::Values(big_03.clip),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         CUDNNLSTMCellTest::getTestCaseName);
 
 // ------------- Benchmark -------------
@@ -232,13 +277,19 @@ void testOneShape(const LSTMCellTestParams& params) {
     std::vector<CDevPtr> inputs{x_alloc, hi_alloc, ci_alloc, w_alloc, r_alloc, b_alloc};
     std::vector<DevPtr> outputs{ho_alloc, co_alloc};
 
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     std::vector<ElementType> x_host(x_size);
     std::vector<ElementType> hi_host(hi_size);
     std::vector<ElementType> ci_host(ci_size);

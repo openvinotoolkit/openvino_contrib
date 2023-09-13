@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include <ngraph/op/multiply.hpp>
-
 #include "elementwise_binary.hpp"
 #include "kernels/multiply.hpp"
+#include "openvino/op/multiply.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

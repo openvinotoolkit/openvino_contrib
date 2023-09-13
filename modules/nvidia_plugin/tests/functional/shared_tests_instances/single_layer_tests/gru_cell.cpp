@@ -13,41 +13,41 @@
 
 namespace LayerTestsDefinitions {
 
+constexpr int SEED_FIRST = 10;
+constexpr float THRESHOLD_FP16 = 0.05f;
+
 class CUDNNGRUCellTest : public UnsymmetricalComparer<GRUCellTest> {
 protected:
     void SetUp() override {
         GRUCellTest::SetUp();
 
-        constexpr float up_to = 1.5f;
-        constexpr float start_from = -1.5f;
+        const auto hiddenSize = std::get<2>(this->GetParam());
 
-        int seed = 1;
+        // All the weights and biases are initialized from u(-sqrt(k), sqrt(k)), where k = 1 / hidden_size
+        // https://pytorch.org/docs/stable/generated/torch.nn.GRUCell.html
+        const auto k_root = std::sqrt(1.0f / static_cast<float>(hiddenSize));
+
+        const float up_to = k_root;
+        const float start_from = -k_root;
+
         const auto& ops = function->get_ordered_ops();
+        int seed = SEED_FIRST;
         for (const auto& op : ops) {
             if (std::dynamic_pointer_cast<ngraph::opset1::Constant>(op)) {
-                const auto constant = ngraph::builder::makeConstant(
-                    op->get_element_type(), op->get_shape(), std::vector<float>{}, true, up_to, start_from, seed++);
-                function->replace_node(op, constant);
+                ov::Tensor random_tensor(op->get_element_type(), op->get_shape());
+                ov::test::utils::fill_tensor_random(random_tensor, up_to - start_from, start_from, 1, seed++);
+                function->replace_node(op, std::make_shared<ov::op::v0::Constant>(random_tensor));
             }
+        }
+
+        const auto& netPrecision = std::get<InferenceEngine::Precision>(this->GetParam());
+        if (netPrecision == InferenceEngine::Precision::FP16) {
+            this->threshold = THRESHOLD_FP16;
         }
     }
 };
 
-// this class sets lesser precision because of test failures on some hardware, e.g. RTX2080
-class FP16CUDNNGRUCellTest : public CUDNNGRUCellTest {
-protected:
-    void SetUp() override {
-        CUDNNGRUCellTest::SetUp();
-        threshold = 0.07f;
-    }
-};
-
 TEST_P(CUDNNGRUCellTest, CompareWithRefs) {
-    SKIP_IF_CURRENT_TEST_IS_DISABLED()
-    Run();
-}
-
-TEST_P(FP16CUDNNGRUCellTest, CompareWithRefs) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
     Run();
 }
@@ -66,6 +66,7 @@ const std::vector<bool> linear_before_reset{true};
 
 const std::vector<InferenceEngine::Precision> net_precisions = {InferenceEngine::Precision::FP32,
                                                                 InferenceEngine::Precision::FP16};
+const std::vector WRBLayerTypes = {ngraph::helpers::InputLayerType::CONSTANT};
 
 // ------------- Smoke shapes -------------
 const std::vector<size_t> smoke_batches_01{1, 2};
@@ -81,8 +82,11 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_01,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 const size_t smoke_batch_02 = 9;
@@ -98,12 +102,15 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP32,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP32),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
-                        FP16CUDNNGRUCellTest,
+                        CUDNNGRUCellTest,
                         ::testing::Combine(::testing::Values(should_decompose),
                                            ::testing::Values(smoke_batch_02),
                                            ::testing::ValuesIn(smoke_hidden_sizes_02),
@@ -111,8 +118,11 @@ INSTANTIATE_TEST_CASE_P(smoke_GRUCellCommon_02_FP16,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::Values(InferenceEngine::Precision::FP16),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 // ------------- LPCNet shapes -------------
@@ -129,8 +139,11 @@ INSTANTIATE_TEST_CASE_P(GRUCell_LPCNet,
                                            ::testing::Values(activations),
                                            ::testing::ValuesIn(clips),
                                            ::testing::ValuesIn(linear_before_reset),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
+                                           ::testing::ValuesIn(WRBLayerTypes),
                                            ::testing::ValuesIn(net_precisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GRUCellTest::getTestCaseName);
 
 }  // namespace
@@ -143,8 +156,11 @@ const auto benchmark_params = ::testing::Combine(::testing::Values(should_decomp
                                                  ::testing::Values(activations),
                                                  ::testing::Values(clips[0]),
                                                  ::testing::Values(linear_before_reset[0]),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
+                                                 ::testing::ValuesIn(WRBLayerTypes),
                                                  ::testing::Values(net_precisions[0]),
-                                                 ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                 ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 namespace benchmark {
 

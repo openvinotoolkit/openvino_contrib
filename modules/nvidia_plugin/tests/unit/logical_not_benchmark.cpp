@@ -7,10 +7,10 @@
 
 #include <cuda/device_pointers.hpp>
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <iomanip>
-#include <ngraph/node.hpp>
 #include <openvino/op/logical_not.hpp>
 #include <openvino/op/parameter.hpp>
 #include <ops/parameter.hpp>
@@ -33,7 +33,7 @@ struct LogicalNotBenchmark : testing::Test {
     CUDA::Allocation out_alloc = threadContext.stream().malloc(size);
     std::vector<cdevptr_t> inputs{in_alloc};
     std::vector<devptr_t> outputs{out_alloc};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::OperationBase::Ptr operation = [this] {
         const bool optimizeOption = false;
@@ -51,10 +51,16 @@ struct LogicalNotBenchmark : testing::Test {
 TEST_F(LogicalNotBenchmark, DISABLED_benchmark) {
     constexpr int kNumAttempts = 20;
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(length);
     std::random_device r_device;

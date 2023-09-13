@@ -3,18 +3,16 @@
 //
 
 #include "cuda_memory_model_builder.hpp"
-
-#include <details/ie_exception.hpp>
-
+#include "openvino/core/except.hpp"
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastConsumerIndex, size_t bsize) {
-    IE_ASSERT(bsize > 0);  // Verify that allocation size isn't zero.
+    OPENVINO_ASSERT(bsize > 0, "Allocation size is zero!");  // Verify that allocation size isn't zero.
     auto res = offsets_.emplace(id, 0);
-    IE_ASSERT(res.second);  // Verify that "id" is unique.
+    OPENVINO_ASSERT(res.second, "ID is not unique!");  // Verify that "id" is unique.
     const int64_t aligned_size = static_cast<int64_t>(applyAllignment(bsize));
     boxes_.emplace_back(MemorySolver::Box{producerIndex, lastConsumerIndex, aligned_size, id});
 }

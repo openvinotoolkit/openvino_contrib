@@ -8,8 +8,7 @@
 
 #include "converters.hpp"
 #include "kernels/variance_normalization_factor.hpp"
-#include "ngraph/op/mvn.hpp"
-#include "ngraph/shape.hpp"
+#include "openvino/op/mvn.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -26,6 +25,7 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
 private:
@@ -55,7 +55,7 @@ private:
 
     static MvnVersion validateAndGetVersion(const ov::Node& node);
     size_t reduceWorkSpaceSizeCompute(const CreationContext& context);
-    ngraph::Shape makeReducedShape(const ov::Node& node);
+    ov::Shape makeReducedShape(const ov::Node& node);
     CUDA::DnnTensorDescriptor makeReducedTensorDescriptor(const ov::Node& node);
     CUDA::DeviceBuffer<std::uint8_t> getReduceWorkspaceBuffer(const Workbuffers& workbuffers) const {
         return workbuffers.createMutableSpanFrom<0>(reduce_workspace_size_);
@@ -80,8 +80,8 @@ private:
     CUDA::DnnOpTensorDescriptor sub_desc_;
     CUDA::DnnOpTensorDescriptor mul_desc_;
     CUDA::DnnTensorDescriptor tensor_desc_;
-    ngraph::Shape shape_;
-    ngraph::Shape reduced_shape_;
+    ov::Shape shape_;
+    ov::Shape reduced_shape_;
     CUDA::DnnTensorDescriptor reduced_tensor_desc_;
     size_t reduce_workspace_size_;
     std::optional<kernel::VarianceNormalizationFactor> variance_normalization_factor_kernel_;
@@ -95,10 +95,10 @@ inline WorkbufferRequest MvnOp::GetWorkBufferRequest() const {
         if (normalize_variance_) {
             return {{},
                     {reduce_workspace_size_,
-                     elementSize(comp_type_) * ngraph::shape_size(reduced_shape_),
-                     elementSize(comp_type_) * ngraph::shape_size(shape_)}};
+                     elementSize(comp_type_) * ov::shape_size(reduced_shape_),
+                     elementSize(comp_type_) * ov::shape_size(shape_)}};
         } else {
-            return {{}, {reduce_workspace_size_, elementSize(comp_type_) * ngraph::shape_size(reduced_shape_)}};
+            return {{}, {reduce_workspace_size_, elementSize(comp_type_) * ov::shape_size(reduced_shape_)}};
         }
     }
     return {};

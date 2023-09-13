@@ -9,8 +9,8 @@ fi
 
 BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
 BUILD_TYPE=${BUILD_TYPE:-Release}
-BUILD_TARGETS=${BUILD_TARGETS:-"CudaFuncTests CudaUnitTests openvino_nvidia_gpu_plugin benchmark_app"}
-WHEEL_VERSION=${WHEEL_VERSION:-"2022.1.0"}
+BUILD_TARGETS=${BUILD_TARGETS:-"ov_nvidia_func_tests ov_nvidia_unit_tests openvino_nvidia_gpu_plugin benchmark_app"}
+WHEEL_VERSION=${WHEEL_VERSION:-"2022.3.0"}
 ENABLE_TESTS=${ENABLE_TESTS:-"ON"}
 
 [[ -n "${OPENVINO_HOME}" ]] || { echo "OPENVINO_HOME environment variable is expected"; exit 1; }

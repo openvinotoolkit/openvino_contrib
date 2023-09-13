@@ -39,7 +39,7 @@ INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_U32,
@@ -52,7 +52,7 @@ INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_U32,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_I64,
@@ -65,7 +65,7 @@ INSTANTIATE_TEST_CASE_P(smoke_NumSplitsCheck_I64,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>({30, 30, 30, 30})),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis1,
@@ -78,7 +78,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 40, 40, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis2,
@@ -91,7 +91,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 40, 40, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis3,
@@ -104,7 +104,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 40, 40, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis4,
@@ -117,7 +117,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape0_axis4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 40, 40, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis1,
@@ -130,7 +130,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 20, 20, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis2,
@@ -143,7 +143,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 20, 20, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis3,
@@ -156,7 +156,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 20, 20, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis4,
@@ -169,7 +169,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape1_axis4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 20, 20, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis1,
@@ -182,7 +182,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 80, 80, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis2,
@@ -195,7 +195,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 80, 80, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis3,
@@ -208,7 +208,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 80, 80, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis4,
@@ -221,7 +221,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_NumSplitsCheck_shape2_axis4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(std::vector<size_t>{1, 3, 80, 80, 85}),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         VariadicSplitLayerTest::getTestCaseName);
 
 }  // namespace

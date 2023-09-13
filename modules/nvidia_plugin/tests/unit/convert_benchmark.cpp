@@ -6,10 +6,10 @@
 
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <iomanip>
-#include <ngraph/node.hpp>
 #include <openvino/op/convert.hpp>
 #include <openvino/op/parameter.hpp>
 #include <ops/parameter.hpp>
@@ -20,7 +20,7 @@ namespace {
 struct ConvertTest : testing::Test {
     ov::nvidia_gpu::ThreadContext threadContext{CUDA::Device{}};
     const ov::Shape inputTensorShape{1, 1, 3, 1024, 1024};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
 
     auto create_operation(ov::element::Type_t input, ov::element::Type_t output) {
@@ -42,27 +42,33 @@ TEST_F(ConvertTest, DISABLED_benchmark) {
     constexpr int kNumAttempts = 200;
 
     auto& stream = threadContext.stream();
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
 
     using Type_t = ov::element::Type_t;
-    static constexpr auto supported_types = {Type_t::boolean,
-                                             Type_t::bf16,
-                                             Type_t::f16,
-                                             Type_t::f32,
-                                             Type_t::f64,
-                                             Type_t::i8,
-                                             Type_t::i16,
-                                             Type_t::i32,
-                                             Type_t::i64,
-                                             /*Type_t::u1, convert doesn't support it*/
-                                             Type_t::u8,
-                                             Type_t::u16,
-                                             Type_t::u32,
-                                             Type_t::u64};
+    constexpr Type_t supported_types[] = {Type_t::boolean,
+                                          Type_t::bf16,
+                                          Type_t::f16,
+                                          Type_t::f32,
+                                          Type_t::f64,
+                                          Type_t::i8,
+                                          Type_t::i16,
+                                          Type_t::i32,
+                                          Type_t::i64,
+                                          /*Type_t::u1, convert doesn't support it*/
+                                          Type_t::u8,
+                                          Type_t::u16,
+                                          Type_t::u32,
+                                          Type_t::u64};
     for (auto inputIdx : supported_types) {
         for (auto outputIdx : supported_types) {
             const auto inputType = Type_t(static_cast<std::underlying_type<Type_t>::type>(inputIdx));

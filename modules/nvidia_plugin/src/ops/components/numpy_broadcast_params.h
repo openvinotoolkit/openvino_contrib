@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include <ngraph/shape.hpp>
 #include <vector>
 
 #include "kernels/details/numpy_broadcast_mapper.cuh"
+#include "openvino/core/shape.hpp"
 #include "workbuffer_desc.hpp"
 
 namespace ov {
@@ -16,7 +16,7 @@ namespace nvidia_gpu {
 class NumpyBroadcastParams {
 public:
     virtual ~NumpyBroadcastParams() {}
-    static std::unique_ptr<NumpyBroadcastParams> create(const ngraph::Shape& in_shape, const ngraph::Shape& out_shape);
+    static std::unique_ptr<NumpyBroadcastParams> create(const ov::Shape& in_shape, const ov::Shape& out_shape);
 
     virtual void addWorkbufferRequests(std::vector<WorkbufferRequest::size_in_bytes_t>& immutable_buffer_sizes) = 0;
     virtual void initWorkbuffers(const std::vector<CUDA::DevicePointer<void*>>& buffers) const = 0;
@@ -37,7 +37,7 @@ public:
 
 class NumpyBroadcastParamsImpl : public NumpyBroadcastParams {
 public:
-    NumpyBroadcastParamsImpl(const ngraph::Shape& in_shape, const ngraph::Shape& out_shape);
+    NumpyBroadcastParamsImpl(const ov::Shape& in_shape, const ov::Shape& out_shape);
 
     void addWorkbufferRequests(std::vector<WorkbufferRequest::size_in_bytes_t>& immutable_buffer_sizes) override;
     void initWorkbuffers(const std::vector<CUDA::DevicePointer<void*>>& buffers) const override;

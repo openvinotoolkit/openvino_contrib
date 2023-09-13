@@ -34,7 +34,6 @@ void MemoryPool::Interrupt() { cond_var_.notify_all(); }
 MemoryPool::Proxy MemoryPool::WaitAndGet(CancellationToken& cancellationToken) {
     std::unique_lock<std::mutex> lock{mtx_};
     cond_var_.wait(lock, [this, &cancellationToken] {
-        cancellationToken.Check();
         return !memory_blocks_.empty();
     });
     Proxy memoryManagerProxy{shared_from_this(), move(memory_blocks_.back())};
@@ -47,7 +46,7 @@ size_t MemoryPool::Size() const { return memory_blocks_.size(); }
 void MemoryPool::Resize(size_t count) {
     const auto memoryManagersCount = memory_blocks_.size();
     if (count > memoryManagersCount) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Cannot resize MemoryPool with {} value > than it was {}", count, memoryManagersCount));
     }
     memory_blocks_.resize(count);

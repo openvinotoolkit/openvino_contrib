@@ -36,11 +36,11 @@ bool SparseConv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     std::vector<size_t> kernelDims = inputs[3].get_shape();
 
     // Kernel layout is DxHxWxICxOH
-    const size_t kd = kernelDims[0];
-    const size_t kh = kernelDims[1];
-    const size_t kw = kernelDims[2];
-    const size_t IC = kernelDims[3];
-    const size_t OC = kernelDims[4];
+    const int kd = static_cast<int>(kernelDims[0]);
+    const int kh = static_cast<int>(kernelDims[1]);
+    const int kw = static_cast<int>(kernelDims[2]);
+    const int IC = static_cast<int>(kernelDims[3]);
+    const int OC = static_cast<int>(kernelDims[4]);
 
     // See https://github.com/isl-org/Open3D/blob/master/python/open3d/ml/torch/python/layers/convolutions.py
     float rw = kw * 0.51f;
@@ -69,14 +69,14 @@ bool SparseConv::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
                 yi - rh <= yj && yj <= yi + rh &&
                 zi - rd <= zj && zj <= zi + rd) {
 
-                const size_t w = std::min<size_t>(static_cast<int>(xj - xi + kw * 0.5f), kw - 1);
-                const size_t h = std::min<size_t>(static_cast<int>(yj - yi + kh * 0.5f), kh - 1);
-                const size_t d = std::min<size_t>(static_cast<int>(zj - zi + kd * 0.5f), kd - 1);
+                const int w = std::min(static_cast<int>(xj - xi + kw * 0.5f), kw - 1);
+                const int h = std::min(static_cast<int>(yj - yi + kh * 0.5f), kh - 1);
+                const int d = std::min(static_cast<int>(zj - zi + kd * 0.5f), kd - 1);
 
                 const float* featuresOffset = features + j * IC;
-                for (size_t ic = 0; ic < IC; ++ic) {
+                for (int ic = 0; ic < IC; ++ic) {
                     const float* kernelOffset = kernel + OC * (ic + IC * (w + kw * (h + kh * d)));
-                    for (size_t oc = 0; oc < OC; ++oc) {
+                    for (int oc = 0; oc < OC; ++oc) {
                         out[i * OC + oc] += kernelOffset[oc] * featuresOffset[ic];
                     }
                 }

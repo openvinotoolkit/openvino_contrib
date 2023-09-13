@@ -20,9 +20,7 @@ namespace LayerTestsDefinitions {
 
 class TensorIteratorDisabledTransformationsTest : public TensorIteratorTest {
 protected:
-    void SetUp() override {
-        TensorIteratorTest::SetUp();
-    }
+    void SetUp() override { TensorIteratorTest::SetUp(); }
 };
 
 TEST_P(TensorIteratorDisabledTransformationsTest, CompareWithRefs) {
@@ -41,10 +39,8 @@ std::vector<size_t> smoke_seq_lengths_clip_non_zero{20};
 std::vector<size_t> batch{1, 10};
 std::vector<size_t> hidden_size{1, 10, 384, 512, 768};
 std::vector<size_t> sequence_axis{0, 1};
-std::vector<ngraph::helpers::TensorIteratorBody> body_type = {
-    ngraph::helpers::TensorIteratorBody::LSTM,
-    ngraph::helpers::TensorIteratorBody::GRU
-};
+std::vector<ngraph::helpers::TensorIteratorBody> body_type = {ngraph::helpers::TensorIteratorBody::LSTM,
+                                                              ngraph::helpers::TensorIteratorBody::GRU};
 std::vector<float> clip_zeros{0.f};
 std::vector<ov::op::RecurrentSequenceDirection> direction = {
     ov::op::RecurrentSequenceDirection::FORWARD,
@@ -66,7 +62,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 std::vector<size_t> seq_lengths_clip_non_zero{1000};
@@ -83,7 +79,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     TensorIteratorDisabledTransformationsTest::getTestCaseName);
 
 // ------------- Benchmark -------------
@@ -102,10 +98,8 @@ std::vector<size_t> seq_lengths_clip_non_zero{20};
 std::vector<size_t> batch{1, 10};
 std::vector<size_t> hidden_size{1, 10};
 std::vector<size_t> sequence_axis{0, 1};
-std::vector<ngraph::helpers::TensorIteratorBody> body_type = {
-    ngraph::helpers::TensorIteratorBody::LSTM,
-    ngraph::helpers::TensorIteratorBody::GRU
-};
+std::vector<ngraph::helpers::TensorIteratorBody> body_type = {ngraph::helpers::TensorIteratorBody::LSTM,
+                                                              ngraph::helpers::TensorIteratorBody::GRU};
 std::vector<float> clip_zeros{0.f};
 std::vector<ov::op::RecurrentSequenceDirection> direction = {
     ov::op::RecurrentSequenceDirection::FORWARD,
@@ -127,7 +121,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::ValuesIn(body_type),
                        ::testing::ValuesIn(direction),
                        ::testing::ValuesIn(netPrecisions),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     TensorIteratorBenchmarkTest::getTestCaseName);
 
 }  // namespace benchmark

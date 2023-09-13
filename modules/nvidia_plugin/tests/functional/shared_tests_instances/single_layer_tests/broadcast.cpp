@@ -23,7 +23,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast1,
                                            ::testing::Values(ov::op::BroadcastType::NUMPY),
                                            ::testing::Values(ov::Shape{3, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast2,
@@ -33,7 +33,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast2,
                                            ::testing::Values(ov::op::BroadcastType::NUMPY),
                                            ::testing::Values(ov::Shape{1, 4, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast3,
@@ -43,7 +43,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast3,
                                            ::testing::Values(ov::op::BroadcastType::NUMPY),
                                            ::testing::Values(ov::Shape{3, 1, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast4,
@@ -53,7 +53,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestNumpyBroadcast4,
                                            ::testing::Values(ov::op::BroadcastType::NUMPY),
                                            ::testing::Values(ov::Shape{1, 3, 1, 3, 1, 3, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 // BIDIRECTIONAL MODE
@@ -65,7 +65,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcast1,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{4, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcast2,
@@ -75,7 +75,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcast2,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{1, 4, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcas3,
@@ -85,7 +85,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestBidirectionalBroadcas3,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{4, 1, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 // EXPLICIT MODE
@@ -97,7 +97,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestExplicitBroadcast1,
                                            ::testing::Values(ov::op::BroadcastType::EXPLICIT),
                                            ::testing::Values(ov::Shape{3, 1}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestExplicitBroadcast2,
@@ -107,7 +107,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestExplicitBroadcast2,
                                            ::testing::Values(ov::op::BroadcastType::EXPLICIT),
                                            ::testing::Values(ov::Shape{5, 7}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_TestExplicitBroadcast3,
@@ -117,7 +117,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TestExplicitBroadcast3,
                                            ::testing::Values(ov::op::BroadcastType::EXPLICIT),
                                            ::testing::Values(ov::Shape{4, 7, 6}),  // input shape
                                            ::testing::ValuesIn(inputPrecisions),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 // YOLOv5 operators
@@ -134,7 +134,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_BroadcastTest1,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{1, 3, 80, 80, 2}),
                                            ::testing::ValuesIn(precisionsYOLOv5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_BroadcastTest2,
@@ -144,7 +144,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_BroadcastTest2,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{1, 3, 40, 40, 2}),
                                            ::testing::ValuesIn(precisionsYOLOv5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(yolov5_BroadcastTest3,
@@ -154,7 +154,7 @@ INSTANTIATE_TEST_CASE_P(yolov5_BroadcastTest3,
                                            ::testing::Values(ov::op::BroadcastType::BIDIRECTIONAL),
                                            ::testing::Values(ov::Shape{1, 3, 20, 20, 2}),
                                            ::testing::ValuesIn(precisionsYOLOv5),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         BroadcastLayerTest::getTestCaseName);
 
 }  // namespace

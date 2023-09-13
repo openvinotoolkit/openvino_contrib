@@ -3,9 +3,7 @@
 //
 
 #include "cuda_immutable_memory_model_builder.hpp"
-
-#include <details/ie_exception.hpp>
-
+#include "openvino/core/except.hpp"
 #include "memory_manager/model/details/cuda_memory_utils.hpp"
 
 namespace ov {
@@ -14,9 +12,9 @@ namespace nvidia_gpu {
 ImmutableMemoryModelBuilder::ImmutableMemoryModelBuilder() : end_offset_{0} {}
 
 void ImmutableMemoryModelBuilder::addAllocation(BufferID id, size_t bsize) {
-    IE_ASSERT(bsize > 0);  // Verify that allocation size isn't zero.
+    OPENVINO_ASSERT(bsize > 0, "Allocation size is zero!");  // Verify that allocation size isn't zero.
     auto res = offsets_.emplace(id, end_offset_);
-    IE_ASSERT(res.second);  // Verify that "id" is unique.
+    OPENVINO_ASSERT(res.second, "ID is not unique!");  // Verify that "id" is unique.
     end_offset_ += applyAllignment(bsize);
 }
 

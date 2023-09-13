@@ -154,7 +154,7 @@ inline const constants::AnyNumeric& NumericConst(cudaDataType_t computeType) {
             return C<std::uint32_t>::value;
         }
         default:
-            ov::nvidia_gpu::throwIEException(
+            ov::nvidia_gpu::throw_ov_exception(
                 fmt::format("The ngraph element type {} is not supported by "
                             "the cuda library",
                             computeType));

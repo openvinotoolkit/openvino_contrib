@@ -70,7 +70,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_ExplicitPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes2D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AutoPadding,
@@ -82,7 +82,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AutoPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes2D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AsymPadding,
@@ -94,7 +94,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop2D_AsymPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes2D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 /* ============= 3D GroupConvolution ============= */
@@ -143,7 +143,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_ExpicitPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes3D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AutoPadding,
@@ -155,7 +155,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AutoPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes3D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AsymPadding,
@@ -167,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(smoke_GroupConvolutionBackprop3D_AsymPadding,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(inputShapes3D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         GroupConvBackpropDataLayerTest::getTestCaseName);
 
 }  // namespace

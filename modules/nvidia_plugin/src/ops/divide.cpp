@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <ngraph/op/divide.hpp>
+#include "openvino/op/divide.hpp"
 
 #include "cuda_operation_registry.hpp"
 #include "divide_cuda.hpp"

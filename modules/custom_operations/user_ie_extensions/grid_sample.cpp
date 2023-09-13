@@ -39,8 +39,8 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
     const size_t width     = outDims[3];
     const size_t inpHeight = inpDims[2];
     const size_t inpWidth  = inpDims[3];
-    const size_t inpPlane = inpHeight * inpWidth;
-    const size_t outPlane = height * width;
+    const size_t inpPlane  = inpHeight * inpWidth;
+    const size_t outPlane  = height * width;
 
     std::vector<float> zerosPlane(inpDims[1] * inpDims[2] * inpDims[3], 0);
     float* zeros = zerosPlane.data();

@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
 #include <openvino/op/detection_output.hpp>
 
 #include "cuda_operation_base.hpp"
@@ -20,10 +19,13 @@ public:
                       const NodeOp& node,
                       IndexCollection&& inputIds,
                       IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;

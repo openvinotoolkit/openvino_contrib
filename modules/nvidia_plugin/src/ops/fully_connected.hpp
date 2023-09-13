@@ -26,6 +26,8 @@ public:
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
+
 private:
     MatMulOp matmul_op_;
     size_t bias_size_ = 0;
