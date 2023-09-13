@@ -36,11 +36,11 @@ bool SparseConvTranspose::evaluate(ov::TensorVector& outputs, const ov::TensorVe
     std::vector<size_t> kernelDims = inputs[3].get_shape();
 
     // Kernel layout is DxHxWxICxOH
-    const int kd = kernelDims[0];
-    const int kh = kernelDims[1];
-    const int kw = kernelDims[2];
-    const int IC = kernelDims[3];
-    const int OC = kernelDims[4];
+    const size_t kd = kernelDims[0];
+    const size_t kh = kernelDims[1];
+    const size_t kw = kernelDims[2];
+    const size_t IC = kernelDims[3];
+    const size_t OC = kernelDims[4];
 
     // See https://github.com/isl-org/Open3D/blob/master/python/open3d/ml/torch/python/layers/convolutions.py
     float rw = kw * 0.51f;
@@ -69,14 +69,14 @@ bool SparseConvTranspose::evaluate(ov::TensorVector& outputs, const ov::TensorVe
                 yi - rh <= yj && yj <= yi + rh &&
                 zi - rd <= zj && zj <= zi + rd) {
 
-                const int w = kw - 1 - std::min(static_cast<int>(xj - xi + kw * 0.5f), kw - 1);
-                const int h = kh - 1 - std::min(static_cast<int>(yj - yi + kh * 0.5f), kh - 1);
-                const int d = kd - 1 - std::min(static_cast<int>(zj - zi + kd * 0.5f), kd - 1);
+                const size_t w = kw - 1 - std::min<size_t>(static_cast<size_t>(xj - xi + kw * 0.5f), kw - 1);
+                const size_t h = kh - 1 - std::min<size_t>(static_cast<size_t>(yj - yi + kh * 0.5f), kh - 1);
+                const size_t d = kd - 1 - std::min<size_t>(static_cast<size_t>(zj - zi + kd * 0.5f), kd - 1);
 
                 const float* featuresOffset = features + j * IC;
-                for (int ic = 0; ic < IC; ++ic) {
+                for (size_t ic = 0; ic < IC; ++ic) {
                     const float* kernelOffset = kernel + OC * (ic + IC * (w + kw * (h + kh * d)));
-                    for (int oc = 0; oc < OC; ++oc) {
+                    for (size_t oc = 0; oc < OC; ++oc) {
                         out[i * OC + oc] += kernelOffset[oc] * featuresOffset[ic];
                     }
                 }
