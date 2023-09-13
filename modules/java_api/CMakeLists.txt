@@ -18,6 +18,11 @@ if(NOT OpenVINODeveloperPackage_FOUND)
     find_package(OpenVINO REQUIRED)
 endif()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # 'argument': conversion from 'size_t' to 'int', possible loss of data
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4267")
+endif()
+
 file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/*.cpp)
 
 add_library(${PROJECT_NAME} SHARED ${sources})
