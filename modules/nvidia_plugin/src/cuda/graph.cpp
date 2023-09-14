@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include <cuda.h>
 #include "graph.hpp"
 #include "openvino/core/except.hpp"
 #include <fmt/format.h>
@@ -52,11 +53,19 @@ catch (std::exception &e) {
 }
 #endif
 
+#if CUDA_VERSION >= 12020
+cudaGraphExecUpdateResultInfo GraphExec::update(const Graph &g) const {
+    cudaGraphExecUpdateResultInfo res;
+    throwIfError(cudaGraphExecUpdate(get(), g.get(), &res));
+    return res;
+}
+#else
 cudaGraphExecUpdateResult GraphExec::update(const Graph &g) const {
     cudaGraphExecUpdateResult res;
     throwIfError(cudaGraphExecUpdate(get(), g.get(), nullptr, &res));
     return res;
 }
+#endif
 
 void GraphExec::launch(const Stream &stream) const {
     throwIfError(cudaGraphLaunch(get(), stream.get()));
