@@ -40,7 +40,17 @@ class CompletionService {
     const completionInput = this._prepareCompletionInput(textBeforeCursor, textAfterCursor);
     logCompletionInput(completionInput);
 
-    const { temperature, stopToken, middleToken, topK, topP, minNewTokens, maxNewTokens } = extensionState.config;
+    const {
+      temperature,
+      stopToken,
+      middleToken,
+      topK,
+      topP,
+      minNewTokens,
+      maxNewTokens,
+      serverRequestTimeout,
+      repetitionPenalty,
+    } = extensionState.config;
 
     const response = await backendService.generateCompletion({
       inputs: completionInput,
@@ -50,6 +60,8 @@ class CompletionService {
         top_p: topP,
         min_new_tokens: minNewTokens,
         max_new_tokens: maxNewTokens,
+        timeout: serverRequestTimeout,
+        repetition_penalty: repetitionPenalty,
       },
     });
 
@@ -79,7 +91,8 @@ class CompletionService {
     const completionInput = this._prepareCompletionInput(textBeforeCursor, textAfterCursor);
     logCompletionInput(completionInput);
 
-    const { temperature, topK, topP, minNewTokens, maxNewTokens } = extensionState.config;
+    const { temperature, topK, topP, minNewTokens, maxNewTokens, serverRequestTimeout, repetitionPenalty } =
+      extensionState.config;
 
     const request: IGenerateRequest = {
       inputs: completionInput,
@@ -89,6 +102,8 @@ class CompletionService {
         top_p: topP,
         min_new_tokens: minNewTokens,
         max_new_tokens: maxNewTokens,
+        timeout: serverRequestTimeout,
+        repetition_penalty: repetitionPenalty,
       },
     };
 

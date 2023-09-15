@@ -1,5 +1,5 @@
 from time import perf_counter
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -19,6 +19,9 @@ class GenerationParameters(BaseModel):
 
     max_new_tokens: int = 60
     min_new_tokens: int = 0
+
+    timeout: Optional[int] = None
+    repetition_penalty: float = 1.0
 
 
 class GenerationRequest(BaseModel):
@@ -110,7 +113,9 @@ async def generate_stream(
 ) -> StreamingResponse:
     generation_request = TypeAdapter(GenerationRequest).validate_python(await request.json())
     logger.info(generation_request)
-    return StreamingResponse(generator.generate_stream(generation_request.inputs, generation_request.parameters.model_dump(), request))
+    return StreamingResponse(
+        generator.generate_stream(generation_request.inputs, generation_request.parameters.model_dump(), request)
+    )
 
 
 @app.post("/api/summarize", status_code=200, response_model=GenerationResponse)

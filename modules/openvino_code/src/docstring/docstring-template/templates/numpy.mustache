@@ -7,11 +7,11 @@
 Parameters
 ----------
 {{#args}}
-{{var}} : {{typePlaceholder}}
+{{var}} : {{&typePlaceholder}}
     {{descriptionPlaceholder}}
 {{/args}}
 {{#kwargs}}
-{{var}} : {{typePlaceholder}}, optional
+{{var}} : {{&typePlaceholder}}, optional
     {{descriptionPlaceholder}}, by default {{&default}}
 {{/kwargs}}
 {{/parametersExist}}
@@ -20,7 +20,7 @@ Parameters
 Returns
 -------
 {{#returns}}
-{{typePlaceholder}}
+{{&typePlaceholder}}
     {{descriptionPlaceholder}}
 {{/returns}}
 {{/returnsExist}}
@@ -29,7 +29,7 @@ Returns
 Yields
 -------
 {{#yields}}
-{{typePlaceholder}}
+{{&typePlaceholder}}
     {{descriptionPlaceholder}}
 {{/yields}}
 {{/yieldsExist}}

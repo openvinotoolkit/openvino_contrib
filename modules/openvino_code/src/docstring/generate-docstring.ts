@@ -71,6 +71,8 @@ export class AutoDocstring {
           top_p: extensionState.config.topP,
           min_new_tokens: extensionState.config.minNewTokens,
           max_new_tokens: extensionState.config.maxNewTokens,
+          timeout: extensionState.config.serverRequestTimeout,
+          repetition_penalty: extensionState.config.repetitionPenalty,
         },
       })
       .then((response) => {

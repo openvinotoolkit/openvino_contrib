@@ -1,14 +1,12 @@
 import { EventEmitter } from 'stream';
 import { ExtensionContext, workspace } from 'vscode';
-import { ExtensionConfiguration } from './configuration';
+import { ExtensionConfiguration, getConfig } from './configuration';
 import { CONFIG_KEY } from './constants';
 import { IExtensionComponent } from './extension-component.interface';
 import { IExtensionState, ConnectionStatus } from '@shared/extension-state';
 import { INITIAL_SERVER_STATE, ServerStatus } from '@shared/server-state';
 import { MODEL_SUPPORTED_FEATURES } from '@shared/model';
 import { Features } from '@shared/features';
-
-const getConfig = () => workspace.getConfiguration(CONFIG_KEY) as ExtensionConfiguration;
 
 class ExtensionState implements IExtensionComponent {
   private readonly _state: IExtensionState = {
