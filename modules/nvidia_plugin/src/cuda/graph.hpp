@@ -35,11 +35,7 @@ class GraphExec : public Handle<cudaGraphExec_t> {
 public:
     GraphExec(const Graph& g);
 
-#if CUDA_VERSION >= 12020
-    cudaGraphExecUpdateResultInfo update(const Graph& g) const;
-#else
     cudaGraphExecUpdateResult update(const Graph& g) const;
-#endif
 
     void launch(const Stream& stream) const;
 
