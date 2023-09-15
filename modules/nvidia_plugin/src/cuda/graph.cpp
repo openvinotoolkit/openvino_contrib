@@ -53,7 +53,7 @@ catch (std::exception &e) {
 }
 #endif
 
-#if CUDA_VERSION >= 12020
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12020
 cudaGraphExecUpdateResultInfo GraphExec::update(const Graph &g) const {
     cudaGraphExecUpdateResultInfo res;
     throwIfError(cudaGraphExecUpdate(get(), g.get(), &res));
