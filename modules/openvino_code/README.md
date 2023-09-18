@@ -38,7 +38,7 @@ This mode allows you to immediately receive model output and avoid problems with
 
 ### Summarization via Docstring Generation
 
-![summarization](https://github.com/apaniukov/openvino_contrib/assets/51917466/b9b6c97f-83ac-43a8-bb67-c0697b975892)
+![summarization](https://github.com/apaniukov/openvino_contrib/assets/51917466/1d066b0e-cff7-4353-90f9-a53343d60b59)
 
 To generate function docstring start typing `"""` or `'''` right under function signature and choose `Generate Docstring`.
 You can select the desired type of quotes in the extension settings.
