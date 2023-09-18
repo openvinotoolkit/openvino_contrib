@@ -23,6 +23,8 @@ To check the connection manually, use the `Check Connection` button located on t
 
 ### Code Completion
 
+[Code Completion](https://github.com/openvinotoolkit/openvino_contrib/assets/51917466/515c38c9-6a16-4884-9c84-8f096be1fd27)
+
 1. Create a new Python file or open an existing one.
 1. Type `def main():` or place the cursor where you'd like code suggestions to be generated.
 1. Press the keyboard shortcut `Ctrl+Alt+Space`/`Cmd+Alt+Space` or click the `Generate Code Completion` button located in the side panel.
@@ -35,6 +37,8 @@ To enable streaming generation mode, check the `Stream Inline Completion` checkb
 This mode allows you to immediately receive model output and avoid problems with server response timeouts.
 
 ### Summarization via Docstring Generation
+
+[Summarization via Docstring Generation](https://github.com/openvinotoolkit/openvino_contrib/assets/51917466/f56d2bef-a6be-407c-ae58-f8915db51c74)
 
 To generate function docstring start typing `"""` or `'''` right under function signature and choose `Generate Docstring`.
 You can select the desired type of quotes in the extension settings.
