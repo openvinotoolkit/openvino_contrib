@@ -23,7 +23,7 @@ To check the connection manually, use the `Check Connection` button located on t
 
 ### Code Completion
 
-[Code Completion](https://github.com/openvinotoolkit/openvino_contrib/assets/51917466/cc605e00-01a5-462d-8ea8-d6cfed487c90)
+![code_completion](https://github.com/apaniukov/openvino_contrib/assets/51917466/c3ba73bf-106b-4045-a36e-96440f8c804f)
 
 1. Create a new Python file or open an existing one.
 1. Type `def main():` or place the cursor where you'd like code suggestions to be generated.
@@ -38,7 +38,7 @@ This mode allows you to immediately receive model output and avoid problems with
 
 ### Summarization via Docstring Generation
 
-[Summarization via Docstring Generation](https://github.com/openvinotoolkit/openvino_contrib/assets/51917466/6bcfca9f-41d4-4e4c-a826-90f5a395bd14)
+![summarization](https://github.com/apaniukov/openvino_contrib/assets/51917466/b9b6c97f-83ac-43a8-bb67-c0697b975892)
 
 To generate function docstring start typing `"""` or `'''` right under function signature and choose `Generate Docstring`.
 You can select the desired type of quotes in the extension settings.
