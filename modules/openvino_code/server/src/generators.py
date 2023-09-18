@@ -4,6 +4,7 @@ from functools import lru_cache
 from io import StringIO
 from pathlib import Path
 from threading import Thread
+from time import time
 from typing import Any, Callable, Container, Dict, Generator, List, Optional, Type, Union
 
 import torch
@@ -116,10 +117,14 @@ class OVGenerator(GeneratorFunctor):
                     stop_tokens.append(token_id)
             self.summarize_stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_tokens)])
 
-    def __call__(
-        self, input_text: str, parameters: Dict[str, Any], stopping_criteria: Optional[StoppingCriteriaList] = None
-    ) -> str:
+    def __call__(self, input_text: str, parameters: Dict[str, Any]) -> str:
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
+
+        stopping_criteria = None
+        if (timeout := parameters.pop("timeout", None)) is not None:
+            stop_on_time = StopOnTime(timeout)
+            stopping_criteria = StoppingCriteriaList([stop_on_time])
+
         prompt_len = input_ids.shape[-1]
         config = GenerationConfig.from_dict({**self.generation_config.to_dict(), **parameters})
         output_ids = self.model.generate(
@@ -128,7 +133,9 @@ class OVGenerator(GeneratorFunctor):
         logger.info(f"Number of input tokens: {prompt_len}; generated {len(output_ids)} tokens")
         return self.tokenizer.decode(output_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
-    async def generate_stream(self, input_text: str, parameters: Dict[str, Any], request: Request = None):
+    async def generate_stream(
+        self, input_text: str, parameters: Dict[str, Any], request: Optional[Request] = None
+    ) -> Generator[str, None, None]:
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt")
         streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
         parameters["streamer"] = streamer
@@ -149,8 +156,8 @@ class OVGenerator(GeneratorFunctor):
                 message = await request.receive()
                 if message.get("type") == "http.disconnect":
                     stop_on_tokens.cancelled = True
-            asyncio.create_task(listen())
 
+            asyncio.create_task(listen())
 
         listen_thread = Thread(target=listen_for_disconnect)
         # thread.run doesn't actually start a new thread
@@ -192,7 +199,6 @@ class OVGenerator(GeneratorFunctor):
 
             decoded = self.tokenizer.decode(prompt[0, prev_len:], skip_special_tokens=True)
             buffer.write(decoded.lstrip(" "))  # hack to delete leadding spaces if there are any
-
         buffer.write(input_parts[-1])
         return buffer.getvalue()
 
@@ -277,3 +283,25 @@ class StopOnTokens(StoppingCriteria):
         if self.cancelled:
             return True
         return torch.any(torch.eq(input_ids[0, -1], self.token_ids)).item()
+
+
+class StopOnTime(StoppingCriteria):
+    def __init__(self, timeout: float, budget_reduction: float = 0.99) -> None:
+        self.time = time()
+        self.stop_until = self.time + timeout * budget_reduction
+        self.time_for_prev_token = 0.0
+        self.grow_factor = 0.0
+
+    def __call__(self, *args, **kwargs) -> bool:
+        current_time = time()
+        if current_time > self.stop_until:
+            return True
+
+        elapsed = current_time - self.time
+        if self.time_for_prev_token > 0:
+            self.grow_factor = elapsed / self.time_for_prev_token
+
+        self.time_for_prev_token = elapsed
+        self.time = current_time
+
+        return self.stop_until < current_time + self.time_for_prev_token * self.grow_factor

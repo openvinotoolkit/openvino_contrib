@@ -13,6 +13,8 @@ export interface IGenerateRequest {
     top_p: number;
     min_new_tokens: number;
     max_new_tokens: number;
+    timeout: number;
+    repetition_penalty: number;
   };
 }
 
@@ -27,6 +29,8 @@ interface IGenerateDocStringRequest {
     top_p: number;
     min_new_tokens: number;
     max_new_tokens: number;
+    timeout: number;
+    repetition_penalty: number;
   };
 }
 

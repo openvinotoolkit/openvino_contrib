@@ -6,10 +6,10 @@
 {{#parametersExist}}
 Args:
 {{#args}}
-    {{var}} ({{typePlaceholder}}): {{descriptionPlaceholder}}
+    {{var}} ({{&typePlaceholder}}): {{descriptionPlaceholder}}
 {{/args}}
 {{#kwargs}}
-    {{var}} ({{typePlaceholder}}, optional): {{descriptionPlaceholder}}. Defaults to {{&default}}.
+    {{var}} ({{&typePlaceholder}}, optional): {{descriptionPlaceholder}}. Defaults to {{&default}}.
 {{/kwargs}}
 {{/parametersExist}}
 
@@ -23,13 +23,13 @@ Raises:
 {{#returnsExist}}
 Returns:
 {{#returns}}
-    {{typePlaceholder}}: {{descriptionPlaceholder}}
+    {{&typePlaceholder}}: {{descriptionPlaceholder}}
 {{/returns}}
 {{/returnsExist}}
 
 {{#yieldsExist}}
 Yields:
 {{#yields}}
-    {{typePlaceholder}}: {{descriptionPlaceholder}}
+    {{&typePlaceholder}}: {{descriptionPlaceholder}}
 {{/yields}}
 {{/yieldsExist}}

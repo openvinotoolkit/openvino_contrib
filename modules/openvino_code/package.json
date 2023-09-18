@@ -1,7 +1,7 @@
 {
   "publisher": "OpenVINO",
   "name": "openvino-code-completion",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "displayName": "OpenVINO Code Completion",
   "description": "VSCode extension for AI code completion with OpenVINO",
   "icon": "media/logo.png",
@@ -186,7 +186,19 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "default": 30,
-            "markdownDescription": "Server request timeout in seconds after which request will be aborted."
+            "markdownDescription": "Server request timeout in seconds after which request will be aborted. Constrains the number of generated tokens in non-streaming mode."
+          },
+          "openvinoCode.minNewTokens": {
+            "order": 3,
+            "type": "number",
+            "default": 1,
+            "description": "Minimum of new generated tokens."
+          },
+          "openvinoCode.maxNewTokens": {
+            "order": 3,
+            "type": "number",
+            "default": 100,
+            "description": "Maximum of new generated tokens."
           },
           "openvinoCode.streamInlineCompletion": {
             "order": 3,
@@ -194,68 +206,32 @@
             "default": "false",
             "description": "When checked inline complention will be generated in streaming mode"
           },
-          "openvinoCode.fillInTheMiddleMode": {
-            "order": 4,
-            "type": "boolean",
-            "default": false,
-            "markdownDescription": "When checked, text before (above) and after (below) the cursor will be used for completion generation. When unckecked, only text before (above) the cursor will be used."
-          },
           "openvinoCode.temperature": {
-            "order": 5,
+            "order": 4,
             "type": "number",
             "default": 0.2,
             "description": "Non-zero value. The higher the value, the more diverse the code suggestions and the lower temperature emphasizes the most likely words."
           },
           "openvinoCode.topK": {
-            "order": 5,
+            "order": 4,
             "type": "integer",
             "default": 10,
             "description": "Select the next word during suggestion generation from the top K candidates. Improves diversity of generated suggestions."
           },
           "openvinoCode.topP": {
-            "order": 5,
+            "order": 4,
             "type": "number",
             "default": 1,
             "description": "A value between 0 and 1. Similar to Top K, it adjusts the number of candidate words based on their probability. Candidates will be added for selection until the cumulative probability exceeds P."
           },
-          "openvinoCode.minNewTokens": {
-            "order": 6,
+          "openvinoCode.repetitionPenalty": {
+            "order": 4,
             "type": "number",
             "default": 1,
-            "description": "Minimum of new generated tokens."
-          },
-          "openvinoCode.maxNewTokens": {
-            "order": 6,
-            "type": "number",
-            "default": 100,
-            "description": "Maximum of new generated tokens."
-          },
-          "openvinoCode.startToken": {
-            "order": 7,
-            "type": "string",
-            "default": "<fim_prefix>",
-            "markdownDescription": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
-          },
-          "openvinoCode.middleToken": {
-            "order": 8,
-            "type": "string",
-            "default": "<fim_middle>",
-            "markdownDescription": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
-          },
-          "openvinoCode.endToken": {
-            "order": 9,
-            "type": "string",
-            "default": "<fim_suffix>",
-            "markdownDescription": "String that is sent to server is in format: `{startToken}{text above cursor}{middleToken}{text below cursor if fillInTheMiddleMode=true}{endToken}`. Leave `startToken`, `middleToken`, or `endToken` empty if there is no special token for those placements."
-          },
-          "openvinoCode.stopToken": {
-            "order": 10,
-            "type": "string",
-            "default": "<|endoftext|>",
-            "description": "(Optional) Stop token."
+            "description": "A non-negative value that discourages the repetition of the same words. 1.0 means no penalty."
           },
           "openvinoCode.quoteStyle": {
-            "order": 11,
+            "order": 5,
             "type": "string",
             "default": "\"\"\"",
             "enum": [
@@ -265,7 +241,7 @@
             "description": "Style of quote used with generate docstring command"
           },
           "openvinoCode.docstringFormat": {
-            "order": 12,
+            "order": 6,
             "type": "string",
             "default": "google_summary_only",
             "enum": [
@@ -292,6 +268,11 @@
         "key": "escape",
         "mac": "escape",
         "when": "openvinoCode.generating"
+      },
+      {
+        "command": "openvinoCode.acceptInlineCompletion",
+        "key": "tab",
+        "when": "inlineSuggestionVisible && !editorHoverFocused && !editorTabMovesFocus && !suggestWidgetVisible"
       }
     ]
   },
