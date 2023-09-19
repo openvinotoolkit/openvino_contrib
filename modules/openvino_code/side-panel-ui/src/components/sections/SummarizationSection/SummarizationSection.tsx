@@ -1,10 +1,13 @@
-export function SummarizationSection(): JSX.Element {
+interface SummarizationSectionProps {
+  quoteStyle: string;
+}
+
+export function SummarizationSection({ quoteStyle }: SummarizationSectionProps): JSX.Element {
   return (
     <section className="summarization-section">
       <h3>Summarization</h3>
       <span>
-        {/* TODO Consider geting selected docstring quotes from extension settings */}
-        To use summarization for docstrings, start typing docstring quotes (<code>&quot;&quot;&quot;</code> by default).
+        To use summarization for docstrings, start typing docstring quotes (<code>{quoteStyle}</code>).
       </span>
     </section>
   );

@@ -22,8 +22,8 @@ export type CustomConfiguration = {
   endToken: string;
   stopToken: string;
 } & {
-  quoteStyle?: string;
-  docstringFormat?: string;
+  quoteStyle: string;
+  docstringFormat: string;
 };
 
 export type ExtensionConfiguration = WorkspaceConfiguration & CustomConfiguration;

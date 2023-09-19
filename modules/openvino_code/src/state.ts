@@ -7,6 +7,7 @@ import { IExtensionState, ConnectionStatus } from '@shared/extension-state';
 import { INITIAL_SERVER_STATE, ServerStatus } from '@shared/server-state';
 import { MODEL_SUPPORTED_FEATURES } from '@shared/model';
 import { Features } from '@shared/features';
+import { platform } from 'process';
 
 class ExtensionState implements IExtensionComponent {
   private readonly _state: IExtensionState = {
@@ -28,6 +29,7 @@ class ExtensionState implements IExtensionComponent {
         return this.supportedList.includes(Features.SUMMARIZATION);
       },
     },
+    platform,
   };
 
   private _emitter = new EventEmitter();
