@@ -20,4 +20,5 @@ export interface IExtensionState {
   get isServerAvailable(): boolean;
   get config(): ExtensionConfiguration;
   features: IStateFeatures;
+  platform: NodeJS.Platform;
 }

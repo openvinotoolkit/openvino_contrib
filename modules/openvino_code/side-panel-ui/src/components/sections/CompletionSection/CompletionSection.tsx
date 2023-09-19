@@ -5,22 +5,24 @@ import { VscodeIcon } from '../../shared/VscodeIcon/VscodeIcon';
 
 interface CompletionSectionProps {
   isLoading: boolean;
+  platform: NodeJS.Platform;
 }
 
-export function CompletionSection({ isLoading }: CompletionSectionProps = { isLoading: false }): JSX.Element {
+export function CompletionSection({ isLoading, platform }: CompletionSectionProps): JSX.Element {
   const handleGenerateClick = () => {
     vscode.postMessage({
       type: SidePanelMessageTypes.GENERATE_COMPLETION_CLICK,
     });
   };
 
+  const platformKeyBinding = platform === 'darwin' ? 'Cmd+Alt+Space' : 'Ctrl+Alt+Space';
+
   return (
     <section className="completion-section">
       <h3>Code Completion</h3>
       <span>
-        {/* TODO Detect OS and show specific keybindings */}
         {/* TODO Consider getting keybinding from package.json */}
-        To generate inline code completion use combination <kbd>Ctrl+Alt+Space</kbd> or press the button below.
+        To generate inline code completion use combination <kbd>{platformKeyBinding}</kbd> or press the button below.
       </span>
       <br />
       <button className="generate-button" onClick={handleGenerateClick} disabled={isLoading}>

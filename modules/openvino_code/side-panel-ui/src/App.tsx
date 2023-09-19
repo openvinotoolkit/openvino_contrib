@@ -29,8 +29,10 @@ function App(): JSX.Element {
       <ServerSection state={state}></ServerSection>
       {isServerStarted && (
         <>
-          <CompletionSection isLoading={state?.isLoading}></CompletionSection>
-          {isSummarizationSupported && <SummarizationSection></SummarizationSection>}
+          <CompletionSection isLoading={state?.isLoading} platform={state?.platform}></CompletionSection>
+          {isSummarizationSupported && (
+            <SummarizationSection quoteStyle={state?.config.quoteStyle}></SummarizationSection>
+          )}
         </>
       )}
       <ActionsSection></ActionsSection>
