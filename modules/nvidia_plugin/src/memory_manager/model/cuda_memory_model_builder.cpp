@@ -20,7 +20,7 @@ void MemoryModelBuilder::addAllocation(BufferID id, int producerIndex, int lastC
 MemoryModel::Ptr MemoryModelBuilder::build() {
     ov::MemorySolver solver{boxes_};
     const size_t blob_size = solver.solve();
-    for (auto& pair : offsets_) pair.second = solver.getOffset(pair.first);
+    for (auto& pair : offsets_) pair.second = solver.get_offset(pair.first);
 
     return std::make_shared<MemoryModel>(blob_size, offsets_);
 }
