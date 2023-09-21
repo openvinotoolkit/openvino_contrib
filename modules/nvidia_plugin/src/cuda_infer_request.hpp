@@ -13,18 +13,15 @@
 #include <unordered_map>
 #include <vector>
 
-
-#include "openvino/runtime/tensor.hpp"
-#include "openvino/runtime/isync_infer_request.hpp"
-#include "openvino/itt.hpp"
-
-
 #include "cancellation_token.hpp"
 #include "cuda_config.hpp"
+#include "cuda_iexecution_delegator.hpp"
 #include "cuda_operation_base.hpp"
-#include "cuda_profiler.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
+#include "openvino/itt.hpp"
+#include "openvino/runtime/isync_infer_request.hpp"
+#include "openvino/runtime/tensor.hpp"
 #include "utils/perf_timing.hpp"
 
 namespace ov {
@@ -33,7 +30,7 @@ namespace nvidia_gpu {
 class CompiledModel;
 
 // ! [infer_request:header]
-class CudaInferRequest : public ov::ISyncInferRequest  {
+class CudaInferRequest : public ov::ISyncInferRequest {
 public:
     using Ptr = std::shared_ptr<CudaInferRequest>;
 
@@ -52,16 +49,17 @@ public:
     void infer_postprocess();
     void cancel();
 
-    void set_tensors_impl(const ov::Output<const ov::Node> port, const std::vector<ov::SoPtr<ov::ITensor>>& tensors) override;
+    void set_tensors_impl(const ov::Output<const ov::Node> port,
+                          const std::vector<ov::SoPtr<ov::ITensor>>& tensors) override;
 
 private:
     std::shared_ptr<const CompiledModel> get_nvidia_model();
     void create_infer_request();
 
-    std::array<openvino::itt::handle_t, Profiler::NumOfStages> _profilingTask;
+    std::array<openvino::itt::handle_t, static_cast<std::size_t>(PerfStages::NumOfStages)> _profilingTask;
     std::optional<MemoryPool::Proxy> memory_proxy_;
     CancellationToken cancellation_token_;
-    Profiler profiler_;
+    std::unique_ptr<IExecutionDelegator> executionDelegator_;
     std::vector<std::shared_ptr<ov::Tensor>> input_tensors_;
     std::vector<std::shared_ptr<ov::Tensor>> output_tensors_;
     bool is_benchmark_mode_;

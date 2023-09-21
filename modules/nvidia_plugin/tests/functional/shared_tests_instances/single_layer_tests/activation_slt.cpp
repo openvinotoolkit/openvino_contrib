@@ -10,12 +10,11 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_creation_context.hpp>
-#include <cuda_eager_topology_runner.hpp>
 #include <cuda_graph_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <cuda_thread_context.hpp>
 #include <functional>
@@ -2670,11 +2669,16 @@ struct ClampBenchmark : testing::Test {
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CancellationToken token{};
-        ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-        ov::nvidia_gpu::Profiler profiler{false, graph};
+        ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
-        ov::nvidia_gpu::InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                        emptyMapping,
+                                                        emptyTensor,
+                                                        emptyMapping,
+                                                        threadContext,
+                                                        token,
+                                                        simpleExecutionDelegator,
+                                                        cudaGraphContext};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;

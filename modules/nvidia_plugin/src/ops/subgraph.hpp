@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,6 +8,7 @@
 #include <cuda_operation_base.hpp>
 #include <memory_manager/cuda_memory_manager.hpp>
 #include <memory_manager/cuda_memory_pool.hpp>
+
 #include "openvino/op/util/sub_graph_base.hpp"
 
 namespace ov {
@@ -15,7 +16,16 @@ namespace nvidia_gpu {
 
 class SubGraph : public OperationBase {
 public:
-    virtual ~SubGraph() = 0;
+    using ExecSequence = std::vector<OperationBase::Ptr>;
+
+    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model);
+
+    SubGraph(const CreationContext& context,
+             const std::shared_ptr<const ov::Model>& model,
+             ExecSequence&& sequence,
+             std::shared_ptr<MemoryManager> memoryManager);
+
+    virtual ~SubGraph() = default;
 
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
@@ -29,12 +39,14 @@ public:
 
     bool IsCudaGraphCompatible() const override;
 
-    const MemoryManager& memoryManager() const { return *memory_manager_; }
+    inline std::shared_ptr<MemoryManager> memoryManager() const { return memory_manager_; }
+
+    inline const std::vector<OperationBase::Ptr>& getExecSequence() const { return exec_sequence_; }
+
+    inline const std::shared_ptr<const ov::Model> getModel() const { return model_; };
 
     const std::vector<OperationBase::Ptr>& getParams() const;
-    const std::vector<OperationBase::Ptr>& getExecSequence() const;
     const std::vector<OperationBase::Ptr>& getResults() const;
-    const std::shared_ptr<const ov::Model> getModel() const { return model_; };
 
 private:
     void initSharedImmutableWorkbuffers(const std::vector<OperationBase::Ptr>& init_sequence);
@@ -49,7 +61,6 @@ protected:
              const SubGraphOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
-    SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& function);
 
     WorkbufferRequest GetWorkBufferRequest() const override;
 
@@ -67,18 +78,18 @@ protected:
         ov::Shape shape_{};
     };
 
-    std::unique_ptr<MemoryManager> memory_manager_;
+    enum class CompatibleState { NOT_INITIALIZED = -1, NOT_COMPATIBLE, COMPATIBLE };
+
+    std::shared_ptr<MemoryManager> memory_manager_;
     std::vector<OperationBase::Ptr> params_;
     std::vector<OperationInfo> params_info_;
     std::vector<OperationBase::Ptr> exec_sequence_;
     std::vector<OperationBase::Ptr> results_;
     std::vector<OperationInfo> results_info_;
     std::shared_ptr<const ov::Model> model_;
+
+    mutable CompatibleState is_cuda_graph_compatible_ = CompatibleState::NOT_INITIALIZED;
 };
-
-inline SubGraph::~SubGraph() {}
-
-inline const std::vector<OperationBase::Ptr>& SubGraph::getExecSequence() const { return exec_sequence_; }
 
 }  // namespace nvidia_gpu
 }  // namespace ov

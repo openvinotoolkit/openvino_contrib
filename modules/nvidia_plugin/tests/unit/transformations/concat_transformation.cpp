@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "transformer/concat_transformation.hpp"
+
 #include <gtest/gtest.h>
 
 #include <tuple>
 
-#include "transformer/concat_transformation.hpp"
-#include "transformer/nodes/concat_optimized.hpp"
-
-#include "common_test_utils/ngraph_test_utils.hpp"
+#include "common_test_utils/ov_test_utils.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/op/constant.hpp"
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/utils/utils.hpp"
+#include "transformer/nodes/concat_optimized.hpp"
 
 using ov::nvidia_gpu::nodes::ConcatOptimized;
 using namespace ov;
@@ -129,4 +129,4 @@ TEST(concat_optimized, concat_dynamic_fail) {
     ASSERT_EQ(count_ops_of_type<ConcatOptimized>(model), 0);
 }
 
-} // namespace testing
+}  // namespace testing

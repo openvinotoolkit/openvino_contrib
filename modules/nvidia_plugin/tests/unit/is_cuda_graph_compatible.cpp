@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
-#include <cuda/graph.hpp>
-#include <cuda_compiled_model.hpp>
-#include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
-#include <openvino/op/parameter.hpp>
-#include <openvino/op/relu.hpp>
 #include <random>
 
-#include "ngraph_functions/utils/ngraph_helpers.hpp"
+#include "cuda/graph.hpp"
+#include "cuda_compiled_model.hpp"
+#include "cuda_operation_registry.hpp"
+#include "cuda_profiler.hpp"
+#include "cuda_runtime.h"
+#include "cuda_simple_execution_delegator.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/relu.hpp"
 
 namespace {
 
@@ -87,13 +88,18 @@ struct ReluIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        EagerTopologyRunner graph{creationContext, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{emptyTensor,
+                                        emptyMapping,
+                                        emptyTensor,
+                                        emptyMapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
 
         // Generate input
         std::vector<ElementType> input(inSize);
@@ -136,11 +142,10 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<std::shared_ptr<ov::op::v0::Parameter>> params{
             std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(), shape1),
             std::make_shared<ov::op::v0::Parameter>(ov::element::from<ElementType>(), shape2)};
-        auto paramOuts =
-            ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
 
         constexpr int64_t axis = 0;
-        auto node = std::make_shared<ov::op::v0::Concat>(paramOuts, axis);
+        auto node =
+            std::make_shared<ov::op::v0::Concat>(ov::OutputVector{params[0]->output(0), params[1]->output(0)}, axis);
 
         CUDA::Device device{};
         constexpr bool optimizeOption = false;
@@ -166,13 +171,18 @@ struct ConcatIsCudaGraphCompatibleTest : IsCudaGraphCompatibleTest {
         std::vector<DevPtr> outputs{outAlloc};
 
         CancellationToken token{};
-        EagerTopologyRunner graph{creationContext, {}};
-        Profiler profiler{false, graph};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
         std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
-        InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+        InferenceRequestContext context{emptyTensor,
+                                        emptyMapping,
+                                        emptyTensor,
+                                        emptyMapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
 
         // Generate inputs
         std::vector<ElementType> input1(inSize1);

@@ -10,8 +10,8 @@
 #include <cstdint>
 #include <cuda/float16.hpp>
 #include <error.hpp>
-#include <openvino/core/except.hpp>
 #include <kernels/details/cuda_type_traits.hpp>
+#include <openvino/core/except.hpp>
 #include <string_view>
 #include <type_traits>
 

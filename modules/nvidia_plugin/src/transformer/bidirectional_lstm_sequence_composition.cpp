@@ -4,27 +4,25 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 
-#include <cuda_op_buffers_extractor.hpp>
-#include <gsl/span_ext>
-#include <openvino/pass/constant_folding.hpp>
-#include <openvino/core/except.hpp>
-#include <openvino/op/concat.hpp>
-#include <openvino/op/lstm_sequence.hpp>
-#include <openvino/op/reshape.hpp>
-#include <openvino/op/transpose.hpp>
-#include <transformations/common_optimizations/common_optimizations.hpp>
-#include <transformations/common_optimizations/nop_elimination.hpp>
-#include <transformations/op_conversions/bidirectional_sequences_decomposition.hpp>
-#include <transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp>
-#include <transformations/op_conversions/convert_ti_to_sequences.hpp>
-#include <transformer/nodes/concat_optimized.hpp>
-#include <transformer/nodes/lstm_sequence_optimized.hpp>
+#include "cuda_op_buffers_extractor.hpp"
 
-#include "cuda_rt_info.hpp"
 #include "openvino/cc/pass/itt.hpp"
 #include "openvino/core/rt_info.hpp"
+#include "openvino/core/validation_util.hpp"
+#include "openvino/pass/constant_folding.hpp"
 #include "openvino/pass/manager.hpp"
+#include "openvino/pass/pattern/op/or.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/op/concat.hpp"
+#include "openvino/op/lstm_sequence.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/transpose.hpp"
+#include "openvino/op/util/op_types.hpp"
+#include "transformations/common_optimizations/nop_elimination.hpp"
+#include "transformer/nodes/concat_optimized.hpp"
+#include "transformer/nodes/lstm_sequence_optimized.hpp"
+
 
 using namespace ov::pass;
 using namespace ov::pass::pattern;
@@ -32,96 +30,203 @@ using namespace ov::pass::pattern;
 namespace ov::nvidia_gpu::pass {
 namespace {
 
-Node* findConcat(const Output<Node>& node, ov::op::v1::Transpose*& transpose) {
-    for (const auto& in : node.get_target_inputs()) {
-        if (auto tranNode = dynamic_cast<ov::op::v1::Transpose*>(in.get_node())) {
-            if (!transpose) {
-                transpose = tranNode;
+std::vector<int64_t> get_transpose_order(const std::shared_ptr<ov::op::v1::Transpose>& transpose) {
+    if (transpose) {
+        auto transpose_const = ov::as_type_ptr<op::v0::Constant>(transpose->input_value(1).get_node_shared_ptr());
+        if (transpose_const) {
+            return transpose_const->cast_vector<int64_t>();
+        }
+    }
+    return std::vector<int64_t>{};
+}
+
+bool is_y0_batch_reshape(const ov::Shape& input_shape, const ov::Shape& output_shape) {
+    if (input_shape.size() != 4 || output_shape.size() != 4) {
+        return false;
+    }
+    if (input_shape[0] == output_shape[0] && input_shape[1] == output_shape[2] &&
+        input_shape[2] == output_shape[1] && input_shape[3] == output_shape[3]) {
+        return true;
+    }
+    return false;
+}
+
+bool is_y0_batch_transpose(const std::shared_ptr<Node>& node) {
+    if (node) {
+        if (auto transpose = ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
+            if (get_transpose_order(transpose) == std::vector<int64_t>{0, 2, 1, 3}) {
+                return true;
             }
         }
-        if (dynamic_cast<ov::op::v0::Concat*>(in.get_node())) {
-            return in.get_node();
-        } else if (dynamic_cast<ov::nvidia_gpu::nodes::ConcatOptimized*>(in.get_node())) {
-            return in.get_node();
+        if (auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node)) {
+            if (reshape->is_dynamic()) {
+                return false;
+            }
+            if (is_y0_batch_reshape(reshape->input(0).get_shape(),
+                                    reshape->output(0).get_shape())) {
+                return true;
+            }
         }
-        for (const auto& out : in.get_node()->outputs()) {
-            auto foundNode = findConcat(out, transpose);
-            if (foundNode) {
-                return foundNode;
+    }
+    return false;
+}
+
+bool is_y0_sequence_reshape(const ov::Shape& input_shape, const ov::Shape& output_shape) {
+    if (input_shape.size() != 4 || output_shape.size() != 4) {
+        return false;
+    }
+    if (input_shape[0] == output_shape[1] && input_shape[1] == output_shape[2] &&
+        input_shape[2] == output_shape[0] && input_shape[3] == output_shape[3]) {
+        return true;
+    }
+    return false;
+}
+
+bool is_y0_sequence_transpose(const std::shared_ptr<Node>& node) {
+    if (node) {
+        if (auto transpose = ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
+            if (get_transpose_order(transpose) == std::vector<int64_t>{2, 0, 1, 3}) {
+                return true;
+            }
+        }
+        if (auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node)) {
+            if (reshape->is_dynamic()) {
+                return false;
+            }
+            if (is_y0_sequence_reshape(reshape->input(0).get_shape(),
+                                       reshape->output(0).get_shape())) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool is_h0_c0_reshape(const ov::Shape& input_shape, const ov::Shape& output_shape) {
+    if (input_shape.size() != 3 || output_shape.size() != 3) {
+        return false;
+    }
+    if (input_shape[0] == output_shape[1] && input_shape[1] == output_shape[0] &&
+        input_shape[2] == output_shape[2]) {
+        return true;
+    }
+    return false;
+}
+
+bool is_h0_c0_transpose(const std::shared_ptr<Node>& node) {
+    if (node) {
+        if (auto transpose = ov::as_type_ptr<ov::op::v1::Transpose>(node)) {
+            if (get_transpose_order(transpose) == std::vector<int64_t>{1, 0, 2}) {
+                return true;
+            }
+        }
+        if (auto reshape = ov::as_type_ptr<ov::op::v1::Reshape>(node)) {
+            if (reshape->is_dynamic()) {
+                return false;
+            }
+            if (is_h0_c0_reshape(reshape->input(0).get_shape(),
+                                 reshape->output(0).get_shape())) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool is_required_transpose_or_reshape(const std::shared_ptr<ov::Node>& node) {
+    return (is_y0_batch_transpose(node) ||
+            is_y0_sequence_transpose(node) ||
+            is_h0_c0_transpose(node) ||
+            ov::as_type_ptr<ov::op::v1::Reshape>(node));
+}
+
+std::shared_ptr<ov::Node> find_concat(const Output<Node>& node, std::shared_ptr<Node>& transpose) {
+    for (const auto& in : node.get_target_inputs()) {
+        auto current_node = in.get_node()->shared_from_this();
+        if (!transpose && is_required_transpose_or_reshape(current_node)) {
+            transpose = current_node;
+        }
+        if (ov::as_type_ptr<ov::op::v0::Concat>(current_node) ||
+            ov::as_type_ptr<ov::nvidia_gpu::nodes::ConcatOptimized>(current_node)) {
+            return current_node;
+        }
+        for (const auto& out : current_node->outputs()) {
+            auto found_node = find_concat(out, transpose);
+            if (found_node) {
+                return found_node;
             }
         }
     }
     return nullptr;
 }
 
-void getLastTransposeOrReshape(Node& node, Node*& foundNode) {
-    if (node.outputs().size() == 1) {
-        if (dynamic_cast<ov::op::v1::Transpose*>(&node)) {
-            foundNode = &node;
-        } else if (dynamic_cast<ov::op::v1::Reshape*>(&node)) {
-            foundNode = &node;
+void get_last_transpose_or_reshape(const std::shared_ptr<ov::Node>& node, std::shared_ptr<ov::Node>& found_node) {
+    auto check_node = [&] (const std::shared_ptr<ov::Node>& node) -> bool {
+        if (is_required_transpose_or_reshape(node)) {
+            found_node = node;
+            return true;
         }
-
-        for (const auto& in : node.get_output_target_inputs(0)) {
-            if (dynamic_cast<ov::op::v1::Transpose*>(in.get_node())) {
-                foundNode = in.get_node();
-            } else if (dynamic_cast<ov::op::v1::Reshape*>(in.get_node())) {
-                foundNode = in.get_node();
-            }
-            getLastTransposeOrReshape(*in.get_node(), foundNode);
+        return false;
+    };
+    if (check_node(node)) {
+        auto consumers = node->get_output_target_inputs(0);
+        if (1 == consumers.size()) {
+            get_last_transpose_or_reshape(consumers.begin()->get_node()->shared_from_this(), found_node);
         }
     }
 }
 
-auto transposePerm(const Node* tran) {
-    if (tran) {
-        std::vector<int64_t> perm;
-        auto perm_const = dynamic_cast<ov::op::v0::Constant*>(tran->get_input_source_output(1).get_node());
-        const int64_t* ptr = reinterpret_cast<const int64_t*>(perm_const->get_data_ptr());
-        auto span = gsl::make_span(
-            ptr, ov::nvidia_gpu::OperationBuffersExtractor::GetTensorByteSize(perm_const->output(0)) / sizeof(int64_t));
-        return std::vector<int64_t>{span.begin(), span.end()};
+bool is_direction(const std::shared_ptr<ov::Node>& node,
+                  const ov::op::RecurrentSequenceDirection& direction) {
+    if (auto lstm_sequence = ov::as_type_ptr<ov::op::v5::LSTMSequence>(node)) {
+        if (lstm_sequence->get_direction() == direction) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_bidirectional(const std::shared_ptr<ov::Node>& node) {
+    return is_direction(node, ov::op::RecurrentSequenceDirection::BIDIRECTIONAL);
+}
+
+bool is_forward(const std::shared_ptr<ov::Node>& node) {
+    return is_direction(node, ov::op::RecurrentSequenceDirection::FORWARD);
+}
+
+bool is_reverse(const std::shared_ptr<ov::Node>& node) {
+    return is_direction(node, ov::op::RecurrentSequenceDirection::REVERSE);
+}
+
+std::vector<int64_t> gen_y_transpose_order(const std::shared_ptr<Node>& node) {
+    if (is_y0_batch_transpose(node)) {
+        return std::vector<int64_t>{0, 2, 1, 3};
+    }
+    if (is_y0_sequence_transpose(node)) {
+        return std::vector<int64_t>{2, 0, 1, 3};
     }
     return std::vector<int64_t>{};
 }
 
+void output_replacer(const std::shared_ptr<ov::Node>& replacement,
+                     const ov::Output<ov::Node>& new_out) {
+    if (!replacement) {
+        return;
+    }
+    for (auto& out : replacement->outputs()) {
+        for (const auto& in : out.get_target_inputs()) {
+            const auto& in_node = in.get_node();
+            in.replace_source_output(new_out);
+        }
+    }
+};
 }  // namespace
 
-bool bidirectional_lstm_sequence_composition(Matcher& m) {
-    auto transpose = std::dynamic_pointer_cast<ov::op::v1::Transpose>(m.get_match_root());
-    if (!transpose) {
-        return false;
-    }
+bool bidirectional_lstm_sequence_composition(
+    const std::shared_ptr<ov::Node>& x,
+    const std::shared_ptr<ov::op::v5::LSTMSequence>& lstm_sequence_forward,
+    const std::shared_ptr<ov::op::v5::LSTMSequence>& lstm_sequence_reverse) {
 
-    std::vector<ov::Node*> outputsLSTMSequence;
-    std::vector<ov::op::v5::LSTMSequence*> inputs;
-    inputs.reserve(2);
-    for (const auto& in : transpose->get_output_target_inputs(0)) {
-        auto in_node = in.get_node();
-        if (in_node->get_output_target_inputs(0).size() != 1) {
-            return false;
-        }
-        ov::op::v5::LSTMSequence* lstm_sequence = nullptr;
-        for (const auto& inn : in_node->get_output_target_inputs(0)) {
-            lstm_sequence = dynamic_cast<ov::op::v5::LSTMSequence*>(inn.get_node());
-            if (!lstm_sequence) {
-                return false;
-            }
-        }
-
-        if (lstm_sequence->get_direction() == ov::op::RecurrentSequenceDirection::FORWARD) {
-            inputs.insert(inputs.begin(), lstm_sequence);
-            outputsLSTMSequence.insert(outputsLSTMSequence.begin(), in_node);
-        } else {
-            outputsLSTMSequence.push_back(in_node);
-            inputs.push_back(lstm_sequence);
-        }
-    }
-    if (inputs.size() != 2) {
-        return false;
-    }
-    auto lstm_sequence_forward = inputs[0];
-    auto lstm_sequence_reverse = inputs[1];
     if (lstm_sequence_forward->get_hidden_size() != lstm_sequence_reverse->get_hidden_size() ||
         lstm_sequence_forward->get_activations_alpha() != lstm_sequence_reverse->get_activations_alpha() ||
         lstm_sequence_forward->get_activations_beta() != lstm_sequence_reverse->get_activations_beta() ||
@@ -130,114 +235,73 @@ bool bidirectional_lstm_sequence_composition(Matcher& m) {
         return false;
     }
 
-    ov::op::v1::Transpose* y_transpose = nullptr;
-    ov::op::v1::Transpose* ho_transpose = nullptr;
-    ov::op::v1::Transpose* co_transpose = nullptr;
-    auto y_replacement = findConcat(lstm_sequence_forward->output(0), y_transpose);
-    auto ho_replacement = findConcat(lstm_sequence_forward->output(1), ho_transpose);
-    auto co_replacement = findConcat(lstm_sequence_forward->output(2), co_transpose);
+    std::shared_ptr<Node> y_transpose = nullptr;
+    std::shared_ptr<Node> ho_transpose = nullptr;
+    std::shared_ptr<Node> co_transpose = nullptr;
+    auto y_replacement = find_concat(lstm_sequence_forward->output(0), y_transpose);
+    auto ho_replacement = find_concat(lstm_sequence_forward->output(1), ho_transpose);
+    auto co_replacement = find_concat(lstm_sequence_forward->output(2), co_transpose);
     if (!y_replacement || !ho_replacement || !co_replacement) {
         return false;
     }
-    if (y_transpose && transposePerm(y_transpose) != std::vector<int64_t>{2, 1, 0, 3}) {
+    if (!(!y_transpose || is_y0_batch_transpose(y_transpose) || is_y0_sequence_transpose(y_transpose)) ||
+        !(!ho_transpose || is_h0_c0_transpose(ho_transpose)) ||
+        !(!co_transpose || is_h0_c0_transpose(co_transpose))) {
         return false;
     }
-
-    const auto hidden_size = lstm_sequence_forward->get_hidden_size();
-    const auto activations_alpha = lstm_sequence_forward->get_activations_alpha();
-    const auto activations_beta = lstm_sequence_forward->get_activations_beta();
-    const auto activations = lstm_sequence_forward->get_activations();
-    const auto clip = lstm_sequence_forward->get_clip();
-
-    constexpr auto axis_0 = 0;
-    constexpr auto axis_1 = 1;
-
-    auto x = outputsLSTMSequence[0]->output(0);
-
-    auto initial_hidden_state = std::make_shared<ov::op::v0::Concat>(
-        ov::OutputVector{lstm_sequence_forward->input_value(1), lstm_sequence_reverse->input_value(1)}, axis_1);
-    auto initial_cell_state = std::make_shared<ov::op::v0::Concat>(
-        ov::OutputVector{lstm_sequence_forward->input_value(2), lstm_sequence_reverse->input_value(2)}, axis_1);
-
-    auto sequence_lengths = lstm_sequence_forward->input_value(3);
-
-    auto weights = std::make_shared<ov::op::v0::Concat>(
-        ov::OutputVector{lstm_sequence_forward->input_value(4), lstm_sequence_reverse->input_value(4)}, axis_0);
-    auto recurrent_weights = std::make_shared<ov::op::v0::Concat>(
-        ov::OutputVector{lstm_sequence_forward->input_value(5), lstm_sequence_reverse->input_value(5)}, axis_0);
-    auto bias = std::make_shared<ov::op::v0::Concat>(
-        ov::OutputVector{lstm_sequence_forward->input_value(6), lstm_sequence_reverse->input_value(6)}, axis_0);
-
+    auto concat_inputs = [&lstm_sequence_forward, &lstm_sequence_reverse](size_t index, size_t axis) {
+        return std::make_shared<ov::op::v0::Concat>(ov::OutputVector{
+            lstm_sequence_forward->input_value(index),
+            lstm_sequence_reverse->input_value(index)}, axis);
+    };
     auto lstm_sequence_bidirectional =
         std::make_shared<ov::op::v5::LSTMSequence>(x,
-                                                   initial_hidden_state,
-                                                   initial_cell_state,
-                                                   sequence_lengths,
-                                                   weights,
-                                                   recurrent_weights,
-                                                   bias,
-                                                   hidden_size,
-                                                   ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
-                                                   activations_alpha,
-                                                   activations_beta,
-                                                   activations,
-                                                   clip);
-
+            concat_inputs(1, 1),
+            concat_inputs(2, 1),
+            lstm_sequence_forward->input_value(3),
+            concat_inputs(4, 0),
+            concat_inputs(5, 0),
+            concat_inputs(6, 0),
+            lstm_sequence_forward->get_hidden_size(),
+            ov::op::RecurrentSequenceDirection::BIDIRECTIONAL,
+            lstm_sequence_forward->get_activations_alpha(),
+            lstm_sequence_forward->get_activations_beta(),
+            lstm_sequence_forward->get_activations(),
+            lstm_sequence_forward->get_clip());
     auto y = lstm_sequence_bidirectional->output(0);
     auto ho = lstm_sequence_bidirectional->output(1);
     auto co = lstm_sequence_bidirectional->output(2);
+    ov::copy_runtime_info({lstm_sequence_forward, lstm_sequence_reverse}, lstm_sequence_bidirectional);
 
-    ov::copy_runtime_info({lstm_sequence_forward->shared_from_this(), lstm_sequence_reverse->shared_from_this()},
-                          lstm_sequence_bidirectional);
-    ov::replace_node(lstm_sequence_forward->shared_from_this(), lstm_sequence_bidirectional);
-    ov::replace_node(lstm_sequence_reverse->shared_from_this(), lstm_sequence_bidirectional);
-
+    std::string original_names_mapping;
     if (y_transpose) {
-        std::vector<int64_t> transpose_y_perm = {2, 1, 0, 3};
-        std::vector<int64_t> transpose_ho_co_perm = {1, 0, 2};
         auto transpose_y_const =
-            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{4}, transpose_y_perm);
+            std::make_shared<ov::op::v0::Constant>(y_transpose->input_value(1).get_element_type(),
+            ov::Shape{4}, gen_y_transpose_order(y_transpose));
         auto transpose_ho_co_const =
-            std::make_shared<ov::op::v0::Constant>(ov::element::i64, ov::Shape{3}, transpose_ho_co_perm);
+            std::make_shared<ov::op::v0::Constant>(ho_transpose ? ho_transpose->input_value(1).get_element_type() : ov::element::i32,
+            ov::Shape{3}, std::vector<int64_t>{1, 0, 2});
         auto transpose_y = std::make_shared<ov::op::v1::Transpose>(y, transpose_y_const);
         auto transpose_ho = std::make_shared<ov::op::v1::Transpose>(ho, transpose_ho_co_const);
         auto transpose_co = std::make_shared<ov::op::v1::Transpose>(co, transpose_ho_co_const);
         transpose_y->set_friendly_name(y_replacement->get_friendly_name());
         transpose_ho->set_friendly_name(ho_replacement->get_friendly_name());
         transpose_co->set_friendly_name(co_replacement->get_friendly_name());
-        ov::copy_runtime_info(y_replacement->shared_from_this(), transpose_y);
-        ov::copy_runtime_info(ho_replacement->shared_from_this(), transpose_ho);
-        ov::copy_runtime_info(co_replacement->shared_from_this(), transpose_co);
-        ov::replace_node(y_replacement->shared_from_this(), transpose_y);
-        ov::replace_node(ho_replacement->shared_from_this(), transpose_ho);
-        ov::replace_node(co_replacement->shared_from_this(), transpose_co);
+        ov::copy_runtime_info(y_replacement, transpose_y);
+        ov::copy_runtime_info(ho_replacement, transpose_ho);
+        ov::copy_runtime_info(co_replacement, transpose_co);
+        output_replacer(y_replacement, transpose_y->output(0));
+        output_replacer(ho_replacement, transpose_ho->output(0));
+        output_replacer(co_replacement, transpose_co->output(0));
     } else {
-        std::string original_names_mapping = "FUSED:";
-        auto lstmSequenceOutputReplacer = [&original_names_mapping](const auto& replacement, const auto& new_node) {
-            for (auto& out : replacement->outputs()) {
-                for (const auto& in : out.get_target_inputs()) {
-                    const auto& in_node = in.get_node();
-                    if (dynamic_cast<ov::op::v0::Result*>(in_node)) {
-                        original_names_mapping +=
-                            in.get_node()->get_friendly_name() + "=" + out.get_node()->get_friendly_name() + ";";
-                    }
-                }
-                out.replace(new_node);
-            }
-        };
-
-        lstmSequenceOutputReplacer(y_replacement, y);
-        lstmSequenceOutputReplacer(ho_replacement, ho);
-        lstmSequenceOutputReplacer(co_replacement, co);
-
-        auto& rt_info = lstm_sequence_bidirectional->get_rt_info();
-        rt_info[ov::nvidia_gpu::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
+        output_replacer(y_replacement, y);
+        output_replacer(ho_replacement, ho);
+        output_replacer(co_replacement, co);
     }
-
     return true;
 }
 
-bool bidirectional_lstm_sequence_cudnn_optimized(Matcher& m) {
+bool bidirectional_lstm_sequence_cudnn_optimized(const std::shared_ptr<ov::op::v5::LSTMSequence>& lstm_sequence_bidirectional) {
     // Original OpenVINO:
     //   in              - [batch_size, seq_length, input_size]
     //   out             - [batch_size, num_directions, seq_length, hidden_size]
@@ -258,49 +322,70 @@ bool bidirectional_lstm_sequence_cudnn_optimized(Matcher& m) {
 
     using MajorFormat = ov::nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat;
 
-    auto lstm_sequence_bidirectional = std::dynamic_pointer_cast<ov::op::v5::LSTMSequence>(m.get_match_root());
-    if (!lstm_sequence_bidirectional ||
-        lstm_sequence_bidirectional->get_direction() != ov::op::RecurrentSequenceDirection::BIDIRECTIONAL) {
+    auto get_replacement = [&lstm_sequence_bidirectional](size_t index, std::shared_ptr<ov::Node>& replacement) {
+        auto consumers = lstm_sequence_bidirectional->get_output_target_inputs(index);
+        if (1 == consumers.size()) {
+            get_last_transpose_or_reshape(consumers.begin()->get_node()->shared_from_this(), replacement);
+        }
+    };
+    std::vector<std::shared_ptr<Node>> nodes_to_be_replaced = { lstm_sequence_bidirectional };
+    std::shared_ptr<Node> y_replacement = nullptr;
+    std::shared_ptr<Node> ho_replacement = nullptr;
+    std::shared_ptr<Node> co_replacement = nullptr;
+    get_replacement(0, y_replacement);
+    get_replacement(1, ho_replacement);
+    get_replacement(2, co_replacement);
+    if (!y_replacement) {
         return false;
     }
-
-    Node* y_replacement = nullptr;
-    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(0).begin()->get_node(),
-                              y_replacement);
-    Node* ho_replacement = nullptr;
-    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(1).begin()->get_node(),
-                              ho_replacement);
-    Node* co_replacement = nullptr;
-    getLastTransposeOrReshape(*lstm_sequence_bidirectional->get_output_target_inputs(2).begin()->get_node(),
-                              co_replacement);
-    if (!y_replacement || !ho_replacement || !co_replacement) {
-        return false;
-    }
-
+    nodes_to_be_replaced.push_back(y_replacement);
     const auto y_shape = lstm_sequence_bidirectional->output(0).get_shape();
     const auto y_replacement_shape = y_replacement->output(0).get_shape();
-    if (y_replacement_shape.size() < 3) {
+    if ((y_replacement_shape.size() < 3) || (y_replacement_shape.size() > 4)) {
+        return false;
+    }
+    auto check_ho_co_replacement = [&](size_t index, const std::shared_ptr<Node>& replacement) {
+        if (replacement) {
+            if (!is_h0_c0_reshape(lstm_sequence_bidirectional->output(index).get_shape(),
+                                  replacement->output(0).get_shape())) {
+                return false;
+            }
+            nodes_to_be_replaced.push_back(replacement);
+        } else if (lstm_sequence_bidirectional->get_output_target_inputs(index).size() > 0) {
+            return false;
+        }
+        return true;
+    };
+    if (!check_ho_co_replacement(1, ho_replacement) || !check_ho_co_replacement(2, co_replacement)) {
         return false;
     }
     std::optional<MajorFormat> major_format;
-    std::shared_ptr<ov::op::v1::Transpose> x_transpose;
-    if (y_replacement_shape[0] == y_shape[0] && y_replacement_shape[1] == y_shape[2]) {
-        major_format = MajorFormat::BatchMajor;
-    } else if (y_replacement_shape[0] == y_shape[2] && y_replacement_shape[1] == y_shape[0]) {
-        const auto x_node = lstm_sequence_bidirectional->get_input_source_output(0).get_node();
-        if (auto x_tran = dynamic_cast<ov::op::v1::Transpose*>(x_node)) {
-            if (transposePerm(x_transpose.get()) == std::vector<int64_t>{1, 0, 2}) {
-                x_transpose = std::dynamic_pointer_cast<ov::op::v1::Transpose>(x_tran->shared_from_this());
+    std::shared_ptr<ov::Node> x_transpose = nullptr;
+    if ((y_replacement_shape[0] == y_shape[0]) && (y_replacement_shape[1] == y_shape[2]) &&
+        ((y_replacement_shape.size() == 3) || is_y0_batch_reshape(y_shape, y_replacement_shape))) {
+        if (y_replacement->get_input_source_output(0).get_node()->shared_from_this() == lstm_sequence_bidirectional) {
+            if (is_y0_batch_transpose(y_replacement)) {
+                major_format = MajorFormat::BatchMajor;
+            }
+        } else {
+            major_format = MajorFormat::BatchMajor;
+        }
+    }
+    if (!major_format) {
+        if ((y_replacement_shape[0] == y_shape[2]) && (y_replacement_shape[1] == y_shape[0]) &&
+            ((y_replacement_shape.size() == 3) || is_y0_sequence_reshape(y_shape, y_replacement_shape))) {
+            x_transpose = lstm_sequence_bidirectional->get_input_source_output(0).get_node()->shared_from_this();
+            if (is_h0_c0_transpose(x_transpose)) {
                 major_format = MajorFormat::SequenceMajor;
+                nodes_to_be_replaced.push_back(x_transpose);
             }
         }
     }
     if (!major_format) {
         return false;
     }
-
     auto new_lstm_sequence_bidirectional = std::make_shared<ov::nvidia_gpu::nodes::LSTMSequenceOptimized>(
-        x_transpose ? x_transpose : lstm_sequence_bidirectional->get_input_source_output(0),
+        x_transpose ? x_transpose->get_input_source_output(0) : lstm_sequence_bidirectional->get_input_source_output(0),
         lstm_sequence_bidirectional->get_input_source_output(1),
         lstm_sequence_bidirectional->get_input_source_output(2),
         lstm_sequence_bidirectional->get_input_source_output(3),
@@ -314,10 +399,12 @@ bool bidirectional_lstm_sequence_cudnn_optimized(Matcher& m) {
         lstm_sequence_bidirectional->get_activations_beta(),
         lstm_sequence_bidirectional->get_activations(),
         lstm_sequence_bidirectional->get_clip());
-    new_lstm_sequence_bidirectional->validate_and_infer_types();
 
-    std::shared_ptr<ov::op::v1::Reshape> reshape;
+    new_lstm_sequence_bidirectional->set_friendly_name(lstm_sequence_bidirectional->get_friendly_name());
+    ov::copy_runtime_info(nodes_to_be_replaced, new_lstm_sequence_bidirectional);
+
     if (y_replacement_shape.size() == 3) {
+        std::shared_ptr<ov::op::v1::Reshape> reshape;
         const auto& out = new_lstm_sequence_bidirectional->output(0);
         const auto& out_shape = out.get_shape();
         std::vector<int32_t> reshape_pattern_values = {static_cast<int32_t>(out_shape[0]),
@@ -326,87 +413,63 @@ bool bidirectional_lstm_sequence_cudnn_optimized(Matcher& m) {
         auto reshape_pattern =
             std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{3}, reshape_pattern_values);
         reshape = std::make_shared<ov::op::v1::Reshape>(out, reshape_pattern, true);
-    }
-
-    auto y = new_lstm_sequence_bidirectional->output(0);
-    auto ho = new_lstm_sequence_bidirectional->output(1);
-    auto co = new_lstm_sequence_bidirectional->output(2);
-
-    if (x_transpose) {
-        ov::copy_runtime_info(x_transpose->shared_from_this(), new_lstm_sequence_bidirectional);
-        ov::replace_node(x_transpose->shared_from_this(), new_lstm_sequence_bidirectional);
-    }
-    ov::copy_runtime_info(lstm_sequence_bidirectional->shared_from_this(), new_lstm_sequence_bidirectional);
-    ov::replace_node(lstm_sequence_bidirectional->shared_from_this(), new_lstm_sequence_bidirectional);
-
-    std::string original_names_mapping = "FUSED:";
-    auto lstmSequenceOutputReplacer = [&original_names_mapping](const auto& replacement, const auto& new_node) {
-        for (auto& out : replacement->outputs()) {
-            for (const auto& in : out.get_target_inputs()) {
-                const auto& in_node = in.get_node();
-                if (dynamic_cast<ov::op::v0::Result*>(in_node)) {
-                    original_names_mapping +=
-                        in.get_node()->get_friendly_name() + "=" + out.get_node()->get_friendly_name() + ";";
-                }
-            }
-            out.replace(new_node);
-        }
-    };
-
-    if (reshape) {
         reshape->set_friendly_name(y_replacement->get_friendly_name());
-        ov::copy_runtime_info(y_replacement->shared_from_this(), reshape);
-        ov::replace_node(y_replacement->shared_from_this(), reshape);
+        ov::copy_runtime_info(y_replacement, reshape);
+        output_replacer(y_replacement, reshape->output(0));
     } else {
-        lstmSequenceOutputReplacer(y_replacement, y);
+        output_replacer(y_replacement, new_lstm_sequence_bidirectional->output(0));
     }
-    lstmSequenceOutputReplacer(ho_replacement, ho);
-    lstmSequenceOutputReplacer(co_replacement, co);
-
-    auto& rt_info = new_lstm_sequence_bidirectional->get_rt_info();
-    rt_info[ov::nvidia_gpu::RtInfo::CUDA_FUSED_NAMES_MAPPING] = original_names_mapping;
+    output_replacer(ho_replacement, new_lstm_sequence_bidirectional->output(1));
+    output_replacer(co_replacement, new_lstm_sequence_bidirectional->output(2));
 
     return true;
 }
 
-Convert2LSTMSequenceToBidirectionalLSTMSequence::Convert2LSTMSequenceToBidirectionalLSTMSequence() {
-    MATCHER_SCOPE(Convert2LSTMSequenceToBidirectionalLSTMSequence);
-    auto transpose = wrap_type<ov::op::v1::Transpose>(consumers_count(2));
+bool Convert2LSTMSequenceToBidirectionalLSTMSequence::run_on_model(const std::shared_ptr<ov::Model>& f) {
+    RUN_ON_MODEL_SCOPE(Convert2LSTMSequenceToBidirectionalLSTMSequence);
 
-    ov::matcher_pass_callback callback = [](Matcher& m) { return bidirectional_lstm_sequence_composition(m); };
-
-    auto m = std::make_shared<Matcher>(transpose, matcher_name);
-    this->register_matcher(m, callback);
+    bool was_updated = false;
+    for (const auto& op : f->get_ordered_ops()) {
+        for (auto& output : op->outputs()) {
+            if (output.get_target_inputs().size() == 2) {
+                std::shared_ptr<ov::op::v5::LSTMSequence> lstm_sequence_forward = nullptr;
+                std::shared_ptr<ov::op::v5::LSTMSequence> lstm_sequence_reverse = nullptr;
+                for (auto& consumer : output.get_target_inputs()) {
+                    auto node = consumer.get_node()->shared_from_this();
+                    if (is_forward(node)) {
+                        lstm_sequence_forward = ov::as_type_ptr<ov::op::v5::LSTMSequence>(node);
+                    } else if (is_reverse(node)) {
+                        lstm_sequence_reverse = ov::as_type_ptr<ov::op::v5::LSTMSequence>(node);
+                    }
+                }
+                if (lstm_sequence_forward && lstm_sequence_reverse) {
+                    was_updated |= bidirectional_lstm_sequence_composition(op, lstm_sequence_forward, lstm_sequence_reverse);
+                }
+            }
+        }
+    }
+    return was_updated;
 }
 
-ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized::
-    ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized() {
-    MATCHER_SCOPE(ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized);
-    auto transpose = wrap_type<ov::op::v5::LSTMSequence>();
+bool ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized::run_on_model(const std::shared_ptr<ov::Model>& f) {
+    RUN_ON_MODEL_SCOPE(ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized);
 
-    ov::matcher_pass_callback callback = [](Matcher& m) { return bidirectional_lstm_sequence_cudnn_optimized(m); };
-
-    auto m = std::make_shared<Matcher>(transpose, matcher_name);
-    this->register_matcher(m, callback);
-}
-
-BidirectionalSequenceComposition::BidirectionalSequenceComposition(std::shared_ptr<PassConfig> pass_config)
-    : pass_config_(std::move(pass_config)) {
-    pass_config_->disable<ov::pass::BidirectionalLSTMSequenceDecomposition>();
-    pass_config_->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
-    // TODO: Uncomment when support for GRUSequence and RNNSequence will be added
-    // pass_config_->disable<ov::pass::BidirectionalRNNSequenceDecomposition>();
+    bool was_updated = false;
+    for (const auto& op : f->get_ordered_ops()) {
+        if (is_bidirectional(op)) {
+            was_updated |= bidirectional_lstm_sequence_cudnn_optimized(ov::as_type_ptr<ov::op::v5::LSTMSequence>(op));
+        }
+    }
+    return was_updated;
 }
 
 bool BidirectionalSequenceComposition::run_on_model(const std::shared_ptr<ov::Model>& f) {
     RUN_ON_MODEL_SCOPE(BidirectionalSequenceComposition)
-    Manager manager{pass_config_};
+    Manager manager;
 
-    manager.register_pass<ov::pass::NopElimination>();
     manager.register_pass<Convert2LSTMSequenceToBidirectionalLSTMSequence>();
-    manager.register_pass<ov::pass::CommonOptimizations>();
+    manager.register_pass<ov::pass::NopElimination>();
     manager.register_pass<ConvertBidirectionalLSTMSequenceToBidirectionalLSTMSequenceOptimized>();
-    manager.register_pass<ov::pass::CommonOptimizations>();
 
     manager.run_passes(f);
 

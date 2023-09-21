@@ -14,12 +14,14 @@
 #include "openvino/op/lstm_sequence.hpp"
 #include "transformations/common_optimizations/common_optimizations.hpp"
 #include "transformations/common_optimizations/nop_elimination.hpp"
+#include "transformations/common_optimizations/shuffle_channels_fusion.hpp"
 #include "transformations/convert_precision.hpp"
 #include "transformations/fp16_compression/convert_compression_only_to_legacy.hpp"
 #include "transformations/fp16_compression/mark_decompression_convert_constant_folding.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/op_conversions/bidirectional_sequences_decomposition.hpp"
 #include "transformations/op_conversions/convert_mod.hpp"
+#include "transformations/op_conversions/convert_reduce_to_pooling.hpp"
 #include "transformations/op_conversions/convert_sequences_to_tensor_iterator.hpp"
 #include "transformations/op_conversions/convert_ti_to_sequences.hpp"
 #include "transformer/convolution_asym_padding_transformation.hpp"
@@ -29,12 +31,16 @@
 #include "concat_transformation.hpp"
 #include "fuse_matmul_add.hpp"
 #include "matmul_transformations.hpp"
+#include "reduce_transformation.hpp"
 #include "remove_duplicated_results_transformation.hpp"
 #include "remove_redundant_convert_transformation.hpp"
 #include "transformations/op_conversions/convert_divide.hpp"
 #include "transformations/op_conversions/convert_interpolate1_to_interpolate4.hpp"
 #include "transformations/op_conversions/convert_subtract.hpp"
+#include "transformations/op_conversions/convert_gelu.hpp"
+#include "transformations/op_conversions/gelu7_downgrade.hpp"
 #include "transformations/op_conversions/mvn6_decomposition.hpp"
+#include "transformations/op_conversions/hswish_decomposition.hpp"
 #include "transformations/common_optimizations/reshape_prelu.hpp"
 
 using namespace ov::nvidia_gpu;
@@ -77,6 +83,19 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_config->disable<ov::pass::ConvertSubtract>();
     pass_config->disable<ov::pass::ConvertDivide>();
     pass_config->disable<ov::pass::ConvertMod>();
+    pass_config->disable<ov::pass::Gelu7Downgrade>();
+    pass_config->disable<ov::pass::ConvertGELU>();
+    pass_config->disable<ov::pass::HSwishDecomposition>();
+    pass_config->disable<ov::pass::ConvertReduceMaxToPooling>();
+    pass_config->disable<ov::pass::ConvertReduceMeanToPooling>();
+    pass_config->disable<ov::pass::ConvertReduceSumToPooling>();
+    pass_config->disable<ov::pass::ShuffleChannelsFusion>();
+
+    // Skip decomposition for LSTMSequence and GRUSequence
+    pass_config->disable<ov::pass::BidirectionalLSTMSequenceDecomposition>();
+    pass_config->disable<ov::pass::BidirectionalGRUSequenceDecomposition>();
+    // TODO: Uncomment when support for RNNSequence will be added
+    //pass_config->disable<ov::pass::BidirectionalRNNSequenceDecomposition>();
 
     [[maybe_unused]] const auto& originOps = model->get_ordered_ops();
     [[maybe_unused]] const auto& originOpsSize = originOps.size();
@@ -91,7 +110,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     // relies on number of outputs of original model
     // pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveDuplicatedResultsTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::RemoveRedundantConvertTransformation>();
-    pass_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>(pass_config);
+    pass_manager.register_pass<ov::nvidia_gpu::pass::BidirectionalSequenceComposition>();
     pass_manager.register_pass<ov::pass::ConvertSequenceToTensorIterator>();
 
     // Sequences supported by the plugin shouldn't be converted to TensorIterator.
@@ -131,6 +150,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_manager.register_pass<ov::nvidia_gpu::pass::TransposeMatMulTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::ReduceTransformation>();
     // Do we actually need to eliminate broadcast one more time at the end?
     pass_manager.register_pass<ov::pass::NopElimination>();
 

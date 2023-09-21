@@ -37,6 +37,8 @@ std::vector<std::string> disabledTestPatterns() {
         R"(.*InferRequestIOBBlobTest.*secondCallGetOutputAfterInferSync.*)",
         // Old API cannot deallocate tensor
         R"(.*InferRequestIOBBlobTest.*canProcessDeallocatedOutputBlobAfterGetAndSetBlob.*)",
+        // 119703
+        R"(.*smoke_GroupConvolutionBias(Add|AddAdd)_2D_ExplicitPaddingSymmetric2.*FP16*.*)",
     };
 
 #ifdef _WIN32

@@ -16,7 +16,7 @@ namespace nvidia_gpu {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
-    using NodeOp = ov::op::v5::LSTMSequence;
+    using NodeOp = ov::op::util::RNNCellBase;
     using LSTMSequenceParams = RNN::Details::LSTMSequenceParams;
     using Config = RNN::Details::LSTMSequenceDescriptorsCuDnn::Config;
     LSTMSequenceOpBase(const CreationContext& context,
@@ -25,7 +25,6 @@ public:
                        const NodeOp& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds);
-
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,

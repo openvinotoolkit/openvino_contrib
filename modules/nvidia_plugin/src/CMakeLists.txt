@@ -10,15 +10,14 @@ set(HEADER_MASKS *.hpp *.cuh)
 
 file(GLOB_RECURSE
 	SOURCES
-	RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 	CONFIGURE_DEPENDS
 	${SOURCE_MASKS}
 )
-list(REMOVE_ITEM SOURCES cuda_create_plugin.cpp cuda_create_extensions.cpp)
-list(FILTER SOURCES EXCLUDE REGEX "^ops/examples/.*$")
+list(FILTER SOURCES EXCLUDE REGEX ".*cuda_create_plugin\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX ".*cuda_create_extensions\\.cpp$")
+list(FILTER SOURCES EXCLUDE REGEX ".*ops/examples/.*$")
 file(GLOB_RECURSE
 	HEADERS
-	RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
 	${HEADER_MASKS}
 )
 
@@ -32,14 +31,15 @@ if(ENABLE_PROXY)
 endif()
 
 # Adds a shared library with plugin
-ie_add_plugin(NAME ${TARGET_NAME}
+ov_add_plugin(NAME ${TARGET_NAME}
               DEVICE_NAME "NVIDIA"
               SOURCES ${HEADERS} cuda_create_plugin.cpp cuda_create_extensions.cpp
               DEFAULT_CONFIG ${PLUGIN_DEFAULT_CONFIG}
-              VERSION_DEFINES_FOR cuda_create_plugin.cpp)
+              VERSION_DEFINES_FOR cuda_create_plugin.cpp
+              ADD_CLANG_FORMAT)
 
 # Enable support of CC for the plugin
-ie_mark_target_as_cc(${TARGET_NAME})
+ov_mark_target_as_cc(${TARGET_NAME})
 
 set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
 
@@ -77,6 +77,6 @@ target_link_libraries(${OBJ_NAME}
 
 # ATTENTION: uncomment to register a plugin in the plugins.xml file
 if(ENABLE_NVIDIA)
-    ie_register_plugins(MAIN_TARGET ${TARGET_NAME}
+    ov_register_plugins(MAIN_TARGET ${TARGET_NAME}
                         POSSIBLE_PLUGINS ${TARGET_NAME})
 endif()

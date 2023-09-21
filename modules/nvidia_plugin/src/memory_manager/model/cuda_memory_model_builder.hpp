@@ -26,7 +26,7 @@ public:
      * @param [in] lastConsumerIndex The execution order index of last use. After that
      * data will be released. -1 is a reserved value for "till to end".
      * @param [in] bsize Tensor memory size in bytes.
-     * @throws InferenceEngineException if allocation size is zero or tensor
+     * @throws ov::Exception if allocation size is zero or tensor
      * with specified id is already added.
      */
     void addAllocation(BufferID id, int producerIndex, int lastConsumerIndex, size_t bsize);

@@ -4,36 +4,46 @@
 
 #pragma once
 
-#include "runtime.hpp"
 #include <optional>
+
+#include "runtime.hpp"
 
 namespace CUDA {
 
 class GraphCapture;
 class CaptureInfo;
 
-class Graph: public Handle<cudaGraph_t> {
+class Graph : public Handle<cudaGraph_t> {
 public:
     Graph(unsigned int flags);
+
+    friend bool operator==(const Graph& lhs, const Graph& rhs);
 
     friend GraphCapture;
 
 private:
     Graph(cudaGraph_t graph);
 
-    static cudaError_t createFromNative(cudaGraph_t *pGraph, cudaGraph_t anotherGraph);
+    static cudaError_t createFromNative(cudaGraph_t* pGraph, cudaGraph_t anotherGraph);
 
     static cudaGraph_t createNativeWithFlags(unsigned int flags);
 };
 
+bool operator==(const Graph& rhs, const Graph& lhs);
 
-class GraphExec: public Handle<cudaGraphExec_t> {
+class GraphExec : public Handle<cudaGraphExec_t> {
 public:
     GraphExec(const Graph& g);
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12020
+    cudaGraphExecUpdateResultInfo update(const Graph& g) const;
+#else
     cudaGraphExecUpdateResult update(const Graph& g) const;
+#endif
 
     void launch(const Stream& stream) const;
+
+    friend bool operator==(const GraphExec& lhs, const GraphExec& rhs);
 
 #if !defined(NDEBUG) || defined(_DEBUG)
 private:
@@ -42,6 +52,7 @@ private:
 #endif
 };
 
+bool operator==(const GraphExec& lhs, const GraphExec& rhs);
 
 class GraphCapture {
 public:
@@ -67,16 +78,18 @@ public:
 
 private:
     Stream stream_;
-    cudaGraph_t cudaGraph_ {};
-    cudaError_t capturedError_ {cudaSuccess};
-    std::optional<Graph> graph_ {};
+    cudaGraph_t cudaGraph_{};
+    cudaError_t capturedError_{cudaSuccess};
+    std::optional<Graph> graph_{};
 };
 
 class UploadNode {
     friend CaptureInfo;
+
 public:
     void update_src(const GraphExec& exec, const void* src);
     bool operator==(const UploadNode& rhs) const;
+
 private:
     UploadNode(cudaGraphNode_t node, CUDA::DevicePointer<void*> dst, const void* src, std::size_t size);
     cudaGraphNode_t node_;
@@ -87,9 +100,11 @@ private:
 
 class DownloadNode {
     friend CaptureInfo;
+
 public:
     void update_dst(const GraphExec& exec, void* dst);
     bool operator==(const DownloadNode& rhs) const;
+
 private:
     DownloadNode(cudaGraphNode_t node, void* dst, CUDA::DevicePointer<const void*> src, std::size_t size);
     cudaGraphNode_t node_;
@@ -112,4 +127,4 @@ private:
     size_t depCount_;
 };
 
-}// namespace CUDA
+}  // namespace CUDA

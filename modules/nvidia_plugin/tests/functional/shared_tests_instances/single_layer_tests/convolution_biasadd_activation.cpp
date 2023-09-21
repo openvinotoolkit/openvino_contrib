@@ -80,11 +80,6 @@ TEST_P(ConvolutionBiasAddAddActivationThresholdLayerTest, CompareWithRefs) {
 }
 
 namespace {
-
-// NOTE: Default precision where difference between reference and actual
-//       are bigger than defined threshold
-const auto defaultPrecision = InferenceEngine::Precision::FP32;
-
 const std::vector<InferenceEngine::Precision> netPrecisions = {
     InferenceEngine::Precision::FP16,
     InferenceEngine::Precision::FP32,
@@ -157,7 +152,7 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    smoke_Convolution2DBiasAddActivation_ExplicitPaddingSymmetric2_FP32,
+    smoke_Convolution2DBiasAddActivation_ExplicitPaddingSymmetric2,
     ConvolutionBiasAddActivationThresholdLayerTest,
     ::testing::Combine(::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
                                           ::testing::ValuesIn(netPrecisions),
@@ -171,21 +166,7 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2DBiasAddActivation_ExplicitPaddingSymmetric2_FP16,
-    ConvolutionBiasAddActivationThresholdLayerTest,
-    ::testing::Combine(::testing::Combine(conv2DParams_ExplicitPaddingSymmetric2,
-                                          ::testing::Values(InferenceEngine::Precision::FP16),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
-                                          ::testing::Values(InferenceEngine::Layout::ANY),
-                                          ::testing::Values(std::vector<size_t>({1, 3, 30, 30})),
-                                          ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-                       ::testing::ValuesIn(netActivations)),
-    ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2DBiasAddActivation_ExplicitPaddingAsymmetric1,
+    smoke_Convolution2DBiasAddActivation_ExplicitPaddingAsymmetric1,
     ConvolutionBiasAddActivationThresholdLayerTest,
     ::testing::Combine(::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric1,
                                           ::testing::ValuesIn(netPrecisions),
@@ -199,7 +180,7 @@ INSTANTIATE_TEST_CASE_P(
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 INSTANTIATE_TEST_CASE_P(
-    DISABLED_smoke_Convolution2DBiasAddActivation_ExplicitPaddingAsymmetric2,
+    smoke_Convolution2DBiasAddActivation_ExplicitPaddingAsymmetric2,
     ConvolutionBiasAddActivationThresholdLayerTest,
     ::testing::Combine(::testing::Combine(conv2DParams_ExplicitPaddingAsymmetric2,
                                           ::testing::ValuesIn(netPrecisions),
@@ -262,7 +243,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::EXPLICIT)),      // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -492,7 +473,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::SAME_UPPER)),    // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -653,7 +634,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::SAME_UPPER)),    // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -883,7 +864,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::EXPLICIT)),      // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -906,7 +887,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(512),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::EXPLICIT)),      // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -929,7 +910,7 @@ INSTANTIATE_TEST_CASE_P(
                                               ::testing::Values(std::vector<size_t>({1, 1})),     // dilations
                                               ::testing::Values(256),                             // Num out channels
                                               ::testing::Values(ov::op::PadType::EXPLICIT)),      // Padding type
-                           ::testing::Values(defaultPrecision),                                   // Net precision
+                           ::testing::ValuesIn(netPrecisions),                                    // Net precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Input precision
                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),            // Output precision
                            ::testing::Values(InferenceEngine::Layout::ANY),                       // Input layout
@@ -1037,14 +1018,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 1, 128, 128})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1065,14 +1046,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 16, 16})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1093,14 +1074,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 32, 32})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1121,14 +1102,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 8, 8})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1149,14 +1130,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1177,14 +1158,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 64, 64})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1205,14 +1186,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 16, 16})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1233,14 +1214,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 8, 8})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1261,14 +1242,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 128, 128})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1289,14 +1270,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 32, 32})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1317,14 +1298,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 64, 64})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1345,14 +1326,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 16, 16})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1373,14 +1354,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 32, 32})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1401,14 +1382,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 64, 64})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1429,14 +1410,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 1, 144, 144, 144})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1457,14 +1438,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 18, 18, 18})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1485,14 +1466,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 36, 36, 36})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1520,7 +1501,7 @@ INSTANTIATE_TEST_CASE_P(
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 128, 9, 9, 9})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1541,14 +1522,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1569,14 +1550,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 72, 72, 72})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1597,14 +1578,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 18, 18, 18})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1625,14 +1606,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(256), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 256, 9, 9, 9})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1653,14 +1634,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(16), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 144, 144, 144})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1681,14 +1662,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 36, 36, 36})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1709,14 +1690,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 32, 72, 72, 72})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1737,14 +1718,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(128), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 18, 18, 18})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1765,14 +1746,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(64), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 36, 36, 36})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1793,14 +1774,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(32), // Num out channels
                 ::testing::Values(ov::op::PadType::SAME_UPPER)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 64, 72, 72, 72})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1821,14 +1802,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1})), // dilations
                 ::testing::Values(1), // Num out channels
                 ::testing::Values(ov::op::PadType::VALID)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 128, 128})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 
@@ -1849,14 +1830,14 @@ INSTANTIATE_TEST_CASE_P(
                 ::testing::Values(std::vector<size_t>({1, 1, 1})), // dilations
                 ::testing::Values(1), // Num out channels
                 ::testing::Values(ov::op::PadType::VALID)), // Padding type
-            ::testing::ValuesIn(std::vector<InferenceEngine::Precision>{InferenceEngine::Precision::FP32, InferenceEngine::Precision::FP16}), // Net precisions
+            ::testing::ValuesIn(netPrecisions), // Net precisions
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Input precision
             ::testing::Values(InferenceEngine::Precision::UNSPECIFIED), // Output precision
             ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
             ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
             ::testing::Values(std::vector<size_t>({1, 16, 144, 144, 144})), // Input shape
             ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-        ::testing::ValuesIn(std::vector<ngraph::helpers::ActivationTypes>{ngraph::helpers::ActivationTypes::None,ngraph::helpers::ActivationTypes::Relu})),
+        ::testing::ValuesIn(netActivations)),
     ConvolutionBiasAddActivationThresholdLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}

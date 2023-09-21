@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include "openvino/op/mod.hpp"
-
 #include "elementwise_binary.hpp"
 #include "kernels/mod.hpp"
+#include "openvino/op/mod.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

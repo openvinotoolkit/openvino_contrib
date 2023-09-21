@@ -10,7 +10,7 @@
 #include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <ngraph/node.hpp>
 #include <openvino/op/range.hpp>
 #include <ops/parameter.hpp>
@@ -251,13 +251,18 @@ MATCHER_P(FloatNearPointwise, tol, "Out of range") {
 TEST_P(CudaRangeLayerTest, CompareWithRefs) {
     ASSERT_TRUE(outputSize > 0);
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::EagerTopologyRunner graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
     std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler, cudaGraphContext};
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     CudaRangeLayerTest::upload(stream, startParamAlloc, &start, start_type, 1);
     CudaRangeLayerTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);

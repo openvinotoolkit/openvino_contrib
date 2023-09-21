@@ -27,7 +27,12 @@ static constexpr Property<bool, PropertyMutability::RW> operation_benchmark{"NVI
 /**
  * @brief Specifies if NVIDIA plugin attempts to use CUDA Graph feature to speed up sequential network inferences
  */
-static constexpr ov::Property<bool, ov::PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
+static constexpr Property<bool, PropertyMutability::RW> use_cuda_graph{"NVIDIA_USE_CUDA_GRAPH"};
+
+/**
+ * @brief Read-only property showing number of used CUDA Graphs
+ */
+static constexpr Property<size_t, PropertyMutability::RO> number_of_cuda_graphs{"NVIDIA_NUMBER_OF_CUDA_GRAPHS"};
 
 }  // namespace nvidia_gpu
 }  // namespace ov

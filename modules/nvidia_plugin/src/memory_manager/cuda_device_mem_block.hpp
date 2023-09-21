@@ -1,17 +1,19 @@
-// Copyright (C) 2018-2020 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <cuda_graph_context.hpp>
 #include <cuda/runtime.hpp>
+#include <cuda_graph_context.hpp>
 #include <gsl/pointers>
 
 #include "memory_manager/model/cuda_memory_model.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
+
+class CudaGraphContext;
 
 /**
  * @brief Allocates and owns continuous memory blob on CUDA device.
@@ -23,7 +25,7 @@ public:
     using Ptr = std::shared_ptr<DeviceMemBlock>;
 
     /**
-     * @throws InferenceEngineException if device memory block allocation
+     * @throws ov::Exception if device memory block allocation
      * failed.
      */
     DeviceMemBlock(MemoryModel::Ptr model);
@@ -54,9 +56,7 @@ public:
 
     MemoryModel::Ptr memoryModel() const { return model_; }
 
-    CudaGraphContext& cudaGraphContext() {
-        return cuda_graph_context_;
-    }
+    CudaGraphContext& cudaGraphContext() { return cuda_graph_context_; }
 
 private:
     MemoryModel::Ptr model_;

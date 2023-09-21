@@ -4,10 +4,9 @@
 
 #pragma once
 
+#include "cuda_infer_request.hpp"
 #include "openvino/runtime/iasync_infer_request.hpp"
 #include "openvino/runtime/iinfer_request.hpp"
-
-#include "cuda_infer_request.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

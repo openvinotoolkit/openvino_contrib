@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include "openvino/op/fake_quantize.hpp"
 #include "components/numpy_broadcast_params.h"
 #include "cuda_operation_base.hpp"
 #include "kernels/fake_quantize.hpp"
+#include "openvino/op/fake_quantize.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

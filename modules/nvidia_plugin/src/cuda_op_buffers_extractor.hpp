@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "memory_manager/cuda_workbuffers.hpp"
+#include "openvino/core/node.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -36,7 +37,7 @@ public:
      * Nodes are ordered in their execution order.
      * @param [in] is_stable_params Makes input parameters alive for whole graph's life time
      * @param [in] is_stable_results Makes output results alive for till end of the graph's life time
-     * @throws InferenceEngineException if the given subgraph is bad formed
+     * @throws ov::Exception if the given subgraph is bad formed
      */
     OperationBuffersExtractor(gsl::span<const NodePtr> ordered_nodes,
                               bool is_stable_params = false,
@@ -61,7 +62,7 @@ public:
      * @param buffer_id Identifier of a buffer.
      * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Lifespan start of the given buffer
-     * @throws InferenceEngine::details::InferenceEngineException
+     * @throws ov::Exception
      * if buffer with the provided index doesn't exist
      */
     int mutableBufferLifespanStart(BufferID buffer_id) const;
@@ -71,7 +72,7 @@ public:
      * @param buffer_id Identifier of a buffer.
      * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Lifespan end of the given buffer
-     * @throws InferenceEngine::details::InferenceEngineException
+     * @throws ov::Exception
      * if buffer with the provided index doesn't exist
      */
     int mutableBufferLifespanEnd(BufferID buffer_id) const;
@@ -81,7 +82,7 @@ public:
      * @param buffer_id Identifier of a buffer.
      * Can be obtained via InputBufferIds or OutputBufferIds
      * @returns Size of the given buffer
-     * @throws InferenceEngine::details::InferenceEngineException
+     * @throws ov::Exception
      * if buffer with the provided index doesn't exist
      */
     std::size_t mutableBufferSize(BufferID buffer_id) const;
@@ -90,7 +91,7 @@ public:
      * Provides mutable buffer content
      * @param buffer_id Identifier of a buffer.
      * @returns mutable buffer content
-     * @throws InferenceEngine::details::InferenceEngineException
+     * @throws ov::Exception
      * if buffer with the provided index doesn't exist
      */
     gsl::span<const Byte> immutableBuffer(BufferID buffer_id) const;
@@ -149,7 +150,7 @@ public:
      */
     template <typename TNode>
     static std::size_t GetTensorByteSize(const TNode& node) {
-        return node.get_element_type().size() * shape_size(node.get_shape());
+        return node.get_element_type().size() * std::max(std::size_t(1), shape_size(node.get_shape()));
     }
 
     /**

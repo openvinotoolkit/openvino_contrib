@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_iexecution_delegator.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
@@ -31,8 +31,14 @@ SubGraph::SubGraph(const CreationContext& context,
 
 SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
     : OperationBase(context, nullptr), model_{model} {
-    initExecuteSequence(context, false, false);
+      initExecuteSequence(context, false, false);
 }
+
+SubGraph::SubGraph(const CreationContext& context,
+                   const std::shared_ptr<const ov::Model>& model,
+                   ExecSequence&& sequence,
+                   std::shared_ptr<MemoryManager> memoryManager)
+    : OperationBase{context, nullptr}, model_{model}, exec_sequence_{sequence}, memory_manager_{memoryManager} {}
 
 void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
@@ -116,7 +122,7 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     result.reserve(ids.immutableIds.size());
     for (const auto immutable_id : ids.immutableIds) {
         void* ptr = memory_manager_->immutableWorkbuffers().deviceBufferPtr(immutable_id);
-        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
+        OPENVINO_ASSERT(ptr != nullptr, "Workbuffer not found. ID is " + std::to_string(immutable_id));
         result.emplace_back(ptr);
     }
     return result;
@@ -128,15 +134,9 @@ void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    for (auto& op : profiler.create_exec_sequence(this)) {
-        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->capture(context, inputTensors, outputTensors, workBuffers);
-    }
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.capture_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
@@ -149,24 +149,22 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.set_stream(stream);
-    for (auto& op : profiler.create_exec_sequence(this)) {
-        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->execute(context, inputTensors, outputTensors, workBuffers);
-    }
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 bool SubGraph::IsCudaGraphCompatible() const {
-    for (const auto& op : exec_sequence_) {
-        if (!op->IsCudaGraphCompatible()) {
-            return false;
+    if (is_cuda_graph_compatible_ == CompatibleState::NOT_INITIALIZED) {
+        is_cuda_graph_compatible_ = CompatibleState::COMPATIBLE;
+        for (const auto& op : exec_sequence_) {
+            if (!op->IsCudaGraphCompatible()) {
+                is_cuda_graph_compatible_ = CompatibleState::NOT_COMPATIBLE;
+                break;
+            }
         }
     }
-    return true;
+    return is_cuda_graph_compatible_ == CompatibleState::COMPATIBLE;
 }
 
 }  // namespace nvidia_gpu

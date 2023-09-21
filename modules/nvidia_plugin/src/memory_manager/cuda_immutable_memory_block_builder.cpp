@@ -4,13 +4,13 @@
 
 #include "cuda_immutable_memory_block_builder.hpp"
 
-#include <details/ie_exception.hpp>
+#include "openvino/core/except.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
 void ImmutableMemoryBlockBuilder::addAllocation(BufferID id, const void* data, size_t bsize) {
-    IE_ASSERT(data != nullptr);
+    OPENVINO_ASSERT(data != nullptr);
     model_builder_.addAllocation(id, bsize);
     allocations_.emplace_back(AllocRecord{id, data, bsize});
 }
@@ -22,7 +22,7 @@ std::pair<DeviceMemBlock::Ptr, MemoryModel::Ptr> ImmutableMemoryBlockBuilder::bu
     auto memory_block = std::make_shared<DeviceMemBlock>(memory_model);
     for (const auto& allocation : allocations_) {
         void* device_ptr = memory_block->deviceBufferPtr(allocation.id);
-        IE_ASSERT(device_ptr != nullptr);
+        OPENVINO_ASSERT(device_ptr != nullptr);
         throwIfError(::cudaMemcpy(device_ptr, allocation.data, allocation.bsize, cudaMemcpyHostToDevice));
     }
     return {memory_block, memory_model};

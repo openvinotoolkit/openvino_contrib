@@ -112,10 +112,6 @@ bool fuse_transpose_with_matmul(Matcher &m) {
     newMatMul->set_friendly_name(matmul->get_friendly_name());
 
     ov::copy_runtime_info({transpose, matmul}, newMatMul);
-
-    const std::string originalLayers = transpose->get_friendly_name() + "," + matmul->get_friendly_name();
-    newMatMul->get_rt_info()[ExecGraphInfoSerialization::ORIGINAL_NAMES] = originalLayers;
-
     ov::replace_node(matmul, newMatMul);
 
     return true;

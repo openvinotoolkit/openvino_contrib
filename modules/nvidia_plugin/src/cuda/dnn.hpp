@@ -241,6 +241,39 @@ public:
     }
 };
 
+class DnnReduceMulDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMulDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MUL,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnReduceMinDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMinDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MIN,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnReduceMaxDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMaxDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MAX,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
 class DnnReduceAvgDescriptor : public DnnReduceTensorDescriptor {
 public:
     explicit DnnReduceAvgDescriptor(cudnnDataType_t compType) {

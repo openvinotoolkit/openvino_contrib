@@ -2,24 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+#include "transformer/fuse_conv_biasadd_activation.hpp"
+
 #include <gtest/gtest.h>
 
 #include <tuple>
 
-#include "transformer/fuse_conv_biasadd_activation.hpp"
-#include "transformer/nodes/fused_convolution.hpp"
-#include "transformer/nodes/fused_convolution_backprop_data.hpp"
-
-#include "common_test_utils/ngraph_test_utils.hpp"
+#include "common_test_utils/ov_test_utils.hpp"
 #include "openvino/core/model.hpp"
 #include "openvino/opsets/opset10.hpp"
 #include "openvino/pass/manager.hpp"
 #include "transformations/init_node_info.hpp"
 #include "transformations/utils/utils.hpp"
+#include "transformer/nodes/fused_convolution.hpp"
+#include "transformer/nodes/fused_convolution_backprop_data.hpp"
 
+using ov::nvidia_gpu::nodes::FusedConvBackpropData;
 using ov::nvidia_gpu::nodes::FusedConvolution;
 using ov::nvidia_gpu::nodes::FusedGroupConvolution;
-using ov::nvidia_gpu::nodes::FusedConvBackpropData;
 using ActivationMode = ov::nvidia_gpu::nodes::ActivationMode;
 using namespace ov::opset10;
 
@@ -39,18 +39,15 @@ enum class ModelType {
     ConvBackpropAdd
 };
 
-const std::vector<ModelType> conv_model_types = {ModelType::ConvBias,
-    ModelType::ConvBiasAdd,
-    ModelType::ConvBiasConvBiasAdd,
-    ModelType::ConvBiasMulAdd};
-const std::vector<ActivationMode> conv_activation_types = {ActivationMode::NO_ACTIVATION,
-    ActivationMode::RELU,
-    ActivationMode::SIGMOID};
+const std::vector<ModelType> conv_model_types = {
+    ModelType::ConvBias, ModelType::ConvBiasAdd, ModelType::ConvBiasConvBiasAdd, ModelType::ConvBiasMulAdd};
+const std::vector<ActivationMode> conv_activation_types = {
+    ActivationMode::NO_ACTIVATION, ActivationMode::RELU, ActivationMode::SIGMOID};
 
 const std::vector<ModelType> group_conv_model_types = {ModelType::GroupConvBias,
-    ModelType::GroupConvBiasAdd,
-    ModelType::GroupConvBiasConvBiasAdd,
-    ModelType::GroupConvBiasMulAdd};
+                                                       ModelType::GroupConvBiasAdd,
+                                                       ModelType::GroupConvBiasConvBiasAdd,
+                                                       ModelType::GroupConvBiasMulAdd};
 const std::vector<ActivationMode> group_conv_activation_types = {ActivationMode::NO_ACTIVATION};
 
 const std::vector<ModelType> conv_backprop_model_types = {ModelType::ConvBackpropAdd};
@@ -69,29 +66,38 @@ struct ConvParams {
 };
 
 std::shared_ptr<ov::Model> createModel(const ModelType& model_type,
-                                         const ActivationMode& act_type,
-                                         const ConvParams& conv_params) {
+                                       const ActivationMode& act_type,
+                                       const ConvParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
 
-    auto add_conv = [&](const ov::Output<ov::Node>& output)  -> std::shared_ptr<Convolution> {
+    auto add_conv = [&](const ov::Output<ov::Node>& output) -> std::shared_ptr<Convolution> {
         return std::make_shared<Convolution>(output,
-            Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}), conv_params.stride,
-            conv_params.pads_begin, conv_params.pads_end, conv_params.dilation, conv_params.pad_type);
+                                             Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                             conv_params.stride,
+                                             conv_params.pads_begin,
+                                             conv_params.pads_end,
+                                             conv_params.dilation,
+                                             conv_params.pad_type);
     };
 
-    auto add_group_conv = [&](const ov::Output<ov::Node>& output)  -> std::shared_ptr<GroupConvolution> {
+    auto add_group_conv = [&](const ov::Output<ov::Node>& output) -> std::shared_ptr<GroupConvolution> {
         return std::make_shared<GroupConvolution>(output,
-            Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}), conv_params.stride,
-            conv_params.pads_begin, conv_params.pads_end, conv_params.dilation, conv_params.pad_type);
+                                                  Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                  conv_params.stride,
+                                                  conv_params.pads_begin,
+                                                  conv_params.pads_end,
+                                                  conv_params.dilation,
+                                                  conv_params.pad_type);
     };
 
-    auto add_bias = [&](const ov::Output<ov::Node>& output)  -> std::shared_ptr<Add> {
+    auto add_bias = [&](const ov::Output<ov::Node>& output) -> std::shared_ptr<Add> {
         return std::make_shared<Add>(output, Constant::create(ov::element::f32, conv_params.bias_shape, {1}));
     };
 
-    auto add_eltwise = [&](const ov::Output<ov::Node>& output, bool multiply = false)  -> std::shared_ptr<ov::Node> {
+    auto add_eltwise = [&](const ov::Output<ov::Node>& output, bool multiply = false) -> std::shared_ptr<ov::Node> {
         if (multiply) {
-            return std::make_shared<Multiply>(output, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
+            return std::make_shared<Multiply>(output,
+                                              Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
         } else {
             return std::make_shared<Add>(output, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
         }
@@ -135,7 +141,7 @@ std::shared_ptr<ov::Model> createModel(const ModelType& model_type,
         auto group_conv = add_group_conv(input_node);
         auto bias = add_bias(group_conv);
         last_op = add_act(bias);
-    }  else if (model_type == ModelType::GroupConvBiasAdd) {
+    } else if (model_type == ModelType::GroupConvBiasAdd) {
         auto group_conv = add_group_conv(input_node);
         auto bias = add_bias(group_conv);
         auto add = add_eltwise(bias);
@@ -156,84 +162,92 @@ std::shared_ptr<ov::Model> createModel(const ModelType& model_type,
         auto add = std::make_shared<Add>(last_op, bias2);
         last_op = add;
     }
-    return std::make_shared<ov::Model>(ov::ResultVector{std::make_shared<Result>(last_op)}, ov::ParameterVector{input_node});
+    return std::make_shared<ov::Model>(ov::ResultVector{std::make_shared<Result>(last_op)},
+                                       ov::ParameterVector{input_node});
 }
 
 template <typename TFusedConvolution>
 std::shared_ptr<ov::Model> createRefModel(const ModelType& model_type,
-                                             const ActivationMode& act_type,
-                                             const ConvParams& conv_params) {
+                                          const ActivationMode& act_type,
+                                          const ConvParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
     auto input_node = std::make_shared<Parameter>(ov::element::f32, conv_params.input_shape);
     if (model_type == ModelType::ConvBias || model_type == ModelType::GroupConvBias) {
-        auto fused_conv = std::make_shared<TFusedConvolution>(input_node,
-                                                              Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                              Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
-                                                              conv_params.stride,
-                                                              conv_params.pads_begin,
-                                                              conv_params.pads_end,
-                                                              conv_params.dilation,
-                                                              conv_params.pad_type,
-                                                              act_type);
+        auto fused_conv =
+            std::make_shared<TFusedConvolution>(input_node,
+                                                Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
+                                                conv_params.stride,
+                                                conv_params.pads_begin,
+                                                conv_params.pads_end,
+                                                conv_params.dilation,
+                                                conv_params.pad_type,
+                                                act_type);
         last_op = fused_conv;
     } else if (model_type == ModelType::ConvBiasAdd || model_type == ModelType::GroupConvBiasAdd) {
-        auto fused_conv = std::make_shared<TFusedConvolution>(input_node,
-                                                              Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                              Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
-                                                              Constant::create(ov::element::f32, conv_params.eltwise_shape, {2}),
-                                                              conv_params.stride,
-                                                              conv_params.pads_begin,
-                                                              conv_params.pads_end,
-                                                              conv_params.dilation,
-                                                              conv_params.pad_type,
-                                                              act_type);
+        auto fused_conv =
+            std::make_shared<TFusedConvolution>(input_node,
+                                                Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
+                                                Constant::create(ov::element::f32, conv_params.eltwise_shape, {2}),
+                                                conv_params.stride,
+                                                conv_params.pads_begin,
+                                                conv_params.pads_end,
+                                                conv_params.dilation,
+                                                conv_params.pad_type,
+                                                act_type);
         last_op = fused_conv;
     } else if (model_type == ModelType::ConvBiasConvBiasAdd || model_type == ModelType::GroupConvBiasConvBiasAdd) {
-        auto fused_conv = std::make_shared<TFusedConvolution>(input_node,
-                                                              Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                              Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
-                                                              conv_params.stride,
-                                                              conv_params.pads_begin,
-                                                              conv_params.pads_end,
-                                                              conv_params.dilation,
-                                                              conv_params.pad_type,
-                                                              act_type);
-        auto fused_conv2 = std::make_shared<TFusedConvolution>(fused_conv,
-                                                               Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                               Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
-                                                               fused_conv,
-                                                               conv_params.stride,
-                                                               conv_params.pads_begin,
-                                                               conv_params.pads_end,
-                                                               conv_params.dilation,
-                                                               conv_params.pad_type,
-                                                               act_type);
+        auto fused_conv =
+            std::make_shared<TFusedConvolution>(input_node,
+                                                Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
+                                                conv_params.stride,
+                                                conv_params.pads_begin,
+                                                conv_params.pads_end,
+                                                conv_params.dilation,
+                                                conv_params.pad_type,
+                                                act_type);
+        auto fused_conv2 =
+            std::make_shared<TFusedConvolution>(fused_conv,
+                                                Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
+                                                fused_conv,
+                                                conv_params.stride,
+                                                conv_params.pads_begin,
+                                                conv_params.pads_end,
+                                                conv_params.dilation,
+                                                conv_params.pad_type,
+                                                act_type);
         last_op = fused_conv2;
     } else if (model_type == ModelType::ConvBiasMulAdd || model_type == ModelType::GroupConvBiasMulAdd) {
-        auto fused_conv = std::make_shared<TFusedConvolution>(input_node,
-                                                              Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                              Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
-                                                              conv_params.stride,
-                                                              conv_params.pads_begin,
-                                                              conv_params.pads_end,
-                                                              conv_params.dilation,
-                                                              conv_params.pad_type,
-                                                              act_type);
-        auto mul = std::make_shared<Multiply>(fused_conv, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
+        auto fused_conv =
+            std::make_shared<TFusedConvolution>(input_node,
+                                                Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+                                                Constant::create(ov::element::f32, conv_params.bias_shape, {1}),
+                                                conv_params.stride,
+                                                conv_params.pads_begin,
+                                                conv_params.pads_end,
+                                                conv_params.dilation,
+                                                conv_params.pad_type,
+                                                act_type);
+        auto mul =
+            std::make_shared<Multiply>(fused_conv, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
         auto add = std::make_shared<Add>(fused_conv, mul);
         last_op = add;
     }
-    return std::make_shared<ov::Model>(ov::ResultVector{std::make_shared<Result>(last_op)}, ov::ParameterVector{input_node});
+    return std::make_shared<ov::Model>(ov::ResultVector{std::make_shared<Result>(last_op)},
+                                       ov::ParameterVector{input_node});
 }
-} // namespace
+}  // namespace
 
 // ---------------------------------------------------------------------------------------------------------------------
 
 template <typename TFusedConvolution>
-class FuseConvTestCommonFixture: public ::testing::WithParamInterface<std::tuple<ModelType      /* model type */,
-                                                                                 ActivationMode /* act type */,
-                                                                                 ConvParams     /* conv params */>>,
-                                 public TransformationTestsF {
+class FuseConvTestCommonFixture
+    : public ::testing::WithParamInterface<
+          std::tuple<ModelType /* model type */, ActivationMode /* act type */, ConvParams /* conv params */>>,
+      public TransformationTestsF {
 public:
     ModelType model_type;
     ActivationMode act_type;
@@ -241,20 +255,19 @@ public:
     void Execute() {
         ConvParams conv_params;
         std::tie(model_type, act_type, conv_params) = this->GetParam();
-        {
-            model = createModel(model_type, act_type, conv_params);
-        }
+        { model = createModel(model_type, act_type, conv_params); }
 
         {
-            model_ref = (conv_params.bias_shape == conv_params.eltwise_shape) ? model->clone() :
-                            createRefModel<TFusedConvolution>(model_type, act_type, conv_params);
+            model_ref = (conv_params.bias_shape == conv_params.eltwise_shape)
+                            ? model->clone()
+                            : createRefModel<TFusedConvolution>(model_type, act_type, conv_params);
         }
         manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
         manager.run_passes(model);
     }
-    static std::string getTestCaseName(testing::TestParamInfo<std::tuple<ModelType      /* model type */,
-                                                                         ActivationMode /* act type */,
-                                                                         ConvParams     /* conv params */>> obj) {
+    static std::string getTestCaseName(
+        testing::TestParamInfo<
+            std::tuple<ModelType /* model type */, ActivationMode /* act type */, ConvParams /* conv params */>> obj) {
         const ModelType model_type = std::get<0>(obj.param);
         const ActivationMode act_type = std::get<1>(obj.param);
         const ConvParams conv_params = std::get<2>(obj.param);
@@ -297,59 +310,76 @@ public:
 
 using FuseConvTestFixture = FuseConvTestCommonFixture<FusedConvolution>;
 
-TEST_P(FuseConvTestFixture, CompareFunctions) {
-    Execute();
-}
+TEST_P(FuseConvTestFixture, CompareFunctions) { Execute(); }
 
 INSTANTIATE_TEST_SUITE_P(FuseConvTestSuite,
                          FuseConvTestFixture,
-                         ::testing::Combine(
-                            ::testing::ValuesIn(conv_model_types),
-                            ::testing::ValuesIn(conv_activation_types),
-                            ::testing::ValuesIn(std::vector<ConvParams>{{ov::Shape{1, 3, 64, 64}, ov::Shape{3, 3, 1, 1},
-                                                ov::Shape{1, 3, 1, 1}, ov::Shape{1, 3, 64, 64},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO},
-                                                {ov::Shape{1, 3, 64, 64}, ov::Shape{3, 3, 1, 1},
-                                                ov::Shape{1, 3, 64, 64}, ov::Shape{1, 3, 64, 64},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO},
-                                                {ov::Shape{8, 3, 64, 64}, ov::Shape{3, 3, 1, 1},
-                                                ov::Shape{1, 3, 1, 1}, ov::Shape{8, 3, 64, 64},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO}})),
+                         ::testing::Combine(::testing::ValuesIn(conv_model_types),
+                                            ::testing::ValuesIn(conv_activation_types),
+                                            ::testing::ValuesIn(std::vector<ConvParams>{{ov::Shape{1, 3, 64, 64},
+                                                                                         ov::Shape{3, 3, 1, 1},
+                                                                                         ov::Shape{1, 3, 1, 1},
+                                                                                         ov::Shape{1, 3, 64, 64},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO},
+                                                                                        {ov::Shape{1, 3, 64, 64},
+                                                                                         ov::Shape{3, 3, 1, 1},
+                                                                                         ov::Shape{1, 3, 64, 64},
+                                                                                         ov::Shape{1, 3, 64, 64},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO},
+                                                                                        {ov::Shape{8, 3, 64, 64},
+                                                                                         ov::Shape{3, 3, 1, 1},
+                                                                                         ov::Shape{1, 3, 1, 1},
+                                                                                         ov::Shape{8, 3, 64, 64},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO}})),
                          FuseConvTestFixture::getTestCaseName);
 
 using FuseGroupConvTestFixture = FuseConvTestCommonFixture<FusedGroupConvolution>;
 
-TEST_P(FuseGroupConvTestFixture, CompareFunctions) {
-    Execute();
-}
+TEST_P(FuseGroupConvTestFixture, CompareFunctions) { Execute(); }
 
 INSTANTIATE_TEST_SUITE_P(FuseConvTestSuite,
                          FuseGroupConvTestFixture,
-                         ::testing::Combine(
-                            ::testing::ValuesIn(group_conv_model_types),
-                            ::testing::ValuesIn(group_conv_activation_types),
-                            ::testing::ValuesIn(std::vector<ConvParams>{{ov::Shape{1, 32, 112, 112}, ov::Shape{32, 1, 1, 3, 3},
-                                                ov::Shape{1, 32, 1, 1}, ov::Shape{1, 32, 112, 112},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO},
-                                                {ov::Shape{1, 32, 112, 112}, ov::Shape{32, 1, 1, 3, 3},
-                                                ov::Shape{1, 32, 112, 112}, ov::Shape{1, 32, 112, 112},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO},
-                                                {ov::Shape{8, 32, 112, 112}, ov::Shape{32, 1, 1, 3, 3},
-                                                ov::Shape{1, 32, 1, 1}, ov::Shape{8, 32, 112, 112},
-                                                ov::Strides{1, 1}, ov::Strides{1, 1},
-                                                ov::CoordinateDiff{0, 0}, ov::CoordinateDiff{0, 0},
-                                                ov::op::PadType::AUTO}
-                                                })),
+                         ::testing::Combine(::testing::ValuesIn(group_conv_model_types),
+                                            ::testing::ValuesIn(group_conv_activation_types),
+                                            ::testing::ValuesIn(std::vector<ConvParams>{{ov::Shape{1, 32, 112, 112},
+                                                                                         ov::Shape{32, 1, 1, 3, 3},
+                                                                                         ov::Shape{1, 32, 1, 1},
+                                                                                         ov::Shape{1, 32, 112, 112},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO},
+                                                                                        {ov::Shape{1, 32, 112, 112},
+                                                                                         ov::Shape{32, 1, 1, 3, 3},
+                                                                                         ov::Shape{1, 32, 112, 112},
+                                                                                         ov::Shape{1, 32, 112, 112},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO},
+                                                                                        {ov::Shape{8, 32, 112, 112},
+                                                                                         ov::Shape{32, 1, 1, 3, 3},
+                                                                                         ov::Shape{1, 32, 1, 1},
+                                                                                         ov::Shape{8, 32, 112, 112},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::Strides{1, 1},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::CoordinateDiff{0, 0},
+                                                                                         ov::op::PadType::AUTO}})),
                          FuseGroupConvTestFixture::getTestCaseName);
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -372,14 +402,20 @@ std::shared_ptr<Result> createModelBackprop(const ModelType& model_type,
                                             const ConvBackPropParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
 
-    auto add_conv_backprop = [&](const ov::Output<ov::Node>& output)  -> std::shared_ptr<ConvolutionBackpropData> {
-        return std::make_shared<ConvolutionBackpropData>(output,
-            Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}), conv_params.stride,
-            conv_params.pads_begin, conv_params.pads_end, conv_params.dilation, conv_params.pad_type, conv_params.output_pad);
+    auto add_conv_backprop = [&](const ov::Output<ov::Node>& output) -> std::shared_ptr<ConvolutionBackpropData> {
+        return std::make_shared<ConvolutionBackpropData>(
+            output,
+            Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+            conv_params.stride,
+            conv_params.pads_begin,
+            conv_params.pads_end,
+            conv_params.dilation,
+            conv_params.pad_type,
+            conv_params.output_pad);
     };
 
-    auto add_eltwise = [&](const ov::Output<ov::Node>& output)  -> std::shared_ptr<Add> {
-        return std::make_shared<Add>(output, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));;
+    auto add_eltwise = [&](const ov::Output<ov::Node>& output) -> std::shared_ptr<Add> {
+        return std::make_shared<Add>(output, Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}));
     };
 
     if (model_type == ModelType::ConvBackpropAdd) {
@@ -391,28 +427,29 @@ std::shared_ptr<Result> createModelBackprop(const ModelType& model_type,
 }
 
 std::shared_ptr<Result> createRefModelBackprop(const ModelType& model_type,
-                                                  const ov::Output<ov::Node>& input_node,
-                                                  const ConvBackPropParams& conv_params) {
+                                               const ov::Output<ov::Node>& input_node,
+                                               const ConvBackPropParams& conv_params) {
     std::shared_ptr<ov::Node> last_op = nullptr;
     if (model_type == ModelType::ConvBackpropAdd) {
-        auto fused_conv = std::make_shared<FusedConvBackpropData>(input_node,
-                                                                  Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
-                                                                  Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}),
-                                                                  conv_params.stride,
-                                                                  conv_params.pads_begin,
-                                                                  conv_params.pads_end,
-                                                                  conv_params.dilation,
-                                                                  conv_params.pad_type,
-                                                                  conv_params.output_pad);
+        auto fused_conv = std::make_shared<FusedConvBackpropData>(
+            input_node,
+            Constant::create(ov::element::f32, conv_params.filter_shape, {0.01}),
+            Constant::create(ov::element::f32, conv_params.eltwise_shape, {1}),
+            conv_params.stride,
+            conv_params.pads_begin,
+            conv_params.pads_end,
+            conv_params.dilation,
+            conv_params.pad_type,
+            conv_params.output_pad);
         last_op = fused_conv;
     }
     return std::make_shared<Result>(last_op);
 }
-} // namespace
+}  // namespace
 
-class FuseConvBackPropTestFixture: public ::testing::WithParamInterface<std::tuple<ModelType          /* model type */,
-                                                                                   ConvBackPropParams /* conv params */>>,
-                                   public TransformationTestsF {
+class FuseConvBackPropTestFixture : public ::testing::WithParamInterface<
+                                        std::tuple<ModelType /* model type */, ConvBackPropParams /* conv params */>>,
+                                    public TransformationTestsF {
 public:
     ModelType model_type;
 
@@ -433,8 +470,8 @@ public:
         manager.register_pass<ov::nvidia_gpu::pass::CudaConvolutionFusion>();
         manager.run_passes(model);
     }
-    static std::string getTestCaseName(testing::TestParamInfo<std::tuple<ModelType          /* model type */,
-                                                                         ConvBackPropParams /* conv params */>> obj) {
+    static std::string getTestCaseName(
+        testing::TestParamInfo<std::tuple<ModelType /* model type */, ConvBackPropParams /* conv params */>> obj) {
         const ModelType model_type = std::get<0>(obj.param);
         const ConvBackPropParams conv_params = std::get<1>(obj.param);
         std::ostringstream result;
@@ -451,18 +488,19 @@ public:
     }
 };
 
-TEST_P(FuseConvBackPropTestFixture, CompareFunctions) {
-    Execute();
-}
+TEST_P(FuseConvBackPropTestFixture, CompareFunctions) { Execute(); }
 
 INSTANTIATE_TEST_SUITE_P(FuseConvTestSuite,
                          FuseConvBackPropTestFixture,
-                         ::testing::Combine(
-                            ::testing::ValuesIn(conv_backprop_model_types),
-                            ::testing::Values(ConvBackPropParams{ov::Shape{1, 512, 32, 32}, ov::Shape{512, 256, 4, 4}, ov::Shape{1, 256, 64, 64},
-                                              ov::Strides{2, 2}, ov::Strides{1, 1},
-                                              ov::CoordinateDiff{1, 1}, ov::CoordinateDiff{1, 1},
-                                              ov::op::PadType::EXPLICIT,
-                                              ov::CoordinateDiff{0, 0}})),
+                         ::testing::Combine(::testing::ValuesIn(conv_backprop_model_types),
+                                            ::testing::Values(ConvBackPropParams{ov::Shape{1, 512, 32, 32},
+                                                                                 ov::Shape{512, 256, 4, 4},
+                                                                                 ov::Shape{1, 256, 64, 64},
+                                                                                 ov::Strides{2, 2},
+                                                                                 ov::Strides{1, 1},
+                                                                                 ov::CoordinateDiff{1, 1},
+                                                                                 ov::CoordinateDiff{1, 1},
+                                                                                 ov::op::PadType::EXPLICIT,
+                                                                                 ov::CoordinateDiff{0, 0}})),
                          FuseConvBackPropTestFixture::getTestCaseName);
-} // namespace testing
+}  // namespace testing

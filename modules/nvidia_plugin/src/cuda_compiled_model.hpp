@@ -4,18 +4,17 @@
 
 #pragma once
 
-#include "openvino/runtime/icompiled_model.hpp"
-#include "openvino/runtime/threading/itask_executor.hpp"
-
 #include "cuda_async_infer_request.hpp"
 #include "cuda_config.hpp"
-#include "cuda_eager_topology_runner.hpp"
 #include "cuda_infer_request.hpp"
+#include "cuda_itopology_runner.hpp"
 #include "cuda_op_buffers_extractor.hpp"
 #include "memory_manager/cuda_device_mem_block.hpp"
 #include "memory_manager/cuda_memory_manager.hpp"
 #include "memory_manager/cuda_memory_pool.hpp"
 #include "memory_manager/model/cuda_memory_model.hpp"
+#include "openvino/runtime/icompiled_model.hpp"
+#include "openvino/runtime/threading/itask_executor.hpp"
 #include "ops/subgraph.hpp"
 
 namespace ov {
@@ -78,6 +77,7 @@ private:
     std::shared_ptr<MemoryPool> memory_pool_;
     const bool loaded_from_cache_;
     bool use_cuda_graph_;
+    size_t number_of_cuda_graphs_;
 };
 
 }  // namespace nvidia_gpu

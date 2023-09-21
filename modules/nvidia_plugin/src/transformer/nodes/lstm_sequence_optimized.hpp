@@ -8,14 +8,16 @@
 
 namespace ov::nvidia_gpu::nodes {
 
-class LSTMSequenceOptimized : public ov::op::v5::LSTMSequence {
+class LSTMSequenceOptimized : public ov::op::util::RNNCellBase {
 public:
     enum MajorFormat { BatchMajor, SequenceMajor };
 
-    OPENVINO_OP("LSTMSequenceOptimized", "nvidia_gpu", ov::op::v5::LSTMSequence);
+    OPENVINO_OP("LSTMSequenceOptimized", "nvidia_gpu", ov::op::util::RNNCellBase);
 
     LSTMSequenceOptimized() = default;
     ~LSTMSequenceOptimized() = default;
+
+    size_t get_default_output_index() const override { return no_default_index(); }
 
     explicit LSTMSequenceOptimized(const ov::Output<Node>& X,
                                    const ov::Output<Node>& initial_hidden_state,
@@ -25,7 +27,7 @@ public:
                                    const ov::Output<Node>& R,
                                    const ov::Output<Node>& B,
                                    const std::int64_t hidden_size,
-                                   const direction lstm_direction,
+                                   const ov::op::RecurrentSequenceDirection lstm_direction,
                                    MajorFormat major_format,
                                    const std::vector<float>& activations_alpha = {},
                                    const std::vector<float>& activations_beta = {},
@@ -40,21 +42,29 @@ public:
 
     void validate_and_infer_types() override;
 
+    std::vector<float> get_activations_alpha() const { return m_activations_alpha; }
+    std::vector<float> get_activations_beta() const { return m_activations_beta; }
+    std::vector<std::string> get_activations() const { return m_activations; }
+    float get_clip_threshold() const { return m_clip; }
+    ov::op::RecurrentSequenceDirection get_direction() const { return m_direction; }
+    void set_direction(const ov::op::RecurrentSequenceDirection& dir) { m_direction = dir; }
+    std::size_t get_hidden_size() const { return m_hidden_size; }
+
 private:
+    ov::op::RecurrentSequenceDirection m_direction;
     MajorFormat m_major_format;
 };
 }  // namespace ov::nvidia_gpu::nodes
-
 
 namespace ov {
 template <>
 class AttributeAdapter<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>
     : public EnumAttributeAdapterBase<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat> {
 public:
-    AttributeAdapter(nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat& value): EnumAttributeAdapterBase<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(value) {}
+    AttributeAdapter(nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat& value)
+        : EnumAttributeAdapterBase<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(value) {}
 
     OPENVINO_RTTI("AttributeAdapter<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>");
 };
 
-
-} // namespace ov
+}  // namespace ov

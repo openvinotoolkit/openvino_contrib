@@ -82,21 +82,23 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
 }
 
 ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CreationContext& context,
-                                                         const ConvolutionParamsCuDnn& params)
+                                                         const ConvolutionParamsCuDnn& params,
+                                                         const std::vector<cudnnDataType_t> half_desc_types)
     : params_{params},
       tensor_element_type_{params_.ElementType()},
+      conv_desc_type_{params_.ElementType()},
       input_{params_.MakeInputDescriptor()},
       filter_{params_.MakeFilterDescriptor()},
       output_{params_.MakeOutputDescriptor()},
       conv_{},
-      algo_perf_{} {
+      algo_perf_{},
+      half_desc_types_{half_desc_types} {
     auto& dnnHandle = context.dnnHandle();
     if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle, params_);
     } else {
         GetAlgo(dnnHandle);
     }
-    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
 }
 
 void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle,
@@ -109,8 +111,8 @@ void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());
@@ -124,8 +126,12 @@ void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dn
 void ConvolutionDescriptorsCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (GetAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
@@ -153,6 +159,8 @@ bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& 
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
         dnnHandle.get(), input_.get(), filter_.get(), conv_.get(), output_.get(), algo_perf_.algo, &sizeInBytes));
@@ -164,8 +172,12 @@ bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& 
 void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
@@ -193,6 +205,8 @@ bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle&
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
         dnnHandle.get(), input_.get(), filter_.get(), conv_.get(), output_.get(), algo_perf_.algo, &sizeInBytes));
@@ -208,8 +222,12 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle,
                                            CUDA::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, tensor_element_type_)) return;
@@ -314,21 +332,24 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
 }
 
 ConvolutionBackpropDataDescriptorCuDnn::ConvolutionBackpropDataDescriptorCuDnn(
-    const CreationContext& context, const ConvolutionBackpropDataParamsCuDnn& params)
+    const CreationContext& context,
+    const ConvolutionBackpropDataParamsCuDnn& params,
+    const std::vector<cudnnDataType_t> half_desc_types)
     : params_{params},
       tensor_element_type_{params_.ElementType()},
+      conv_desc_type_{params_.ElementType()},
       filter_desc_{params_.MakeFilterDescriptor()},
       doutput_desc_{params_.MakeDOutputDescriptor()},
       dinput_desc_{params_.MakeDInputDescriptor()},
       conv_{},
-      algo_perf_{} {
+      algo_perf_{},
+      half_desc_types_{half_desc_types} {
     auto& dnnHandle = context.dnnHandle();
     if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle);
     } else {
         GetAlgo(dnnHandle);
     }
-    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
 }
 
 void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dnnHandle) {
@@ -340,8 +361,8 @@ void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::Dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());
@@ -355,8 +376,12 @@ void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::Dn
 void ConvolutionBackpropDataDescriptorCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (GetAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
@@ -384,6 +409,8 @@ bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionBackwardDataWorkspaceSize(dnnHandle.get(),
                                                                 filter_desc_.get(),
@@ -400,8 +427,12 @@ bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::
 void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
@@ -428,6 +459,8 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA:
     if ((status != CUDNN_STATUS_SUCCESS) || (algo_perf_.status != CUDNN_STATUS_SUCCESS) || (returnedAlgoCount <= 0)) {
         return false;
     }
+
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
 
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionBackwardDataWorkspaceSize(dnnHandle.get(),

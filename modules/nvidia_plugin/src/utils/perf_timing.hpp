@@ -16,9 +16,16 @@ namespace ov::nvidia_gpu::utils {
 class PerformaceTiming {
 public:
     PerformaceTiming() = default;
-    PerformaceTiming(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default) : start_{CUDA::Event{}} { start_->record(stream, mode); }
-    void setStart(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default) { start_.emplace(CUDA::Event{}.record(stream, mode)); }
-    void setStop(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default) { stop_.emplace(CUDA::Event{}.record(stream, mode)); }
+    PerformaceTiming(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default)
+        : start_{CUDA::Event{}} {
+        start_->record(stream, mode);
+    }
+    void setStart(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default) {
+        start_.emplace(CUDA::Event{}.record(stream, mode));
+    }
+    void setStop(const CUDA::Stream& stream, CUDA::Event::RecordMode mode = CUDA::Event::RecordMode::Default) {
+        stop_.emplace(CUDA::Event{}.record(stream, mode));
+    }
     float measure() {
         if (start_.has_value() && stop_.has_value()) {
             auto elapsed = stop_->elapsedSince(*start_);

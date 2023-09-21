@@ -12,7 +12,7 @@ namespace kernel {
 
 class Comparison {
 public:
-    enum class Op_t { GREATER, LESS };
+    enum class Op_t { GREATER, LESS, EQUAL, GREATER_EQUAL, LESS_EQUAL, NOT_EQUAL };
 
     Comparison(Op_t op, Type_t element_type, size_t max_size, size_t num_blocks, size_t threads_per_block);
     Comparison(Comparison&&) = default;
