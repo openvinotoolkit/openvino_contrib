@@ -22,7 +22,18 @@ JNIEXPORT jobject JNICALL Java_org_intel_openvino_Any_asList(JNIEnv *env, jobjec
         Any *obj = (Any *)addr;
 
         if (obj->is<std::vector<ov::PropertyName>>()) {
-            return vectorToJavaList(env, obj->as<std::vector<ov::PropertyName>>());
+            jclass arrayClass = env->FindClass("java/util/ArrayList");
+            jmethodID arrayInit = env->GetMethodID(arrayClass, "<init>", "()V");
+            jobject arrayObj = env->NewObject(arrayClass, arrayInit);
+            jmethodID arrayAdd = env->GetMethodID(arrayClass, "add", "(Ljava/lang/Object;)Z");
+
+            for (const auto& it : obj->as<std::vector<ov::PropertyName>>()) {
+                std::string property_name = it;
+                jstring string = env->NewStringUTF(property_name.c_str());
+                env->CallObjectMethod(arrayObj, arrayAdd, string);
+            }
+
+            return arrayObj;
         }
         return vectorToJavaList(env, obj->as<std::vector<std::string>>());
     )
