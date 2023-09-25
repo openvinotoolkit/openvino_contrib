@@ -35,7 +35,7 @@ ov_add_test_target(
             gtest
             gtest_main
             gmock
-            ngraphFunctions
+            ov_models
             commonTestUtils
         ADD_CPPLINT
         ADD_CLANG_FORMAT

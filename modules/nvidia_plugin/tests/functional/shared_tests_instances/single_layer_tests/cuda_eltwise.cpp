@@ -20,8 +20,8 @@
 #include <ngraph/op/parameter.hpp>
 #include <ngraph/type/bfloat16.hpp>
 #include <ngraph/type/float16.hpp>
-#include <ngraph_functions/builders.hpp>
-#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <ov_models/builders.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <sstream>
 #include <vector>
 
