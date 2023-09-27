@@ -6,7 +6,7 @@ import sys
 import logging
 from typing import Any, Tuple, Union, Optional, Sequence
 
-from openvino.runtime.exceptions import OVTypeError, UserInputError
+from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime import Model
 
 
@@ -18,7 +18,7 @@ def convert_tokenizer(
 ) -> Union[Model, Tuple[Model, Model]]:
     if "transformers" in sys.modules:
         from transformers import PreTrainedTokenizerBase
-        from hf_parser import TransformersTokenizerPipelineParser
+        from .hf_parser import TransformersTokenizerPipelineParser
 
         # TODO: Remove this check
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):

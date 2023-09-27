@@ -3,12 +3,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import tempfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional, Dict, Callable, Union, List
 
+import numpy as np
+import openvino.runtime.opset12 as opset
 from openvino.runtime.exceptions import OVTypeError
-from tokenizer_pipeline import (
+from openvino.runtime import op, Type, Model, PartialShape
+from openvino.runtime.utils.types import make_constant_node, as_node
+
+from .tokenizer_pipeline import (
     TokenizerPipeline,
     NormalizationStep,
     NormalizeUnicode,
@@ -30,6 +36,7 @@ from tokenizer_pipeline import (
     CharsToBytesStep,
     RegexDecodingStep,
 )
+from .node_factory import factory
 
 
 def parse_replace_normalizer(normalizer_dict: Dict[str, Any]) -> RegexNormalizationStep:
@@ -83,7 +90,8 @@ def parse_byte_level_pretokenization_step(
     # regex is used by default, but it does not appear in config yet
     if pretokenizer_dict.get("use_regex", True):
         # re2 does not support negative lookahead, so there is two steps replicate the behaviour
-        steps.append(RegexSplitStep.add_whitespace_to_the_next_word())
+        # this WA causes segfault for CLIP tokenizer
+        # steps.append(RegexSplitStep.add_whitespace_to_the_next_word())
         steps.append(RegexSplitStep.byte_level_splitter())
 
     steps.append(BytesToCharsStep())
@@ -249,3 +257,82 @@ class TransformersTokenizerPipelineParser:
         if self.original_tokenizer.clean_up_tokenization_spaces:
             self.pipeline.add_steps(RegexDecodingStep.clean_up_tokenization_spaces())
         return
+
+
+def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizer"):
+    return hf_tokenizer.vocab_files_names.get("vocab_file", "").endswith(".model")
+
+
+def convert_sentencepiece_model_tokenizer(
+    hf_tokenizer: "PreTrainedTokenizer", add_attention_mask: bool = True
+) -> Model:
+    if not is_sentencepiece_model(hf_tokenizer):
+        raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
+
+    fairseq_offset = getattr(hf_tokenizer, "fairseq_offset", None)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        hf_tokenizer.save_pretrained(tmp)
+        sp_model = np.fromfile(Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"], dtype=np.uint8)
+
+        if hf_tokenizer.is_fast:
+            hf_slow_tokenizer = hf_tokenizer.slow_tokenizer_class.from_pretrained(tmp)
+            fairseq_offset = getattr(hf_slow_tokenizer, "fairseq_offset", None)
+
+    input_node = op.Parameter(Type.u8, PartialShape(["?"]))
+    input_node.set_friendly_name("string_input")
+
+    if hasattr(hf_tokenizer, "add_eos_token"):
+        add_eos_token = hf_tokenizer.add_eos_token
+    else:
+        add_eos_token = (
+            getattr(hf_tokenizer, "truncation_side", "") == "right"
+            or getattr(hf_tokenizer, "padding_side", "") == "right"
+        )
+    if hasattr(hf_tokenizer, "add_bos_token"):
+        add_bos_token = hf_tokenizer.add_bos_token
+    else:
+        add_bos_token = add_eos_token
+
+    tokenizer_node = factory.create(
+        "SentencepieceTokenizer",
+        [as_node(sp_model), input_node],
+        {
+            "add_bos": add_bos_token,
+            "add_eos": add_eos_token,
+            "reverse": False,
+            "alpha": 0.0,
+        },
+    )
+
+    indices, values, dense_shape = tokenizer_node.outputs()
+
+    if fairseq_offset:
+        values = opset.add(values, make_constant_node(fairseq_offset, values.element_type)).output(0)
+
+    default_value = make_constant_node(hf_tokenizer.pad_token_id or 0, values.element_type)
+    broadcast = opset.broadcast(default_value, dense_shape)
+    scatternd_input_ids = factory.create(
+        "ScatterNDUpdate",
+        [broadcast, indices, values],  # FIXME: pad left side instead of right
+    )
+    scatternd_input_ids.output(0).tensor.add_names({"input_ids"})
+
+    outputs = scatternd_input_ids.outputs()
+
+    if add_attention_mask:
+        attention_mask = factory.create(
+            "ScatterNDUpdate",
+            [
+                broadcast,
+                indices,
+                opset.broadcast(
+                    make_constant_node(1, values.element_type),
+                    opset.shape_of(values),
+                ),
+            ],
+        )
+        attention_mask.output(0).tensor.add_names({"attention_mask"})
+        outputs.append(attention_mask.output(0))
+
+    return Model(outputs, [input_node], "sp_tokenizer_encoder")

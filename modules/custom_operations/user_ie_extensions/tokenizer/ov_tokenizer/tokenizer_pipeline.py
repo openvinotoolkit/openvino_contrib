@@ -10,15 +10,11 @@ import weakref
 import numpy as np
 
 from openvino.runtime.exceptions import UserInputError, OVTypeError
-from openvino.runtime import Type, PartialShape, op, Model, Output, opset10
-from openvino.runtime.utils.node_factory import NodeFactory
+from openvino.runtime import Type, PartialShape, op, Model, Output, opset10 as opset
 from openvino.runtime.utils.types import as_node, make_constant_node
 
-from str_pack import pack_string, pack_strings
-
-factory = NodeFactory()
-# TODO: Use relative path
-factory.add_extension("/home/apaniuko/python/openvino/bin/intel64/Release/libuser_ov_extensions.so")
+from .str_pack import pack_string, pack_strings
+from .node_factory import factory
 
 
 class BasePipelineStep:
@@ -398,13 +394,13 @@ class TruncationStep(PostTokenizationStep):
         # TODO: Check if axis is the right-most dimension
         self.validate_inputs(input_nodes)
 
-        max_length = opset10.minimum(
-            opset10.subtract(input_nodes[1], input_nodes[0]),
+        max_length = opset.minimum(
+            opset.subtract(input_nodes[1], input_nodes[0]),
             make_constant_node(self.max_length, Type.i32),
         )
         return [
             input_nodes[0],
-            opset10.add(input_nodes[0], max_length).output(0),
+            opset.add(input_nodes[0], max_length).output(0),
             input_nodes[2],
         ]
 
@@ -586,8 +582,8 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
 
         if self.max_length == -1 or self.max_length >= 2**31:
             # Calculate max_length as the maximum ragged length
-            max_length = opset10.reduce_max(
-                opset10.subtract(input_nodes[1], input_nodes[0]),
+            max_length = opset.reduce_max(
+                opset.subtract(input_nodes[1], input_nodes[0]),
                 make_constant_node(0, Type.i32),
             )
         else:
@@ -603,7 +599,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
 
             outputs.append(cur_outputs[0])
             if i == 0:
-                mask = opset10.convert(cur_outputs[1], "i32").output(
+                mask = opset.convert(cur_outputs[1], "i32").output(
                     0
                 )  # TODO: Change RaggedToDense to generate mask of any type
 
@@ -694,7 +690,7 @@ class TokenizerPipeline:
                 input_node = step.get_ov_subgraph(input_node)
             input_node = self.add_ragged_dimention(input_node)
 
-            for step in chain(self.pretokenization_steps, self.tokenization_steps):
+            for step in chain(self.pre_tokenization_steps, self.tokenization_steps):
                 input_node = step.get_ov_subgraph(input_node)
 
             processing_outputs.extend(input_node)
@@ -709,7 +705,7 @@ class TokenizerPipeline:
         return [step for step in self.steps if isinstance(step, NormalizationStep)]
 
     @property
-    def pretokenization_steps(self) -> List[PreTokenizatinStep]:
+    def pre_tokenization_steps(self) -> List[PreTokenizatinStep]:
         return [step for step in self.steps if isinstance(step, PreTokenizatinStep)]
 
     @property
@@ -731,17 +727,17 @@ class TokenizerPipeline:
         return op.Parameter(input_type, PartialShape(["?", "?", "?"]))
 
     def add_ragged_dimention(self, input_node):
-        shape = opset10.shape_of(input_node[0])
-        batch_size = opset10.gather(shape, as_node(0), as_node(0))
+        shape = opset.shape_of(input_node[0])
+        batch_size = opset.gather(shape, as_node(0), as_node(0))
         # FIXME: Cannot create range with specific data type from python
-        ragged_begins = opset10.convert(
-            opset10.range(as_node(0), batch_size, as_node(1)),
+        ragged_begins = opset.convert(
+            opset.range(as_node(0), batch_size, as_node(1)),
             "i32",
         ).outputs()
-        ragged_ends = opset10.convert(
-            opset10.range(
+        ragged_ends = opset.convert(
+            opset.range(
                 as_node(1),
-                opset10.add(batch_size, as_node(1)),
+                opset.add(batch_size, as_node(1)),
                 as_node(1),
             ),
             "i32",
@@ -756,7 +752,7 @@ class TokenizerPipeline:
         return factory.create("StringTensorPack", input_nodes).outputs()
 
     def get_greedy_decoding_ov_subgraph(self, input_node: op.Parameter) -> List[Output]:
-        argmax = opset10.topk(
+        argmax = opset.topk(
             data=input_node,
             k=1,
             axis=-1,
@@ -764,7 +760,7 @@ class TokenizerPipeline:
             sort="none",
             name="ArgMax",
         )
-        return opset10.squeeze(
+        return opset.squeeze(
             data=argmax.output(1),
             axes=-1,
         ).outputs()

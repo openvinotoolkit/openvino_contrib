@@ -13,6 +13,7 @@
 #include "utils.hpp"
 
 using sentencepiece::SentencePieceProcessor;
+using sentencepiece::util::Status;
 using namespace TemplateExtension;
 using namespace ov;
 using namespace ov::frontend;
@@ -54,9 +55,37 @@ SentencepieceTokenizer::SentencepieceTokenizer(const OutputVector& args, int32_t
 }
 
 SentencepieceTokenizer::SentencepieceTokenizer(const OutputVector& args, const std::shared_ptr<sentencepiece::SentencePieceProcessor>& sp,
-    int32_t nbest_size, float alpha, bool add_bos, bool add_eos, bool reverse) : m_sp(sp),
+    int32_t nbest_size, float alpha, bool add_bos, bool add_eos, bool reverse) :
+    m_sp((sp == nullptr) ? std::make_shared<SentencePieceProcessor>(): sp),
     m_nbest_size(nbest_size), m_alpha(alpha), m_add_bos(add_bos), m_add_eos(add_eos),
     m_reverse(reverse), Op(args) {
+    // constructor above without sp argument never called when the node is created with python factory, so need to init and cache m_sp here
+    if (!m_sp->status().ok()) {
+        auto sp_model_const = as_type_ptr<Constant>(args[0].get_node_shared_ptr());
+        FRONT_END_GENERAL_CHECK(sp_model_const, "SentencepieceTokenizer expects SentencePiece model to be constant.");
+        auto spm_model = static_cast<const char*>(sp_model_const->get_data_ptr());
+        auto spm_model_size = sp_model_const->get_byte_size();
+
+        // configure SentencePieceProcessor
+        std::string model_proto(spm_model, spm_model_size);
+        CHECK_OK(m_sp->LoadFromSerializedProto(model_proto));
+
+        // form extra options to configure SentencePieceProcessor
+        std::string extra_options = "";
+        if (m_add_bos) {
+            extra_options += "bos";
+        }
+        if (m_add_eos) {
+            extra_options = extra_options.empty() ? extra_options : extra_options + ":";
+            extra_options += "eos";
+        }
+        if (m_reverse) {
+            extra_options = extra_options.empty() ? extra_options : extra_options + ":";
+            extra_options += "reverse";
+        }
+        // example of extra_options, if "bos:eos:reverse"
+        CHECK_OK(m_sp->SetEncodeExtraOptions(extra_options));
+    };
     constructor_validate_and_infer_types();
 }
 
@@ -164,17 +193,13 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
 #endif
 
 #endif
-    //std::cerr << "    Batch size: " << batch_size << "\n";
-
     size_t max_token_id = 0;
     for (size_t batch_ind = 0; batch_ind < batch_size; ++batch_ind) {
 #if USE_STRING_TENSORS && !SENTENCE_PIECE_EXTENSION_DECOMPOSED_STRINGS
         const std::string& sentence = strings[batch_ind];
-        //std::cerr << "    sentence: " << sentence << "\n";
 #else
         auto begin_ind = begin_ids[batch_ind];
         auto end_ind = end_ids[batch_ind];
-        //std::string sentence(data + begin_ind, data + end_ind);
         absl::string_view sentence((const char*)data + begin_ind, end_ind - begin_ind);
         //std::cerr << "string: " << sentence << "\n";
 #endif
@@ -197,6 +222,7 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
     memcpy(outputs[1].data(), sparse_values.data(), sizeof(int32_t) * sparse_values.size());
     outputs[2].set_shape({ 2 });
     memcpy(outputs[2].data(), sparse_dense_shape.data(), sizeof(int64_t) * sparse_dense_shape.size());
+
     return true;
 }
 
