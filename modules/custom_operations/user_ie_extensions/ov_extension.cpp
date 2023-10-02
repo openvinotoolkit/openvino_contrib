@@ -78,6 +78,7 @@
             std::make_shared<ov::frontend::ConversionExtension>("Reshape", translate_reshape),                              \
             std::make_shared<ov::frontend::ConversionExtension>("Const", translate_const),                                  \
             std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceTokenizer>>(),                                 \
+            std::make_shared<ov::OpExtension<TemplateExtension::SentencepieceDetokenizer>>(),                                 \
             std::make_shared<ov::frontend::ConversionExtension>("SentencepieceOp", translate_sentencepiece_op),             \
             std::make_shared<ov::frontend::ConversionExtension>("RaggedTensorToSparse", translate_sentencepiece_tokenizer),
 #else

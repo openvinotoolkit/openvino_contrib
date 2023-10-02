@@ -6,13 +6,14 @@ import json
 import tempfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Optional, Dict, Callable, Union, List
+from typing import Any, Optional, Dict, Callable, Union, List, Tuple
 
 import numpy as np
 import openvino.runtime.opset12 as opset
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime import op, Type, Model, PartialShape
 from openvino.runtime.utils.types import make_constant_node, as_node
+from openvino import save_model
 
 from .tokenizer_pipeline import (
     TokenizerPipeline,
@@ -264,8 +265,10 @@ def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizer"):
 
 
 def convert_sentencepiece_model_tokenizer(
-    hf_tokenizer: "PreTrainedTokenizer", add_attention_mask: bool = True
-) -> Model:
+    hf_tokenizer: "PreTrainedTokenizer",
+    add_attention_mask: bool = True,
+    with_decoder: bool = False
+) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
 
@@ -274,6 +277,7 @@ def convert_sentencepiece_model_tokenizer(
     with tempfile.TemporaryDirectory() as tmp:
         hf_tokenizer.save_pretrained(tmp)
         sp_model = np.fromfile(Path(tmp) / hf_tokenizer.vocab_files_names["vocab_file"], dtype=np.uint8)
+        sp_model_node = as_node(sp_model)
 
         if hf_tokenizer.is_fast:
             hf_slow_tokenizer = hf_tokenizer.slow_tokenizer_class.from_pretrained(tmp)
@@ -296,7 +300,7 @@ def convert_sentencepiece_model_tokenizer(
 
     tokenizer_node = factory.create(
         "SentencepieceTokenizer",
-        [as_node(sp_model), input_node],
+        [sp_model_node, input_node],
         {
             "add_bos": add_bos_token,
             "add_eos": add_eos_token,
@@ -335,4 +339,21 @@ def convert_sentencepiece_model_tokenizer(
         attention_mask.output(0).tensor.add_names({"attention_mask"})
         outputs.append(attention_mask.output(0))
 
-    return Model(outputs, [input_node], "sp_tokenizer_encoder")
+    tokenizer_encoder = Model(outputs, [input_node], "sp_tokenizer_encoder")
+    tokenizer_encoder.validate_nodes_and_infer_types()
+
+    if with_decoder:
+        decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
+        decoder = factory.create(
+            "SentencepieceDetokenizer",
+            [sp_model_node, decoder_input],
+        )
+        string_output = factory.create("StringTensorPack", decoder.outputs()).outputs()
+        string_output[0].tensor.add_names({"string_output"})
+        tokenizer_decoder = Model(string_output, [decoder_input], "sp_tokenizer_decoder")
+        tokenizer_decoder.validate_nodes_and_infer_types()
+
+        save_model(tokenizer_decoder, "detokenizer.xml")
+        return tokenizer_encoder, tokenizer_decoder
+
+    return tokenizer_encoder

@@ -13,6 +13,7 @@ from openvino.runtime.exceptions import UserInputError, OVTypeError
 from openvino.runtime import Type, PartialShape, op, Model, Output, opset10 as opset
 from openvino.runtime.utils.types import as_node, make_constant_node
 
+from .common_pipelines import get_greedy_decoding_ov_subgraph
 from .str_pack import pack_string, pack_strings
 from .node_factory import factory
 
@@ -681,10 +682,10 @@ class TokenizerPipeline:
         return self.steps[item]
 
     def get_encoder_ov_subgraph(self) -> Model:
-        input_nodes = [self.create_string_input() for _ in range(self.number_of_inputs)]
+        string_inputs = [op.Parameter(Type.u8, PartialShape(["?"])) for _ in range(self.number_of_inputs)]
 
         processing_outputs = []
-        for input_node in input_nodes:
+        for input_node in string_inputs:
             input_node = factory.create("StringTensorUnpack", input_node.outputs()).outputs()
             for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
@@ -698,7 +699,7 @@ class TokenizerPipeline:
         for step in self.post_tokenization_steps:
             processing_outputs = step.get_ov_subgraph(processing_outputs)
 
-        return Model(processing_outputs, input_nodes, name="tokenizer_encoder")
+        return Model(processing_outputs, string_inputs, name="tokenizer_encoder")
 
     @property
     def normalization_steps(self) -> List[NormalizationStep]:
@@ -720,13 +721,7 @@ class TokenizerPipeline:
     def decoding_steps(self) -> List[DecodingStep]:
         return [step for step in self.steps if isinstance(step, DecodingStep)]
 
-    def create_string_input(self) -> op.Parameter:
-        return op.Parameter(Type.u8, PartialShape(["?"]))
-
-    def create_int_input(self, input_type=Type.i32) -> op.Parameter:
-        return op.Parameter(input_type, PartialShape(["?", "?", "?"]))
-
-    def add_ragged_dimention(self, input_node):
+    def add_ragged_dimention(self, input_node: List[Output]) -> List[Output]:
         shape = opset.shape_of(input_node[0])
         batch_size = opset.gather(shape, as_node(0), as_node(0))
         # FIXME: Cannot create range with specific data type from python
@@ -751,23 +746,9 @@ class TokenizerPipeline:
 
         return factory.create("StringTensorPack", input_nodes).outputs()
 
-    def get_greedy_decoding_ov_subgraph(self, input_node: op.Parameter) -> List[Output]:
-        argmax = opset.topk(
-            data=input_node,
-            k=1,
-            axis=-1,
-            mode="max",
-            sort="none",
-            name="ArgMax",
-        )
-        return opset.squeeze(
-            data=argmax.output(1),
-            axes=-1,
-        ).outputs()
-
     def get_decoder_ov_subgraph(self) -> Model:
-        input_node = self.create_int_input()
-        argmax = self.get_greedy_decoding_ov_subgraph(input_node)
+        input_node = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
+        argmax = get_greedy_decoding_ov_subgraph(input_node)
         outputs = self.create_decoding_pipeline(argmax)
         model = Model(outputs, [input_node], name="tokenizer_decoder")
         model.output().tensor.add_names({"string_output"})

@@ -233,3 +233,88 @@ bool SentencepieceTokenizer::has_evaluate() const {
 std::shared_ptr<Node> SentencepieceTokenizer::clone_with_new_inputs(const OutputVector& new_args) const {
     return std::make_shared<SentencepieceTokenizer>(new_args, m_sp, m_nbest_size, m_alpha, m_add_bos, m_add_eos, m_reverse);
 }
+
+
+// Detokenizer
+
+SentencepieceDetokenizer::SentencepieceDetokenizer(const OutputVector& args) :
+    m_sp(std::make_shared<SentencePieceProcessor>()), Op(args) {
+    auto sp_model_const = as_type_ptr<Constant>(args[0].get_node_shared_ptr());
+    OPENVINO_ASSERT(sp_model_const, "SentencepieceDetokenizer expects SentencePiece model to be constant.");
+    auto spm_model = static_cast<const char*>(sp_model_const->get_data_ptr());
+    auto spm_model_size = sp_model_const->get_byte_size();
+
+    // configure SentencePieceProcessor
+    std::string model_proto(spm_model, spm_model_size);
+    CHECK_OK(m_sp->LoadFromSerializedProto(model_proto));
+    constructor_validate_and_infer_types();
+}
+
+SentencepieceDetokenizer::SentencepieceDetokenizer(const OutputVector& args, const std::shared_ptr<sentencepiece::SentencePieceProcessor>& sp) :
+    m_sp((sp == nullptr) ? std::make_shared<SentencePieceProcessor>(): sp), Op(args) {
+    // constructor above without sp argument never called when the node is created with python factory, so need to init and cache m_sp here
+    if (!m_sp->status().ok()) {
+        auto sp_model_const = as_type_ptr<Constant>(args[0].get_node_shared_ptr());
+        OPENVINO_ASSERT(sp_model_const, "SentencepieceDetokenizer expects SentencePiece model to be constant.");
+        auto spm_model = static_cast<const char*>(sp_model_const->get_data_ptr());
+        auto spm_model_size = sp_model_const->get_byte_size();
+
+        // configure SentencePieceProcessor
+        std::string model_proto(spm_model, spm_model_size);
+        CHECK_OK(m_sp->LoadFromSerializedProto(model_proto));
+    };
+    constructor_validate_and_infer_types();
+}
+
+void SentencepieceDetokenizer::validate_and_infer_types() {
+    OPENVINO_ASSERT(get_input_size() == 2, "SentencepieceDetokenizer expects two inputs: sp model and token ids");
+    OPENVINO_ASSERT(get_input_element_type(0) == element::u8, "SentencepieceDetokenizer accepts sp model as the first input and it should be of type u8 tensor");
+    OPENVINO_ASSERT(get_input_partial_shape(1).size() == 2, "SentencepieceDetokenizer expects 2D tensor as second input");
+
+    auto batch_size = PartialShape({get_input_partial_shape(1)[0]});
+    set_string_output(this, 0, batch_size);
+}
+
+bool SentencepieceDetokenizer::visit_attributes(AttributeVisitor& visitor) {
+    return true;
+}
+
+bool SentencepieceDetokenizer::evaluate(TensorVector& outputs, const TensorVector& inputs) const {
+    auto batch_size = inputs[1].get_shape()[0];
+    auto seq_len    = inputs[1].get_shape()[1];
+    auto input_data = inputs[1].data<const int32_t>();
+
+    outputs[0].set_shape({batch_size});
+    outputs[1].set_shape({batch_size});
+    outputs[2].set_shape({batch_size * seq_len * 100});  // 100 chars - max token length
+
+    auto begins = outputs[0].data<int32_t>();
+    auto ends   = outputs[1].data<int32_t>();
+    auto chars  = outputs[2].data<uint8_t>();
+    uint32_t char_offset = 0;
+
+    for(size_t batch = 0; batch < batch_size; ++batch) {
+        auto start = batch * seq_len;
+
+        std::vector<int32_t> token_ids(seq_len);
+        std::memcpy(&token_ids[0], &input_data[start], sizeof(int32_t) * seq_len);
+
+        std::string detokenized;
+        CHECK_OK(m_sp->Decode(token_ids, &detokenized));
+        std::copy(detokenized.begin(), detokenized.end(), &chars[char_offset]);
+
+        begins[batch] = char_offset;
+        char_offset += detokenized.size();
+        ends[batch] = char_offset;
+    }
+    outputs[2].set_shape({char_offset});
+    return true;
+}
+
+bool SentencepieceDetokenizer::has_evaluate() const {
+    return true;
+}
+
+std::shared_ptr<Node> SentencepieceDetokenizer::clone_with_new_inputs(const OutputVector& new_args) const {
+    return std::make_shared<SentencepieceDetokenizer>(new_args, m_sp);
+}

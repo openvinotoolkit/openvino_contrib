@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def convert_tokenizer(
-    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder=False
+    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False
 ) -> Union[Model, Tuple[Model, Model]]:
     if "transformers" in sys.modules:
         from transformers import PreTrainedTokenizerBase

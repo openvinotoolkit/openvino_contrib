@@ -124,9 +124,10 @@ def fast_tokenzier(request):
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def sentencepice_model_tokenizers(request, fast_tokenzier):
     hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenzier)
-    ov_tokenizer = convert_sentencepiece_model_tokenizer(hf_tokenizer)
+    ov_tokenizer, ov_detokenizer = convert_sentencepiece_model_tokenizer(hf_tokenizer, with_decoder=True)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
-    return hf_tokenizer, compiled_tokenizer
+    compiled_detokenizer = core.compile_model(ov_detokenizer)
+    return hf_tokenizer, compiled_tokenizer, compiled_detokenizer
 
 
 @pytest.mark.parametrize(
@@ -198,10 +199,28 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
     ]
 )
 def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = sentencepice_model_tokenizers
+    hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
 
     hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
     ov_tokenized = ov_tokenizer(pack_strings([test_string]))
 
     for output_name, hf_result in hf_tokenized.items():
         assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
+
+
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+    ]
+)
+def test_sentencepiece_detokenizer(sentencepice_model_tokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
+
+    token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
+    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+
+    assert hf_output == ov_output
