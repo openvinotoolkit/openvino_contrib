@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/node.hpp>
 #include <ops/components/workbuffer_desc.hpp>
 
 #include "rnn_components/lstm_sequence_components.hpp"
@@ -17,7 +16,7 @@ namespace nvidia_gpu {
 
 class LSTMSequenceOpBase : public OperationCuDnn {
 public:
-    using NodeOp = ov::op::v5::LSTMSequence;
+    using NodeOp = ov::op::util::RNNCellBase;
     using LSTMSequenceParams = RNN::Details::LSTMSequenceParams;
     using Config = RNN::Details::LSTMSequenceDescriptorsCuDnn::Config;
     LSTMSequenceOpBase(const CreationContext& context,
@@ -26,12 +25,12 @@ public:
                        const NodeOp& node,
                        IndexCollection&& inputIds,
                        IndexCollection&& outputIds);
-
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers&) const override;
 
+    bool IsCudaGraphCompatible() const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers&) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 
@@ -58,6 +57,9 @@ protected:
     OutputTensorAdapterPtr y_adapter;
     OutputTensorAdapterPtr hy_adapter;
     OutputTensorAdapterPtr cy_adapter;
+
+private:
+    bool is_cuda_graph_compatible_;
 };
 
 }  // namespace nvidia_gpu

@@ -1,17 +1,13 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #pragma once
 
-#include <chrono>
-#include <map>
 #include <ops/tensor_iterator.hpp>
 #include <utils/perf_timing.hpp>
-#include <vector>
 
-#include "cuda_graph.hpp"
-#include "cuda_operation_base.hpp"
+#include "cuda_iexecution_delegator.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -19,11 +15,9 @@ namespace nvidia_gpu {
 /**
  * Creates profiler sequence and stores profiler results.
  */
-class Profiler {
+class Profiler : public IExecutionDelegator {
 public:
-    enum Stages { Preprocess, Postprocess, StartPipeline, WaitPipeline, NumOfStages };
-
-    using PerformaceCounters = std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>;
+    using PerformaceCounters = std::map<std::string, ov::ProfilingInfo>;
     using Duration = std::chrono::duration<float, std::micro>;
     using Time = std::chrono::steady_clock;
 
@@ -34,57 +28,88 @@ public:
      * Constructor of Profiler class
      * @param perfCount Option that indicates if performance counters are enabled
      */
-    explicit Profiler(bool perfCount, const SubGraph& graph);
+    explicit Profiler(const SubGraph& graph);
 
     /**
      * Start time measurement of stage
      */
-    void SetStream(const CUDA::Stream& stream) { active_stream_ = &stream; }
+    void set_stream(const CUDA::Stream& stream) override { active_stream_ = &stream; }
 
     /**
      * Start time measurement of stage
      */
-    void StartStage() { start_ = Time::now(); }
+    void start_stage() override { start_ = Time::now(); }
 
     /**
      * Stop time measurement of stage
      * @param stage Stage for which time measurement was performed
      */
-    void StopStage(Stages stage) { durations_[stage] = Time::now() - start_; }
+    void stop_stage(PerfStages stage) override { durations_[static_cast<std::size_t>(stage)] = Time::now() - start_; }
 
     /**
-     * Creates profiler sequence and increase infer request counter
-     * @return ProfilerSequence for single InferRequest
+     * Execute sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
      */
-    Profiler::ProfilerSequence CreateExecSequence(const SubGraph* subGraphPtr);
+    void execute_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          const InferenceRequestContext& context) override;
+
+    /**
+     * Capture sequence from SubGraph/TensorIterator class
+     * @param subGraphPtr Pointer to SubGraph
+     * @param memoryManager Reference to MemoryManager
+     * @param buffer Reference to orkbuffers::mutable_buffer
+     * @param context Reference to InferenceRequestContext
+     */
+    void capture_sequence(const SubGraph* subGraphPtr,
+                          const MemoryManager& memoryManager,
+                          const Workbuffers::mutable_buffer& buffer,
+                          InferenceRequestContext& context) override;
 
     /**
      * Returns performance counters
      * @return Performance counters
      */
-    [[nodiscard]] const PerformaceCounters& GetPerformanceCounts() const { return perf_counters_; }
+    [[nodiscard]] const std::vector<ov::ProfilingInfo> get_performance_counts() const override;
 
     /**
      * Processes performance events into performance counters
      */
-    void ProcessEvents();
+    void process_events() override;
+
+    /**
+     * Set CUDA event record mode
+     * @param mode Value of CUDA::Event::RecordMode to set
+     */
+    void set_cuda_event_record_mode(CUDA::Event::RecordMode mode) override { cuda_event_record_mode_ = mode; }
 
 private:
-    void CollectSubGraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
-    void CollectSubGraphs(const TensorIteratorOp& graph, std::vector<OperationBase::Ptr>& allExecSequence);
-    void CollectNodeVisitor(const OperationBase::Ptr& execStep,
-                            std::vector<ProfileExecStep>& perfSteps,
-                            std::vector<OperationBase::Ptr>& allExecSequence);
+    /**
+     * Creates profiler sequence and increase infer request counter
+     * @return ProfilerSequence for single InferRequest
+     */
+    Profiler::ProfilerSequence create_exec_sequence(const SubGraph* subGraphPtr);
+
+    void collect_subgraphs(const SubGraph& graph, std::vector<OperationBase::Ptr>& vector);
+    void collect_node_visitor(const OperationBase::Ptr& execStep,
+                              std::vector<ProfileExecStep>& perfSteps,
+                              std::vector<OperationBase::Ptr>& allExecSequence);
 
     const CUDA::Stream* active_stream_ = nullptr;
-    const bool perf_count_;
     std::vector<std::pair<const void*, std::vector<ProfileExecStep>>> subgraph_perf_steps_map_;
     PerformaceCounters perf_counters_{};
+    PerformaceCounters stage_counters_{};
+    std::vector<std::string> execution_order_{};
     utils::PerformaceTiming exec_timing_{};
     // for performance counters
-    std::array<Duration, NumOfStages> durations_;
+    std::array<Duration, static_cast<std::size_t>(PerfStages::NumOfStages)> durations_;
     Time::time_point start_{};
     size_t infer_count_{};
+    CUDA::Event::RecordMode cuda_event_record_mode_{CUDA::Event::RecordMode::Default};
 };
 
 class Profiler::ProfileExecStep {
@@ -102,14 +127,17 @@ public:
      * @param args Additional arguments for Execute method of operation
      */
     template <typename... TArgs>
-    void Execute(TArgs&&... args) const {
-        if (this->profiler_.perf_count_) {
-            timing_.setStart(*this->profiler_.active_stream_);
-            exec_step_.Execute(std::forward<TArgs>(args)...);
-            timing_.setStop(*this->profiler_.active_stream_);
-        } else {
-            exec_step_.Execute(std::forward<TArgs>(args)...);
-        }
+    void execute(TArgs&&... args) const {
+        timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        exec_step_.Execute(std::forward<TArgs>(args)...);
+        timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+    }
+
+    template <typename... TArgs>
+    void capture(TArgs&&... args) const {
+        timing_.setStart(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
+        exec_step_.Capture(std::forward<TArgs>(args)...);
+        timing_.setStop(*this->profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 
     /**
@@ -131,22 +159,22 @@ public:
     operator const OperationBase&() const { return static_cast<const OperationBase&>(exec_step_); }
 
     /**
-     * Measure time for this execution step
+     * measure time for this execution step
      * @return Time for this step
      */
-    float Measure() { return timing_.measure(); }
+    float measure() { return timing_.measure(); }
 
     /**
      * Get time for this execution step
      * @return Time for this step
      */
-    [[nodiscard]] float Duration() const noexcept { return timing_.duration(); }
+    [[nodiscard]] float duration() const noexcept { return timing_.duration(); }
 
     /**
      * Get name of the operation
      * @return Name of the operation
      */
-    [[nodiscard]] const std::string& GetOpName() { return exec_step_.GetName(); }
+    [[nodiscard]] const std::string& get_op_name() { return exec_step_.GetName(); }
 
 private:
     Profiler& profiler_;
@@ -162,9 +190,7 @@ public:
      * @param stream CUDA stream
      */
     ProfilerSequence(Profiler& profiler, size_t index) : profiler_{profiler}, index_{index} {
-        if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStart(*profiler_.active_stream_);
-        }
+        profiler_.exec_timing_.setStart(*profiler_.active_stream_, profiler.cuda_event_record_mode_);
     }
 
     /**
@@ -172,9 +198,7 @@ public:
      * Stops time measurement
      */
     ~ProfilerSequence() {
-        if (profiler_.perf_count_) {
-            profiler_.exec_timing_.setStop(*profiler_.active_stream_);
-        }
+        profiler_.exec_timing_.setStop(*profiler_.active_stream_, profiler_.cuda_event_record_mode_);
     }
 
     /**

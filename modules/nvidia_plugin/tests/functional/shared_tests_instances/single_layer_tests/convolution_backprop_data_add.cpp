@@ -58,13 +58,13 @@ public:
             convBackpropDataParams;
 
         std::ostringstream result;
-        result << "IS=" << CommonTestUtils::vec2str(inputShapes) << "_";
-        result << "OSD=" << CommonTestUtils::vec2str(outputShapeData) << "_";
-        result << "K" << CommonTestUtils::vec2str(kernel) << "_";
-        result << "S" << CommonTestUtils::vec2str(stride) << "_";
-        result << "PB" << CommonTestUtils::vec2str(padBegin) << "_";
-        result << "PE" << CommonTestUtils::vec2str(padEnd) << "_";
-        result << "D=" << CommonTestUtils::vec2str(dilation) << "_";
+        result << "IS=" << ov::test::utils::vec2str(inputShapes) << "_";
+        result << "OSD=" << ov::test::utils::vec2str(outputShapeData) << "_";
+        result << "K" << ov::test::utils::vec2str(kernel) << "_";
+        result << "S" << ov::test::utils::vec2str(stride) << "_";
+        result << "PB" << ov::test::utils::vec2str(padBegin) << "_";
+        result << "PE" << ov::test::utils::vec2str(padEnd) << "_";
+        result << "D=" << ov::test::utils::vec2str(dilation) << "_";
         result << "O=" << convOutChannels << "_";
         result << "AP=" << padType << "_";
         result << "netPRC=" << netPrecision.name() << "_";
@@ -90,13 +90,18 @@ protected:
                                                           bool addBiases = false,
                                                           const std::vector<float> &filterWeights = {},
                                                           const std::vector<float> &biasesWeights = {}) {
-        bool randomFilterWeights = filterWeights.empty();
         auto shape = in.get_shape();
         std::vector<size_t> filterWeightsShape = {shape[1], numOutChannels};
         filterWeightsShape.insert(filterWeightsShape.end(), filterSize.begin(), filterSize.end());
-        auto filterWeightsNode =
-            ngraph::builder::makeConstant(type, filterWeightsShape, filterWeights, randomFilterWeights);
 
+        std::shared_ptr<ov::Node> filterWeightsNode;
+        if (filterWeights.empty()) {
+            ov::Tensor random_tensor(type, filterWeightsShape);
+            ov::test::utils::fill_tensor_random(random_tensor);
+            filterWeightsNode = std::make_shared<ov::op::v0::Constant>(random_tensor);
+        } else {
+            filterWeightsNode = std::make_shared<ov::op::v0::Constant>(type, filterWeightsShape, filterWeights);
+        }
         return makeConvolutionBackpropData(in,
                                            filterWeightsNode,
                                            output,
@@ -147,9 +152,10 @@ protected:
         std::tie(kernel, stride, padBegin, padEnd, dilation, convOutChannels, padType, outputPad) =
             convBackpropDataParams;
         auto ngPrc = FuncTestUtils::PrecisionUtils::convertIE2nGraphPrc(netPrecision);
-        auto params = ngraph::builder::makeParams(ngPrc, {inputShape});
-        auto outputShapeNode =
-            ngraph::builder::makeConstant(ov::element::Type_t::i64, {outputShapeData.size()}, outputShapeData);
+        ov::ParameterVector params{std::make_shared<ov::op::v0::Parameter>(ngPrc, ov::Shape(inputShape))};
+
+        auto outputShapeNode = std::make_shared<ov::op::v0::Constant>(
+            ov::element::Type_t::i64, ov::Shape{outputShapeData.size()}, outputShapeData);
         auto paramOuts =
             ngraph::helpers::convert2OutputVector(ngraph::helpers::castOps2Nodes<ov::op::v0::Parameter>(params));
         auto convBackpropData = std::dynamic_pointer_cast<ngraph::opset1::ConvolutionBackpropData>(
@@ -163,8 +169,11 @@ protected:
                                         dilation,
                                         padType,
                                         convOutChannels));
-        auto addConstant = ngraph::builder::makeConstant(ngPrc, outputShapeData, outputShapeData, true);
-        auto add = ngraph::builder::makeEltwise(convBackpropData, addConstant, ngraph::helpers::EltwiseTypes::ADD);
+
+        ov::Tensor random_tensor(ngPrc, outputShapeData);
+        ov::test::utils::fill_tensor_random(random_tensor);
+        auto addConstant = std::make_shared<ov::op::v0::Constant>(random_tensor);
+        auto add = std::make_shared<ov::op::v1::Add>(convBackpropData, addConstant);
         ov::ResultVector results{std::make_shared<ngraph::opset1::Result>(add)};
         function = std::make_shared<ngraph::Function>(results, params, "convolutionBackpropData");
     }
@@ -215,7 +224,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_group_0,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_0),
                                            ::testing::Values(output2D_group_0),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_lower', 'dilations': '1,1', 'strides': '2,2'}
@@ -247,7 +256,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_1,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_1),
                                            ::testing::Values(output2D_group_1),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'same_upper', 'dilations': '1,1', 'strides': '2,2'}
@@ -279,7 +288,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Convolution2D_AsymPad_group_2,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_2),
                                            ::testing::Values(output2D_group_2),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'explicit', 'dilations': '1,1', 'strides': '2,2'}
@@ -311,7 +320,7 @@ INSTANTIATE_TEST_CASE_P(Convolution2D_AsymPad_group_3,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_3),
                                            ::testing::Values(output2D_group_3),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // Attributes: {'auto_pad': 'explicit', 'dilations': '1,1', 'strides': '2,2'}
@@ -343,7 +352,7 @@ INSTANTIATE_TEST_CASE_P(Convolution2D_AsymPad_group_4,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(input2D_group_4),
                                            ::testing::Values(output2D_group_4),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // =============================================================================
@@ -374,7 +383,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 16, 16}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {32, 32}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -402,7 +411,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 8, 8}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {16, 16}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -430,7 +439,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 64, 64}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {128, 128}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -458,7 +467,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 32, 32}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {64, 64}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -486,7 +495,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 128, 18, 18, 18}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {36, 36, 36}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -514,7 +523,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 256, 9, 9, 9}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {18, 18, 18}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -542,7 +551,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 32, 72, 72, 72}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {144, 144, 144}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 
@@ -570,7 +579,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::SizeVector {1, 64, 36, 36, 36}), // Input shape
         ::testing::Values(InferenceEngine::SizeVector {72, 72, 72}), // Output spatial shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ConvolutionBackpropDataAddExtendedLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}

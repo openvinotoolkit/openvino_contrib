@@ -50,7 +50,7 @@ public:
      * @param[in] operation An operation which defines input tensors.
      * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns An array of corresponding input tensor pointers.
-     * @throws InferenceEngineException if any of tensor pointers is not found
+     * @throws ov::Exception if any of tensor pointers is not found
      */
     InputTensors inputTensorPointers(const IOperationMeta& operation,
                                      CUDA::DevicePointer<void*> mutableBufferPtr) const;
@@ -60,7 +60,7 @@ public:
      * @param[in] operation An operation which defines output tensors.
      * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns An array of corresponding output tensor pointers.
-     * @throws InferenceEngineException if any of tensor pointers is not found
+     * @throws ov::Exception if any of tensor pointers is not found
      */
     OutputTensors outputTensorPointers(const IOperationMeta& operation,
                                        CUDA::DevicePointer<void*> mutableBufferPtr) const;
@@ -70,7 +70,7 @@ public:
      * @param[in] operation An operation
      * @param[in] mutableBufferPtr A memory block based on which mapping is performed.
      * @returns Work buffer pointers
-     * @throws InferenceEngineException if any of tensor pointers is not found
+     * @throws ov::Exception if any of tensor pointers is not found
      */
     Workbuffers workBuffers(const IOperationExec& operation, CUDA::DevicePointer<void*> mutableBufferPtr) const;
 

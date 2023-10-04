@@ -29,7 +29,6 @@
 #include "ie_common.h"
 #include "ie_ngraph_utils.hpp"
 #include "ngraph/runtime/host_tensor.hpp"
-#include "ngraph/runtime/reference/convert.hpp"
 #include "openvino/core/except.hpp"
 #include "openvino/core/partial_shape.hpp"
 
@@ -76,7 +75,7 @@ inline std::pair<size_t, size_t> getTensorHeightWidth(const InferenceEngine::Ten
         // Regardless of layout, dimensions are stored in fixed order
         return std::make_pair(dims.back(), dims.at(size - 2));
     } else {
-        ov::nvidia_gpu::throwIEException("Tensor does not have height and width dimensions");
+        ov::nvidia_gpu::throw_ov_exception("Tensor does not have height and width dimensions");
     }
 }
 
@@ -214,7 +213,7 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
             } else if (item.second->getPrecision() == InferenceEngine::Precision::I32) {
                 fillBlobImInfo<int32_t>(inputBlob, batchSize, image_size);
             } else {
-                ov::nvidia_gpu::throwIEException("Input precision is not supported for image info!");
+                ov::nvidia_gpu::throw_ov_exception("Input precision is not supported for image info!");
             }
             continue;
         }
@@ -234,7 +233,7 @@ void fillBlobs(InferenceEngine::InferRequest inferRequest,
         } else if (item.second->getPrecision() == InferenceEngine::Precision::I16) {
             fillBlobRandom<int16_t>(inputBlob, Randomize<int16_t>{});
         } else {
-            ov::nvidia_gpu::throwIEException(fmt::format("Input precision is not supported for {}", item.first));
+            ov::nvidia_gpu::throw_ov_exception(fmt::format("Input precision is not supported for {}", item.first));
         }
     }
 }
@@ -346,7 +345,7 @@ TEST_F(smoke_InferenceRequestTest, ParameterResult) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, "NVIDIA");
+    auto execNet = ie.LoadNetwork(testNet, "NVIDIA", {{"INFERENCE_PRECISION_HINT", "f32"}});
     InferenceEngine::InferRequest request{execNet.CreateInferRequest()};
 
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};
@@ -364,7 +363,7 @@ TEST_F(smoke_InferenceRequestTest, AsyncParameterResult) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA);
     InferenceEngine::InferRequest inferRequest{execNet.CreateInferRequest()};
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};
     fillBlobs(inferRequest, inputsInfo, 1);
@@ -379,13 +378,13 @@ TEST_F(InferenceRequestBasicTest, AsyncParameterResultCancel) {
     InferenceEngine::Core ie{};
     InferenceEngine::Blob::Ptr a{};
     auto testNet = ie.ReadNetwork(heavyModel10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA);
     InferenceEngine::InferRequest inferRequest{execNet.CreateInferRequest()};
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};
     fillBlobs(inferRequest, inputsInfo, 1);
     ASSERT_NO_THROW(inferRequest.StartAsync());
     ASSERT_NO_THROW(inferRequest.Cancel());
-    ASSERT_THROW(inferRequest.Wait(5000), std::exception);
+    ASSERT_NO_THROW(inferRequest.Wait(5000));
 }
 
 TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {
@@ -395,7 +394,7 @@ TEST_F(smoke_InferenceRequestTest, PerformanceCounters) {
         {InferenceEngine::PluginConfigParams::KEY_PERF_COUNT, InferenceEngine::PluginConfigParams::YES}};
 
     auto testNet = ie.ReadNetwork(model10, a);
-    auto execNet = ie.LoadNetwork(testNet, CommonTestUtils::DEVICE_NVIDIA, config);
+    auto execNet = ie.LoadNetwork(testNet, ov::test::utils::DEVICE_NVIDIA, config);
     InferenceEngine::InferRequest request{execNet.CreateInferRequest()};
 
     const InferenceEngine::ConstInputsDataMap inputsInfo{execNet.GetInputsInfo()};

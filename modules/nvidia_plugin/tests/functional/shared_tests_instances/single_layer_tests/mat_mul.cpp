@@ -135,7 +135,7 @@ INSTANTIATE_TEST_CASE_P(smoke_MatMul,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         MatMulLayerTest::getTestCaseName);
 
@@ -147,7 +147,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_Resnet50,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         MatMulLayerTest::getTestCaseName);
 
@@ -159,7 +159,7 @@ INSTANTIATE_TEST_CASE_P(MatMul_VGG16,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(secondaryInputTypes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         MatMulLayerTest::getTestCaseName);
 
@@ -181,7 +181,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -200,7 +200,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -219,7 +219,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -238,7 +238,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -257,7 +257,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -276,7 +276,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -295,7 +295,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -314,7 +314,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -333,7 +333,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -352,7 +352,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -371,7 +371,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -390,7 +390,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -409,7 +409,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -428,7 +428,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -447,7 +447,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -466,7 +466,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -485,7 +485,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -504,7 +504,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -523,7 +523,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -542,7 +542,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 
@@ -561,7 +561,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::ValuesIn(std::vector<ngraph::helpers::InputLayerType> {ngraph::helpers::InputLayerType::CONSTANT, ngraph::helpers::InputLayerType::PARAMETER}), // secondary input types
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
         ::testing::Values(std::map<std::string, std::string> {})), // additional config
     MatMulLayerTest::getTestCaseName);
 

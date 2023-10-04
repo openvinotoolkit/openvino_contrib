@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include <ngraph/op/minimum.hpp>
-
 #include "elementwise_binary.hpp"
 #include "kernels/minimum.hpp"
+#include "openvino/op/minimum.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

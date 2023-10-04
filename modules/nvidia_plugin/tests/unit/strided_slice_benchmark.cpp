@@ -6,10 +6,10 @@
 
 #include <chrono>
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <iomanip>
-#include <ngraph/node.hpp>
 #include <openvino/op/constant.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/strided_slice.hpp>
@@ -45,7 +45,7 @@ struct StridedSliceTest : testing::Test {
     CUDA::Allocation outAlloc = threadContext.stream().malloc(ouputBufferSize);
     std::vector<cdevptr_t> inputs{inAlloc, inBeginAlloc, inEndAlloc, inStrideAlloc};
     std::vector<devptr_t> outputs{outAlloc};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     std::function<std::shared_ptr<ov::op::v1::StridedSlice>()> create_node = [this]() {
         auto param = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::PartialShape{inputTensorShape});
@@ -78,10 +78,16 @@ TEST_F(StridedSliceTest, DISABLED_benchmark) {
     using microseconds = std::chrono::duration<double, std::micro>;
     constexpr int kNumAttempts = 20000;
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     std::vector<ElementType> in(inputBufferLength);
     std::random_device r_device;

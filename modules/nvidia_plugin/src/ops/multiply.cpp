@@ -37,7 +37,7 @@ static OperationBase::Ptr multiplyFactory(const CreationContext& context,
     } catch (const std::exception& e) {
         exception_msg << "\nFailed to create MultiplyCuda impl: " << e.what();
     }
-    throwIEException(fmt::format("Multiply node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Multiply node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(multiplyFactory, Multiply)

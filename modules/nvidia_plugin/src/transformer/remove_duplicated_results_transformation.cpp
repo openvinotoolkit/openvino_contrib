@@ -2,16 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
 #include "remove_duplicated_results_transformation.hpp"
-
-#include <cuda_op_buffers_extractor.hpp>
-#include <exec_graph_info.hpp>
-#include <gsl/span_ext>
-#include "openvino/pass/pattern/op/wrap_type.hpp"
-#include <ngraph/rt_info.hpp>
-#include <openvino/op/matmul.hpp>
-#include <openvino/op/transpose.hpp>
 
 namespace ov::nvidia_gpu::pass {
 bool RemoveDuplicatedResultsTransformation::run_on_model(const std::shared_ptr<ov::Model>& f) {

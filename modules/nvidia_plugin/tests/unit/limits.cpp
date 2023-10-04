@@ -4,7 +4,6 @@
 
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
-#include <ie_blob.h>
 
 #include <array>
 #include <cancellation_token.hpp>
@@ -14,22 +13,22 @@
 #include <cuda/runtime.hpp>
 #include <cuda_config.hpp>
 #include <cuda_creation_context.hpp>
-#include <cuda_graph.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_thread_context.hpp>
 #include <limits>
 #include <memory_manager/cuda_workbuffers.hpp>
 #include <memory_manager/tensor_types.hpp>
-#include <ngraph/node.hpp>
-#include <ngraph/op/divide.hpp>
-#include <ngraph/op/parameter.hpp>
-#include <ngraph/type/element_type.hpp>
-#include <ngraph/type/float16.hpp>
 #include <type_traits>
 #include <vector>
+
+#include "openvino/core/node.hpp"
+#include "openvino/core/type/element_type.hpp"
+#include "openvino/op/divide.hpp"
+#include "openvino/op/parameter.hpp"
 
 namespace {
 
@@ -109,10 +108,10 @@ void run_zero_div_test() {
     ov::nvidia_gpu::OperationBase::Ptr operation = [&] {
         CUDA::Device device{};
         const bool optimizeOption = false;
-        const ngraph::element::Type ng_type = ngraph::element::from<T>();
-        auto param1 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{length});
-        auto param2 = std::make_shared<ngraph::op::v0::Parameter>(ng_type, ngraph::PartialShape{1});
-        auto node = std::make_shared<ngraph::op::v1::Divide>(param1->output(0), param2->output(0));
+        const ov::element::Type ng_type = ov::element::from<T>();
+        auto param1 = std::make_shared<ov::op::v0::Parameter>(ng_type, ov::PartialShape{length});
+        auto param2 = std::make_shared<ov::op::v0::Parameter>(ng_type, ov::PartialShape{1});
+        auto node = std::make_shared<ov::op::v1::Divide>(param1->output(0), param2->output(0));
         auto& registry = ov::nvidia_gpu::OperationRegistry::getInstance();
         auto op = registry.createOperation(ov::nvidia_gpu::CreationContext{device, optimizeOption},
                                            node,
@@ -147,13 +146,19 @@ void run_zero_div_test() {
         correct[i] = finite_cast<T>(static_cast<float>(in1[i]) / static_cast<float>(in2[0]));
     }
 
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     stream.upload(in1_alloc, in1.data(), size_bytes);
     stream.upload(in2_alloc, in2.data(), sizeof(T));
@@ -181,7 +186,7 @@ struct ZeroDivTest : testing::Test {};
 
 TEST_F(ZeroDivTest, canExecuteSync) {
     run_zero_div_test<float>();
-    run_zero_div_test<ngraph::float16>();
+    run_zero_div_test<ov::float16>();
     run_zero_div_test<int32_t>();
     run_zero_div_test<int16_t>();
     run_zero_div_test<uint8_t>();

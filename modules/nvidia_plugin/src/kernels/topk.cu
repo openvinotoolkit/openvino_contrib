@@ -173,7 +173,7 @@ void TopK::callKernelByElementType(cudaStream_t stream,
             break;
         }
         default: {
-            throwIEException(fmt::format("Index element type = {} is not supported by TopK operation !!",
+            throw_ov_exception(fmt::format("Index element type = {} is not supported by TopK operation !!",
                                          static_cast<Type_t>(index_element_type_)));
         }
     }
@@ -198,7 +198,7 @@ void TopK::callKernelByIndexElementType(cudaStream_t stream,
             break;
         }
         default: {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Unknown compute type = {} for TopK operation !!", static_cast<Type_t>(compute_type_)));
         }
     }
@@ -228,7 +228,7 @@ void TopK::callKernelByComputeType(cudaStream_t stream,
             break;
         }
         default: {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Unknown sort type = {} for TopK operation !!", static_cast<Type_t>(sort_type_)));
         }
     }
@@ -317,7 +317,7 @@ void TopK::operator()(cudaStream_t stream,
             break;
         }
         default: {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("Input element type = {} is not supported by TopK operation "
                             "!!",
                             static_cast<Type_t>(element_type_)));

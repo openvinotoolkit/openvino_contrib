@@ -129,13 +129,14 @@ public:
  *           where NodeOp is a type's inner alias for a concrete OpenVINO Node class
  * @param name - a textual operator's name
  */
-#define OPERATION_REGISTER(type, name)                                                                              \
-    extern "C" {                                                                                                    \
-    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<type> openvino_cuda_op_register_##name{#name}; \
+#define OPERATION_REGISTER(type, name)                                                                           \
+    extern "C" {                                                                                                 \
+    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<type> openvino_cuda_op_register_##name{ \
+        #name};                                                                                                  \
     }
 
-#define OPERATION_REGISTER_FACTORY(factory, name)                                                                     \
-    extern "C" {                                                                                                      \
-    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<OperationBase> openvino_cuda_op_register_##name{ \
-        #name, factory};                                                                                              \
+#define OPERATION_REGISTER_FACTORY(factory, name)                                       \
+    extern "C" {                                                                        \
+    [[maybe_unused]] const ::ov::nvidia_gpu::OperationRegistry::Register<OperationBase> \
+        openvino_cuda_op_register_##name{#name, factory};                               \
     }

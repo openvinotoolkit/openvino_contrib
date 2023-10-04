@@ -10,11 +10,11 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda/runtime.hpp>
 #include <cuda_creation_context.hpp>
-#include <cuda_graph.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_inference_request_context.hpp>
 #include <cuda_operation_base.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <cuda_thread_context.hpp>
 #include <functional>
@@ -56,7 +56,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1000, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 // Attrs:  {}
@@ -75,7 +75,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1024, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -94,7 +94,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 100, 171}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -113,7 +113,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 112, 112}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -132,7 +132,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 16, 16}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -151,7 +151,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -170,7 +170,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 18, 18, 18}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -189,7 +189,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 28, 28}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -208,7 +208,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -227,7 +227,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 56, 56}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -246,7 +246,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 128, 128}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -265,7 +265,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 144, 144, 144}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -284,7 +284,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 56, 56}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -303,7 +303,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 160, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -322,7 +322,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -341,7 +341,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -360,7 +360,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 200, 342}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -379,7 +379,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 35, 35}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -398,7 +398,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -417,7 +417,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 192, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -436,7 +436,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 2048, 7, 7}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -455,7 +455,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -474,7 +474,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 35, 35}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -493,7 +493,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 224, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -512,7 +512,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -531,7 +531,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -550,7 +550,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -569,7 +569,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 28, 28}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -588,7 +588,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 56, 56}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -607,7 +607,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -626,7 +626,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 9, 9, 9}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -645,7 +645,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 100, 171}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -664,7 +664,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 147, 147}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -683,7 +683,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 149, 149}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -702,7 +702,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 224, 224}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -721,7 +721,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 28, 28}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -740,7 +740,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 64, 64}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -759,7 +759,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 72, 72, 72}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -778,7 +778,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -797,7 +797,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 320, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -816,7 +816,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 17, 17}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -835,7 +835,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 384, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -854,7 +854,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 4096}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -873,7 +873,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 448, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -892,7 +892,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 48, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -911,7 +911,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 1000}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -930,7 +930,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -949,7 +949,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 28, 28}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -968,7 +968,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 7, 7}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -987,7 +987,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 8, 8}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1006,7 +1006,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 100, 171}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1025,7 +1025,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 112, 112}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1044,7 +1044,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 113, 113}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1063,7 +1063,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1082,7 +1082,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 147, 147}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1101,7 +1101,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 200, 342}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1120,7 +1120,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 224, 224}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1139,7 +1139,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 32, 32}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1158,7 +1158,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 35, 35}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1177,7 +1177,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 36, 36, 36}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1196,7 +1196,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 400, 683}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1215,7 +1215,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1234,7 +1234,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 56, 56}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1253,7 +1253,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 73, 73}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1272,7 +1272,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 100, 171}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1291,7 +1291,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 35, 35}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1310,7 +1310,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 50, 86}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1329,7 +1329,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 71, 71}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1348,7 +1348,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 73, 73}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1367,7 +1367,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1386,7 +1386,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 128, 7, 7}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1405,7 +1405,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 160, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1424,7 +1424,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1443,7 +1443,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 192, 7, 7}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1462,7 +1462,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 224, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1481,7 +1481,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 15, 15}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1500,7 +1500,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1519,7 +1519,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 256, 7, 7}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1538,7 +1538,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 320, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1557,7 +1557,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 352, 4, 4}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1576,7 +1576,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1024}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1595,7 +1595,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 6272}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1614,7 +1614,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 64, 14, 14}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG_RELU}
@@ -1640,7 +1640,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 128, 128}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1659,7 +1659,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 144, 144, 144}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1678,7 +1678,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1, 1917, 91}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1697,7 +1697,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1152, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1716,7 +1716,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 144, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1735,7 +1735,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1754,7 +1754,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1920, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1773,7 +1773,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 240, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1792,7 +1792,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 20, 20, 85}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1811,7 +1811,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 40, 40, 85}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1830,7 +1830,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 3, 80, 80, 85}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1849,7 +1849,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1868,7 +1868,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 480, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1887,7 +1887,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 672, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1906,7 +1906,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 76725, 90}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1925,7 +1925,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1944,7 +1944,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{100, 90, 15, 15}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -1963,7 +1963,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{64, 1, 28, 28}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG_SIGMOID}
@@ -1997,7 +1997,7 @@ const auto basicTanhCases =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(listToVectors(tanhShapes)),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Tanh,
                         ActivationLayerTest,
@@ -2040,7 +2040,7 @@ const auto clampCasesSmoke = ::testing::Combine(::testing::ValuesIn(clampParamsS
                                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                                 ::testing::Values(InferenceEngine::Layout::ANY),
                                                 ::testing::ValuesIn(clampInShapesSmoke),
-                                                ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Clamp,
                         ActivationLayerTest,
@@ -2054,7 +2054,7 @@ const auto clampCasesSmokeU32 = ::testing::Combine(::testing::ValuesIn(clampPara
                                                    ::testing::Values(InferenceEngine::Layout::ANY),
                                                    ::testing::Values(InferenceEngine::Layout::ANY),
                                                    ::testing::ValuesIn(clampInShapesSmoke),
-                                                   ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                   ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Clamp_U32,
                         ActivationLayerTest,
@@ -2068,7 +2068,7 @@ const auto clampCasesSmokeI64 = ::testing::Combine(::testing::ValuesIn(clampPara
                                                    ::testing::Values(InferenceEngine::Layout::ANY),
                                                    ::testing::Values(InferenceEngine::Layout::ANY),
                                                    ::testing::ValuesIn(clampInShapesSmoke),
-                                                   ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                   ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_Activation_Basic_Clamp_I64,
                         ActivationLayerTest,
@@ -2084,7 +2084,7 @@ using AutogenClampParams = std::pair<
 // In:     (1, 128, 1, 1)
 // Out:    (1, 128, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid357' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid357,
@@ -2097,7 +2097,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid357_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2105,7 +2105,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 2, 2)
 // Out:    (1, 128, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid329' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid329,
@@ -2118,7 +2118,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid329_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2126,7 +2126,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 3, 3)
 // Out:    (1, 128, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid306' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid324' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid306,
@@ -2139,7 +2139,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid306_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2147,7 +2147,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 128, 5, 5)
 // Out:    (1, 128, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid301' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 128, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid301,
@@ -2160,7 +2160,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid301_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2168,7 +2168,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 1280, 10, 10)
 // Out:    (1, 1280, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid265' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 1280, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid265,
@@ -2181,7 +2181,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid265_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2189,7 +2189,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 144, 38, 38)
 // Out:    (1, 144, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid57' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 144, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid57,
@@ -2202,7 +2202,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid57_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2210,7 +2210,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 144, 75, 75)
 // Out:    (1, 144, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid37' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid42' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid52' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 144, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid37,
@@ -2223,7 +2223,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid37_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2231,7 +2231,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 192, 19, 19)
 // Out:    (1, 192, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid101' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 192, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid101,
@@ -2244,7 +2244,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid101_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2252,7 +2252,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 192, 38, 38)
 // Out:    (1, 192, 38, 38)
 // Operators: 'ssd_mobilenet_v2_coco:opid66' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid71' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid81' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid86' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid96' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 192, 38, 38}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid66,
@@ -2265,7 +2265,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid66_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2273,7 +2273,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 10, 10)
 // Out:    (1, 256, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid278' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid278,
@@ -2286,7 +2286,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid278_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2294,7 +2294,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 2, 2)
 // Out:    (1, 256, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid334' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid334,
@@ -2307,7 +2307,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid334_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2315,7 +2315,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 3, 3)
 // Out:    (1, 256, 3, 3)
 // Operators: 'ssd_mobilenet_v2_coco:opid311' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 3, 3}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid311,
@@ -2328,7 +2328,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid311_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2336,7 +2336,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 256, 5, 5)
 // Out:    (1, 256, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid283' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 256, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid283,
@@ -2349,7 +2349,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid283_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2357,7 +2357,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 32, 150, 150)
 // Out:    (1, 32, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid14' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid9' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 32, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid14,
@@ -2370,7 +2370,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid14_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2378,7 +2378,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 384, 19, 19)
 // Out:    (1, 384, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid110' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid115' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid125' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid130' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid140' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid145' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid155' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid160' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 384, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid110,
@@ -2391,7 +2391,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid110_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2399,7 +2399,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 512, 5, 5)
 // Out:    (1, 512, 5, 5)
 // Operators: 'ssd_mobilenet_v2_coco:opid288' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 512, 5, 5}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid288,
@@ -2412,7 +2412,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid288_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2420,7 +2420,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 512, 50, 86)
 // Out:    (1, 512, 50, 86)
 // Operators: 'mask_rcnn_inception_v2_coco:opid277' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params = 
+const AutogenClampParams autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 512, 50, 86}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_mask_rcnn_inception_v2_coco_opid277,
@@ -2433,7 +2433,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_mask_rcnn_inception_v2_coco_opid277_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2441,7 +2441,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 576, 10, 10)
 // Out:    (1, 576, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid212' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 576, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid212,
@@ -2454,7 +2454,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid212_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2462,7 +2462,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 576, 19, 19)
 // Out:    (1, 576, 19, 19)
 // Operators: 'ssd_mobilenet_v2_coco:opid169' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid174' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid184' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid189' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid199' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 576, 19, 19}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid169,
@@ -2475,7 +2475,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid169_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2483,7 +2483,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 64, 1, 1)
 // Out:    (1, 64, 1, 1)
 // Operators: 'ssd_mobilenet_v2_coco:opid352' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 64, 1, 1}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid352,
@@ -2496,7 +2496,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid352_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2504,7 +2504,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 64, 2, 2)
 // Out:    (1, 64, 2, 2)
 // Operators: 'ssd_mobilenet_v2_coco:opid347' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 64, 2, 2}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid347,
@@ -2517,7 +2517,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid347_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2525,7 +2525,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 96, 150, 150)
 // Out:    (1, 96, 150, 150)
 // Operators: 'ssd_mobilenet_v2_coco:opid23' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 96, 150, 150}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid23,
@@ -2538,7 +2538,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid23_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2546,7 +2546,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 96, 75, 75)
 // Out:    (1, 96, 75, 75)
 // Operators: 'ssd_mobilenet_v2_coco:opid28' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 96, 75, 75}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid28,
@@ -2559,7 +2559,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid28_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2567,7 +2567,7 @@ INSTANTIATE_TEST_CASE_P(
 // In:     (1, 960, 10, 10)
 // Out:    (1, 960, 10, 10)
 // Operators: 'ssd_mobilenet_v2_coco:opid221' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid226' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid236' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid241' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid251' [FP16, FP32], 'ssd_mobilenet_v2_coco:opid256' [FP16, FP32]
-const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params = 
+const AutogenClampParams autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params =
 	{{ngraph::helpers::Clamp, {0.0, 6.0}}, {{1, 960, 10, 10}, {}}};
 INSTANTIATE_TEST_CASE_P(
     autogen_Clamp_ssd_mobilenet_v2_coco_opid221,
@@ -2580,7 +2580,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(autogen_Clamp_ssd_mobilenet_v2_coco_opid221_params.second),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 const std::vector<std::reference_wrapper<const AutogenClampParams>> autogen_Clamp_all_params{
@@ -2630,7 +2630,7 @@ const auto clampCasesBig = ::testing::Combine(::testing::Values(clampParamsBig),
                                               ::testing::Values(InferenceEngine::Layout::ANY),
                                               ::testing::Values(InferenceEngine::Layout::ANY),
                                               ::testing::Values(clampInShapeBig),
-                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                              ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 struct ClampBenchmark : testing::Test {
     template <typename T>
@@ -2666,13 +2666,19 @@ struct ClampBenchmark : testing::Test {
         std::vector<CDevPtr> inputs{inAlloc};
         std::vector<DevPtr> outputs{outAlloc};
 
-        std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+        std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
         std::map<std::string, std::size_t> emptyMapping;
         ov::nvidia_gpu::CancellationToken token{};
-        ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-        ov::nvidia_gpu::Profiler profiler{false, graph};
-        ov::nvidia_gpu::InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+        ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                        emptyMapping,
+                                                        emptyTensor,
+                                                        emptyMapping,
+                                                        threadContext,
+                                                        token,
+                                                        simpleExecutionDelegator,
+                                                        cudaGraphContext};
 
         std::vector<T> inHost(tesnorSize);
         std::random_device rDevice;
@@ -2696,7 +2702,7 @@ struct ClampBenchmark : testing::Test {
                             wbRequest.immutable_sizes[1] == minMaxSizeBytes);
 
             ov::nvidia_gpu::IOperationExec::Buffers initBuffers{static_cast<DevPtr>(maxAlloc),
-                                                            static_cast<DevPtr>(minAlloc)};
+                                                                static_cast<DevPtr>(minAlloc)};
             operation->InitSharedImmutableWorkbuffers(initBuffers);
 
             workbuffers.immutable_buffers.emplace_back(static_cast<CDevPtr>(maxAlloc));
@@ -2720,8 +2726,8 @@ struct ClampBenchmark : testing::Test {
         }
         const auto end = std::chrono::steady_clock::now();
         microseconds averageExecTime = (end - start) / NUM_ATTEMPTS;
-        std::cout << std::fixed << std::setfill('0') << "Clamp " << CommonTestUtils::vec2str(shape.first)
-                  << ", minMax = " << CommonTestUtils::vec2str(minMax) << ": " << averageExecTime.count() << " us\n";
+        std::cout << std::fixed << std::setfill('0') << "Clamp " << ov::test::utils::vec2str(shape.first)
+                  << ", minMax = " << ov::test::utils::vec2str(minMax) << ": " << averageExecTime.count() << " us\n";
     }
 };
 
@@ -2765,7 +2771,7 @@ INSTANTIATE_TEST_CASE_P(smoke_Swish,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(listToVectors(smoke_SwishShapes)),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         ActivationLayerTest::getTestCaseName);
 
 // clang-format off
@@ -2786,7 +2792,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 10, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2805,7 +2811,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1152, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2824,7 +2830,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2843,7 +2849,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 128, 80, 80}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2862,7 +2868,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 144, 160, 160}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2881,7 +2887,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 144, 80, 80}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2900,7 +2906,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 16, 320, 320}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2919,7 +2925,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 1920, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2938,7 +2944,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 20, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2957,7 +2963,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 240, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2976,7 +2982,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 240, 80, 80}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -2995,7 +3001,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3014,7 +3020,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 256, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3033,7 +3039,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 28, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3052,7 +3058,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 160, 160}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3071,7 +3077,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 32, 320, 320}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3090,7 +3096,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 4, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3109,7 +3115,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 48, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3128,7 +3134,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 480, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3147,7 +3153,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 512, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3166,7 +3172,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 6, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3185,7 +3191,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 160, 160}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3204,7 +3210,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 64, 80, 80}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3223,7 +3229,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 672, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3242,7 +3248,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 672, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3261,7 +3267,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 8, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3280,7 +3286,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 80, 1, 1}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3299,7 +3305,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 88, 10, 10}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3318,7 +3324,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 88, 20, 20}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3337,7 +3343,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 88, 40, 40}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3356,7 +3362,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 88, 5, 5}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3375,7 +3381,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 88, 80, 80}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3394,7 +3400,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 160, 160}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 
@@ -3413,7 +3419,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(InferenceEngine::Layout::ANY),
         ::testing::Values(std::pair<std::vector<size_t>, std::vector<size_t>>{{1, 96, 320, 320}, {}}),
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG_SWISH}
@@ -3434,7 +3440,7 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(listToVectors(Floor_shapes)),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     ActivationLayerTest::getTestCaseName);
 
 }  // namespace

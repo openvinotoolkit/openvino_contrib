@@ -18,16 +18,23 @@ public:
              const NodeOp& node,
              IndexCollection&& inputIds,
              IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    void Capture(InferenceRequestContext& context,
+                 Inputs inputTensors,
+                 Outputs outputTensors,
+                 const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
+
     static std::vector<std::string> GetOutputTensorName(const ov::op::v0::Result& node);
 
 private:
     static std::optional<std::size_t> GetOutputTensorSubIndex(const ov::Output<ov::Node>& node);
-    static std::optional<std::string> GetFusedOutputTensorName(const ov::Node::RTMap& rtInfo,
-                                                               const std::string& resultName);
 
     std::vector<std::string> output_tensor_names_;
 };

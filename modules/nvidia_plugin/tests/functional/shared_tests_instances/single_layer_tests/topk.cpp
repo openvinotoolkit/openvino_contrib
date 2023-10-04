@@ -56,7 +56,7 @@ INSTANTIATE_TEST_CASE_P(smoke_TopK3D,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(shapes3D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         TopKLayerTest::getTestCaseName);
 
 const std::vector<int64_t> axes4D = {
@@ -83,7 +83,7 @@ INSTANTIATE_TEST_CASE_P(TopK4D,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(shapes4D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         TopKLayerTest::getTestCaseName);
 
 const std::vector<int64_t> axes5D = {
@@ -111,7 +111,7 @@ INSTANTIATE_TEST_CASE_P(TopK5D,
                                            ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(shapes5D),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
                         TopKLayerTest::getTestCaseName);
 
 }  // namespace

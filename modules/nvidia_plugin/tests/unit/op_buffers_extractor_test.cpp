@@ -4,14 +4,20 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <cuda_op_buffers_extractor.hpp>
-#include <details/ie_exception.hpp>
 #include <memory>
-#include <ngraph/function.hpp>
-#include <ngraph/opsets/opset1.hpp>
 #include <stdexcept>
-#include <transformer/nodes/concat_optimized.hpp>
 #include <vector>
+
+#include "cuda_op_buffers_extractor.hpp"
+#include "openvino/op/add.hpp"
+#include "openvino/op/constant.hpp"
+#include "openvino/op/multiply.hpp"
+#include "openvino/op/parameter.hpp"
+#include "openvino/op/relu.hpp"
+#include "openvino/op/reshape.hpp"
+#include "openvino/op/squeeze.hpp"
+#include "openvino/op/unsqueeze.hpp"
+#include "transformer/nodes/concat_optimized.hpp"
 
 /*
  * TODO: To be moved to functional tests once they are enabled for nvidia_gpu
@@ -34,43 +40,42 @@ class OperationBufferExtractorTest : public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({3}));
+        auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape({3}));
 
         std::vector<float> multiplier_values = {0.23, 0.23, 0.23};
-        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{3}, multiplier_values);
+        auto multiplier = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, multiplier_values);
 
-        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
+        auto multiply = std::make_shared<ov::op::v1::Multiply>(input, multiplier);
 
         std::vector<float> bias_values = {-0.03, 0.13, 0.65};
-        auto bias = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{3}, bias_values);
+        auto bias = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{3}, bias_values);
 
-        auto add_0 = std::make_shared<ngraph::opset1::Add>(multiply, bias);
+        auto add_0 = std::make_shared<ov::op::v1::Add>(multiply, bias);
 
-        std::vector<int32_t> unsqueese_axes_values = {1};
-        auto unsqueese_axes =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{1}, unsqueese_axes_values);
-        auto unsqueese = std::make_shared<ngraph::opset1::Unsqueeze>(add_0, unsqueese_axes);
+        std::vector<int32_t> unsqueeze_axes_values = {1};
+        auto unsqueeze_axes =
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{1}, unsqueeze_axes_values);
+        auto unsqueeze = std::make_shared<ov::op::v0::Unsqueeze>(add_0, unsqueeze_axes);
 
-        auto relu = std::make_shared<ngraph::opset1::Relu>(unsqueese);
+        auto relu = std::make_shared<ov::op::v0::Relu>(unsqueeze);
 
         std::vector<int32_t> squeeze_axes_values = {1};
-        auto squeeze_axes =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{1}, squeeze_axes_values);
-        auto squeeze = std::make_shared<ngraph::opset1::Squeeze>(relu, squeeze_axes);
+        auto squeeze_axes = std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{1}, squeeze_axes_values);
+        auto squeeze = std::make_shared<ov::op::v0::Squeeze>(relu, squeeze_axes);
         auto squeeze_id = squeeze->get_instance_id();
 
-        auto add_1 = std::make_shared<ngraph::opset1::Add>(squeeze, multiply);
+        auto add_1 = std::make_shared<ov::op::v1::Add>(squeeze, multiply);
 
         std::vector<int32_t> reshape_pattern_values = {0, 1};
         auto reshape_pattern =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
-        auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
+        auto reshape = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
         ov::NodeVector outputs{reshape};
-        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "SimpleGraph");
+        model_ = std::make_unique<ov::Model>(outputs, inputs, "SimpleGraph");
 
-        exec_sequence_ = ngraph_function_->get_ordered_ops();
+        exec_sequence_ = model_->get_ordered_ops();
         extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
         ov::nvidia_gpu::WorkbufferRequest request{{128}, {256}};
         buffer_indices_ = extractor_->processWorkbufferRequest(squeeze_id, request);
@@ -131,7 +136,7 @@ protected:
     }
 
 protected:
-    std::unique_ptr<ngraph::Function> ngraph_function_;
+    std::unique_ptr<ov::Model> model_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
     ov::nvidia_gpu::WorkbufferIds buffer_indices_;
@@ -139,21 +144,20 @@ protected:
 
 TEST_F(OperationBufferExtractorTest, CheckTestIntegrity) {
     // auto expect_node = [this]()
-    using namespace ngraph;
-    EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
-    EXPECT_TRUE(is_type<opset1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Bias)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_Bias)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Unsqueeze_Axes)));
-    EXPECT_TRUE(is_type<opset1::Unsqueeze>(exec_sequence_.at(OpIndex::Unsqueeze)));
-    EXPECT_TRUE(is_type<opset1::Relu>(exec_sequence_.at(OpIndex::Relu)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Squeeze_Axes)));
-    EXPECT_TRUE(is_type<opset1::Squeeze>(exec_sequence_.at(OpIndex::Squeeze)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_Squeeze_Multiply)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
-    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape)));
-    EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Bias)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_Bias)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Unsqueeze_Axes)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Unsqueeze>(exec_sequence_.at(OpIndex::Unsqueeze)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Relu>(exec_sequence_.at(OpIndex::Relu)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Squeeze_Axes)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Squeeze>(exec_sequence_.at(OpIndex::Squeeze)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_Squeeze_Multiply)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Reshape>(exec_sequence_.at(OpIndex::Reshape)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Result>(exec_sequence_.at(OpIndex::Result)));
 }
 
 TEST_F(OperationBufferExtractorTest, CheckMutableBuffersIndices) {
@@ -269,10 +273,10 @@ TEST_F(OperationBufferExtractorTest, CheckImmutableBuffersSizes) {
 }
 
 TEST_F(OperationBufferExtractorTest, CheckWrongBufferInfexBehavior) {
-    EXPECT_THROW(extractor_->mutableBufferSize(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->mutableBufferLifespanEnd(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->mutableBufferLifespanStart(128), InferenceEngine::details::InferenceEngineException);
-    EXPECT_THROW(extractor_->immutableBuffer(128), InferenceEngine::details::InferenceEngineException);
+    EXPECT_THROW(extractor_->mutableBufferSize(128), ov::Exception);
+    EXPECT_THROW(extractor_->mutableBufferLifespanEnd(128), ov::Exception);
+    EXPECT_THROW(extractor_->mutableBufferLifespanStart(128), ov::Exception);
+    EXPECT_THROW(extractor_->immutableBuffer(128), ov::Exception);
 }
 
 TEST_F(OperationBufferExtractorTest, CheckImmutableBufferContent) {
@@ -316,35 +320,35 @@ class OperationBufferExtractorConcatOptimizedTest : public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
+        auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
 
         std::vector<float> multiplier_values = {0.23};
-        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
+        auto multiplier = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
 
-        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
+        auto multiply = std::make_shared<ov::op::v1::Multiply>(input, multiplier);
 
         std::vector<float> adder_0_values = {0.33};
         auto adder_0 =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
-        auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
+            std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
+        auto add_0 = std::make_shared<ov::op::v1::Add>(multiplier, adder_0);
 
         auto concat = std::make_shared<ov::nvidia_gpu::nodes::ConcatOptimized>(ov::OutputVector{multiply, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
         auto adder_1 =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
-        auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
+            std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
+        auto add_1 = std::make_shared<ov::op::v1::Add>(adder_1, concat);
 
         std::vector<int32_t> reshape_pattern_values = {0, 1};
         auto reshape_pattern =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
-        auto reshape = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
+        auto reshape = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
         ov::NodeVector outputs{reshape};
-        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
+        model_ = std::make_unique<ov::Model>(outputs, inputs, "ConcatOptimizedGraph");
 
-        exec_sequence_ = ngraph_function_->get_ordered_ops();
+        exec_sequence_ = model_->get_ordered_ops();
         extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
     }
 
@@ -395,25 +399,23 @@ protected:
     }
 
 protected:
-    std::unique_ptr<ngraph::Function> ngraph_function_;
+    std::unique_ptr<ov::Model> model_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
 };
 
 TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckTestIntegrity) {
-    using namespace ngraph;
-    using namespace ov::nvidia_gpu;
-    EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
-    EXPECT_TRUE(is_type<opset1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_1)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_0)));
-    EXPECT_TRUE(is_type<nodes::ConcatOptimized>(exec_sequence_.at(OpIndex::ConcatOptimized)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_1)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
-    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape)));
-    EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_1)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_0)));
+    EXPECT_TRUE(ov::is_type<ov::nvidia_gpu::nodes::ConcatOptimized>(exec_sequence_.at(OpIndex::ConcatOptimized)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_1)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Reshape>(exec_sequence_.at(OpIndex::Reshape)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Result>(exec_sequence_.at(OpIndex::Result)));
 }
 
 TEST_F(OperationBufferExtractorConcatOptimizedTest, CheckMutableBuffersIndices) {
@@ -450,39 +452,39 @@ class OperationBufferExtractorConcatOptimizedV2Test : public testing::Test {
      * ```
      */
     void SetUp() override {
-        auto input = std::make_shared<ngraph::opset1::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
+        auto input = std::make_shared<ov::op::v0::Parameter>(ov::element::f32, ov::Shape({1, 8, 16, 16}));
 
         std::vector<float> multiplier_values = {0.23};
-        auto multiplier = std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
+        auto multiplier = std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1}, multiplier_values);
 
-        auto multiply = std::make_shared<ngraph::opset1::Multiply>(input, multiplier);
+        auto multiply = std::make_shared<ov::op::v1::Multiply>(input, multiplier);
 
         std::vector<float> adder_0_values = {0.33};
         auto adder_0 =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
-        auto add_0 = std::make_shared<ngraph::opset1::Add>(multiplier, adder_0);
+            std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 8, 16, 16}, adder_0_values);
+        auto add_0 = std::make_shared<ov::op::v1::Add>(multiplier, adder_0);
 
-        auto reshape_const = std::make_shared<ngraph::opset1::Constant>(
-            ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
-        auto reshape0 = std::make_shared<ngraph::opset1::Reshape>(multiply, reshape_const, true);
+        auto reshape_const =
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{4}, std::vector<int32_t>{1, 8, 16, 16});
+        auto reshape0 = std::make_shared<ov::op::v1::Reshape>(multiply, reshape_const, true);
 
         auto concat = std::make_shared<ov::nvidia_gpu::nodes::ConcatOptimized>(ov::OutputVector{reshape0, add_0}, 1);
 
         std::vector<float> adder_1_values = {0.55};
         auto adder_1 =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
-        auto add_1 = std::make_shared<ngraph::opset1::Add>(adder_1, concat);
+            std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape{1, 16, 16, 16}, adder_1_values);
+        auto add_1 = std::make_shared<ov::op::v1::Add>(adder_1, concat);
 
         std::vector<int32_t> reshape_pattern_values = {0, 1};
         auto reshape_pattern =
-            std::make_shared<ngraph::opset1::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
-        auto reshape1 = std::make_shared<ngraph::opset1::Reshape>(add_1, reshape_pattern, true);
+            std::make_shared<ov::op::v0::Constant>(ov::element::i32, ov::Shape{2}, reshape_pattern_values);
+        auto reshape1 = std::make_shared<ov::op::v1::Reshape>(add_1, reshape_pattern, true);
 
         ov::ParameterVector inputs{input};
         ov::NodeVector outputs{reshape1};
-        ngraph_function_ = std::make_unique<ngraph::Function>(outputs, inputs, "ConcatOptimizedGraph");
+        model_ = std::make_unique<ov::Model>(outputs, inputs, "ConcatOptimizedGraph");
 
-        exec_sequence_ = ngraph_function_->get_ordered_ops();
+        exec_sequence_ = model_->get_ordered_ops();
         extractor_ = std::make_unique<ov::nvidia_gpu::OperationBuffersExtractor>(exec_sequence_);
     }
 
@@ -536,27 +538,25 @@ protected:
     }
 
 protected:
-    std::unique_ptr<ngraph::Function> ngraph_function_;
+    std::unique_ptr<ov::Model> model_;
     std::vector<std::shared_ptr<ov::Node>> exec_sequence_;
     std::unique_ptr<ov::nvidia_gpu::OperationBuffersExtractor> extractor_;
 };
 
 TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckTestIntegrity) {
-    using namespace ngraph;
-    using namespace ov::nvidia_gpu;
-    EXPECT_TRUE(is_type<opset1::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
-    EXPECT_TRUE(is_type<opset1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_0)));
-    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape_0)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_1)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_0)));
-    EXPECT_TRUE(is_type<nodes::ConcatOptimized>(exec_sequence_.at(OpIndex::ConcatOptimized)));
-    EXPECT_TRUE(is_type<opset1::Add>(exec_sequence_.at(OpIndex::Add_1)));
-    EXPECT_TRUE(is_type<opset1::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
-    EXPECT_TRUE(is_type<opset1::Reshape>(exec_sequence_.at(OpIndex::Reshape1)));
-    EXPECT_TRUE(is_type<opset1::Result>(exec_sequence_.at(OpIndex::Result)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Parameter>(exec_sequence_.at(OpIndex::Parameter)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Multiplier)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_0)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Multiply>(exec_sequence_.at(OpIndex::Multiply)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_0)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Reshape>(exec_sequence_.at(OpIndex::Reshape_0)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Adder_1)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_0)));
+    EXPECT_TRUE(ov::is_type<ov::nvidia_gpu::nodes::ConcatOptimized>(exec_sequence_.at(OpIndex::ConcatOptimized)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Add>(exec_sequence_.at(OpIndex::Add_1)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Constant>(exec_sequence_.at(OpIndex::Constant_Reshape_Pattern)));
+    EXPECT_TRUE(ov::is_type<ov::op::v1::Reshape>(exec_sequence_.at(OpIndex::Reshape1)));
+    EXPECT_TRUE(ov::is_type<ov::op::v0::Result>(exec_sequence_.at(OpIndex::Result)));
 }
 
 TEST_F(OperationBufferExtractorConcatOptimizedV2Test, CheckMutableBuffersIndices) {

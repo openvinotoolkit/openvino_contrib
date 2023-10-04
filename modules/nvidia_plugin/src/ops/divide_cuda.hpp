@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include <ngraph/op/divide.hpp>
-
 #include "elementwise_binary.hpp"
 #include "kernels/divide.hpp"
+#include "openvino/op/divide.hpp"
 
 namespace ov {
 namespace nvidia_gpu {

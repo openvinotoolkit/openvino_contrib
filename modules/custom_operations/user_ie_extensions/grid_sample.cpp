@@ -64,13 +64,13 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
                 const float* inp_row1 = (0 <= y1 && y1 < inpHeight) ? inp + y1 * inpWidth : zeros;
                 float* out = outData + d * channels * outPlane;
                 if ((x1 < 0 || inpWidth <= x1) && (x0 < 0 || inpWidth <= x0)) {
-                    for (int c = 0; c < channels; ++c) {
+                    for (size_t c = 0; c < channels; ++c) {
                         out[offset] = 0;
                         out += outPlane;
                     }
                 }
                 else if (x1 < 0 || inpWidth <= x1) {
-                    for (int c = 0; c < channels; ++c) {
+                    for (size_t c = 0; c < channels; ++c) {
                         out[offset] = inp_row0[x0] +
                             (input_y - y0) * (inp_row1[x0] - inp_row0[x0]) +
                             (input_x - x0) * (-inp_row0[x0] +
@@ -81,7 +81,7 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
                     }
                 }
                 else if (x0 < 0 || inpWidth <= x0) {
-                    for (int c = 0; c < channels; ++c) {
+                    for (size_t c = 0; c < channels; ++c) {
                         out[offset] =
                             (input_x - x0) * (inp_row0[x1] + (input_y - y0) * (inp_row1[x1] - inp_row0[x1]));
                         out += outPlane;
@@ -89,7 +89,7 @@ bool GridSample::evaluate(ov::TensorVector& outputs, const ov::TensorVector& inp
                         inp_row1 += inpPlane;
                     }
                 } else {
-                    for (int c = 0; c < channels; ++c) {
+                    for (size_t c = 0; c < channels; ++c) {
                         out[offset] = inp_row0[x0] +
                             (input_y - y0) * (inp_row1[x0] - inp_row0[x0]) +
                             (input_x - x0) * (inp_row0[x1] - inp_row0[x0] +

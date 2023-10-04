@@ -9,7 +9,6 @@
 
 #include <cuda_config.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/util.hpp>
 #include <nvidia/nvidia_config.hpp>
 #include <ops/converters.hpp>
 
@@ -20,7 +19,7 @@ ConvolutionParamsCuDnn::ConvolutionParamsCuDnn(const Convolution::Details::Convo
       groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.padding_before_ != params.padding_after_) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Asymmetric padding is not supported: padding_before: "
                         "{}, padding_after: {}",
                         params.padding_before_,
@@ -75,7 +74,7 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
 
     // Enable computations on Tensor Core hardware which requires at least Volta GPU
     // (compute capability 7.0).
-    const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
+    const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH;
     throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
     throwIfError(::cudnnSetConvolutionGroupCount(conv_desc.get(), groups_));
 
@@ -83,14 +82,17 @@ CUDA::DnnConvolutionDescriptor ConvolutionParamsCuDnn::MakeConvolutionDescriptor
 }
 
 ConvolutionDescriptorsCuDnn::ConvolutionDescriptorsCuDnn(const CreationContext& context,
-                                                         const ConvolutionParamsCuDnn& params)
+                                                         const ConvolutionParamsCuDnn& params,
+                                                         const std::vector<cudnnDataType_t> half_desc_types)
     : params_{params},
       tensor_element_type_{params_.ElementType()},
+      conv_desc_type_{params_.ElementType()},
       input_{params_.MakeInputDescriptor()},
       filter_{params_.MakeFilterDescriptor()},
       output_{params_.MakeOutputDescriptor()},
       conv_{},
-      algo_perf_{} {
+      algo_perf_{},
+      half_desc_types_{half_desc_types} {
     auto& dnnHandle = context.dnnHandle();
     if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle, params_);
@@ -109,8 +111,8 @@ void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convForwardAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());
@@ -124,14 +126,18 @@ void ConvolutionDescriptorsCuDnn::BenchmarkOptimalAlgo(const CUDA::DnnHandle& dn
 void ConvolutionDescriptorsCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (GetAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -153,6 +159,8 @@ bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& 
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
         dnnHandle.get(), input_.get(), filter_.get(), conv_.get(), output_.get(), algo_perf_.algo, &sizeInBytes));
@@ -164,14 +172,18 @@ bool ConvolutionDescriptorsCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& 
 void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -193,6 +205,8 @@ bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle&
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionForwardWorkspaceSize(
         dnnHandle.get(), input_.get(), filter_.get(), conv_.get(), output_.get(), algo_perf_.algo, &sizeInBytes));
@@ -208,14 +222,18 @@ void ConvolutionDescriptorsCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle,
                                            CUDA::DeviceBuffer<std::byte> workspace) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, inPtr, filterPtr, outPtr, workspace, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionDescriptorsCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -250,7 +268,7 @@ ConvolutionBackpropDataParamsCuDnn::ConvolutionBackpropDataParamsCuDnn(
       groups_{static_cast<int>(params.groups_)},
       data_type_{convertDataType<cudnnDataType_t>(params.element_type_)} {
     if (params.pads_begin_ != params.pads_end_) {
-        throwIEException(
+        throw_ov_exception(
             fmt::format("Asymmetric padding is not supported: padding_before: "
                         "{}, padding_after: {}",
                         params.pads_begin_,
@@ -306,7 +324,7 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
 
     // Enable computations on Tensor Core hardware which requires at least Volta GPU
     // (compute capability 7.0).
-    const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
+    const cudnnMathType_t math_type = CUDNN_TENSOR_OP_MATH;
     throwIfError(::cudnnSetConvolutionMathType(conv_desc.get(), math_type));
     throwIfError(::cudnnSetConvolutionGroupCount(conv_desc.get(), groups_));
 
@@ -314,14 +332,18 @@ CUDA::DnnConvolutionDescriptor ConvolutionBackpropDataParamsCuDnn::MakeConvoluti
 }
 
 ConvolutionBackpropDataDescriptorCuDnn::ConvolutionBackpropDataDescriptorCuDnn(
-    const CreationContext& context, const ConvolutionBackpropDataParamsCuDnn& params)
+    const CreationContext& context,
+    const ConvolutionBackpropDataParamsCuDnn& params,
+    const std::vector<cudnnDataType_t> half_desc_types)
     : params_{params},
       tensor_element_type_{params_.ElementType()},
+      conv_desc_type_{params_.ElementType()},
       filter_desc_{params_.MakeFilterDescriptor()},
       doutput_desc_{params_.MakeDOutputDescriptor()},
       dinput_desc_{params_.MakeDInputDescriptor()},
       conv_{},
-      algo_perf_{} {
+      algo_perf_{},
+      half_desc_types_{half_desc_types} {
     auto& dnnHandle = context.dnnHandle();
     if (context.opBenchOption()) {
         BenchmarkOptimalAlgo(dnnHandle);
@@ -339,8 +361,8 @@ void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::Dn
     for (auto& algo : cudnnAlgos) {
         FindAlgo(dnnHandle);
         algo = algo_perf_;
-        IE_ASSERT(algo_perf_.algo >= 0);
-        IE_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
+        OPENVINO_ASSERT(algo_perf_.algo >= 0);
+        OPENVINO_ASSERT(algo_perf_.algo < convBackwardDataAlgorithmMaxCount);
         timesCuDNNAlgosSelected[algo_perf_.algo] += 1;
     }
     auto maxAlgoIter = std::max_element(timesCuDNNAlgosSelected.begin(), timesCuDNNAlgosSelected.end());
@@ -354,14 +376,18 @@ void ConvolutionBackpropDataDescriptorCuDnn::BenchmarkOptimalAlgo(const CUDA::Dn
 void ConvolutionBackpropDataDescriptorCuDnn::GetAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (GetAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto& half_desc_type : half_desc_types_) {
+                if (GetAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (GetAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -383,6 +409,8 @@ bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::
         return false;
     }
 
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
+
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionBackwardDataWorkspaceSize(dnnHandle.get(),
                                                                 filter_desc_.get(),
@@ -399,14 +427,18 @@ bool ConvolutionBackpropDataDescriptorCuDnn::GetAlgoForConvDataType(const CUDA::
 void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnnHandle) {
     switch (tensor_element_type_) {
         case CUDNN_DATA_HALF:
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_HALF)) return;
-            if (FindAlgoForConvDataType(dnnHandle, CUDNN_DATA_FLOAT)) return;
+            for (const auto half_desc_type : half_desc_types_) {
+                if (FindAlgoForConvDataType(dnnHandle, half_desc_type)) {
+                    conv_desc_type_ = half_desc_type;
+                    return;
+                }
+            }
             break;
         default:
             if (FindAlgoForConvDataType(dnnHandle, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,
@@ -427,6 +459,8 @@ bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA:
     if ((status != CUDNN_STATUS_SUCCESS) || (algo_perf_.status != CUDNN_STATUS_SUCCESS) || (returnedAlgoCount <= 0)) {
         return false;
     }
+
+    throwIfError(::cudnnSetConvolutionMathType(conv_.get(), algo_perf_.mathType));
 
     size_t sizeInBytes = 0;
     throwIfError(::cudnnGetConvolutionBackwardDataWorkspaceSize(dnnHandle.get(),
@@ -455,7 +489,7 @@ void ConvolutionBackpropDataDescriptorCuDnn::FindAlgo(const CUDA::DnnHandle& dnn
             if (FindAlgoForConvDataType(dnnHandle, filterPtr, dInPtr, dOutPtr, workspace, tensor_element_type_)) return;
     }
 
-    throwIEException("cuDNN: Unsupported convolution");
+    throw_ov_exception("cuDNN: Unsupported convolution");
 }
 
 bool ConvolutionBackpropDataDescriptorCuDnn::FindAlgoForConvDataType(const CUDA::DnnHandle& dnnHandle,

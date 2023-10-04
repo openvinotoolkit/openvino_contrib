@@ -4,65 +4,70 @@
 
 #pragma once
 
-#include <cuda_operation_base.hpp>
-#include <openvino/op/strided_slice.hpp>
-
+#include "cuda_operation_base.hpp"
 #include "kernels/strided_slice.hpp"
-#include "ngraph/slice_plan.hpp"
+#include "openvino/op/strided_slice.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
 
+template <typename T>
 class StridedSliceOp : public OperationBase {
 public:
     using NodeOp = ov::op::v1::StridedSlice;
+    struct SlicePlan {
+        // Parameters for the Slice
+        std::vector<T> begins;
+        std::vector<T> ends;
+        std::vector<T> strides;
+
+        // Shapes coming into, and going out of, the Reshape.
+        Shape reshape_in_shape;
+        Shape reshape_out_shape;
+
+        // Parameters for the Reverse
+        AxisSet reverse_axes;
+    };
+
     StridedSliceOp(const CreationContext& context,
                    const NodeOp& stridedSliceOp,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputs,
                  Outputs outputs,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
 
 private:
-    template <typename T>
-    void callKernels(const InferenceRequestContext& context,
-                     Inputs inputs,
-                     Outputs outputs,
-                     const Workbuffers& workbuffers) const;
-    template <typename T>
-    void callStridedSliceKernel(const InferenceRequestContext& context,
-                                const Inputs inputs,
-                                Outputs outputs,
-                                const Workbuffers& workbuffers) const;
-    template <typename T>
-    void callReverseAxesKernel(const InferenceRequestContext& context, Outputs outputs) const;
-    template <typename T>
-    void callReverseAxesKernel(const InferenceRequestContext& context,
-                               const std::vector<size_t>& matrixShapes,
-                               const std::vector<int64_t>& matrixSizes,
-                               const ov::AxisSet& reverseAxes,
-                               CUDA::DevicePointer<void*> buffer) const;
-    void uploadDataToWorkbuffer(CUDA::DevicePointer<void*> buffer, const std::vector<int64_t>& data);
+    void upload_data_to_workbuffer(CUDA::DevicePointer<void*> buffer, const std::vector<T>& data);
+    std::vector<T> get_node_constant_values(const ov::Node* node) const;
+    void make_slice_plan(const Shape& input_shape,
+                         const std::vector<T>& begins,
+                         const std::vector<T>& ends,
+                         const std::vector<T>& strides,
+                         const AxisSet& lower_bounds_mask,
+                         const AxisSet& upper_bounds_mask,
+                         const AxisSet& new_axis_mask,
+                         const AxisSet& shrink_axis_mask,
+                         const AxisSet& ellipsis_mask);
 
-    std::vector<int64_t> getNodeConstantValues(const ov::Node* node) const;
+    std::vector<T> src_matrix_sizes_;
+    std::vector<T> dst_matrix_sizes_;
 
-private:
-    std::vector<int64_t> src_matrix_sizes_;
-    std::vector<int64_t> dst_matrix_sizes_;
-
-    ngraph::SlicePlan slice_plan_;
+    SlicePlan slice_plan_;
 
     unsigned max_threads_per_block_{0};
     unsigned blocks_number_{0};
     unsigned threads_per_block_{0};
     ov::element::Type_t element_type_;
+    ov::element::Type_t element_type_integer_;
 
-    std::optional<kernel::StridedSliceKernelOp> kernel_op_;
+    std::optional<kernel::StridedSliceKernelOp<T>> kernel_op_;
 };
-
 }  // namespace nvidia_gpu
 }  // namespace ov

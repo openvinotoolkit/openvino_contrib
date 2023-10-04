@@ -1,10 +1,9 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
 #include "lstm_sequence_optimized.hpp"
 
-#include <ngraph/op/util/recurrent_sequence.hpp>
 #include <openvino/core/except.hpp>
 
 namespace ov::nvidia_gpu::nodes {
@@ -17,26 +16,22 @@ LSTMSequenceOptimized::LSTMSequenceOptimized(const ov::Output<Node>& X,
                                              const ov::Output<Node>& R,
                                              const ov::Output<Node>& B,
                                              const std::int64_t hidden_size,
-                                             const direction lstm_direction,
+                                             const ov::op::RecurrentSequenceDirection lstm_direction,
                                              MajorFormat major_format,
                                              const std::vector<float>& activations_alpha,
                                              const std::vector<float>& activations_beta,
                                              const std::vector<std::string>& activations,
                                              const float clip)
-    : ov::op::v5::LSTMSequence::LSTMSequence(X,
-                                             initial_hidden_state,
-                                             initial_cell_state,
-                                             sequence_lengths,
-                                             W,
-                                             R,
-                                             B,
-                                             hidden_size,
-                                             lstm_direction,
-                                             activations_alpha,
-                                             activations_beta,
-                                             activations,
-                                             clip),
-      m_major_format{major_format} {}
+        : RNNCellBase({X, initial_hidden_state, initial_cell_state, sequence_lengths, W, R, B},
+                    hidden_size,
+                    clip,
+                    activations,
+                    activations_alpha,
+                    activations_beta),
+            m_direction(lstm_direction),
+            m_major_format{major_format} {
+        constructor_validate_and_infer_types();
+      }
 
 std::shared_ptr<ov::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ov::OutputVector& new_args) const {
     check_new_args_count(this, new_args);
@@ -60,6 +55,17 @@ std::shared_ptr<ov::Node> LSTMSequenceOptimized::clone_with_new_inputs(const ov:
     } else {
         OPENVINO_THROW("Incorrect number of new arguments");
     }
+}
+
+bool LSTMSequenceOptimized::visit_attributes(AttributeVisitor& visitor) {
+    visitor.on_attribute("hidden_size", m_hidden_size);
+    visitor.on_attribute("activations", m_activations);
+    visitor.on_attribute("activations_alpha", m_activations_alpha);
+    visitor.on_attribute("activations_beta", m_activations_beta);
+    visitor.on_attribute("clip", m_clip);
+    visitor.on_attribute("direction", m_direction);
+    visitor.on_attribute("major_format", m_major_format);
+    return true;
 }
 
 void LSTMSequenceOptimized::validate_and_infer_types() {
@@ -114,12 +120,21 @@ void LSTMSequenceOptimized::validate_and_infer_types() {
                           "match.");
 
     // Merge batch_size dimension across all inputs to evaluate output[0] dimension
-    NODE_VALIDATION_CHECK(this,
-                          ov::Dimension::merge(merged_batch_size, merged_batch_size, ht_pshape[0]) &&
-                              ov::Dimension::merge(merged_batch_size, merged_batch_size, ct_pshape[0]) &&
-                              ov::Dimension::merge(merged_batch_size, merged_batch_size, x_pshape[0]) &&
-                              ov::Dimension::merge(merged_batch_size, merged_batch_size, sl_pshape[0]),
-                          "Parameter batch_size not matched in LSTMSequence.");
+    if (m_major_format == MajorFormat::BatchMajor) {
+        NODE_VALIDATION_CHECK(this,
+                            ov::Dimension::merge(merged_batch_size, merged_batch_size, ht_pshape[0]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, ct_pshape[0]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, x_pshape[0]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, sl_pshape[0]),
+                            "Parameter batch_size not matched in LSTMSequence.");
+    } else {
+        NODE_VALIDATION_CHECK(this,
+                            ov::Dimension::merge(merged_batch_size, merged_batch_size, ht_pshape[0]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, ct_pshape[0]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, x_pshape[1]) &&
+                                ov::Dimension::merge(merged_batch_size, merged_batch_size, sl_pshape[0]),
+                            "Parameter batch_size not matched in LSTMSequence.");
+    }
 
     // Merge hidden_size dimension across all inputs to evaluate output dimension
     NODE_VALIDATION_CHECK(this,
@@ -178,12 +193,32 @@ void LSTMSequenceOptimized::validate_and_infer_types() {
     // Set output size, type and shape
     set_output_size(3);
     if (m_major_format == MajorFormat::BatchMajor) {
+        // x shape [batch_size, seq_length, input_size]
+        // y shape [batch_size, seq_length, num_directions, hidden_size]
         set_output_type(0, result_et, {merged_batch_size, x_pshape[1], merged_num_directions, merged_hidden_size});
     } else {
-        set_output_type(0, result_et, {x_pshape[1], merged_batch_size, merged_num_directions, merged_hidden_size});
+        // x shape [seq_length, batch_size, input_size]
+        // y shape [seq_length, batch_size, num_directions, hidden_size]
+        set_output_type(0, result_et, {x_pshape[0], merged_batch_size, merged_num_directions, merged_hidden_size});
     }
     set_output_type(1, result_et, {merged_num_directions, merged_batch_size, merged_hidden_size});
     set_output_type(2, result_et, {merged_num_directions, merged_batch_size, merged_hidden_size});
 }
 
 }  // namespace ov::nvidia_gpu::nodes
+
+
+namespace ov {
+std::ostream& operator<<(std::ostream& s, const nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat& type) {
+    return s << as_string(type);
+}
+template <>
+EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>&
+EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>::get() {
+    static auto enum_names = EnumNames<nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat>(
+        "nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat",
+        {{"batch_major", nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat::BatchMajor},
+         {"sequence_major", nvidia_gpu::nodes::LSTMSequenceOptimized::MajorFormat::SequenceMajor}});
+    return enum_names;
+}
+} // namespace ov

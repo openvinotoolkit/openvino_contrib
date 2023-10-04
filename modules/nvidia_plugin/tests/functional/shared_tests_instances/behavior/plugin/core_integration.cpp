@@ -20,11 +20,11 @@ namespace {
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassBasicTestP,
                          IEClassBasicTestP,
                          ::testing::Values(std::make_pair("openvino_nvidia_gpu_plugin",
-                                                          CommonTestUtils::DEVICE_NVIDIA)));
+                                                          ov::test::utils::DEVICE_NVIDIA)));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassNetworkTestP,
                          IEClassNetworkTestP,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 //
 // IE Class GetMetric
@@ -32,39 +32,45 @@ INSTANTIATE_TEST_SUITE_P(smoke_IEClassNetworkTestP,
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_SUPPORTED_CONFIG_KEYS,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_SUPPORTED_METRICS,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_AVAILABLE_DEVICES,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_FULL_DEVICE_NAME,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_OPTIMIZATION_CAPABILITIES,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_RANGE_FOR_ASYNC_INFER_REQUESTS,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetMetricTest,
                          IEClassGetMetricTest_ThrowUnsupported,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetConfigTest,
                          IEClassGetConfigTest_ThrowUnsupported,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
+#ifdef PROXY_PLUGIN_ENABLED
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetAvailableDevices,
                          IEClassGetAvailableDevices,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_GPU));
+#else
+INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetAvailableDevices,
+                         IEClassGetAvailableDevices,
+                         ::testing::Values(ov::test::utils::DEVICE_GPU));
+#endif
 
 //
 // IE Class SetConfig
@@ -120,7 +126,7 @@ TEST_F(IEClassSetConfigTestHETERO, smoke_SetConfigNoThrow) {
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassGetConfigTest,
                          IEClassGetConfigTest,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 class IEClassGetConfigTestCUDA : public BehaviorTestsUtils::IEClassNetworkTest,
                                  public BehaviorTestsUtils::IEPluginTestBase {
@@ -133,7 +139,7 @@ class IEClassGetConfigTestCUDA : public BehaviorTestsUtils::IEClassNetworkTest,
 TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
     InferenceEngine::Core ie = BehaviorTestsUtils::createIECoreWithTemplate();
     InferenceEngine::Parameter p;
-    std::string deviceName = CommonTestUtils::DEVICE_NVIDIA;
+    std::string deviceName = ov::test::utils::DEVICE_NVIDIA;
 
     ASSERT_NO_THROW(p = ie.GetMetric(deviceName, METRIC_KEY(SUPPORTED_CONFIG_KEYS)));
     auto configValues = p.as<std::vector<std::string>>();
@@ -156,11 +162,11 @@ TEST_F(IEClassGetConfigTestCUDA, smoke_GetConfigNoThrow) {
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassQueryNetworkTest,
                          IEClassQueryNetworkTest,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 // IE Class Load network
 
 INSTANTIATE_TEST_SUITE_P(smoke_IEClassLoadNetworkTest,
                          IEClassLoadNetworkTest,
-                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 }  // namespace

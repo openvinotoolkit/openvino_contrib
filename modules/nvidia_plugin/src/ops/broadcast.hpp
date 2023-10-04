@@ -7,7 +7,7 @@
 #include "components/numpy_broadcast_params.h"
 #include "cuda_operation_base.hpp"
 #include "kernels/broadcast.hpp"
-#include "ngraph/op/broadcast.hpp"
+#include "openvino/op/broadcast.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -26,6 +26,8 @@ public:
 
     WorkbufferRequest GetWorkBufferRequest() const override;
     void InitSharedImmutableWorkbuffers(const Buffers& buffers) override;
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     std::vector<WorkbufferRequest::size_in_bytes_t> immutable_buffer_sizes_;

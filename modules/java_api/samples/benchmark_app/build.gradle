@@ -6,8 +6,7 @@ plugins {
 sourceSets {
     main {
         java {
-            srcDirs = [".."]
-            include 'benchmark_app/*.java', 'ArgumentParser.java'
+            srcDirs = ["src/main/java", '../common']
         }
     }
 }

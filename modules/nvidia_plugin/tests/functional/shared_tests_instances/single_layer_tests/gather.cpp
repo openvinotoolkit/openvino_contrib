@@ -6,9 +6,9 @@
 
 #include <fmt/format.h>
 
-#include <cuda_graph.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <cuda_test_constants.hpp>
 #include <error.hpp>
 
@@ -33,9 +33,9 @@ public:
             indices, indicesShape, axis, inputShape, netPrecision, inPrc, outPrc, inLayout, outLayout, targetName) =
             obj.param;
         std::ostringstream result;
-        result << "IS=" << CommonTestUtils::vec2str(inputShape) << "_";
+        result << "IS=" << ov::test::utils::vec2str(inputShape) << "_";
         result << "axis=" << axis << "_";
-        result << "indicesShape=" << CommonTestUtils::vec2str(indicesShape) << "_";
+        result << "indicesShape=" << ov::test::utils::vec2str(indicesShape) << "_";
         result << "netPRC=" << netPrecision.name() << "_";
         result << "inPRC=" << inPrc.name() << "_";
         result << "outPRC=" << outPrc.name() << "_";
@@ -73,11 +73,11 @@ struct GatherTestParams {
     InferenceEngine::Precision output_precision_ = InferenceEngine::Precision::UNSPECIFIED;
     InferenceEngine::Layout input_layout_ = InferenceEngine::Layout::ANY;
     InferenceEngine::Layout output_layout_ = InferenceEngine::Layout::ANY;
-    LayerTestsUtils::TargetDevice device_ = CommonTestUtils::DEVICE_NVIDIA;
+    LayerTestsUtils::TargetDevice device_ = ov::test::utils::DEVICE_NVIDIA;
 };
 
 template <typename T>
-std::vector<T> generate_indices(const GatherTestParams& test_params) {
+std::vector<T> generate_indices(const GatherTestParams& test_params, bool add_out_of_range = false) {
     static std::random_device r_device;
     static std::default_random_engine r_engine{r_device()};
 
@@ -85,14 +85,22 @@ std::vector<T> generate_indices(const GatherTestParams& test_params) {
     const auto axis = test_params.axis_;
     const unsigned normalized_axis = axis >= 0 ? axis : axis + params_shape_size;
     if (normalized_axis >= params_shape_size) {
-        ov::nvidia_gpu::throwIEException(
+        ov::nvidia_gpu::throw_ov_exception(
             fmt::format("normalized_axis >= params_shape_size: {} >= {}", normalized_axis, params_shape_size));
     }
     std::uniform_int_distribution<T> distr(0, test_params.params_shape_[normalized_axis] - 1);
 
     const auto indices_size = ov::shape_size(test_params.indices_shape_);
     std::vector<T> indices(indices_size);
-    std::generate(indices.begin(), indices.end(), [&]() { return distr(r_engine); });
+    auto gen_function = [&]() { return distr(r_engine); };
+    if (!add_out_of_range) {
+        std::generate(indices.begin(), indices.end(), gen_function);
+    } else {
+        if (indices_size > 0) {
+            indices[0] = test_params.params_shape_[normalized_axis];
+        }
+        std::generate(indices.begin() + 1, indices.end(), gen_function);
+    }
     return indices;
 }
 
@@ -101,6 +109,20 @@ const GatherTestParams smoke_01_params_v1_v7 = {{4, 3}, {2}};
 INSTANTIATE_TEST_CASE_P(smoke_Gather_v1_01,
                         CudaGatherLayerTest,
                         ::testing::Combine(::testing::Values(generate_indices<int>(smoke_01_params_v1_v7)),
+                                           ::testing::Values(smoke_01_params_v1_v7.indices_shape_),
+                                           ::testing::Values(smoke_01_params_v1_v7.axis_),
+                                           ::testing::Values(smoke_01_params_v1_v7.params_shape_),
+                                           ::testing::ValuesIn(smoke_01_params_v1_v7.net_precisions_),
+                                           ::testing::Values(smoke_01_params_v1_v7.input_precision_),
+                                           ::testing::Values(smoke_01_params_v1_v7.output_precision_),
+                                           ::testing::Values(smoke_01_params_v1_v7.input_layout_),
+                                           ::testing::Values(smoke_01_params_v1_v7.output_layout_),
+                                           ::testing::Values(smoke_01_params_v1_v7.device_)),
+                        CudaGatherLayerTest::getTestCaseName);
+
+INSTANTIATE_TEST_CASE_P(smoke_Gather_v1_01_out_of_range_index,
+                        CudaGatherLayerTest,
+                        ::testing::Combine(::testing::Values(generate_indices<int>(smoke_01_params_v1_v7, true)),
                                            ::testing::Values(smoke_01_params_v1_v7.indices_shape_),
                                            ::testing::Values(smoke_01_params_v1_v7.axis_),
                                            ::testing::Values(smoke_01_params_v1_v7.params_shape_),
@@ -357,7 +379,6 @@ INSTANTIATE_TEST_CASE_P(smoke_Gather_v8_12,
                                            ::testing::Values(smoke_12_ov_params_v8.output_layout_),
                                            ::testing::Values(smoke_12_ov_params_v8.device_)),
                         Gather8LayerTest::getTestCaseName);
-
 
 // ------------- Tacotron2 shapes -------------
 const GatherTestParams tacotron2_enc_params_v1_v7 = {{148, 512}, {1, 1000}};
@@ -691,12 +712,18 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     std::vector<devptr_t> outputs{out_alloc};
 
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     std::vector<IndicesType> indices = generate_indices<IndicesType>(params);
     std::vector<ElementType> dict(dict_size);
     std::random_device r_device;
@@ -731,8 +758,8 @@ void test_one_shape(const GatherTestParams& params, bool is_v7) {
     const auto end = std::chrono::steady_clock::now();
     microseconds average_exec_time = (end - start) / NUM_ATTEMPTS;
     std::cout << std::fixed << std::setfill('0') << "Gather_v" << (is_v7 ? "7 " : "1 ")
-              << CommonTestUtils::vec2str(params.params_shape_) << ", "
-              << CommonTestUtils::vec2str(params.indices_shape_) << ", axis = " << params.axis_
+              << ov::test::utils::vec2str(params.params_shape_) << ", "
+              << ov::test::utils::vec2str(params.indices_shape_) << ", axis = " << params.axis_
               << ", batch_dims = " << params.batch_dims_ << ": " << average_exec_time.count() << " us\n";
 }
 

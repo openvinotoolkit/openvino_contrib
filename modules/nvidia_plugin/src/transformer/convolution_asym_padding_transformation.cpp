@@ -3,17 +3,15 @@
 //
 
 #include "convolution_asym_padding_transformation.hpp"
-
-#include <ngraph/node.hpp>
-#include <ngraph/opsets/opset1.hpp>
-#include <ngraph/rt_info.hpp>
-#include <openvino/core/except.hpp>
-#include <openvino/op/convolution.hpp>
-#include <openvino/op/pad.hpp>
-#include <transformer/nodes/fused_convolution_backprop_data.hpp>
-
-#include "openvino/cc/ngraph/itt.hpp"
+#include "openvino/cc/pass/itt.hpp"
+#include "openvino/core/except.hpp"
+#include "openvino/core/rt_info.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
+#include "openvino/op/pad.hpp"
+#include "openvino/op/strided_slice.hpp"
 #include "openvino/pass/pattern/op/wrap_type.hpp"
+#include "transformer/nodes/fused_convolution_backprop_data.hpp"
 
 using namespace ov::pass::pattern;
 

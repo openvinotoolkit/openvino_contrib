@@ -5,7 +5,6 @@
 #pragma once
 
 #include <cuda_operation_base.hpp>
-#include <ngraph/node.hpp>
 
 namespace ov {
 namespace nvidia_gpu {
@@ -24,6 +23,8 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     struct IoParams {

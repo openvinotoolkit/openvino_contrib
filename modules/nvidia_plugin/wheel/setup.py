@@ -6,14 +6,15 @@ import os.path
 import pathlib
 import sys
 import abc
-import subprocess
+import subprocess # nosec - disable B404:import-subprocess check
 import platform
 import shutil
 import glob
 import errno
 import multiprocessing
 import typing
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
+from defusedxml import defuse_stdlib
 
 from pathlib import Path
 from setuptools import setup
@@ -23,18 +24,26 @@ from decouple import config
 from distutils import log
 from typing import Optional
 
+import wheel.vendored.packaging.tags as tags
+import wheel.bdist_wheel
+import wheel.vendored.packaging.tags
+
+# defuse_stdlib provide patched version of xml.etree.ElementTree which allows to use objects from xml.etree.ElementTree
+# in a safe manner without including unsafe xml.etree.ElementTree
+ET_defused = defuse_stdlib()[ET]
+Element = ET_defused.Element
+
 platforms = ['linux', 'win32', 'darwin']
 if not any(pl in sys.platform for pl in platforms):
     sys.exit(f'Unsupported platform: {sys.platform}, expected: linux, win32, darwin')
 
 PACKAGE_NAME = config('WHEEL_PACKAGE_NAME', 'openvino-nvidia')
 OPENVINO_REPO_URI = config('OPENVINO_REPO_DOWNLOAD_URL', 'https://github.com/openvinotoolkit/openvino.git')
-WHEEL_VERSION = config('WHEEL_VERSION', '2022.1.0')
+WHEEL_VERSION = config('WHEEL_VERSION', '2022.3.0')
 OPENVINO_REPO_TAG = config('OPENVINO_REPO_TAG', WHEEL_VERSION)
 NVIDIA_PLUGIN_CMAKE_TARGET_NAME = 'openvino_nvidia_gpu_plugin'
 LIBS_RPATH = '$ORIGIN' if sys.platform == 'linux' else '@loader_path'
 OPENVINO_INSTALL_BUILD_DEPS_SCRIPT = "install_build_dependencies.sh"
-OPENVINO_SETUP_PY_PATH = "inference-engine/ie_bridges/python/wheel/setup.py"
 
 openvino_src_dir: Optional[str] = None
 
@@ -138,10 +147,15 @@ def create_pip_command(*options):
 
 def run_command(command, cwd: str = None, on_fail_msg: str = '', env=None):
     try:
-        subprocess.check_call(command, cwd=cwd, env=env)
+        subprocess.check_call(command, cwd=cwd, env=env) # nosec - disable B603:subprocess_without_shell_equals_true check
     except subprocess.CalledProcessError as e:
         raise RuntimeError(on_fail_msg) from e
 
+def get_command_output(command, cwd: str = None, on_fail_msg: str = '', env=None):
+    try:
+        return subprocess.check_output(command, cwd=cwd, env=env).decode() # nosec - disable B603:subprocess_without_shell_equals_true check
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(on_fail_msg) from e
 
 class AbsPlatformSpecific(abc.ABC):
     @abc.abstractmethod
@@ -194,7 +208,7 @@ class BuildCMakeLib(build_clib):
         self.cmake_exec = shutil.which("cmake")
         self.build_configuration_name = 'Debug' if self.debug else 'Release'
         self.nvidia_plugin_src_dir = os.path.abspath(os.path.dirname(__file__))
-        self.build_lib_dir = os.path.join(self.nvidia_plugin_src_dir, "build/lib")
+        self.build_lib_dir = os.path.join(self.nvidia_plugin_src_dir, "../build/lib")
         self.openvino_contrib_src_dir = os.path.normpath(os.path.join(self.nvidia_plugin_src_dir, "../../.."))
         self.deps_dir = os.path.abspath(os.path.join(self.build_temp, "deps"))
         self.openvino_src_dir = os.path.join(self.deps_dir, "openvino")
@@ -240,8 +254,6 @@ class BuildCMakeLib(build_clib):
                              f'-DCMAKE_BUILD_TYPE={self.build_configuration_name}',
                              '-DENABLE_PYTHON=ON',
                              f'-DPYTHON_EXECUTABLE={sys.executable}',
-                             '-DNGRAPH_ONNX_IMPORT_ENABLE=ON',
-                             '-DNGRAPH_PYTHON_BUILD_ENABLE=ON',
                              f'-DWHEEL_VERSION={WHEEL_VERSION}',
                              '-DENABLE_WHEEL=ON']
         self.announce("Configuring OpenVINO CMake Project", level=3)
@@ -324,6 +336,7 @@ class BuildCMakeLib(build_clib):
 class InstallCMakeLib(install_lib):
     def finalize_options(self):
         super().finalize_options()
+        self.git_exec = shutil.which("git")
         self.force = None
         self.set_undefined_options('install', ('force', 'force'))
 
@@ -343,11 +356,17 @@ class InstallCMakeLib(install_lib):
 
     def install_openvino_package_and_other_dependencies(self):
         if self.force:
-            setup_py_path = os.path.join(openvino_src_dir, OPENVINO_SETUP_PY_PATH)
-            self.announce(f"Installing OpenVINO package with {setup_py_path}", level=3)
-            openvino_install_py = create_setup_py_command(setup_py_path)
+            py_tag=tags.interpreter_name() + tags.interpreter_version()
+            abi_tag=wheel.bdist_wheel.get_abi_tag()
+            platform_tag=next(tags.platform_tags())
+            git_commits=get_command_output([self.git_exec, 'rev-list', '--count', '--first-parent', 'HEAD'],
+                    cwd=openvino_src_dir, on_fail_msg='Failed to count OpenVINO commits').strip()
+            openvino_wheel_name="-".join(["openvino", WHEEL_VERSION, git_commits, py_tag, abi_tag, platform_tag]) + ".whl"
+            wheels_path = os.path.abspath(os.path.join(openvino_src_dir, "build/wheels", openvino_wheel_name))
+            self.announce(f"Installing OpenVINO package with {wheels_path}", level=3)
+            openvino_install_py = create_pip_command(wheels_path)
             run_command(openvino_install_py,
-                        on_fail_msg=f'Failed to install OpenVINO wheel package with {setup_py_path}')
+                        on_fail_msg=f'Failed to install OpenVINO wheel package with {wheels_path}')
 
         path_to_requirements_txt = os.path.join(os.path.abspath(os.path.dirname(__file__)), "requirements.txt")
         requirements_py = create_pip_command('-r', path_to_requirements_txt)
@@ -367,26 +386,28 @@ class InstallCMakeLib(install_lib):
                                                    f"libopenvino_nvidia_gpu_plugin.{platform_specifics.get_lib_file_extension()}")
 
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
-        tree = ET.parse(xml_file)
+        tree = ET.parse(xml_file).getroot()
         plugins = tree.find("plugins")
         if all(plugin.get('name') != 'NVIDIA' for plugin in plugins.iter('plugin')):
-            plugins.append(ET.Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
-            tree.write(xml_file)
+            plugins.append(Element('plugin', {'name': 'NVIDIA', 'location': openvino_nvidia_gpu_library}))
+            with open(xml_file, "w") as f:
+                f.write(ET.tostring(tree).decode('utf8'))
 
     def unregister_nvidia_plugin(self):
         openvino_package_libs_dir = self.get_openvino_package_dir()
 
         xml_file = os.path.join(openvino_package_libs_dir, "plugins.xml")
-        tree = ET.parse(xml_file)
+        tree = ET.parse(xml_file).getroot()
         plugins = tree.find("plugins")
         for plugin in plugins.iter('plugin'):
             if plugin.get('name') == 'NVIDIA':
                 plugins.remove(plugin)
-                tree.write(xml_file)
+                with open(xml_file, "w") as f:
+                    f.write(ET.tostring(tree).decode('utf8'))
                 break
 
     def test_nvidia_plugin(self):
-        from openvino.inference_engine import IECore
+        from openvino.runtime import Core
         test_model_convert_fp32 = """
             <?xml version="1.0"?>
             <net name="Function_1208" version="10">
@@ -418,10 +439,10 @@ class InstallCMakeLib(install_lib):
                 </edges>
             </net>
             """.encode('ascii')
-        ie = IECore()
-        net = ie.read_network(model=test_model_convert_fp32, weights=b'', init_from_buffer=True)
+        core = Core()
+        model = core.read_model(model=test_model_convert_fp32)
         try:
-            ie.load_network(network=net, device_name="NVIDIA")
+            core.compile_model(model=model, device_name="NVIDIA")
         except RuntimeError as e:
             recommendations_msg = ''
             if not self.force:

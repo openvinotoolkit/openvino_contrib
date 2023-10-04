@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,7 +8,7 @@
 
 #include <cuda_operation_registry.hpp>
 #include <openvino/core/except.hpp>
-#include <ngraph/node.hpp>
+#include <cuda_runtime_api.h>
 
 namespace ov {
 namespace nvidia_gpu {
@@ -27,14 +27,26 @@ void ParameterOp::Execute(const InferenceRequestContext& context,
                           const Workbuffers&) const {
     OPENVINO_ASSERT(inputs.size() == 0, "Node name: ", GetName());
     OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
-    OPENVINO_ASSERT(context.HasInputBlob(input_tensor_name_), "Node name: ", GetName());
-    auto blob = context.GetInputBlob(input_tensor_name_);
-    auto memory_ptr = std::static_pointer_cast<ngraph::HostTensor>(blob)->get_data_ptr();
-    context.getThreadContext().stream().upload(outputs[0], memory_ptr, blob->get_size_in_bytes());
+    OPENVINO_ASSERT(context.getTensorMappingContext().has_input_tensor(input_tensor_name_), "Node name: ", GetName());
+    auto tensor = context.getTensorMappingContext().get_input_tensor(input_tensor_name_);
+    context.getThreadContext().stream().upload(outputs[0], tensor->data(), tensor->get_byte_size());
 }
+
+bool ParameterOp::IsCudaGraphCompatible() const { return true; }
 
 std::string ParameterOp::GetInputTensorName(const ov::Node& node) { return node.get_friendly_name(); }
 
+void ParameterOp::Capture(InferenceRequestContext &context, Inputs inputs, Outputs outputs,
+                          const Workbuffers&) const {
+    OPENVINO_ASSERT(inputs.size() == 0, "Node name: ", GetName());
+    OPENVINO_ASSERT(outputs.size() == 1, "Node name: ", GetName());
+    OPENVINO_ASSERT(context.getTensorMappingContext().has_input_tensor(input_tensor_name_), "Node name: ", GetName());
+    auto tensor = context.getTensorMappingContext().get_input_tensor(input_tensor_name_);
+    context.getCudaGraphContext().add_parameter(
+        input_tensor_name_, context.getThreadContext().stream(), outputs[0], tensor->data(), tensor->get_byte_size());
+}
+
 OPERATION_REGISTER(ParameterOp, Parameter);
+
 }  // namespace nvidia_gpu
 }  // namespace ov

@@ -7,10 +7,10 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
-#include <details/ie_exception.hpp>
 #include <vector>
 
 #include "memory_manager/cuda_device_mem_block.hpp"
+#include "openvino/core/except.hpp"
 
 TEST(ImmutableMemoryBlockBuilder, BuildEmpty) {
     using namespace ov::nvidia_gpu;
@@ -64,10 +64,8 @@ TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
     builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size());
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()),
-                 InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()),
-                 InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), ov::Exception);
+    ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), "Assertion");
@@ -84,8 +82,8 @@ TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
     const std::vector<uint8_t> data(16, 0xA5);
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(buffer_id, &data[0], 0), InferenceEngine::details::InferenceEngineException);
-    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 0), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, &data[0], 0), ov::Exception);
+    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 0), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(buffer_id, &data[0], 0), "Assertion");
@@ -101,7 +99,7 @@ TEST(ImmutableMemoryBlockBuilder, HandleNullDataPointer) {
     BufferID buffer_id = 1;
 
 #ifdef NDEBUG
-    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 128), InferenceEngine::details::InferenceEngineException);
+    ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 128), ov::Exception);
 #else
     testing::FLAGS_gtest_death_test_style = "threadsafe";
     ASSERT_DEATH(builder.addAllocation(buffer_id, nullptr, 128), "Assertion");

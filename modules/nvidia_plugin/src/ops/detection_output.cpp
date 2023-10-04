@@ -16,6 +16,11 @@ DetectionOutputOp::DetectionOutputOp(const CreationContext& context,
                                      IndexCollection&& inputIds,
                                      IndexCollection&& outputIds)
     : OperationBase{context, node, move(inputIds), move(outputIds)}, element_type_{node.get_input_element_type(0)} {
+    OPENVINO_ASSERT(node.get_element_type() == element_type_, "Node name: ", GetName());
+    for (const auto& input : node.inputs()) {
+        OPENVINO_ASSERT(input.get_element_type() == element_type_, "Node name: ", GetName());
+    }
+
     const auto& ngraph_attrs = node.get_attrs();
     kernel::DetectionOutput::Attrs kernel_attrs;
 
@@ -101,6 +106,8 @@ void DetectionOutputOp::Execute(const InferenceRequestContext& context,
                    outputTensors[0]);
     }
 }
+
+bool DetectionOutputOp::IsCudaGraphCompatible() const { return true; }
 
 void DetectionOutputOp::InitSharedImmutableWorkbuffers(const Buffers& buffers) {
     kernel_.value().initSharedImmutableWorkbuffers(buffers);

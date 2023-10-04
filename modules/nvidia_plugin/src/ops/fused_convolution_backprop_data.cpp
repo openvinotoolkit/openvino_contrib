@@ -77,6 +77,8 @@ void FusedConvolutionBackpropDataOp::Execute(const InferenceRequestContext& cont
                                                 outputs[ArgIndices3Ins::dinput].get()));
 }
 
+bool FusedConvolutionBackpropDataOp::IsCudaGraphCompatible() const { return true; }
+
 void FusedConvolutionBackpropDataOp::InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) {
     OPENVINO_ASSERT(buffers.size() == 1, "Node name: ", GetName());
     const size_t repeat = conv_in_bytes_ / add_in_bytes_;

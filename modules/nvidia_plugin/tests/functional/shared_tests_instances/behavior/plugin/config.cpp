@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include <nvidia/nvidia_config.hpp>
 #include <cuda_test_constants.hpp>
+#include <nvidia/nvidia_config.hpp>
 
 #include "behavior/plugin/configuration_tests.hpp"
 
@@ -29,13 +29,13 @@ const std::vector<std::map<std::string, std::string>> inconfigs = {
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          IncorrectConfigTests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inconfigs)),
                          IncorrectConfigTests::getTestCaseName);
 
 INSTANTIATE_TEST_SUITE_P(smoke_BehaviorTests,
                          IncorrectConfigAPITests,
-                         ::testing::Combine(::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                         ::testing::Combine(::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                             ::testing::ValuesIn(inconfigs)),
                          IncorrectConfigAPITests::getTestCaseName);
 }  // namespace

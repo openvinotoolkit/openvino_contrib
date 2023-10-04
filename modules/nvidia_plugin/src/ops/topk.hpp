@@ -9,9 +9,6 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <kernels/topk.hpp>
-#include <ngraph/op/topk.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 
 namespace ov {
 namespace nvidia_gpu {
@@ -22,11 +19,13 @@ public:
                     const ov::Node& node,
                     IndexCollection&& inputIds,
                     IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
 
+    bool IsCudaGraphCompatible() const override;
     void InitSharedImmutableWorkbuffers(const Buffers&) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 

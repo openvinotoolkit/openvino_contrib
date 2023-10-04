@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # cmake build targets / test suities to run
-SUITES=(CudaUnitTests CudaFuncTests)
-declare -A SUITES_ARGS=( ["CudaFuncTests"]='--gtest_filter=*smoke_*:-*Hetero*')
+SUITES=(ov_nvidia_unit_tests ov_nvidia_func_tests)
+declare -A SUITES_ARGS=( ["ov_nvidia_func_tests"]='--gtest_filter=*smoke_*:-*Hetero*')
 
 # $EXIT_CODE variable
 EXIT_CODE=0

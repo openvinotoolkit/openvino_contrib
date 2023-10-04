@@ -16,56 +16,62 @@
 namespace ov {
 namespace nvidia_gpu {
 namespace kernel {
+template <typename T_INT>
 class StridedSliceKernelOp {
 public:
-    StridedSliceKernelOp(const std::vector<int64_t> src_matrix_sizes,
-                         const std::vector<int64_t> dst_matrix_sizes,
+    StridedSliceKernelOp(const std::vector<T_INT> src_matrix_sizes,
+                         const std::vector<T_INT> dst_matrix_sizes,
                          const std::set<size_t> reverse_axes,
                          const unsigned max_threads_per_block,
                          const unsigned blocks_number,
                          const unsigned threads_per_block,
-                         const Type_t element_type);
+                         const Type_t element_type,
+                         const Type_t element_type_integer);
 
     void operator()(const cudaStream_t stream,
-                    const int64_t* src_matrix_sizes,
+                    const T_INT* src_matrix_sizes,
                     const void* src,
-                    const int64_t* begin,
-                    const int64_t* end,
-                    const int64_t* stride,
-                    const int64_t* dst_matrix_sizes,
+                    const T_INT* begin,
+                    const T_INT* end,
+                    const T_INT* stride,
+                    const T_INT* dst_matrix_sizes,
                     void* dst) const;
 
 private:
     template <typename T>
     void callKernels(const cudaStream_t stream,
-                     const int64_t* src_matrix_sizes,
+                     const T_INT* src_matrix_sizes,
                      const void* src,
-                     const int64_t* begin,
-                     const int64_t* end,
-                     const int64_t* stride,
-                     const int64_t* dst_matrix_sizes,
+                     const T_INT* begin,
+                     const T_INT* end,
+                     const T_INT* stride,
+                     const T_INT* dst_matrix_sizes,
                      void* dst) const;
     template <typename T>
     void callStridedSliceKernel(const cudaStream_t stream,
-                                const int64_t* src_matrix_sizes,
+                                const T_INT* src_matrix_sizes,
                                 const void* src,
-                                const int64_t* begin,
-                                const int64_t* end,
-                                const int64_t* stride,
-                                const int64_t* dst_matrix_sizes,
+                                const T_INT* begin,
+                                const T_INT* end,
+                                const T_INT* stride,
+                                const T_INT* dst_matrix_sizes,
                                 void* dst) const;
     template <typename T>
     void callReverseAxesKernel(const cudaStream_t stream, void* dst) const;
 
 private:
-    std::vector<int64_t> src_matrix_sizes_;
-    std::vector<int64_t> dst_matrix_sizes_;
+    std::vector<T_INT> src_matrix_sizes_;
+    std::vector<T_INT> dst_matrix_sizes_;
     std::set<size_t> reverse_axes_;
     unsigned max_threads_per_block_;
     unsigned blocks_number_;
     unsigned threads_per_block_;
     Type_t element_type_;
+    Type_t element_type_integer_;
 };
+
+template class StridedSliceKernelOp<int32_t>;
+template class StridedSliceKernelOp<int64_t>;
 
 }  // namespace kernel
 }  // namespace nvidia_gpu

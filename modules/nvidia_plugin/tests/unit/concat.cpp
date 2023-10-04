@@ -4,16 +4,14 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
-#include <ngraph/function.hpp>
-#include <ngraph/output_vector.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <numeric>
 #include <ops/concat.hpp>
 #include <typeinfo>
 
-using namespace InferenceEngine;
 using namespace ov::nvidia_gpu;
 using devptr_t = DevicePointer<void*>;
 using cdevptr_t = DevicePointer<const void*>;
@@ -26,21 +24,6 @@ std::ostream& operator<<(std::ostream& out, gsl::span<T, Size> data) {
         dlm = ",";
     }
     return out;
-}
-
-/**
- * @brief Fill InferenceEngine blob with random values
- */
-template <typename T>
-void fillBlob(Blob::Ptr& inputBlob, T value) {
-    MemoryBlob::Ptr minput = as<MemoryBlob>(inputBlob);
-    // locked memory holder should be alive all time while access to its buffer happens
-    auto minputHolder = minput->wmap();
-
-    auto inputBlobData = minputHolder.as<T*>();
-    for (size_t i = 0; i < inputBlob->size(); i++) {
-        inputBlobData[i] = value;
-    }
 }
 
 struct ConcatTest : testing::Test {
@@ -66,18 +49,24 @@ struct ConcatTest : testing::Test {
         auto concatOp = dynamic_cast<ConcatOp*>(operation.get());
         ASSERT_TRUE(concatOp);
         CancellationToken token{};
-        CudaGraph graph{CreationContext{CUDA::Device{}, false}, {}};
-        Profiler profiler{false, graph};
-        InferenceRequestContext context{
-            emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+        SimpleExecutionDelegator simpleExecutionDelegator{};
+        ov::nvidia_gpu::CudaGraphContext cudaGraphContext{};
+        InferenceRequestContext context{empty_tensor,
+                                        empty_mapping,
+                                        empty_tensor,
+                                        empty_mapping,
+                                        threadContext,
+                                        token,
+                                        simpleExecutionDelegator,
+                                        cudaGraphContext};
         const auto& stream = threadContext.stream();
         std::vector<cdevptr_t> inputs{};
         std::vector<devptr_t> outputs{};
         std::vector<CUDA::Allocation> mem{};
-        for (const auto& blob : blobs) {
-            mem.emplace_back(stream.malloc(blob->byteSize()));
+        for (const auto& tensor : tensors) {
+            mem.emplace_back(stream.malloc(tensor->get_byte_size()));
             inputs.emplace_back(cdevptr_t{mem.back().get()});
-            stream.upload(inputs.back().as_mutable(), blob->as<MemoryBlob>()->rmap(), blob->byteSize());
+            stream.upload(inputs.back().as_mutable(), tensor->data(), tensor->get_byte_size());
         }
         mem.emplace_back(stream.malloc(output_size));
         outputs.emplace_back(devptr_t{mem.back().get()});
@@ -94,22 +83,24 @@ struct ConcatTest : testing::Test {
         stream.synchronize();
         ASSERT_EQ(0, memcmp(data.get(), masters[axis], output_size));
     }
-
+    template <typename T>
+    void fill_tensor(ov::Tensor& tensor, T value) const {
+        T* data = tensor.data<T>();
+        for (size_t i = 0; i < tensor.get_size(); i++) data[i] = static_cast<T>(value);
+    }
     void allocate(size_t axis) {
-        for (int i = 0; i < blobs.size(); i++) {
-            TensorDesc desc{Precision::FP32, shapes[axis][i], Layout::ANY};
-            blobs[i] = InferenceEngine::make_shared_blob<float>(desc);
-            blobs[i]->allocate();
-            fillBlob<float>(blobs[i], i + 2.0);
-            output_size += blobs[i]->byteSize();
+        for (int i = 0; i < tensors.size(); i++) {
+            tensors[i] = std::make_shared<ov::Tensor>(ov::element::f32, shapes[axis][i]);
+            fill_tensor<float>(*tensors[i].get(), i + 2.0);
+            output_size += tensors[i]->get_byte_size();
             params.emplace_back(
                 std::make_shared<ov::op::v0::Parameter>(ov::element::Type{ov::element::Type_t::f32}, shapes[axis][i]));
         }
     }
     ThreadContext threadContext{{}};
-    std::array<Blob::Ptr, 3> blobs;
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
-    std::map<std::string, std::size_t> emptyMapping;
+    std::array<std::shared_ptr<ov::Tensor>, 3> tensors;
+    std::vector<std::shared_ptr<ov::Tensor>> empty_tensor;
+    std::map<std::string, std::size_t> empty_mapping;
     size_t output_size{};
     ov::OutputVector params{};
 };

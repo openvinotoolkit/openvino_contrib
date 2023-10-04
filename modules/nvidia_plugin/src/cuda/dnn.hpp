@@ -7,7 +7,6 @@
 #include <cudnn.h>
 
 #include <functional>
-#include <ngraph/type/element_type.hpp>
 #include <optional>
 
 #include "constant_factory.hpp"
@@ -39,7 +38,7 @@ inline std::string cudnnGetErrorString(cudnnConvolutionFwdAlgo_t algo) {
 inline void throwIfError(
     cudnnStatus_t err,
     const std::experimental::source_location& location = std::experimental::source_location::current()) {
-    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::throwIEException(cudnnGetErrorString(err), location);
+    if (err != CUDNN_STATUS_SUCCESS) ov::nvidia_gpu::throw_ov_exception(cudnnGetErrorString(err), location);
 }
 
 inline void logIfError(
@@ -235,6 +234,39 @@ class DnnReduceAddDescriptor : public DnnReduceTensorDescriptor {
 public:
     explicit DnnReduceAddDescriptor(cudnnDataType_t compType) {
         set(CUDNN_REDUCE_TENSOR_ADD,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnReduceMulDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMulDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MUL,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnReduceMinDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMinDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MIN,
+            compType,
+            CUDNN_PROPAGATE_NAN,
+            CUDNN_REDUCE_TENSOR_NO_INDICES,
+            CUDNN_32BIT_INDICES);
+    }
+};
+
+class DnnReduceMaxDescriptor : public DnnReduceTensorDescriptor {
+public:
+    explicit DnnReduceMaxDescriptor(cudnnDataType_t compType) {
+        set(CUDNN_REDUCE_TENSOR_MAX,
             compType,
             CUDNN_PROPAGATE_NAN,
             CUDNN_REDUCE_TENSOR_NO_INDICES,

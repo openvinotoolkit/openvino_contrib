@@ -5,7 +5,6 @@
 #include <cuda/runtime.hpp>
 #include <gsl/gsl_util>
 #include <kernels/details/eltwise.cuh>
-#include <ngraph/shape.hpp>
 #include <string>
 
 using namespace std::string_literals;
@@ -44,7 +43,7 @@ KernelExecAttrs::KernelExecAttrs(const ov::Shape& shape, unsigned threadsPerBloc
                               gsl::narrow_cast<unsigned>(shape[2]) * gsl::narrow_cast<unsigned>(shape[3]),
                               majorGridDim(shape[4], threadsPerBlock * elementsPerThread)};
               default:
-                  throwIEException("Shape with rank "s + std::to_string(shape.size()) + " is not supported"s);
+                  throw_ov_exception("Shape with rank "s + std::to_string(shape.size()) + " is not supported"s);
           }
       }()},
       block{threadsPerBlock},

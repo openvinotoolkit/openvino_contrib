@@ -13,7 +13,7 @@
 #include "cuda_operation_registry.hpp"
 #include "fused_convolution_cudnn.hpp"
 #include "fused_convolution_cudnn_decomposed.hpp"
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 #ifdef ENABLE_CUDNN_BACKEND_API
 #include "fused_convolution_cudnn_be.hpp"
 #endif  // ENABLE_CUDNN_BACKEND_API
@@ -59,7 +59,8 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
     }
 #endif  // ENABLE_CUDNN_BACKEND_API
 
-    const auto conv_descs{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_)};
+    const auto conv_descs{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_,
+        std::vector<cudnnDataType_t>{CUDNN_DATA_HALF, CUDNN_DATA_FLOAT})}; // 119703: investigate whether we need HALF here
     const auto bias_desc{Convolution::Details::MakeFusedAddDescriptor(params.bias_shape_, params.conv_.element_type_)};
     const auto activation_desc{Convolution::Details::MakeFusedActivationDescriptor(params.activation_)};
     const auto add_desc{params.add_shape_ ? Convolution::Details::MakeFusedAddDescriptor(params.add_shape_.value(),
@@ -85,7 +86,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
                                                                      add_desc,
                                                                      activation_desc);
         } catch (const std::exception& e) {
-            throwIEException(
+            throw_ov_exception(
                 fmt::format("unsupported `{}` node: Failed to create "
                             "FusedConvolutionCuDnnDecomposed impl: {}",
                             node->get_type_info().name,
@@ -110,7 +111,7 @@ OperationBase::Ptr fusedConvolutionFactory(const CreationContext& context,
             e.what());
     }
 
-    throwIEException(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
+    throw_ov_exception(fmt::format("Convolution node is not supported:\n{}", exception_msg.str()));
 }
 
 OPERATION_REGISTER_FACTORY(fusedConvolutionFactory, FusedConvolution);

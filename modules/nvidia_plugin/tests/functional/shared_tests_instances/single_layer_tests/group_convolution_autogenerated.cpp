@@ -15,16 +15,7 @@ namespace LayerTestsDefinitions {
 
 class GroupConvolutionLayerThresholdTest : public FiniteComparer<GroupConvolutionLayerTest> {
 protected:
-    void SetUp() override {
-        GroupConvolutionLayerTest::SetUp();
-
-        auto params = this->GetParam();
-        auto netPrecision = std::get<1>(params);
-        if (netPrecision.getPrecVal() == InferenceEngine::Precision::FP16) {
-            this->threshold = 500;
-            this->infinity_value = std::numeric_limits<std::uint16_t>::max();
-        }
-    }
+    void SetUp() override { GroupConvolutionLayerTest::SetUp(); }
 };
 
 TEST_P(GroupConvolutionLayerThresholdTest, CompareWithRefs) {
@@ -68,7 +59,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 144, 75, 75})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -95,7 +86,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 192, 38, 38})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -122,7 +113,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 32, 150, 150})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -149,7 +140,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 384, 19, 19})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -176,7 +167,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 576, 19, 19})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -203,7 +194,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 960, 10, 10})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -230,7 +221,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 3, 3})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -257,7 +248,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 128, 5, 5})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -284,7 +275,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 144, 75, 75})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -311,7 +302,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 192, 38, 38})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -338,7 +329,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 256, 10, 10})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -365,7 +356,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 576, 19, 19})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -392,7 +383,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 64, 2, 2})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -419,7 +410,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 96, 150, 150})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -446,7 +437,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 1152, 20, 20})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -473,7 +464,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 1152, 20, 20})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -500,7 +491,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 144, 160, 160})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -527,7 +518,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 16, 320, 320})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -554,7 +545,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 1920, 20, 20})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -581,7 +572,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 240, 80, 80})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -608,7 +599,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 32, 320, 320})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -635,7 +626,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 480, 40, 40})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -662,7 +653,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 480, 40, 40})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -689,7 +680,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 672, 40, 40})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -716,7 +707,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 88, 10, 10})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -743,7 +734,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 88, 20, 20})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -770,7 +761,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 88, 40, 40})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -797,7 +788,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 88, 5, 5})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -824,7 +815,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 88, 80, 80})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -851,7 +842,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 144, 160, 160})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -878,7 +869,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 240, 80, 80})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -905,7 +896,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 672, 40, 40})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 
@@ -932,7 +923,7 @@ INSTANTIATE_TEST_CASE_P(
         ::testing::Values(InferenceEngine::Layout::ANY), // Input layout
         ::testing::Values(InferenceEngine::Layout::ANY), // Output layout
         ::testing::Values(std::vector<size_t>({1, 96, 320, 320})), // Input shape
-        ::testing::Values(CommonTestUtils::DEVICE_NVIDIA)),
+        ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
     GroupConvolutionLayerThresholdTest::getTestCaseName);
 
 // {AUTOGENERATED_TESTS_END_TAG}

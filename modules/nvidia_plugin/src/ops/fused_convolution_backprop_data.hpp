@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <ngraph/node.hpp>
 #include <transformer/nodes/fused_convolution_backprop_data.hpp>
 
 #include "convolution_components/convolution_cudnn_components.hpp"
@@ -26,6 +25,8 @@ public:
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers&) const override;
+
+    bool IsCudaGraphCompatible() const override;
     void InitSharedImmutableWorkbuffers(const IOperationExec::Buffers& buffers) override;
     WorkbufferRequest GetWorkBufferRequest() const override;
 

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "cuda_test_constants.hpp"
+#include "openvino/core/except.hpp"
 
 using namespace LayerTestsDefinitions;
 
@@ -20,15 +21,15 @@ struct TestDetectionOutputResult {
 
     template <typename TOtherDataType>
     static bool similar(const TDataType &res, const TOtherDataType &ref) {
-        const auto absoluteDifference = CommonTestUtils::ie_abs(res - ref);
+        const auto absoluteDifference = ov::test::utils::ie_abs(res - ref);
         if (absoluteDifference <= threshold) {
             return true;
         }
         double max;
         if (sizeof(TDataType) < sizeof(TOtherDataType)) {
-            max = std::max(CommonTestUtils::ie_abs(TOtherDataType(res)), CommonTestUtils::ie_abs(ref));
+            max = std::max(ov::test::utils::ie_abs(TOtherDataType(res)), ov::test::utils::ie_abs(ref));
         } else {
-            max = std::max(CommonTestUtils::ie_abs(res), CommonTestUtils::ie_abs(TDataType(ref)));
+            max = std::max(ov::test::utils::ie_abs(res), ov::test::utils::ie_abs(TDataType(ref)));
         }
         double diff = static_cast<float>(absoluteDifference) / max;
         if (max == 0 || (diff > static_cast<float>(threshold)) || std::isnan(static_cast<float>(res)) ||
@@ -97,16 +98,20 @@ private:
         }
         const auto precent = static_cast<float>(not_matched_ngraph_results.size()) / ngraph_results.size();
         if (precent > 0.5) {
-            IE_THROW() << "Too many elements not found in reference implementation "
-                       << "with relative comparison of values with threshold " << threshold;
+            OPENVINO_THROW("Too many elements not found in reference implementation ",
+                           "with relative comparison of values with threshold ",
+                           std::to_string(threshold));
         }
         for (const auto &[i, ref] : not_matched_ngraph_results) {
             auto res = std::find_if(ie_results.begin(), ie_results.end(), [ref = ref](const auto &res) {
                 return ref.data.conf == res.data.conf;
             });
             if (res == ie_results.end()) {
-                IE_THROW() << "Cannot find object (index=" << i
-                           << ") with relative comparison of values with threshold " << threshold << " failed";
+                OPENVINO_THROW("Cannot find object (index=",
+                               std::to_string(i),
+                               ") with relative comparison of values with threshold ",
+                               std::to_string(threshold),
+                               " failed");
             }
             ie_results.erase(res);
         }
@@ -126,7 +131,7 @@ public:
 
             const auto &expectedBuffer = expected.data();
             auto memory = InferenceEngine::as<InferenceEngine::MemoryBlob>(actual);
-            IE_ASSERT(memory);
+            OPENVINO_ASSERT(memory);
             const auto lockedMemory = memory->wmap();
             const auto actualBuffer = lockedMemory.as<const std::uint8_t *>();
 
@@ -155,12 +160,6 @@ TEST_P(CudaDetectionOutputLayerTest, CompareWithRefs) {
 }
 
 /* =============== Detection Output =============== */
-
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::FP32,
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::BF16,
-};
 
 const int numClasses = 11;
 const int backgroundLabelId = 12;
@@ -203,7 +202,7 @@ const auto params3Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams3In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(0.0f),
-                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                              ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput3In,
                         CudaDetectionOutputLayerTest,
@@ -227,7 +226,7 @@ const auto params5Inputs = ::testing::Combine(commonAttributes,
                                               ::testing::ValuesIn(specificParams5In),
                                               ::testing::ValuesIn(numberBatch),
                                               ::testing::Values(objectnessScore),
-                                              ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                              ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(smoke_DetectionOutput5In,
                         CudaDetectionOutputLayerTest,
@@ -267,7 +266,7 @@ const auto paramsSSDMobileNetInputs = ::testing::Combine(commonAttributesSSDMobi
                                                          ::testing::ValuesIn(specificParamsSSDMobileNetIn),
                                                          ::testing::ValuesIn(numberBatchSSDMobileNet),
                                                          ::testing::Values(objectnessScoreSSDMobileNet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputSSDMobileNetIn,
                         CudaDetectionOutputLayerTest,
@@ -307,7 +306,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 // NOTE: Too many elements with similar confidence that leads test to fail
 INSTANTIATE_TEST_CASE_P(DISABLED_DetectionOutputEfficientDetIn,
@@ -332,7 +331,7 @@ const auto paramsEfficientDetInputs = ::testing::Combine(commonAttributesEfficie
                                                          ::testing::ValuesIn(specificParamsEfficientDetIn),
                                                          ::testing::ValuesIn(numberBatchEfficientDet),
                                                          ::testing::Values(objectnessScoreEfficientDet),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA));
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA));
 
 INSTANTIATE_TEST_CASE_P(DetectionOutputEfficientDetIn,
                         CudaDetectionOutputLayerBenchmarkTest,

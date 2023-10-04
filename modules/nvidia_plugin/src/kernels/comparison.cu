@@ -53,9 +53,29 @@ template <typename T>
 struct OpImpl<T, Comparison::Op_t::GREATER> {
     __device__ static inline bool op(T left, T right) { return left > right; }
 };
+
+template <typename T>
+struct OpImpl<T, Comparison::Op_t::GREATER_EQUAL> {
+    __device__ static inline bool op(T left, T right) { return left >= right; }
+};
 template <typename T>
 struct OpImpl<T, Comparison::Op_t::LESS> {
     __device__ static inline bool op(T left, T right) { return left < right; }
+};
+
+template <typename T>
+struct OpImpl<T, Comparison::Op_t::LESS_EQUAL> {
+    __device__ static inline bool op(T left, T right) { return left <= right; }
+};
+
+template <typename T>
+struct OpImpl<T, Comparison::Op_t::EQUAL> {
+    __device__ static inline bool op(T left, T right) { return left == right; }
+};
+
+template <typename T>
+struct OpImpl<T, Comparison::Op_t::NOT_EQUAL> {
+    __device__ static inline bool op(T left, T right) { return left != right; }
 };
 
 Comparison::Comparison(Op_t op_type, Type_t element_type, size_t max_size, size_t num_blocks, size_t threads_per_block)
@@ -117,7 +137,7 @@ void Comparison::operator()(const cudaStream_t stream,
             return Call<uint64_t>(
                 op_type_, stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
         default:
-            throwIEException(fmt::format("Input element type = {} is not supported by Comparison operation !!",
+            throw_ov_exception(fmt::format("Input element type = {} is not supported by Comparison operation !!",
                                          static_cast<Type_t>(element_type_)));
     }
 }
@@ -136,12 +156,28 @@ void Comparison::Call(Comparison::Op_t type,
             Call<T, Comparison::Op_t::GREATER>(
                 stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
             break;
+        case Comparison::Op_t::GREATER_EQUAL:
+            Call<T, Comparison::Op_t::GREATER_EQUAL>(
+                stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
+            break;
         case Comparison::Op_t::LESS:
             Call<T, Comparison::Op_t::LESS>(
                 stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
             break;
+        case Comparison::Op_t::LESS_EQUAL:
+            Call<T, Comparison::Op_t::LESS_EQUAL>(
+                stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
+            break;
+        case Comparison::Op_t::EQUAL:
+            Call<T, Comparison::Op_t::EQUAL>(
+                stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
+            break;
+        case Comparison::Op_t::NOT_EQUAL:
+            Call<T, Comparison::Op_t::NOT_EQUAL>(
+                stream, left_src, right_src, left_brcst_offsets, right_brcst_offsets, output_sizes, dst);
+            break;
         default:
-            throwIEException(fmt::format("Input operation = {} is not supported by Comparison operation !!",
+            throw_ov_exception(fmt::format("Input operation = {} is not supported by Comparison operation !!",
                                          static_cast<Type_t>(type)));
     }
 }

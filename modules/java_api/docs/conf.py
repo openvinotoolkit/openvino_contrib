@@ -52,7 +52,7 @@ html_static_path = ['_static']
 
 html_title = 'OpenVINO for Java'
 
-import subprocess
-subprocess.call('javadoc ../org/intel/openvino/*.java', shell=True)
+import subprocess # nosec
+subprocess.call('javadoc ../src/main/java/org/intel/openvino/*.java', shell=True)
 
 html_extra_path = ['.']

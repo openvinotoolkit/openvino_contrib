@@ -85,6 +85,8 @@ void FusedConvolutionCuDnnDecomposed::Execute(const InferenceRequestContext& con
     }
 }
 
+bool FusedConvolutionCuDnnDecomposed::IsCudaGraphCompatible() const { return true; }
+
 WorkbufferRequest FusedConvolutionCuDnnDecomposed::GetWorkBufferRequest() const {
     if (conv_descs_->Algo().memory != 0) {
         return {{}, {conv_descs_->Algo().memory}};
@@ -105,7 +107,7 @@ void FusedConvolutionCuDnnDecomposed::ThrowIfShouldNotDecompose() const {
     throwIfError(::cudnnGetActivationDescriptor(activation_desc_->get(), &mode, &prop, &coef));
     if (mode != CUDNN_ACTIVATION_IDENTITY ||
         conv_descs_->Algo().algo == CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-        throwIEException(
+        throw_ov_exception(
             "ov::nvidia_gpu::FusedConvolutionCuDnnDecomposed: FusedConvolutionCuDnnDecomposed should only be used for "
             "CUDNN_ACTIVATION_IDENTITY and an algo other than CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
     }

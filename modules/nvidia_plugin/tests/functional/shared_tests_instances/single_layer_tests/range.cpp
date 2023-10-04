@@ -7,9 +7,10 @@
 #include <gtest/gtest.h>
 
 #include <cuda_config.hpp>
+#include <cuda_graph_context.hpp>
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
+#include <cuda_simple_execution_delegator.hpp>
 #include <ngraph/node.hpp>
 #include <openvino/op/range.hpp>
 #include <ops/parameter.hpp>
@@ -219,9 +220,9 @@ protected:
         CUDA::Device device{};
         const bool optimizeOption = false;
         NodeVector params;
-        params.push_back(builder::makeConstant<decltype(start)>(Type(start_type), std::vector<size_t>(), {start}));
-        params.push_back(builder::makeConstant<decltype(stop)>(Type(Type_t::f32), std::vector<size_t>(), {stop}));
-        params.push_back(builder::makeConstant<decltype(step)>(Type(step_type), std::vector<size_t>(), {step}));
+        params.push_back(std::make_shared<ov::op::v0::Constant>(ov::element::Type(start_type), ov::Shape(), start));
+        params.push_back(std::make_shared<ov::op::v0::Constant>(ov::element::f32, ov::Shape(), stop));
+        params.push_back(std::make_shared<ov::op::v0::Constant>(ov::element::Type(step_type), ov::Shape(), step));
         params[0]->set_friendly_name("start");
         params[1]->set_friendly_name("stop");
         params[2]->set_friendly_name("step");
@@ -250,12 +251,18 @@ MATCHER_P(FloatNearPointwise, tol, "Out of range") {
 TEST_P(CudaRangeLayerTest, CompareWithRefs) {
     ASSERT_TRUE(outputSize > 0);
     ov::nvidia_gpu::CancellationToken token{};
-    ov::nvidia_gpu::CudaGraph graph{ov::nvidia_gpu::CreationContext{CUDA::Device{}, false}, {}};
-    ov::nvidia_gpu::Profiler profiler{false, graph};
-    std::vector<std::shared_ptr<ngraph::runtime::Tensor>> emptyTensor;
+    ov::nvidia_gpu::SimpleExecutionDelegator simpleExecutionDelegator{};
+    std::vector<std::shared_ptr<ov::Tensor>> emptyTensor;
     std::map<std::string, std::size_t> emptyMapping;
-    ov::nvidia_gpu::InferenceRequestContext context{
-        emptyTensor, emptyMapping, emptyTensor, emptyMapping, threadContext, token, profiler};
+    ov::nvidia_gpu::CudaGraphContext cudaGraphContext;
+    ov::nvidia_gpu::InferenceRequestContext context{emptyTensor,
+                                                    emptyMapping,
+                                                    emptyTensor,
+                                                    emptyMapping,
+                                                    threadContext,
+                                                    token,
+                                                    simpleExecutionDelegator,
+                                                    cudaGraphContext};
     auto& stream = context.getThreadContext().stream();
     CudaRangeLayerTest::upload(stream, startParamAlloc, &start, start_type, 1);
     CudaRangeLayerTest::upload(stream, stopParamAlloc, &stop, Type_t::f32, 1);

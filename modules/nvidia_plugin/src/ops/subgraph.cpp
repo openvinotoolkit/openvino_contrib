@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2021 Intel Corporation
+// Copyright (C) 2018-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
 
@@ -8,8 +8,7 @@
 
 #include <cuda_op_buffers_extractor.hpp>
 #include <cuda_operation_registry.hpp>
-#include <cuda_profiler.hpp>
-#include <ngraph/function.hpp>
+#include <cuda_iexecution_delegator.hpp>
 #include <openvino/op/parameter.hpp>
 #include <openvino/op/result.hpp>
 #include <openvino/op/tensor_iterator.hpp>
@@ -25,36 +24,42 @@ SubGraph::SubGraph(const CreationContext& context,
                    const SubGraphOp& op,
                    IndexCollection&& inputIds,
                    IndexCollection&& outputIds)
-    : OperationBase(context, op, std::move(inputIds), std::move(outputIds)), function_{op.get_function()} {
+    : OperationBase(context, op, std::move(inputIds), std::move(outputIds)), model_{op.get_function()} {
     const bool isStableParamsAndResultsNeeded = nullptr != dynamic_cast<const ov::op::v0::TensorIterator*>(&op);
     initExecuteSequence(context, isStableParamsAndResultsNeeded, isStableParamsAndResultsNeeded);
 }
 
-SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ngraph::Function>& function)
-    : OperationBase(context, nullptr), function_{function} {
-    initExecuteSequence(context, false, false);
+SubGraph::SubGraph(const CreationContext& context, const std::shared_ptr<const ov::Model>& model)
+    : OperationBase(context, nullptr), model_{model} {
+      initExecuteSequence(context, false, false);
 }
+
+SubGraph::SubGraph(const CreationContext& context,
+                   const std::shared_ptr<const ov::Model>& model,
+                   ExecSequence&& sequence,
+                   std::shared_ptr<MemoryManager> memoryManager)
+    : OperationBase{context, nullptr}, model_{model}, exec_sequence_{sequence}, memory_manager_{memoryManager} {}
 
 void SubGraph::initExecuteSequence(const CreationContext& context, bool isStableParams, bool isStableResults) {
     static constexpr auto InitNeeded = IOperationExec::WorkbufferStatus::InitNeeded;
 
-    if (!function_) {
+    if (!model_) {
         return;
     }
-    const auto& orderedNodes = function_->get_ordered_ops();
+    const auto& orderedNodes = model_->get_ordered_ops();
 
     std::vector<Ptr> init_sequence{};
     OperationBuffersExtractor opBuffersExtractor{orderedNodes, isStableParams, isStableResults};
-    const auto paramSize = function_->get_parameters().size();
+    const auto paramSize = model_->get_parameters().size();
     params_ = std::vector<OperationBase::Ptr>(paramSize);
     params_info_ = std::vector<OperationInfo>(paramSize);
-    const auto resultSize = function_->get_results().size();
+    const auto resultSize = model_->get_results().size();
     results_ = std::vector<OperationBase::Ptr>(resultSize);
     results_info_ = std::vector<OperationInfo>(resultSize);
     for (unsigned node_idx = 0; node_idx < orderedNodes.size(); node_idx++) {
         const auto& node = orderedNodes[node_idx];
         if (!OperationRegistry::getInstance().hasOperation(node)) {
-            throwIEException(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
+            throw_ov_exception(fmt::format("Node: name = {}, description = {}; Is not found in OperationRegistry",
                                          node->get_name(),
                                          node->description()));
         }
@@ -72,13 +77,13 @@ void SubGraph::initExecuteSequence(const CreationContext& context, bool isStable
         }
         if (dynamic_cast<ParameterOp*>(operation.get())) {
             const auto paramIdx =
-                function_->get_parameter_index(std::dynamic_pointer_cast<ov::op::v0::Parameter>(node));
+                model_->get_parameter_index(std::dynamic_pointer_cast<ov::op::v0::Parameter>(node));
             params_[paramIdx] = operation;
             params_info_[paramIdx].size_ = getTensorByteSize(*node);
             params_info_[paramIdx].type_ = node->get_element_type();
             params_info_[paramIdx].shape_ = node->get_shape();
         } else if (dynamic_cast<ResultOp*>(operation.get())) {
-            const auto resultIdx = function_->get_result_index(std::dynamic_pointer_cast<ov::op::v0::Result>(node));
+            const auto resultIdx = model_->get_result_index(std::dynamic_pointer_cast<ov::op::v0::Result>(node));
             results_[resultIdx] = operation;
             results_info_[resultIdx].size_ = getTensorByteSize(*node);
             results_info_[resultIdx].type_ = node->get_element_type();
@@ -117,10 +122,21 @@ std::vector<DevicePointer<void*>> SubGraph::getSharedWorkbuffers(const IOperatio
     result.reserve(ids.immutableIds.size());
     for (const auto immutable_id : ids.immutableIds) {
         void* ptr = memory_manager_->immutableWorkbuffers().deviceBufferPtr(immutable_id);
-        IE_ASSERT(ptr != nullptr) << "Workbuffer not found. ID is " << immutable_id;
+        OPENVINO_ASSERT(ptr != nullptr, "Workbuffer not found. ID is " + std::to_string(immutable_id));
         result.emplace_back(ptr);
     }
     return result;
+}
+
+void SubGraph::Capture(InferenceRequestContext &context, Inputs, Outputs,
+                       const Workbuffers &workbuffers) const {
+    const auto& stream = context.getThreadContext().stream();
+    const auto& memoryManager = *memory_manager_;
+    auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
+
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.capture_sequence(this, memoryManager, mutableBuffer, context);
 }
 
 WorkbufferRequest SubGraph::GetWorkBufferRequest() const {
@@ -133,16 +149,22 @@ void SubGraph::Execute(const InferenceRequestContext& context, Inputs, Outputs, 
     const auto& memoryManager = *memory_manager_;
     auto& mutableBuffer = workbuffers.mutable_buffers.at(0);
 
-    auto& cancellationToken = context.getCancellationToken();
-    auto& profiler = context.getProfiler();
-    profiler.SetStream(stream);
-    for (auto& op : profiler.CreateExecSequence(this)) {
-        cancellationToken.Check();
-        auto inputTensors = memoryManager.inputTensorPointers(*op, mutableBuffer);
-        auto outputTensors = memoryManager.outputTensorPointers(*op, mutableBuffer);
-        auto workBuffers = memoryManager.workBuffers(*op, mutableBuffer);
-        op->Execute(context, inputTensors, outputTensors, workBuffers);
+    auto& executionDelegator = context.getExecutionDelegator();
+    executionDelegator.set_stream(stream);
+    executionDelegator.execute_sequence(this, memoryManager, mutableBuffer, context);
+}
+
+bool SubGraph::IsCudaGraphCompatible() const {
+    if (is_cuda_graph_compatible_ == CompatibleState::NOT_INITIALIZED) {
+        is_cuda_graph_compatible_ = CompatibleState::COMPATIBLE;
+        for (const auto& op : exec_sequence_) {
+            if (!op->IsCudaGraphCompatible()) {
+                is_cuda_graph_compatible_ = CompatibleState::NOT_COMPATIBLE;
+                break;
+            }
+        }
     }
+    return is_cuda_graph_compatible_ == CompatibleState::COMPATIBLE;
 }
 
 }  // namespace nvidia_gpu

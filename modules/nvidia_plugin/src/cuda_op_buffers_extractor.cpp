@@ -88,7 +88,7 @@ int OperationBuffersExtractor::mutableBufferLifespanStart(BufferID buffer_id) co
     try {
         return mutable_buffers_.at(buffer_id).lifespan_start;
     } catch (std::out_of_range& e) {
-        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
+        throw_ov_exception(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -96,7 +96,7 @@ int OperationBuffersExtractor::mutableBufferLifespanEnd(BufferID buffer_id) cons
     try {
         return mutable_buffers_.at(buffer_id).lifespan_end;
     } catch (std::out_of_range& e) {
-        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
+        throw_ov_exception(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -104,7 +104,7 @@ std::size_t OperationBuffersExtractor::mutableBufferSize(BufferID buffer_id) con
     try {
         return mutable_buffers_.at(buffer_id).size;
     } catch (std::out_of_range& e) {
-        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
+        throw_ov_exception(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -112,7 +112,7 @@ gsl::span<const OperationBuffersExtractor::Byte> OperationBuffersExtractor::immu
     try {
         return immutable_buffers_.at(buffer_id);
     } catch (std::out_of_range& e) {
-        throwIEException(fmt::format("Buffer id {} is out of range.", buffer_id));
+        throw_ov_exception(fmt::format("Buffer id {} is out of range.", buffer_id));
     }
 }
 
@@ -168,7 +168,7 @@ void OperationBuffersExtractor::mergeConcatMutableTensors(const NodePtr& node, i
         mutable_buffers_.erase(bufferId);
     }
 
-    unsigned totalSize = 0;
+    size_t totalSize = 0;
     for (const auto& t : mergedTensors) {
         auto& tensor = tensor_names_.at(t.first);
         tensor->SetParent(parentTensor, totalSize);
@@ -187,7 +187,7 @@ void OperationBuffersExtractor::extractReshapeTensors(const NodePtr& node, int n
         const auto output = node->outputs().at(0);
         tensor_names_.emplace(GetTensorNameInternal(output), tensorId);
     } catch (std::out_of_range&) {
-        throwIEException(fmt::format("Failed to extract output buffer for reshape only node '{}'", node->get_name()));
+        throw_ov_exception(fmt::format("Failed to extract output buffer for reshape only node '{}'", node->get_name()));
     }
 }
 
@@ -237,7 +237,7 @@ void OperationBuffersExtractor::extractResultTensors(const NodePtr& node) {
             return mb.first == tensorId->GetId();
         });
         if (resultBuffer == mutable_buffers_.end()) {
-            throwIEException(fmt::format("Cannot find mutable buffer for Result with name {}", node->get_name()));
+            throw_ov_exception(fmt::format("Cannot find mutable buffer for Result with name {}", node->get_name()));
         }
         resultBuffer->second.lifespan_end = num_ordered_nodes_;
     }
@@ -273,7 +273,7 @@ void OperationBuffersExtractor::initConstantMemory(DeviceMemBlock::Ptr memory_bl
     for (const auto& buffer_id : memory_block->bufferIds()) {
         auto span = immutableBuffer(buffer_id);
         void* device_ptr = memory_block->deviceBufferPtr(buffer_id);
-        IE_ASSERT(device_ptr != nullptr);
+        OPENVINO_ASSERT(device_ptr != nullptr);
         throwIfError(::cudaMemcpy(device_ptr, span.data(), span.size_bytes(), cudaMemcpyHostToDevice));
     }
 }
@@ -328,7 +328,7 @@ bool OperationBuffersExtractor::isReshapeOnlyNode(const ov::Node& node) {
 }
 
 void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ov::Input<ov::Node>& input) {
-    throwIEException(
+    throw_ov_exception(
         fmt::format("Buffer size of Input #{} of {} node and corresponding "
                     "output #{} of {} node are not equal.",
                     input.get_index(),
@@ -338,7 +338,7 @@ void OperationBuffersExtractor::ThrowBufferSizesAreNotMatchError(const ov::Input
 }
 
 void OperationBuffersExtractor::ThrowGraphIsBadFormedError(const ov::Input<ov::Node>& input) {
-    throwIEException(
+    throw_ov_exception(
         fmt::format("Provided graph is bad formed. Input #{} of \"{}\" node "
                     "isn't connected to any output",
                     input.get_index(),

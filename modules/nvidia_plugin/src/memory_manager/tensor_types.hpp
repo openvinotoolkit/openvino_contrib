@@ -4,13 +4,12 @@
 
 #pragma once
 
-#include <ie_extension.h>
-
 #include <cstdint>
 #include <error.hpp>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <unordered_map>
 #include <utility>
 
@@ -76,6 +75,12 @@ inline std::ostream& operator<<(std::ostream& s, const TensorID& t) {
     s << "BufferID: " << t.GetBuffer().GetId() << ", ";
     s << "Offset: " << t.GetOffset();
     return s;
+}
+
+inline std::string to_string(const TensorID& x) {
+    std::ostringstream ss;
+    ss << x;
+    return ss.str();
 }
 
 }  // namespace nvidia_gpu

@@ -11,7 +11,7 @@
 #include <ops/converters.hpp>
 
 #include "cuda/constant_factory.hpp"
-#include "transformer/nodes/cuda_plugin_custom_node_types.hpp"
+#include "transformer/nodes/activation_type.hpp"
 
 namespace ov {
 namespace nvidia_gpu {
@@ -22,7 +22,8 @@ FusedConvolutionCuDnn::FusedConvolutionCuDnn(const CreationContext& context,
                                              IndexCollection&& outputIds,
                                              Convolution::Details::FusedConvolutionParams params)
     : OperationCuDnn{context, node, std::move(inputIds), std::move(outputIds)},
-      conv_descs_{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_)},
+      conv_descs_{std::make_shared<Convolution::Details::ConvolutionDescriptorsCuDnn>(context, params.conv_,
+        std::vector<cudnnDataType_t>{CUDNN_DATA_HALF, CUDNN_DATA_FLOAT})}, // 119703: investigate whether we need HALF here
       bias_desc_{Convolution::Details::MakeFusedAddDescriptor(params.bias_shape_, params.conv_.element_type_)},
       add_desc_{params.add_shape_ ? Convolution::Details::MakeFusedAddDescriptor(params.add_shape_.value(),
                                                                                  params.conv_.element_type_)
@@ -65,18 +66,18 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
     cudnnTensorDescriptor_t zTensorDesc;
     const void* zTensorIn = nullptr;
     if (includesOnlyBiasAdd) {
-        alpha2 = &CUDA::NumericConst<CUDA::constants::zero>(conv_descs_->ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::zero>(conv_descs_->DescType());
         zTensorDesc = conv_descs_->Output().get();
         zTensorIn = outputs[ArgIndices::output].get();
     } else {
-        alpha2 = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->ElementType());
+        alpha2 = &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->DescType());
         zTensorDesc = add_desc_->get();
         zTensorIn = inputs[ArgIndices::add].get();
     }
 
     throwIfError(
         ::cudnnConvolutionBiasActivationForward(dnnHandle.get(),
-                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->ElementType()),
+                                                &CUDA::NumericConst<CUDA::constants::one>(conv_descs_->DescType()),
                                                 conv_descs_->Input().get(),
                                                 inputs[ArgIndices::input].get(),
                                                 conv_descs_->Filter().get(),
@@ -94,6 +95,8 @@ void FusedConvolutionCuDnn::Execute(const InferenceRequestContext& context,
                                                 conv_descs_->Output().get(),
                                                 outputs[ArgIndices::output].get()));
 }
+
+bool FusedConvolutionCuDnn::IsCudaGraphCompatible() const { return true; }
 
 WorkbufferRequest FusedConvolutionCuDnn::GetWorkBufferRequest() const {
     if (conv_descs_->Algo().memory != 0)
@@ -114,7 +117,7 @@ void FusedConvolutionCuDnn::ThrowIfShouldDecompose() const {
     throwIfError(::cudnnGetActivationDescriptor(activation_desc_->get(), &mode, &prop, &coef));
     if (mode == CUDNN_ACTIVATION_IDENTITY &&
         conv_descs_->Algo().algo != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
-        throwIEException(
+        throw_ov_exception(
             "ov::nvidia_gpu::FusedConvolutionCuDnn: CUDNN_ACTIVATION_IDENTITY can't be used with "
             "CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM");
     }

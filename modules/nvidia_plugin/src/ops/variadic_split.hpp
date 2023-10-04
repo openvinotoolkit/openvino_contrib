@@ -9,8 +9,6 @@
 #include <cuda/device_pointers.hpp>
 #include <cuda_operation_base.hpp>
 #include <kernels/split.hpp>
-#include <ngraph/shape.hpp>
-#include <ngraph/type/element_type.hpp>
 #include <openvino/op/softmax.hpp>
 
 #include "kernels/variadic_split.hpp"
@@ -24,10 +22,13 @@ public:
                     const ov::Node& node,
                     IndexCollection&& inputIds,
                     IndexCollection&& outputIds);
+
     void Execute(const InferenceRequestContext& context,
                  Inputs inputTensors,
                  Outputs outputTensors,
                  const Workbuffers& workbuffers) const override;
+
+    bool IsCudaGraphCompatible() const override;
 
 private:
     enum { kOutputPtrsMWBIdx = 0, kNumberOfMWBIdx };

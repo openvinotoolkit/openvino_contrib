@@ -4,15 +4,12 @@
 
 #include "finite_comparer.hpp"
 
-#include <ie_blob.h>
-
-#include <ie_precision.hpp>
-#include <ngraph/type/element_type.hpp>
+#include "openvino/core/type/element_type.hpp"
 
 namespace LayerTestsDefinitions {
 
 void FiniteLayerComparer::Compare(
-    const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+    const std::vector<std::pair<ov::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
     const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs,
     float threshold,
     bool to_check_nans,
@@ -25,7 +22,7 @@ void FiniteLayerComparer::Compare(
 }
 
 template <typename T_IE>
-inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
+inline void callCompare(const std::pair<ov::element::Type, std::vector<std::uint8_t>> &expected,
                         const T_IE *actualBuffer,
                         size_t size,
                         float threshold,
@@ -33,7 +30,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                         std::optional<double> infinity_value) {
     auto expectedBuffer = expected.second.data();
     switch (expected.first) {
-        case ngraph::element::Type_t::i64:
+        case ov::element::Type_t::i64:
             FiniteLayerComparer::Compare<T_IE, int64_t>(reinterpret_cast<const int64_t *>(expectedBuffer),
                                                         actualBuffer,
                                                         size,
@@ -41,7 +38,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                         to_check_nans,
                                                         infinity_value);
             break;
-        case ngraph::element::Type_t::i32:
+        case ov::element::Type_t::i32:
             FiniteLayerComparer::Compare<T_IE, int32_t>(reinterpret_cast<const int32_t *>(expectedBuffer),
                                                         actualBuffer,
                                                         size,
@@ -49,7 +46,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                         to_check_nans,
                                                         infinity_value);
             break;
-        case ngraph::element::Type_t::i16:
+        case ov::element::Type_t::i16:
             FiniteLayerComparer::Compare<T_IE, int16_t>(reinterpret_cast<const int16_t *>(expectedBuffer),
                                                         actualBuffer,
                                                         size,
@@ -57,7 +54,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                         to_check_nans,
                                                         infinity_value);
             break;
-        case ngraph::element::Type_t::i8:
+        case ov::element::Type_t::i8:
             FiniteLayerComparer::Compare<T_IE, int8_t>(reinterpret_cast<const int8_t *>(expectedBuffer),
                                                        actualBuffer,
                                                        size,
@@ -65,7 +62,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                        to_check_nans,
                                                        infinity_value);
             break;
-        case ngraph::element::Type_t::u64:
+        case ov::element::Type_t::u64:
             FiniteLayerComparer::Compare<T_IE, uint64_t>(reinterpret_cast<const uint64_t *>(expectedBuffer),
                                                          actualBuffer,
                                                          size,
@@ -73,7 +70,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                          to_check_nans,
                                                          infinity_value);
             break;
-        case ngraph::element::Type_t::u32:
+        case ov::element::Type_t::u32:
             FiniteLayerComparer::Compare<T_IE, uint32_t>(reinterpret_cast<const uint32_t *>(expectedBuffer),
                                                          actualBuffer,
                                                          size,
@@ -81,7 +78,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                          to_check_nans,
                                                          infinity_value);
             break;
-        case ngraph::element::Type_t::u16:
+        case ov::element::Type_t::u16:
             FiniteLayerComparer::Compare<T_IE, uint16_t>(reinterpret_cast<const uint16_t *>(expectedBuffer),
                                                          actualBuffer,
                                                          size,
@@ -89,8 +86,8 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                          to_check_nans,
                                                          infinity_value);
             break;
-        case ngraph::element::Type_t::boolean:
-        case ngraph::element::Type_t::u8:
+        case ov::element::Type_t::boolean:
+        case ov::element::Type_t::u8:
             FiniteLayerComparer::Compare<T_IE, uint8_t>(reinterpret_cast<const uint8_t *>(expectedBuffer),
                                                         actualBuffer,
                                                         size,
@@ -98,7 +95,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                         to_check_nans,
                                                         infinity_value);
             break;
-        case ngraph::element::Type_t::f64:
+        case ov::element::Type_t::f64:
             FiniteLayerComparer::Compare<T_IE, double>(reinterpret_cast<const double *>(expectedBuffer),
                                                        actualBuffer,
                                                        size,
@@ -106,7 +103,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                        to_check_nans,
                                                        infinity_value);
             break;
-        case ngraph::element::Type_t::f32:
+        case ov::element::Type_t::f32:
             FiniteLayerComparer::Compare<T_IE, float>(reinterpret_cast<const float *>(expectedBuffer),
                                                       actualBuffer,
                                                       size,
@@ -114,7 +111,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                       to_check_nans,
                                                       infinity_value);
             break;
-        case ngraph::element::Type_t::f16:
+        case ov::element::Type_t::f16:
             FiniteLayerComparer::Compare<T_IE, ngraph::float16>(
                 reinterpret_cast<const ngraph::float16 *>(expectedBuffer),
                 actualBuffer,
@@ -123,7 +120,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                 to_check_nans,
                 infinity_value);
             break;
-        case ngraph::element::Type_t::bf16:
+        case ov::element::Type_t::bf16:
             FiniteLayerComparer::Compare<T_IE, ngraph::bfloat16>(
                 reinterpret_cast<const ngraph::bfloat16 *>(expectedBuffer),
                 actualBuffer,
@@ -132,9 +129,9 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                 to_check_nans,
                 infinity_value);
             break;
-        case ngraph::element::Type_t::i4: {
-            auto expectedOut = ngraph::helpers::convertOutputPrecision(
-                expected.second, expected.first, ngraph::element::Type_t::i8, size);
+        case ov::element::Type_t::i4: {
+            auto expectedOut =
+                ngraph::helpers::convertOutputPrecision(expected.second, expected.first, ov::element::Type_t::i8, size);
             FiniteLayerComparer::Compare<T_IE, int8_t>(reinterpret_cast<const int8_t *>(expectedOut.data()),
                                                        actualBuffer,
                                                        size,
@@ -143,9 +140,9 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                        infinity_value);
             break;
         }
-        case ngraph::element::Type_t::u4: {
-            auto expectedOut = ngraph::helpers::convertOutputPrecision(
-                expected.second, expected.first, ngraph::element::Type_t::u8, size);
+        case ov::element::Type_t::u4: {
+            auto expectedOut =
+                ngraph::helpers::convertOutputPrecision(expected.second, expected.first, ov::element::Type_t::u8, size);
             FiniteLayerComparer::Compare<T_IE, uint8_t>(reinterpret_cast<const uint8_t *>(expectedOut.data()),
                                                         actualBuffer,
                                                         size,
@@ -154,8 +151,8 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
                                                         infinity_value);
             break;
         }
-        case ngraph::element::Type_t::dynamic:
-        case ngraph::element::Type_t::undefined:
+        case ov::element::Type_t::dynamic:
+        case ov::element::Type_t::undefined:
             FiniteLayerComparer::Compare<T_IE, T_IE>(reinterpret_cast<const T_IE *>(expectedBuffer),
                                                      actualBuffer,
                                                      size,
@@ -169,7 +166,7 @@ inline void callCompare(const std::pair<ngraph::element::Type, std::vector<std::
     return;
 }
 
-void FiniteLayerComparer::Compare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
+void FiniteLayerComparer::Compare(const std::pair<ov::element::Type, std::vector<std::uint8_t>> &expected,
                                   const InferenceEngine::Blob::Ptr &actual,
                                   float threshold,
                                   bool to_check_nans,
@@ -177,16 +174,15 @@ void FiniteLayerComparer::Compare(const std::pair<ngraph::element::Type, std::ve
     const auto &precision = actual->getTensorDesc().getPrecision();
     auto k = static_cast<float>(expected.first.size()) / precision.size();
     // W/A for int4, uint4
-    if (expected.first == ngraph::element::Type_t::u4 || expected.first == ngraph::element::Type_t::i4) {
+    if (expected.first == ov::element::Type_t::u4 || expected.first == ov::element::Type_t::i4) {
         k /= 2;
-    } else if (expected.first == ngraph::element::Type_t::undefined ||
-               expected.first == ngraph::element::Type_t::dynamic) {
+    } else if (expected.first == ov::element::Type_t::undefined || expected.first == ov::element::Type_t::dynamic) {
         k = 1;
     }
     ASSERT_EQ(expected.second.size(), actual->byteSize() * k);
 
     auto memory = InferenceEngine::as<InferenceEngine::MemoryBlob>(actual);
-    IE_ASSERT(memory);
+    OPENVINO_ASSERT(memory);
     const auto lockedMemory = memory->wmap();
     const auto actualBuffer = lockedMemory.as<const std::uint8_t *>();
 
@@ -286,7 +282,7 @@ void FiniteLayerComparer::Compare(const std::pair<ngraph::element::Type, std::ve
     }
 }
 
-void FiniteLayerComparer::Compare(const std::pair<ngraph::element::Type, std::vector<std::uint8_t>> &expected,
+void FiniteLayerComparer::Compare(const std::pair<ov::element::Type, std::vector<std::uint8_t>> &expected,
                                   const InferenceEngine::Blob::Ptr &actual) {
     FiniteLayerComparer::Compare(expected, actual, threshold, this->to_check_nans, this->infinity_value);
 }
@@ -295,7 +291,7 @@ void FiniteLayerComparer::Compare(const InferenceEngine::Blob::Ptr &expected,
                                   const InferenceEngine::Blob::Ptr &actual) {
     auto get_raw_buffer = [](const InferenceEngine::Blob::Ptr &blob) {
         auto memory = InferenceEngine::as<InferenceEngine::MemoryBlob>(blob);
-        IE_ASSERT(memory);
+        OPENVINO_ASSERT(memory);
         const auto lockedMemory = memory->wmap();
         return lockedMemory.as<const std::uint8_t *>();
     };
@@ -332,7 +328,7 @@ void FiniteLayerComparer::Compare(const InferenceEngine::TensorDesc &actualDesc,
 }
 
 void FiniteLayerComparer::Compare(
-    const std::vector<std::pair<ngraph::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
+    const std::vector<std::pair<ov::element::Type, std::vector<std::uint8_t>>> &expectedOutputs,
     const std::vector<InferenceEngine::Blob::Ptr> &actualOutputs) {
     FiniteLayerComparer::Compare(expectedOutputs, actualOutputs, threshold, this->to_check_nans, this->infinity_value);
 }

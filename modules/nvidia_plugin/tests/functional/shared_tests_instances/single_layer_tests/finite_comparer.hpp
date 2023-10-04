@@ -165,15 +165,15 @@ public:
             if (to_check_nans && details::equal_nans(ref, res)) {
                 continue;
             }
-            const auto absoluteDifference = CommonTestUtils::ie_abs(res - ref);
+            const auto absoluteDifference = ov::test::utils::ie_abs(res - ref);
             if (absoluteDifference <= threshold) {
                 continue;
             }
             double max;
             if (sizeof(T_IE) < sizeof(T_NGRAPH)) {
-                max = std::max(CommonTestUtils::ie_abs(T_NGRAPH(res)), CommonTestUtils::ie_abs(ref));
+                max = std::max(ov::test::utils::ie_abs(T_NGRAPH(res)), ov::test::utils::ie_abs(ref));
             } else {
-                max = std::max(CommonTestUtils::ie_abs(res), CommonTestUtils::ie_abs(T_IE(ref)));
+                max = std::max(ov::test::utils::ie_abs(res), ov::test::utils::ie_abs(T_IE(ref)));
             }
             double diff = static_cast<float>(absoluteDifference) / max;
             if (max == 0 || (diff > static_cast<float>(threshold)) || std::isnan(static_cast<float>(res)) ||

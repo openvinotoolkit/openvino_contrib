@@ -147,7 +147,7 @@ const auto simpleCombine4DScaleParamTests =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(inShapes),
                        ::testing::ValuesIn(targetShapes),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_Nearest_4D_Scale_Param_Test,
@@ -164,7 +164,7 @@ const auto simpleCombine2DScaleParamTests =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(inShapes),
                        ::testing::ValuesIn(targetShapes),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_Simple_Interpolate_Nearest_2D_Scale_Param_Test,
@@ -180,7 +180,7 @@ const auto downscaleCombineTests = ::testing::Combine(interpolate4DScaleParams,
                                                       ::testing::Values(InferenceEngine::Layout::ANY),
                                                       ::testing::ValuesIn(downscaleInShapes),
                                                       ::testing::ValuesIn(downscaleTargetShapes),
-                                                      ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                                      ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                                       ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(smoke_Downscale_Interpolate_Nearest_Test,
                         CUDAInterpolateLayerTest,
@@ -199,7 +199,7 @@ const auto highResolutionCombineTest =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 88, 20, 20}}),
                        ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 88, 40, 40}}),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(smoke_High_Resolution_Interpolate_Nearest_4D_Scale_Param_Test,
@@ -215,7 +215,7 @@ const auto efficientdetCombinations = ::testing::Combine(interpolate4DScaleParam
                                                          ::testing::Values(InferenceEngine::Layout::ANY),
                                                          ::testing::ValuesIn(efficientdetShapes),
                                                          ::testing::ValuesIn(efficientdetShapes),
-                                                         ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                                         ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                                          ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(efficientdetInterpolateCombinationTests,
                         CUDAInterpolateLayerTest,
@@ -231,7 +231,7 @@ const auto yolov5InterpolateFrom20To40Shape =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(yolov5From20To40Shape),
                        ::testing::ValuesIn(yolov5From20To40Shape),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom20To40ShapeTests,
                         CUDAInterpolateLayerTest,
@@ -247,7 +247,7 @@ const auto yolov5InterpolateFrom40To80Shape =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(yolov5From40To80Shape),
                        ::testing::ValuesIn(yolov5From40To80Shape),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 INSTANTIATE_TEST_CASE_P(yolov5InterpolateFrom40To80ShapeTests,
                         CUDAInterpolateLayerTest,
@@ -293,7 +293,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_2D_Scale_Test,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(linearInput2DScaleShapes),
                                            ::testing::ValuesIn(linearTest2DSizes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         InterpolateLayerTest::getTestCaseName);
 
@@ -321,7 +321,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateLinear_3D_Scale_Test,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(linearInput3DScaleShapes),
                                            ::testing::ValuesIn(linearTest3DSizes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         InterpolateLayerTest::getTestCaseName);
 
@@ -367,7 +367,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_2D_Scale_Test,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(cubicInput2DScaleShapes),
                                            ::testing::ValuesIn(cubicTest2DSizes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         InterpolateLayerTest::getTestCaseName);
 
@@ -395,7 +395,7 @@ INSTANTIATE_TEST_CASE_P(smoke_InterpolateCubic_3D_Scale_Test,
                                            ::testing::Values(InferenceEngine::Layout::ANY),
                                            ::testing::ValuesIn(cubicInput3DScaleShapes),
                                            ::testing::ValuesIn(cubicTest3DSizes),
-                                           ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                                            ::testing::Values(additional_config)),
                         InterpolateLayerTest::getTestCaseName);
 
@@ -417,7 +417,7 @@ const auto nearestBenchmarkParams =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 88, 40, 40}}),
                        ::testing::ValuesIn(std::vector<std::vector<size_t>>{{1, 88, 80, 80}}),
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Nearest_Benchmark,
@@ -449,7 +449,7 @@ const auto benchmarkParams =
                        ::testing::Values(InferenceEngine::Layout::ANY),
                        ::testing::Values(std::vector<size_t>{1, 3, 50, 50, 50}),  // input data shape
                        ::testing::Values(std::vector<size_t>{0, 0, 0}),           // sizes, not used
-                       ::testing::Values(CommonTestUtils::DEVICE_NVIDIA),
+                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
 INSTANTIATE_TEST_CASE_P(CUDAInterpolate_Benchmark,

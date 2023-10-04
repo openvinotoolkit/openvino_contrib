@@ -23,16 +23,7 @@ public:
     void operator()(cudaStream_t stream, const void* in, void* out) const;
 
 private:
-    using SupportedElementTypes = ElementTypesSwitch<Type_t::f16,
-                                                     Type_t::f32,
-                                                     Type_t::f64
-#if CUDA_VERSION >= 11000
-                                                     ,
-                                                     Type_t::bf16
-#endif  // CUDA_VERSION >= 11000
-                                                     >;
-
-    ElementwiseUnary<SupportedElementTypes, SwishOpImpl> ewu_;
+    ElementwiseUnary<FloatElementTypesSwitch, SwishOpImpl> ewu_;
     double beta_;
 };
 

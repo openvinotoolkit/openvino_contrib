@@ -9,7 +9,7 @@
 
 namespace CUDA {
 
-DnnTensorDescriptor makeDnnTensorDescr(const ngraph::element::Type& type, const ngraph::Shape& shape) {
+DnnTensorDescriptor makeDnnTensorDescr(const ov::element::Type& type, const ov::Shape& shape) {
     OPENVINO_ASSERT(!shape.empty());
     OPENVINO_ASSERT(shape.size() <= CUDNN_DIM_MAX);
     std::vector<int> dims;
