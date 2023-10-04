@@ -24,7 +24,6 @@ ov_add_test_target(
             openvino_nvidia_gpu_plugin_obj
         LINK_LIBRARIES
             openvino::funcSharedTests
-            gmock
         INCLUDES
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ADD_CLANG_FORMAT
