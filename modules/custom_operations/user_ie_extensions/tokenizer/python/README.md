@@ -91,8 +91,6 @@ print(f"HuggingFace logits {hf_output.logits}")
 
 ### Convert SentencePiece Model Tokenzier
 
-To connect a detokenizer to a `logits` model output, set `greedy_decoder=True` when using the `convert_tokenizer` or `convert_sentencepiece_model_tokenizer` function, enabling a greedy decoding pipeline before detoknizer. This allows the detokenizer to be connected to the `logits` model output.
-
 ```python
 from transformers import AutoTokenizer
 from ov_tokenizer import init_extension, convert_sentencepiece_model_tokenizer, pack_strings, unpack_strings
@@ -127,3 +125,5 @@ print(f"OpenVINO output string: `{ov_output}`")
 print(f"HuggingFace output string: `{hf_output}`")
 # HuggingFace output string: ['def fibonnaci(n):']
 ```
+
+To connect a detokenizer to a `logits` model output, set `greedy_decoder=True` when using the `convert_tokenizer` or `convert_sentencepiece_model_tokenizer` function, enabling a greedy decoding pipeline before detoknizer. This allows the detokenizer to be connected to the `logits` model output.
