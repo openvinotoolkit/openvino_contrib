@@ -9,7 +9,7 @@
 
 ## Installation
 
-1. Build the extension with the `-DCUSTOM_OPERATIONS="tokenizer"` flag: [instruction](modules/custom_operations/README.md)
+1. Build the extension with the `-DCUSTOM_OPERATIONS="tokenizer"` flag: [instruction](../../../README.md#build-custom-openvino-operation-extension-library)
 2. (Recommended) Create and activate virtual env:
 ```bash
 python3 -m venv venv
