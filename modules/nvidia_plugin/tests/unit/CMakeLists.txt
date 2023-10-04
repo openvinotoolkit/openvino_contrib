@@ -32,11 +32,11 @@ ov_add_test_target(
         EXCLUDED_SOURCE_PATHS
             ${EXCLUDED_SOURCE_PATHS}
         LINK_LIBRARIES
-            gtest
-            gtest_main
-            gmock
-            ov_models
-            commonTestUtils
+            openvino::gtest
+            openvino::gtest_main
+            openvino::gmock
+            openvino::ov_models
+            openvino::commonTestUtils
         ADD_CPPLINT
         ADD_CLANG_FORMAT
         LABELS
