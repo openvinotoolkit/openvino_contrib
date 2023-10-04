@@ -9,7 +9,7 @@
 #include <cuda_test_constants.hpp>
 #include <ie_precision.hpp>
 #include <map>
-#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <string>
 #include <vector>
 
