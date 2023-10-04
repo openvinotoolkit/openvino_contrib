@@ -2,22 +2,23 @@
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
 import logging
-from typing import Any, Tuple, Union, Optional, Sequence
+import sys
+from typing import Any, Optional, Sequence, Tuple, Union
 
-from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime import Model
+from openvino.runtime.exceptions import OVTypeError
 
 
 logger = logging.getLogger(__name__)
 
 
 def convert_tokenizer(
-    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False
+    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False, greedy_decoder=False
 ) -> Union[Model, Tuple[Model, Model]]:
     if "transformers" in sys.modules:
         from transformers import PreTrainedTokenizerBase
+
         from .hf_parser import TransformersTokenizerPipelineParser
 
         # TODO: Remove this check
@@ -25,7 +26,7 @@ def convert_tokenizer(
             pipeline = TransformersTokenizerPipelineParser(tokenizer_object).parse(number_of_inputs=number_of_inputs)
             ov_tokenizer = pipeline.get_encoder_ov_subgraph()
             if with_decoder:
-                ov_detokenizer = pipeline.get_decoder_ov_subgraph()
+                ov_detokenizer = pipeline.get_decoder_ov_subgraph(greedy_decoder)
             output_names = tokenizer_object.model_input_names
 
             ov_tokenizer_output_names = ["input_ids", "attention_mask"]

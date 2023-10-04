@@ -6,38 +6,39 @@ import json
 import tempfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Optional, Dict, Callable, Union, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino.runtime.opset12 as opset
-from openvino.runtime.exceptions import OVTypeError
-from openvino.runtime import op, Type, Model, PartialShape
-from openvino.runtime.utils.types import make_constant_node, as_node
 from openvino import save_model
+from openvino.runtime import Model, PartialShape, Type, op
+from openvino.runtime.exceptions import OVTypeError
+from openvino.runtime.utils.types import as_node, make_constant_node
 
+from .common_pipelines import get_greedy_decoding_ov_subgraph
+from .node_factory import factory
 from .tokenizer_pipeline import (
-    TokenizerPipeline,
+    BPETokenizationStep,
+    BytesToCharsStep,
+    CaseFoldStep,
+    CharsToBytesStep,
+    CombineSegmentsStep,
+    NMTNormalizationStep,
     NormalizationStep,
     NormalizeUnicode,
-    NMTNormalizationStep,
-    CaseFoldStep,
-    RegexNormalizationStep,
-    StripStringStep,
+    PaddingStep,
     PreTokenizatinStep,
     PunctuationSplitStep,
-    RegexSplitStep,
-    WhitespaceSplitStep,
-    BytesToCharsStep,
-    WordPieceTokenizationStep,
-    BPETokenizationStep,
-    TruncationStep,
-    PaddingStep,
-    CombineSegmentsStep,
-    VocabDecoderStep,
-    CharsToBytesStep,
     RegexDecodingStep,
+    RegexNormalizationStep,
+    RegexSplitStep,
+    StripStringStep,
+    TokenizerPipeline,
+    TruncationStep,
+    VocabDecoderStep,
+    WhitespaceSplitStep,
+    WordPieceTokenizationStep,
 )
-from .node_factory import factory
 
 
 def parse_replace_normalizer(normalizer_dict: Dict[str, Any]) -> RegexNormalizationStep:
@@ -221,7 +222,9 @@ class TransformersTokenizerPipelineParser:
                 self.tokenizer_json, self.number_of_inputs
             )
         else:
-            raise OVTypeError(f"Post-processor type '{self.tokenizer_json['post_processor']['type']}' is not supported")
+            raise OVTypeError(
+                f"Post-processor type '{self.tokenizer_json['post_processor']['type']}' is not supported"
+            )
 
         self.num_of_added_tokens += combine_segments_step.number_of_added_tokens
         combine_segments_step.set_tokens_ids(self.pipeline.vocab)
@@ -260,14 +263,15 @@ class TransformersTokenizerPipelineParser:
         return
 
 
-def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizer"):
+def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase"):
     return hf_tokenizer.vocab_files_names.get("vocab_file", "").endswith(".model")
 
 
 def convert_sentencepiece_model_tokenizer(
-    hf_tokenizer: "PreTrainedTokenizer",
+    hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
-    with_decoder: bool = False
+    with_decoder: bool = False,
+    greedy_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
@@ -342,18 +346,24 @@ def convert_sentencepiece_model_tokenizer(
     tokenizer_encoder = Model(outputs, [input_node], "sp_tokenizer_encoder")
     tokenizer_encoder.validate_nodes_and_infer_types()
 
-    if with_decoder:
+    if not with_decoder:
+        return tokenizer_encoder
+
+    if greedy_decoder:
+        decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))  # (batch, sequence, logits)
+        token_ids = get_greedy_decoding_ov_subgraph(decoder_input)[0]  # (batch, sequence)
+    else:
         decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
-        decoder = factory.create(
-            "SentencepieceDetokenizer",
-            [sp_model_node, decoder_input],
-        )
-        string_output = factory.create("StringTensorPack", decoder.outputs()).outputs()
-        string_output[0].tensor.add_names({"string_output"})
-        tokenizer_decoder = Model(string_output, [decoder_input], "sp_tokenizer_decoder")
-        tokenizer_decoder.validate_nodes_and_infer_types()
+        token_ids = decoder_input
 
-        save_model(tokenizer_decoder, "detokenizer.xml")
-        return tokenizer_encoder, tokenizer_decoder
+    decoder = factory.create(
+        "SentencepieceDetokenizer",
+        [sp_model_node, token_ids],
+    )
+    string_output = factory.create("StringTensorPack", decoder.outputs()).outputs()
+    string_output[0].tensor.add_names({"string_output"})
+    tokenizer_decoder = Model(string_output, [decoder_input], "sp_tokenizer_decoder")
+    tokenizer_decoder.validate_nodes_and_infer_types()
 
-    return tokenizer_encoder
+    save_model(tokenizer_decoder, "detokenizer.xml")
+    return tokenizer_encoder, tokenizer_decoder

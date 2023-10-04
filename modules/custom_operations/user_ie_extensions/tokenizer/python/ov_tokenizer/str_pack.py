@@ -1,5 +1,9 @@
-from typing import List
+# -*- coding: utf-8 -*-
+# Copyright (C) 2018-2023 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 from io import BytesIO
+from typing import List
 
 import numpy as np
 from numpy.typing import NDArray

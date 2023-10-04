@@ -1,6 +1,10 @@
+# -*- coding: utf-8 -*-
+# Copyright (C) 2018-2023 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import os
-from typing import Union
 from pathlib import Path
+from typing import Union
 
 from openvino.runtime.utils.node_factory import NodeFactory
 

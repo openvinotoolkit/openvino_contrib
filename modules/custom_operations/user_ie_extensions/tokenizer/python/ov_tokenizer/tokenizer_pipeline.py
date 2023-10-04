@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
+
+import weakref
 from dataclasses import dataclass, field
 from functools import singledispatchmethod
 from itertools import chain, islice
-from typing import List, Optional, Any, Dict, Union
-import weakref
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-
-from openvino.runtime.exceptions import UserInputError, OVTypeError
-from openvino.runtime import Type, PartialShape, op, Model, Output, opset10 as opset
+from openvino.runtime import Model, Output, PartialShape, Type, op
+from openvino.runtime import opset10 as opset
+from openvino.runtime.exceptions import OVTypeError, UserInputError
 from openvino.runtime.utils.types import as_node, make_constant_node
 
 from .common_pipelines import get_greedy_decoding_ov_subgraph
-from .str_pack import pack_string, pack_strings
 from .node_factory import factory
+from .str_pack import pack_string, pack_strings
 
 
 class BasePipelineStep:
@@ -746,10 +747,14 @@ class TokenizerPipeline:
 
         return factory.create("StringTensorPack", input_nodes).outputs()
 
-    def get_decoder_ov_subgraph(self) -> Model:
-        input_node = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
-        argmax = get_greedy_decoding_ov_subgraph(input_node)
-        outputs = self.create_decoding_pipeline(argmax)
+    def get_decoder_ov_subgraph(self, greedy_decoder: bool = False) -> Model:
+        if greedy_decoder:
+            input_node = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
+            token_ids = get_greedy_decoding_ov_subgraph(input_node)
+        else:
+            input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
+            token_ids = input_node
+        outputs = self.create_decoding_pipeline(token_ids)
         model = Model(outputs, [input_node], name="tokenizer_decoder")
         model.output().tensor.add_names({"string_output"})
         return model

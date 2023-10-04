@@ -1,6 +1,8 @@
-import sys
+# -*- coding: utf-8 -*-
+# Copyright (C) 2018-2023 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
 
-sys.path.append("../user_ie_extensions/tokenizer")
+import sys
 # import os
 # os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = "path/to/libuser_ov_extensions.so"
 
