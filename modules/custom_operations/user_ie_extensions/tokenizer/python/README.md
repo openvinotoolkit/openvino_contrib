@@ -17,8 +17,11 @@ source venv/bin/activate
 ```
 3. Go to `modules/custom_operations/user_ie_extensions/tokenizer/python` and run:
 ```bash
+# to use converted tokenizers or models combined with tokenizers
+pip install .
+# to convert tokenizers from transformers library
 pip install .[transformers] 
-# or install all dependencies for the development
+# for development and testing the library
 pip isntall -e .[all]
 ```
 
@@ -31,8 +34,8 @@ or use `init_extension` function.
 
 ```python
 from transformers import AutoTokenizer
-from ov_tokenizer import init_extension, convert_tokenizer, pack_strings
 from openvino import compile_model
+from ov_tokenizer import init_extension, convert_tokenizer, pack_strings
 
 
 init_extension("path/to/libuser_ov_extensions.so")
@@ -62,8 +65,8 @@ for output_name in hf_output:
 
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from ov_tokenizer import init_extension, convert_tokenizer, pack_strings, connect_models
 from openvino import compile_model, convert_model
+from ov_tokenizer import init_extension, convert_tokenizer, pack_strings, connect_models
 
 
 init_extension("path/to/libuser_ov_extensions.so")
@@ -93,8 +96,8 @@ print(f"HuggingFace logits {hf_output.logits}")
 
 ```python
 from transformers import AutoTokenizer
-from ov_tokenizer import init_extension, convert_sentencepiece_model_tokenizer, pack_strings, unpack_strings
 from openvino import compile_model
+from ov_tokenizer import init_extension, convert_sentencepiece_model_tokenizer, pack_strings, unpack_strings
 
 
 init_extension("path/to/libuser_ov_extensions.so")
@@ -127,3 +130,25 @@ print(f"HuggingFace output string: `{hf_output}`")
 ```
 
 To connect a detokenizer to a `logits` model output, set `greedy_decoder=True` when using the `convert_tokenizer` or `convert_sentencepiece_model_tokenizer` function, enabling a greedy decoding pipeline before detoknizer. This allows the detokenizer to be connected to the `logits` model output.
+
+### Use Extension With Converted (De)Tokenizer or Model combined with (De)Tokenizer
+
+To work with converted tokenizer you need `pack_strings`/`unpack_strings` functions. 
+
+```python
+import numpy as np
+from openvino import Core
+from ov_tokenizer import unpack_strings
+
+
+core = Core()
+core.add_extension("path/to/libuser_ov_extensions.so")
+# detokenizer from codellama sentencepiece model
+compiled_detokenizer = core.compile_model("detokenizer.xml")
+
+token_ids = np.random.randint(100, 1000, size=(3, 5))
+openvino_output = compiled_detokenizer(token_ids)
+
+print(unpack_strings(openvino_output["string_output"]))
+# ['sc�ouition�', 'intvenord hasient', 'g shouldwer M more']
+```
