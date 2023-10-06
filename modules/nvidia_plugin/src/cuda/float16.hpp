@@ -20,7 +20,7 @@
 #define CUDA_HAS_BF16_MATH
 #endif  // defined (CUDA_HAS_BF16_TYPE) && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) && CUDA_VERSION < 12000
 #if !defined(CUDA_HAS_HALF_MATH)
 /* Some basic arithmetic operations expected of a builtin */
 __device__ __forceinline__ __half operator+(const __half &lh, const __half &rh) {
@@ -192,4 +192,4 @@ __device__ __forceinline__ bool operator<=(const __nv_bfloat16 &lh, const __nv_b
     return static_cast<float>(lh) <= static_cast<float>(rh);
 }
 #endif  /* defined(CUDA_HAS_BF16_TYPE) && !defined(CUDA_HAS_BF16_MATH) */
-#endif  // __CUDACC__
+#endif  // defined(__CUDACC__) && CUDA_VERSION < 12000
