@@ -35,7 +35,7 @@ ov_add_test_target(
             openvino::gtest
             openvino::gtest_main
             openvino::gmock
-            openvino::ngraphFunctions
+            openvino::ov_models
             openvino::commonTestUtils
         ADD_CPPLINT
         ADD_CLANG_FORMAT
