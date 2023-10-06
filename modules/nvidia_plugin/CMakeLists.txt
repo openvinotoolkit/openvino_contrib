@@ -92,14 +92,23 @@ endif()
 find_library(CUDNN_PATH
              NAMES cudnn
              ${HAS_REQUIRED}
-             HINTS "$ENV{CUDNN_PATH}"  "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
+             HINTS "$ENV{CUDNN_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
 
+if((${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL 10))
+    set(CUTENSOR_LIB_DIRS lib/10.2 libcutensor/10.2)
+elseif((${CUDAToolkit_VERSION_MAJOR} GREATER_EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} LESS_EQUAL 0))
+    set(CUTENSOR_LIB_DIRS lib/11.0 libcutensor/11.0)
+elseif((${CUDAToolkit_VERSION_MAJOR} GREATER_EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 1))
+    set(CUTENSOR_LIB_DIRS lib/11 libcutensor/11)
+else()
+    set(CUTENSOR_LIB_DIRS lib/${CUDAToolkit_VERSION_MAJOR} libcutensor/${CUDAToolkit_VERSION_MAJOR})
+endif()
 find_library(CUTENSOR_PATH
              NAMES cutensor
              ${HAS_REQUIRED}
              HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}" 
-             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib lib/11)
+             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib ${CUTENSOR_LIB_DIRS})
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
 
