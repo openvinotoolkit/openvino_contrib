@@ -2,42 +2,43 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "single_layer_tests/transpose.hpp"
-
-#include <cuda_test_constants.hpp>
 #include <vector>
 
 #include "common_test_utils/test_constants.hpp"
+#include "cuda_test_constants.hpp"
+#include "single_op_tests/transpose.hpp"
 
-using namespace LayerTestsDefinitions;
 
 namespace {
 
-const std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::FP16,
-    InferenceEngine::Precision::FP32,
+using namespace ov::test;
+using namespace ov::test::utils;
+using ov::test::TransposeLayerTest;
+
+const std::vector<ov::element::Type> model_types = {
+    ov::element::f16,
+    ov::element::f32,
 };
 
-const std::vector<std::vector<size_t>> inputShapes = {
-    std::vector<size_t>{256, 3, 100, 100},
-    std::vector<size_t>{1, 2048, 1, 1},
+const std::vector<std::vector<ov::Shape>> input_shapes = {
+    {{256, 3, 100, 100}},
+    {{1, 2048, 1, 1}},
 };
 
-const std::vector<std::vector<size_t>> inputOrder = {
+const std::vector<std::vector<size_t>> input_order = {
     std::vector<size_t>{0, 3, 2, 1},
     // Empty inputs are currently unsupported in nvidia_gpu.
     //        std::vector<size_t>{},
 };
 
-const auto params = testing::Combine(testing::ValuesIn(inputOrder),
-                                     testing::ValuesIn(netPrecisions),
-                                     testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                     testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                     testing::Values(InferenceEngine::Layout::ANY),
-                                     testing::Values(InferenceEngine::Layout::ANY),
-                                     testing::ValuesIn(inputShapes),
-                                     testing::Values(ov::test::utils::DEVICE_NVIDIA));
+const auto params = testing::Combine(testing::ValuesIn(input_order),
+                                     testing::ValuesIn(model_types),
+                                     testing::ValuesIn(static_shapes_to_test_representation(input_shapes)),
+                                     testing::Values(DEVICE_NVIDIA));
 
-INSTANTIATE_TEST_CASE_P(smoke_Transpose, TransposeLayerTest, params, TransposeLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_Transpose,
+                        TransposeLayerTest,
+                        params,
+                        TransposeLayerTest::getTestCaseName);
 
 }  // namespace
