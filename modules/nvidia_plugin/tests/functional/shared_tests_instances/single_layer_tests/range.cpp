@@ -16,7 +16,7 @@
 #include <ops/parameter.hpp>
 
 #include "kernels/details/cuda_type_traits.hpp"
-#include "ngraph_functions/builders.hpp"
+#include "ov_models/builders.hpp"
 
 namespace {
 

@@ -10,7 +10,7 @@
 
 #include "cuda_test_constants.hpp"
 #include "finite_comparer.hpp"
-#include "ngraph_functions/builders.hpp"
+#include "ov_models/builders.hpp"
 #include "shared_test_classes/single_layer/convolution_backprop_data.hpp"
 
 using namespace LayerTestsDefinitions;
