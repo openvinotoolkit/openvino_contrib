@@ -87,7 +87,6 @@ bpe_models = [
     "bigscience/bloom",  # pack_strings for vocab is taking long time
     "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
     # "google/flan-t5-xxl",  # needs Precompiled/CharsMap
-    # "decapoda-research/llama-65b-hf",  # not importable from hub
     # "jinmang2/textcnn-ko-dialect-classifier",  # Needs Metaspace Pretokenizer
     # "hyunwoongko/blenderbot-9B",  # hf script to get fast tokenizer doesn't work
 ]
@@ -116,6 +115,14 @@ def hf_and_ov_bpe_tokenizers(request):
     ov_tokenizer = convert_tokenizer(hf_tokenizer)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     return hf_tokenizer, compiled_tokenizer
+
+
+@pytest.fixture(scope="session", params=bpe_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
+def hf_and_ov_bpe_detokenizer(request):
+    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=True)
+    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
+    compiled_detokenizer = core.compile_model(ov_detokenizer)
+    return hf_tokenizer, compiled_detokenizer
 
 
 @pytest.fixture(scope="session", params=[True, False], ids=lambda is_fast: "Fast" if is_fast else "Slow")
@@ -200,6 +207,24 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
         *emoji_test_strings,
     ]
 )
+def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
+    hf_tokenizer, ov_detokenizer = hf_and_ov_bpe_detokenizer
+
+    token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
+    hf_output = hf_tokenizer.batch_decode(token_ids)
+    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+
+    assert ov_output == hf_output
+
+
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+    ]
+)
 def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
 
@@ -218,11 +243,11 @@ def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_strin
         *emoji_test_strings,
     ]
 )
-def test_sentencepiece_detokenizer(sentencepice_model_tokenizers, test_string):
+def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
     hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
-    assert hf_output == ov_output
+    assert ov_output == hf_output

@@ -173,17 +173,6 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
 
 #else
 
-    // const uint8_t* strings = inputs[1].data<const uint8_t>();
-    // auto bitstream_size = inputs[1].get_byte_size();
-
-    // // check the format of the input bitstream representing the string tensor
-    // FRONT_END_GENERAL_CHECK(bitstream_size >= 4, "Incorrect packed string tensor format: no batch size in the packed string tensor");
-    // auto batch_size = *reinterpret_cast<const int32_t*>(strings + 0);
-    // FRONT_END_GENERAL_CHECK(bitstream_size >= 4 + 4 + 4 * batch_size,
-    //     "Incorrect packed string tensor format: the packed string tensor must contain first string offset and end indices");
-    // auto begin_ids = reinterpret_cast<const int32_t*>(strings + 4);
-    // auto end_ids = begin_ids + 1;
-    // auto data = strings + 4 + 4 + 4 * batch_size;
     int32_t batch_size;
     const int32_t* begin_ids;
     const int32_t* end_ids;
@@ -201,7 +190,6 @@ bool SentencepieceTokenizer::evaluate(TensorVector& outputs, const TensorVector&
         auto begin_ind = begin_ids[batch_ind];
         auto end_ind = end_ids[batch_ind];
         absl::string_view sentence((const char*)data + begin_ind, end_ind - begin_ind);
-        //std::cerr << "string: " << sentence << "\n";
 #endif
         std::vector<int32_t> ids;
         CHECK_OK(m_sp->SampleEncode(sentence, m_nbest_size, m_alpha, &ids));

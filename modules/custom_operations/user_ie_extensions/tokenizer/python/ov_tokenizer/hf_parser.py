@@ -291,16 +291,13 @@ def convert_sentencepiece_model_tokenizer(
     input_node.set_friendly_name("string_input")
 
     if hasattr(hf_tokenizer, "add_eos_token"):
-        add_eos_token = hf_tokenizer.add_eos_token
+        add_eos_token = hf_tokenizer.add_eos_token or False
     else:
         add_eos_token = (
             getattr(hf_tokenizer, "truncation_side", "") == "right"
             or getattr(hf_tokenizer, "padding_side", "") == "right"
         )
-    if hasattr(hf_tokenizer, "add_bos_token"):
-        add_bos_token = hf_tokenizer.add_bos_token
-    else:
-        add_bos_token = add_eos_token
+    add_bos_token = getattr(hf_tokenizer, "add_bos_token", add_eos_token) or False
 
     tokenizer_node = factory.create(
         "SentencepieceTokenizer",

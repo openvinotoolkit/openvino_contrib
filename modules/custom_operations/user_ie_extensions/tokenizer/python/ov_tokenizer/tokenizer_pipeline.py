@@ -754,7 +754,7 @@ class TokenizerPipeline:
         else:
             input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
             token_ids = input_node
-        outputs = self.create_decoding_pipeline(token_ids)
+        outputs = self.create_decoding_pipeline([token_ids])
         model = Model(outputs, [input_node], name="tokenizer_decoder")
         model.output().tensor.add_names({"string_output"})
         return model

@@ -70,4 +70,3 @@ bool VocabDecoder::evaluate(ov::TensorVector& outputs, const ov::TensorVector& i
     outputs[4].set_shape({char_offset});
     return true;
 }
-
