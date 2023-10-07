@@ -16,7 +16,7 @@ namespace OpenVinoSharp.preprocess
     /// Support model has input parameter with shape {1, 3, 224, 224} and user needs to resize input image to model's
     /// dimensions. It can be done like this
     /// </example>
-    public class InputModelInfo
+    public class InputModelInfo : IDisposable
     {
         /// <summary>
         /// [private]InputModelInfo class pointer.
@@ -36,7 +36,7 @@ namespace OpenVinoSharp.preprocess
         {
             if (ptr == IntPtr.Zero)
             {
-                System.Diagnostics.Debug.WriteLine("InputModelInfo init error : ptr is null!");
+                HandleException.handler(ExceptionStatus.PTR_NULL);
                 return;
             }
             this.m_ptr = ptr;
@@ -44,11 +44,11 @@ namespace OpenVinoSharp.preprocess
         /// <summary>
         /// Default destructor
         /// </summary>
-        ~InputModelInfo() { dispose(); }
+        ~InputModelInfo() { Dispose(); }
         /// <summary>
         /// Release unmanaged resources
         /// </summary>
-        public void dispose()
+        public void Dispose()
         {
             if (m_ptr == IntPtr.Zero)
             {
@@ -65,12 +65,8 @@ namespace OpenVinoSharp.preprocess
         /// <returns>Reference to 'this' to allow chaining with other calls in a builder-like manner</returns>
         public InputModelInfo set_layout(Layout layout)
         {
-            ExceptionStatus status = NativeMethods.ov_preprocess_input_model_info_set_layout(
-                m_ptr, layout.Ptr);
-            if (status != 0)
-            {
-                System.Diagnostics.Debug.WriteLine("InputModelInfo set_layout error : {0}!", status.ToString());
-            }
+            HandleException.handler(
+                NativeMethods.ov_preprocess_input_model_info_set_layout(m_ptr, layout.Ptr));
             return this;
         }
     }

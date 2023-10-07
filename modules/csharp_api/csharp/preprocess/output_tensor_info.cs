@@ -11,7 +11,7 @@ namespace OpenVinoSharp.preprocess
     /// (type/shape/etc) as model's output parameter. User application can override particular parameters (like
     /// 'element_type') according to application's data and specify appropriate conversions in post-processing steps
     /// </summary>
-    public class OutputTensorInfo
+    public class OutputTensorInfo : IDisposable
     {
         /// <summary>
         /// [private]OutputTensorInfo class pointer.
@@ -31,7 +31,7 @@ namespace OpenVinoSharp.preprocess
         {
             if (ptr == IntPtr.Zero)
             {
-                System.Diagnostics.Debug.WriteLine("OutputTensorInfo init error : ptr is null!");
+                HandleException.handler(ExceptionStatus.PTR_NULL);
                 return;
             }
             this.m_ptr = ptr;
@@ -39,11 +39,11 @@ namespace OpenVinoSharp.preprocess
         /// <summary>
         /// Default destructor
         /// </summary>
-        ~OutputTensorInfo() { dispose(); }
+        ~OutputTensorInfo() { Dispose(); }
         /// <summary>
         /// Release unmanaged resources
         /// </summary>
-        public void dispose()
+        public void Dispose()
         {
             if (m_ptr == IntPtr.Zero)
             {
@@ -60,12 +60,8 @@ namespace OpenVinoSharp.preprocess
         /// <returns>Reference to 'this' to allow chaining with other calls in a builder-like manner.</returns>
         public OutputTensorInfo set_element_type(ElementType type)
         {
-            ExceptionStatus status = (ExceptionStatus)NativeMethods.ov_preprocess_output_set_element_type(
-                m_ptr, (uint)type);
-            if (status != 0)
-            {
-                System.Diagnostics.Debug.WriteLine("OutputTensorInfo set_element_type error : {0}!", status.ToString());
-            }
+            HandleException.handler(
+                NativeMethods.ov_preprocess_output_set_element_type(m_ptr, (uint)type));
             return this;
         }
     }

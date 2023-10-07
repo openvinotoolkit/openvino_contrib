@@ -13,7 +13,7 @@ namespace OpenVinoSharp.preprocess
     ///    - Postprocessing steps applied to user's input (OutputInfo::postprocess)
     ///    - User's desired output parameter information, which is a final one after preprocessing (OutputInfo::tensor)
     /// </summary>
-    public class OutputInfo
+    public class OutputInfo : IDisposable
     {
         /// <summary>
         /// [private]OutputInfo class pointer.
@@ -33,7 +33,7 @@ namespace OpenVinoSharp.preprocess
         {
             if (ptr == IntPtr.Zero)
             {
-                System.Diagnostics.Debug.WriteLine("OutputInfo init error : ptr is null!");
+                HandleException.handler(ExceptionStatus.PTR_NULL);
                 return;
             }
             this.m_ptr = ptr;
@@ -41,11 +41,11 @@ namespace OpenVinoSharp.preprocess
         /// <summary>
         /// Default destructor
         /// </summary>
-        ~OutputInfo() { dispose(); }
+        ~OutputInfo() { Dispose(); }
         /// <summary>
         /// Release unmanaged resources
         /// </summary>
-        public void dispose()
+        public void Dispose()
         {
             if (m_ptr == IntPtr.Zero)
             {
@@ -62,12 +62,8 @@ namespace OpenVinoSharp.preprocess
         public OutputTensorInfo tensor()
         {
             IntPtr output_tensor_ptr = IntPtr.Zero;
-            ExceptionStatus status = NativeMethods.ov_preprocess_output_info_get_tensor_info(
-                m_ptr, ref output_tensor_ptr);
-            if (status != 0)
-            {
-                System.Diagnostics.Debug.WriteLine("InputInfo tensor error : {0}!", status.ToString());
-            }
+            HandleException.handler(
+                NativeMethods.ov_preprocess_output_info_get_tensor_info(m_ptr, ref output_tensor_ptr));
             return new OutputTensorInfo(output_tensor_ptr);
         }
     }
