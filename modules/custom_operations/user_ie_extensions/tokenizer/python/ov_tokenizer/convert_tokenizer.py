@@ -16,44 +16,30 @@ logger = logging.getLogger(__name__)
 def convert_tokenizer(
     tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False, greedy_decoder=False
 ) -> Union[Model, Tuple[Model, Model]]:
+    # todo: add support for more then 1 input
+    if number_of_inputs > 1:
+        raise ValueError("Tokenizers with more then one input are not supported yet.")
+
     if "transformers" in sys.modules:
-        from transformers import PreTrainedTokenizerBase
+        from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
-        from .hf_parser import TransformersTokenizerPipelineParser
+        from .hf_parser import is_sentencepiece_model, convert_sentencepiece_model_tokenizer, convert_fast_tokenizer
 
-        # TODO: Remove this check
         if isinstance(tokenizer_object, PreTrainedTokenizerBase):
-            pipeline = TransformersTokenizerPipelineParser(tokenizer_object).parse(number_of_inputs=number_of_inputs)
-            ov_tokenizer = pipeline.get_encoder_ov_subgraph()
-            if with_decoder:
-                ov_detokenizer = pipeline.get_decoder_ov_subgraph(greedy_decoder)
-            output_names = tokenizer_object.model_input_names
-
-            ov_tokenizer_output_names = ["input_ids", "attention_mask"]
-            if len(output_names) == 3 and len(ov_tokenizer.outputs) == 3:
-                ov_tokenizer_output_names.insert(1, "token_type_ids")
-
-            filtered_outputs = []
-            for i, output_name in enumerate(ov_tokenizer_output_names):
-                current_output = next(
-                    (output for output in ov_tokenizer.outputs if output.any_name == output_name),
-                    False,
+            if is_sentencepiece_model(tokenizer_object):
+                return convert_sentencepiece_model_tokenizer(
+                    tokenizer_object,
+                    add_attention_mask=True,
+                    with_decoder=with_decoder,
+                    greedy_decoder=greedy_decoder,
                 )
-                if current_output:
-                    filtered_outputs.append(current_output)
-                    continue
-
-                if output_name in output_names:
-                    ov_tokenizer.output(i).tensor.add_names({output_name})
-                    filtered_outputs.append(ov_tokenizer.output(i))
-
-            if with_decoder:
-                return (
-                    Model(filtered_outputs, ov_tokenizer.get_parameters()),
-                    ov_detokenizer,
+            elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
+                return convert_fast_tokenizer(
+                    tokenizer_object,
+                    number_of_inputs=number_of_inputs,
+                    with_decoder=with_decoder,
+                    greedy_decoder=greedy_decoder,
                 )
-
-            return Model(filtered_outputs, ov_tokenizer.get_parameters())
 
     raise OVTypeError(f"Tokenizer type is not supported: {type(tokenizer_object)}")
 

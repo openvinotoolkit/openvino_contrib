@@ -16,7 +16,6 @@ from ov_tokenizer import (
     connect_models,
     pack_strings,
     unpack_strings,
-    convert_sentencepiece_model_tokenizer
 )
 
 
@@ -101,42 +100,44 @@ sentencepiece_models = [
 ]
 
 
-@pytest.fixture(scope="session", params=wordpiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def hf_and_ov_wordpiece_tokenizers(request):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=True)
-    ov_tokenizer = convert_tokenizer(hf_tokenizer)
+def get_tokenizer(request, fast_tokenizer=True):
+    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenizer)
+    ov_tokenizer = convert_tokenizer(hf_tokenizer, with_decoder=False)
     compiled_tokenizer = core.compile_model(ov_tokenizer)
     return hf_tokenizer, compiled_tokenizer
+
+
+def get_tokenizer_detokenizer(request, fast_tokenizer=True):
+    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenizer)
+    ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
+    compiled_tokenizer = core.compile_model(ov_tokenizer)
+    compiled_detokenizer = core.compile_model(ov_detokenizer)
+    return hf_tokenizer, compiled_tokenizer, compiled_detokenizer
+
+
+@pytest.fixture(scope="session", params=wordpiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
+def hf_and_ov_wordpiece_tokenizers(request):
+    return get_tokenizer(request)
 
 
 @pytest.fixture(scope="session", params=bpe_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def hf_and_ov_bpe_tokenizers(request):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=True)
-    ov_tokenizer = convert_tokenizer(hf_tokenizer)
-    compiled_tokenizer = core.compile_model(ov_tokenizer)
-    return hf_tokenizer, compiled_tokenizer
+    return get_tokenizer_detokenizer(request)
 
 
 @pytest.fixture(scope="session", params=bpe_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
 def hf_and_ov_bpe_detokenizer(request):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=True)
-    _, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
-    compiled_detokenizer = core.compile_model(ov_detokenizer)
-    return hf_tokenizer, compiled_detokenizer
+    return get_tokenizer_detokenizer(request)
 
 
 @pytest.fixture(scope="session", params=[True, False], ids=lambda is_fast: "Fast" if is_fast else "Slow")
-def fast_tokenzier(request):
+def fast_tokenizer(request):
     return request.param
 
 
 @pytest.fixture(scope="session", params=sentencepiece_models, ids=lambda checkpoint: checkpoint.split("/")[-1])
-def sentencepice_model_tokenizers(request, fast_tokenzier):
-    hf_tokenizer = AutoTokenizer.from_pretrained(request.param, use_fast=fast_tokenzier)
-    ov_tokenizer, ov_detokenizer = convert_sentencepiece_model_tokenizer(hf_tokenizer, with_decoder=True)
-    compiled_tokenizer = core.compile_model(ov_tokenizer)
-    compiled_detokenizer = core.compile_model(ov_detokenizer)
-    return hf_tokenizer, compiled_tokenizer, compiled_detokenizer
+def sentencepice_model_tokenizers(request, fast_tokenizer):
+    return get_tokenizer_detokenizer(request, fast_tokenizer)
 
 
 @pytest.mark.parametrize(
@@ -186,7 +187,7 @@ def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers
     ]
 )
 def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer = hf_and_ov_bpe_tokenizers
+    hf_tokenizer, ov_tokenizer, _ = hf_and_ov_bpe_tokenizers
     packed_strings = pack_strings([test_string])
 
     hf_tokenized = hf_tokenizer([test_string], return_tensors="np")
@@ -208,7 +209,7 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
     ]
 )
 def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
-    hf_tokenizer, ov_detokenizer = hf_and_ov_bpe_detokenizer
+    hf_tokenizer, _, ov_detokenizer = hf_and_ov_bpe_detokenizer
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids)

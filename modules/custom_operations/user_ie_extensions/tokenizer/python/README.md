@@ -97,7 +97,7 @@ print(f"HuggingFace logits {hf_output.logits}")
 ```python
 from transformers import AutoTokenizer
 from openvino import compile_model
-from ov_tokenizer import init_extension, convert_sentencepiece_model_tokenizer, pack_strings, unpack_strings
+from ov_tokenizer import init_extension, convert_tokenizer, pack_strings, unpack_strings
 
 
 init_extension("path/to/libuser_ov_extensions.so")
@@ -108,7 +108,7 @@ hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
 text_input = ["def fibonnaci(n):"]
 hf_input = hf_tokenizer(text_input, return_tensors="np")
 
-ov_tokenizer, ov_detokenizer = convert_sentencepiece_model_tokenizer(hf_tokenizer, with_decoder=True)
+ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
 compiled_tokenizer = compile_model(ov_tokenizer)
 compiled_detokenizer = compile_model(ov_detokenizer)
 ov_input = compiled_tokenizer(pack_strings(text_input))

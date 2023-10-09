@@ -263,8 +263,46 @@ class TransformersTokenizerPipelineParser:
         return
 
 
-def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase"):
-    return hf_tokenizer.vocab_files_names.get("vocab_file", "").endswith(".model")
+def convert_fast_tokenizer(
+    hf_tokenizer: "PreTrainedTokenizerBase",
+    number_of_inputs: int = 1,
+    with_decoder: bool = False,
+    greedy_decoder: bool = False,
+) -> Union[Model, Tuple[Model, Model]]:
+    pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(number_of_inputs=number_of_inputs)
+    ov_tokenizer = pipeline.get_encoder_ov_subgraph()
+    output_names = hf_tokenizer.model_input_names
+
+    ov_tokenizer_output_names = ["input_ids", "attention_mask"]
+    if len(output_names) == 3 and len(ov_tokenizer.outputs) == 3:
+        ov_tokenizer_output_names.insert(1, "token_type_ids")
+
+    filtered_outputs = []
+    for i, output_name in enumerate(ov_tokenizer_output_names):
+        current_output = next(
+            (output for output in ov_tokenizer.outputs if output.any_name == output_name),
+            False,
+        )
+        if current_output:
+            filtered_outputs.append(current_output)
+            continue
+
+        if output_name in output_names:
+            ov_tokenizer.output(i).tensor.add_names({output_name})
+            filtered_outputs.append(ov_tokenizer.output(i))
+
+    if with_decoder:
+        ov_detokenizer = pipeline.get_decoder_ov_subgraph(greedy_decoder)
+        return (
+            Model(filtered_outputs, ov_tokenizer.get_parameters()),
+            ov_detokenizer,
+        )
+
+    return Model(filtered_outputs, ov_tokenizer.get_parameters())
+
+
+def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
+    return getattr(hf_tokenizer, "vocab_files_names", {}).get("vocab_file", "").endswith(".model")
 
 
 def convert_sentencepiece_model_tokenizer(
