@@ -92,14 +92,23 @@ endif()
 find_library(CUDNN_PATH
              NAMES cudnn
              ${HAS_REQUIRED}
-             HINTS "$ENV{CUDNN_PATH}"  "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
+             HINTS "$ENV{CUDNN_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}"
              PATH_SUFFIXES nvidia/current lib64 lib/x64 lib)
 
+if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
+    set(CUTENSOR_LIB_DIRS lib/10.2 libcutensor/10.2)
+elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 0)
+    set(CUTENSOR_LIB_DIRS lib/11.0 libcutensor/11.0)
+elseif(CUDAToolkit_VERSION_MAJOR GREATER_EQUAL 11 AND CUDAToolkit_VERSION_MINOR GREATER_EQUAL 1)
+    set(CUTENSOR_LIB_DIRS lib/11 libcutensor/11)
+else()
+    set(CUTENSOR_LIB_DIRS lib/${CUDAToolkit_VERSION_MAJOR} libcutensor/${CUDAToolkit_VERSION_MAJOR})
+endif()
 find_library(CUTENSOR_PATH
              NAMES cutensor
              ${HAS_REQUIRED}
              HINTS "$ENV{CUTENSOR_PATH}" "${CUDA_TOOLKIT_ROOT_DIR}" "${CUDA_PATH}" "$ENV{CUDA_PATH}" 
-             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib lib/11)
+             PATH_SUFFIXES nvidia/current lib64 lib/x64 lib ${CUTENSOR_LIB_DIRS})
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_PATH}" DIRECTORY)
 get_filename_component(CUTENSOR_INCLUDE_DIR "${CUTENSOR_INCLUDE_DIR}/../../include" REALPATH)
 
@@ -121,11 +130,11 @@ set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_LOCATION "${CUTENSOR_PA
 set_target_properties(CUDA::cutensor PROPERTIES IMPORTED_IMPLIB "${CUTENSOR_PATH}")
 
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    if(${CUDAToolkit_VERSION_MAJOR} LESS_EQUAL 10)
+    if(CUDAToolkit_VERSION_MAJOR LESS_EQUAL 10)
         set(CMAKE_CUDA_ARCHITECTURES "30;35;50;60;72")
-    elseif(${CUDAToolkit_VERSION_MAJOR} EQUAL 11 AND ${CUDAToolkit_VERSION_MINOR} LESS_EQUAL 7)
+    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR LESS_EQUAL 7)
         set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86")
-    elseif(${CUDAToolkit_VERSION_MAJOR} EQUAL 11 AND ${CUDAToolkit_VERSION_MINOR} EQUAL 8)
+    elseif(CUDAToolkit_VERSION_MAJOR EQUAL 11 AND CUDAToolkit_VERSION_MINOR EQUAL 8)
         set(CMAKE_CUDA_ARCHITECTURES "35;50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
     else()
         set(CMAKE_CUDA_ARCHITECTURES "50;60-virtual;61;70-virtual;75;86;89-virtual;90-virtual")
