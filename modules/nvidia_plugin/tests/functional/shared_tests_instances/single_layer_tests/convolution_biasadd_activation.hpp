@@ -17,8 +17,8 @@
 #include <ngraph/opsets/opset1.hpp>
 #include <ngraph/shape.hpp>
 #include <ngraph/type/element_type.hpp>
-#include <ngraph_functions/builders.hpp>
-#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <ov_models/builders.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <openvino/op/util/attr_types.hpp>
 #include <shared_test_classes/base/layer_test_utils.hpp>
 #include <shared_test_classes/single_layer/activation.hpp>

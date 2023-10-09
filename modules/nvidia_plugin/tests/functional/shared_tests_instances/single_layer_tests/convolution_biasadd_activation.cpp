@@ -13,7 +13,7 @@
 #include <functional_test_utils/skip_tests_config.hpp>
 #include <ie_precision.hpp>
 #include <limits>
-#include <ngraph_functions/utils/ngraph_helpers.hpp>
+#include <ov_models/utils/ov_helpers.hpp>
 #include <openvino/op/util/attr_types.hpp>
 #include <tuple>
 #include <vector>

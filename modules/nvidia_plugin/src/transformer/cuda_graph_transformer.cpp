@@ -29,6 +29,7 @@
 
 #include "bidirectional_lstm_sequence_composition.hpp"
 #include "concat_transformation.hpp"
+#include "detection_output_fix_input_types_transformation.hpp"
 #include "fuse_matmul_add.hpp"
 #include "matmul_transformations.hpp"
 #include "reduce_transformation.hpp"
@@ -52,6 +53,7 @@ void GraphTransformer::transform(const CUDA::Device& device,
     if (inference_precision == ov::element::f16 && !isHalfSupported(device)) {
         inference_precision = ov::element::f32;
     }
+
     auto upscale_precision = [&]() -> bool {
         return !isHalfSupported(device) || inference_precision == ov::element::f32;
     };
@@ -151,6 +153,8 @@ void GraphTransformer::transform(const CUDA::Device& device,
     pass_manager.register_pass<ov::nvidia_gpu::pass::FullyConnectedTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::ConcatTransformation>();
     pass_manager.register_pass<ov::nvidia_gpu::pass::ReduceTransformation>();
+    pass_manager.register_pass<ov::nvidia_gpu::pass::DetectionOutputFixInputTypesTransformation>();
+
     // Do we actually need to eliminate broadcast one more time at the end?
     pass_manager.register_pass<ov::pass::NopElimination>();
 
