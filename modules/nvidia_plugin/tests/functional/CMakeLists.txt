@@ -3,14 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
-# [cmake:functional_tests]
 set(TARGET_NAME ov_nvidia_func_tests)
 
-if (ENABLE_INTEL_CPU)
+# TODO: remove dependency on CPU plugin after migration to tests for API 2.0
+if(CMAKE_SOURCE_DIR STREQUAL OpenVINO_SOURCE_DIR AND ENABLE_INTEL_CPU)
     set(OPENVINO_ADDITIONAL_DEPENDENCIES openvino_intel_cpu_plugin)
-else(ENABLE_INTEL_CPU)
-    set(OPENVINO_ADDITIONAL_DEPENDENCIES)
-endif (ENABLE_INTEL_CPU)
+endif()
 
 ov_add_test_target(
         NAME
@@ -24,7 +22,6 @@ ov_add_test_target(
             openvino_nvidia_gpu_plugin_obj
         LINK_LIBRARIES
             openvino::funcSharedTests
-            gmock
         INCLUDES
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ADD_CLANG_FORMAT
@@ -35,4 +32,3 @@ ov_add_test_target(
 if(ENABLE_PROXY)
     target_compile_definitions(${TARGET_NAME} PUBLIC PROXY_PLUGIN_ENABLED)
 endif()
-# [cmake:functional_tests]

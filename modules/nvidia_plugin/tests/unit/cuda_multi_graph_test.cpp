@@ -6,8 +6,8 @@
 
 #include "cuda_graph_topology_runner.hpp"
 #include "cuda_simple_execution_delegator.hpp"
-#include "ngraph_functions/builders.hpp"
-#include "ngraph_functions/utils/data_utils.hpp"
+#include "ov_models/builders.hpp"
+#include "ov_models/utils/data_utils.hpp"
 #include "ops/parameter.hpp"
 #include "ops/result.hpp"
 

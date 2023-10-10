@@ -1,96 +1,56 @@
 // Copyright (C) 2021-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
+#include "single_op_tests/conversion.hpp"
+#include "functional_test_utils/skip_tests_config.hpp"
 
 #include <cuda_test_constants.hpp>
 #include <vector>
 
-#include "ie_precision.hpp"
-#include "single_layer_tests/conversion.hpp"
+namespace {
 
-using namespace LayerTestsDefinitions;
-using namespace InferenceEngine;
-
-namespace CUDALayerTestsDefinitions {
+using namespace ov::test;
+using namespace ov::test::utils;
 
 class ConversionCUDALayerTest : public ConversionLayerTest {};
 
-TEST_P(ConversionCUDALayerTest, CompareWithRefs) {
+TEST_P(ConversionCUDALayerTest, Inference) {
     SKIP_IF_CURRENT_TEST_IS_DISABLED()
-
-    ConversionParamsTuple params = GetParam();
-    inPrc = std::get<2>(params);
-    outPrc = std::get<3>(params);
-
-    Run();
+    run();
 }
 
-namespace {
-const std::vector<ngraph::helpers::ConversionTypes> conversionOpTypes = {
-    ngraph::helpers::ConversionTypes::CONVERT,
+const std::vector<ConversionTypes> conversion_op_types = {
+    ConversionTypes::CONVERT,
 };
 
-const std::vector<std::vector<size_t>> inShape = {{1, 2, 3, 4}};
+const std::vector<ov::Shape> in_shapes = {{1, 2, 3, 4}};
 
 // List of precisions natively supported by CUDA.
-// CUDA device supports only U8, FP16 and FP32 output precision
-const std::vector<Precision> out_precisions = {
-    Precision::U8,
-    Precision::FP16,
-    Precision::FP32,
+// CUDA device supports only u8, f16 and f32 output precision
+const std::vector<ov::element::Type> out_precisions = {
+    ov::element::u8,
+    ov::element::i16,
+    ov::element::f16,
+    ov::element::bf16,
+    ov::element::f32,
 };
 
-// Supported formats are: BOOL, FP32, FP16, I16 and U8
-const std::vector<Precision> in_precisions = {
-    Precision::BOOL,
-    Precision::U8,
-    Precision::I16,
-    // TODO: Uncomment when we find way to omit conversion from FP16 -> FP32 in tests
-    //        Precision::FP16,
-    Precision::FP32,
+// Supported formats are: boolean, f32, f6, i16 and u8
+const std::vector<ov::element::Type> in_precisions = {
+    ov::element::boolean,
+    ov::element::u8,
+    ov::element::i16,
+    ov::element::f16,
+    ov::element::bf16,
+    ov::element::f32,
 };
 
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_From_F32,
+INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest,
                          ConversionCUDALayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::Values(inShape),
-                                            ::testing::Values(Precision::FP32),
-                                            ::testing::ValuesIn(out_precisions),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-                         ConversionLayerTest::getTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(smoke_ConversionLayerTest_To_F32,
-                         ConversionCUDALayerTest,
-                         ::testing::Combine(::testing::ValuesIn(conversionOpTypes),
-                                            ::testing::Values(inShape),
+                         ::testing::Combine(::testing::ValuesIn(conversion_op_types),
+                                            ::testing::Values(static_shapes_to_test_representation(in_shapes)),
                                             ::testing::ValuesIn(in_precisions),
-                                            ::testing::Values(Precision::FP32),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(InferenceEngine::Layout::ANY),
-                                            ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                            ::testing::ValuesIn(out_precisions),
+                                            ::testing::Values(DEVICE_NVIDIA)),
                          ConversionLayerTest::getTestCaseName);
-
-/* TODO Uncomment when BF16 support is implemented
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_From_BF16, ConversionCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::Values(Precision::BF16),
-                                ::testing::ValuesIn(precisions),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-                        ConvertLayerTest::getTestCaseName);
-INSTANTIATE_TEST_CASE_P(smoke_ConvertLayerTest_To_BF16, ConversionCUDALayerTest,
-                        ::testing::Combine(
-                                ::testing::Values(inShape),
-                                ::testing::ValuesIn(precisions),
-                                ::testing::Values(Precision::BF16),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(Layout::ANY),
-                                ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
-                        ConvertLayerTest::getTestCaseName);
-*/
 }  // namespace
-}  // namespace CUDALayerTestsDefinitions
