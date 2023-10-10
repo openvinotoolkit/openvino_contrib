@@ -43,7 +43,7 @@ ov_mark_target_as_cc(${TARGET_NAME})
 
 set_property(TARGET ${OBJ_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES})
 
-ieTargetLinkWholeArchive(${TARGET_NAME} ${OBJ_NAME})
+ov_target_link_whole_archive(${TARGET_NAME} ${OBJ_NAME})
 
 target_include_directories(${OBJ_NAME}
                            SYSTEM PUBLIC
@@ -53,7 +53,7 @@ target_include_directories(${OBJ_NAME}
                            PUBLIC
                            "${CUTENSOR_INCLUDE_DIR}"
                            "${CMAKE_CURRENT_SOURCE_DIR}"
-                           "${IE_MAIN_CUDA_PLUGIN_SOURCE_DIR}/include"
+                           "${OpenVINONVIDIAGpuPlugin_SOURCE_DIR}/include"
                            PRIVATE $<TARGET_PROPERTY:openvino::conditional_compilation,INTERFACE_INCLUDE_DIRECTORIES>
 )
 

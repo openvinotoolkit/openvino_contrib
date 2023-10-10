@@ -3,7 +3,7 @@
 #
 
 cmake_minimum_required(VERSION 3.13)
-project(InferenceEngineNVIDIAGpuPlugin CXX CUDA)
+project(OpenVINONVIDIAGpuPlugin CXX CUDA)
 
 # Initialize CMAKE_CUDA_ARCHITECTURES when CMAKE_CUDA_COMPILER_ID is NVIDIA.
 # Raise an error if CUDA_ARCHITECTURES is empty.
@@ -26,8 +26,6 @@ if (ENABLE_CUDNN_BACKEND_API)
     add_definitions(-DENABLE_CUDNN_BACKEND_API)
 endif()
 
-set(IE_MAIN_CUDA_PLUGIN_SOURCE_DIR ${InferenceEngineNVIDIAGpuPlugin_SOURCE_DIR})
-
 find_package(OpenVINODeveloperPackage REQUIRED
              PATHS "${InferenceEngineDeveloperPackage_DIR}")
 
@@ -35,7 +33,7 @@ include(cmake/features.cmake)
 
 set(HAS_REQUIRED REQUIRED)
 
-if(${CMAKE_VERSION} VERSION_LESS "3.17.0")
+if(CMAKE_VERSION VERSION_LESS 3.17.0)
     set(HAS_REQUIRED)
     find_package(CUDA REQUIRED)
     set(CUDAToolkit_VERSION_MAJOR ${CUDA_VERSION_MAJOR})
@@ -149,7 +147,7 @@ include(FetchContent)
 FetchContent_Declare(GSL
                      GIT_REPOSITORY "https://github.com/microsoft/GSL"
                      GIT_TAG "v3.1.0")
-if(${CMAKE_VERSION} VERSION_LESS "3.14.0")
+if(CMAKE_VERSION VERSION_LESS 3.14.0)
     FetchContent_GetProperties(GSL)
     if(NOT GSL_POPULATED)
         FetchContent_Populate(GSL)
@@ -165,7 +163,7 @@ set_property(TARGET GSL PROPERTY INTERFACE_COMPILE_FEATURES)
 FetchContent_Declare(fmt-header-only
                      GIT_REPOSITORY "https://github.com/fmtlib/fmt"
                      GIT_TAG "7.1.3")
-if(${CMAKE_VERSION} VERSION_LESS "3.14.0")
+if(CMAKE_VERSION VERSION_LESS 3.14.0)
     FetchContent_GetProperties(fmt-header-only)
     if(NOT fmt-header-only_POPULATED)
         FetchContent_Populate(fmt-header-only)
@@ -194,4 +192,4 @@ endif()
 # install
 
 # ATTENTION: uncomment to install component
-# ie_cpack(template)
+# ov_cpack(template)
