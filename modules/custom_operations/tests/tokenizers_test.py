@@ -186,6 +186,42 @@ def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers
         *emoji_test_strings,
     ]
 )
+def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
+    hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
+
+    hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
+    ov_tokenized = ov_tokenizer(pack_strings([test_string]))
+
+    for output_name, hf_result in hf_tokenized.items():
+        assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
+
+
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+    ]
+)
+def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
+    hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
+
+    token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
+    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
+    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
+
+    assert ov_output == hf_output
+
+
+@pytest.mark.parametrize(
+    "test_string",
+    [
+        *eng_test_strings,
+        *multilingual_test_strings,
+        *emoji_test_strings,
+    ]
+)
 def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = hf_and_ov_bpe_tokenizers
     packed_strings = pack_strings([test_string])
@@ -213,42 +249,6 @@ def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
 
     token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
     hf_output = hf_tokenizer.batch_decode(token_ids)
-    ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
-
-    assert ov_output == hf_output
-
-
-@pytest.mark.parametrize(
-    "test_string",
-    [
-        *eng_test_strings,
-        *multilingual_test_strings,
-        *emoji_test_strings,
-    ]
-)
-def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
-    hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
-
-    hf_tokenized = hf_tokenizer(test_string, return_tensors="np")
-    ov_tokenized = ov_tokenizer(pack_strings([test_string]))
-
-    for output_name, hf_result in hf_tokenized.items():
-        assert np.all((ov_result := ov_tokenized[output_name]) == hf_result), f"{hf_result}\n{ov_result}"
-
-
-@pytest.mark.parametrize(
-    "test_string",
-    [
-        *eng_test_strings,
-        *multilingual_test_strings,
-        *emoji_test_strings,
-    ]
-)
-def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
-    hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
-
-    token_ids = hf_tokenizer(test_string, return_tensors="np").input_ids
-    hf_output = hf_tokenizer.batch_decode(token_ids, skip_special_tokens=True)
     ov_output = unpack_strings(ov_detokenizer(token_ids.astype("int32"))["string_output"])
 
     assert ov_output == hf_output

@@ -10,11 +10,10 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from openvino.runtime import Model, Output, PartialShape, Type, op
-from openvino.runtime import opset10 as opset
+from openvino.runtime import opset12 as opset
 from openvino.runtime.exceptions import OVTypeError, UserInputError
 from openvino.runtime.utils.types import as_node, make_constant_node
 
-from .common_pipelines import get_greedy_decoding_ov_subgraph
 from .node_factory import factory
 from .str_pack import pack_string, pack_strings
 
@@ -690,7 +689,7 @@ class TokenizerPipeline:
             input_node = factory.create("StringTensorUnpack", input_node.outputs()).outputs()
             for step in self.normalization_steps:
                 input_node = step.get_ov_subgraph(input_node)
-            input_node = self.add_ragged_dimention(input_node)
+            input_node = self.add_ragged_dimension(input_node)
 
             for step in chain(self.pre_tokenization_steps, self.tokenization_steps):
                 input_node = step.get_ov_subgraph(input_node)
@@ -722,21 +721,16 @@ class TokenizerPipeline:
     def decoding_steps(self) -> List[DecodingStep]:
         return [step for step in self.steps if isinstance(step, DecodingStep)]
 
-    def add_ragged_dimention(self, input_node: List[Output]) -> List[Output]:
+    @staticmethod
+    def add_ragged_dimension(input_node: List[Output]) -> List[Output]:
         shape = opset.shape_of(input_node[0])
         batch_size = opset.gather(shape, as_node(0), as_node(0))
-        # FIXME: Cannot create range with specific data type from python
-        ragged_begins = opset.convert(
-            opset.range(as_node(0), batch_size, as_node(1)),
-            "i32",
-        ).outputs()
-        ragged_ends = opset.convert(
-            opset.range(
+        ragged_begins = opset.range(as_node(0), batch_size, as_node(1), output_type="i32").outputs()
+        ragged_ends = opset.range(
                 as_node(1),
                 opset.add(batch_size, as_node(1)),
                 as_node(1),
-            ),
-            "i32",
+                output_type="i32"
         ).outputs()
         return ragged_begins + ragged_ends + input_node
 
@@ -747,13 +741,9 @@ class TokenizerPipeline:
 
         return factory.create("StringTensorPack", input_nodes).outputs()
 
-    def get_decoder_ov_subgraph(self, greedy_decoder: bool = False) -> Model:
-        if greedy_decoder:
-            input_node = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
-            token_ids = get_greedy_decoding_ov_subgraph(input_node)
-        else:
-            input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
-            token_ids = input_node
+    def get_decoder_ov_subgraph(self) -> Model:
+        input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
+        token_ids = input_node
         outputs = self.create_decoding_pipeline([token_ids])
         model = Model(outputs, [input_node], name="tokenizer_decoder")
         model.output().tensor.add_names({"string_output"})

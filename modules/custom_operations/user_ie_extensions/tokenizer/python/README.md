@@ -6,6 +6,7 @@
   - Fast tokenizers based on Wordpiece and BPE models
   - Slow tokenizers based on SentencePiece model file
 - Combine OpenVINO models into a single model
+- Add greedy decoding pipeline to text generation model 
 
 ## Installation
 
@@ -62,7 +63,6 @@ for output_name in hf_output:
 
 ### Connect Tokenizer to a Model
 
-
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from openvino import compile_model, convert_model
@@ -92,46 +92,7 @@ print(f"HuggingFace logits {hf_output.logits}")
 # HuggingFace logits tensor([[ 1.2007, -1.4698]], grad_fn=<AddmmBackward0>)
 ```
 
-### Convert SentencePiece Model Tokenzier
-
-```python
-from transformers import AutoTokenizer
-from openvino import compile_model
-from ov_tokenizer import init_extension, convert_tokenizer, pack_strings, unpack_strings
-
-
-init_extension("path/to/libuser_ov_extensions.so")
-
-checkpoint = "codellama/CodeLlama-7b-hf"
-hf_tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-
-text_input = ["def fibonnaci(n):"]
-hf_input = hf_tokenizer(text_input, return_tensors="np")
-
-ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
-compiled_tokenizer = compile_model(ov_tokenizer)
-compiled_detokenizer = compile_model(ov_detokenizer)
-ov_input = compiled_tokenizer(pack_strings(text_input))
-
-for model_input_name in hf_input:
-    print(f"OpenVINO {model_input_name} = {ov_input[model_input_name]}")
-    print(f"HuggingFace {model_input_name} = {hf_input[model_input_name]}")
-# OpenVINO input_ids = [[    1   822 18755 11586   455 29898 29876  1125]]
-# HuggingFace input_ids = [[    1   822 18755 11586   455 29898 29876  1125]]
-# OpenVINO attention_mask = [[1 1 1 1 1 1 1 1]]
-# HuggingFace attention_mask = [[1 1 1 1 1 1 1 1]]
-    
-ov_output = unpack_strings(compiled_detokenizer(hf_input.input_ids)["string_output"])
-hf_output = hf_tokenizer.batch_decode(hf_input.input_ids, skip_special_tokens=True)
-print(f"OpenVINO output string: `{ov_output}`")
-# OpenVINO output string: ['def fibonnaci(n):']
-print(f"HuggingFace output string: `{hf_output}`")
-# HuggingFace output string: ['def fibonnaci(n):']
-```
-
-To connect a detokenizer to a `logits` model output, set `greedy_decoder=True` when using the `convert_tokenizer` or `convert_sentencepiece_model_tokenizer` function, enabling a greedy decoding pipeline before detoknizer. This allows the detokenizer to be connected to the `logits` model output.
-
-### Use Extension With Converted (De)Tokenizer or Model combined with (De)Tokenizer
+### Use Extension With Converted (De)Tokenizer or Model With (De)Tokenizer
 
 To work with converted tokenizer you need `pack_strings`/`unpack_strings` functions. 
 
@@ -151,4 +112,72 @@ openvino_output = compiled_detokenizer(token_ids)
 
 print(unpack_strings(openvino_output["string_output"]))
 # ['sc�ouition�', 'intvenord hasient', 'g shouldwer M more']
+```
+
+### Text generation pipeline
+
+```python
+import numpy as np
+from openvino import compile_model, convert_model
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from ov_tokenizer import (
+    add_greedy_decoding,
+    convert_tokenizer,
+    init_extension,
+    pack_strings,
+    unpack_strings,
+)
+
+
+init_extension("path/to/libuser_ov_extensions.so")
+
+# Use different repo for the tokenizer because the original repo doesn't have .model file
+# Sentencepiece(Unigram) tokenizer supported only with .model file
+tokenizer_checkpoint = "microsoft/Llama2-7b-WhoIsHarryPotter"
+model_checkpoint = "nickypro/tinyllama-15M"
+hf_tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+hf_model = AutoModelForCausalLM.from_pretrained(model_checkpoint, use_cache=False)
+
+# convert hf tokenizer
+text_input = ["Quick brown fox was"]
+ov_tokenizer, ov_detokenizer = convert_tokenizer(hf_tokenizer, with_decoder=True)
+compiled_tokenizer = compile_model(ov_tokenizer)
+
+# transform input text into tokens
+ov_input = compiled_tokenizer(pack_strings(text_input))
+hf_input = hf_tokenizer(text_input, return_tensors="pt")
+
+# convert Pytorch model to OpenVINO IR and add greedy decoding pipeline to it
+ov_model = convert_model(hf_model, example_input=hf_input.data)
+ov_model_with_greedy_decoding = add_greedy_decoding(ov_model)
+compiled_model = compile_model(ov_model_with_greedy_decoding)
+
+# generate new tokens
+new_tokens_size = 10
+prompt_size = ov_input["input_ids"].shape[-1]
+input_dict = {
+    output.any_name: np.hstack([tensor, np.zeros(shape=(1, new_tokens_size), dtype=np.int_)])
+    for output, tensor in ov_input.items()
+}
+for idx in range(prompt_size, prompt_size + new_tokens_size):
+    output = compiled_model(input_dict)["token_ids"]
+    input_dict["input_ids"][:, idx] = output[:, idx - 1]
+    input_dict["attention_mask"][:, idx] = 1
+ov_token_ids = input_dict["input_ids"]
+
+hf_token_ids = hf_model.generate(
+    **hf_input,
+    min_new_tokens=new_tokens_size,
+    max_new_tokens=new_tokens_size,
+    temperature=0,  # greedy decoding
+)
+
+# decode model output
+compiled_detokenizer = compile_model(ov_detokenizer)
+ov_output = unpack_strings(compiled_detokenizer(ov_token_ids)["string_output"])
+hf_output = hf_tokenizer.batch_decode(hf_token_ids, skip_special_tokens=True)
+print(f"OpenVINO output string: `{ov_output}`")
+# OpenVINO output string: `['Quick brown fox was walking through the forest. He was looking for something']`
+print(f"HuggingFace output string: `{hf_output}`")
+# HuggingFace output string: `['Quick brown fox was walking through the forest. He was looking for something']`
 ```

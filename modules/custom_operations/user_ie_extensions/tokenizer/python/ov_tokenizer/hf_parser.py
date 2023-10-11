@@ -15,7 +15,6 @@ from openvino.runtime import Model, PartialShape, Type, op
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 
-from .common_pipelines import get_greedy_decoding_ov_subgraph
 from .node_factory import factory
 from .tokenizer_pipeline import (
     BPETokenizationStep,
@@ -291,14 +290,11 @@ def convert_fast_tokenizer(
             ov_tokenizer.output(i).tensor.add_names({output_name})
             filtered_outputs.append(ov_tokenizer.output(i))
 
+    tokenizer_model = Model(filtered_outputs, ov_tokenizer.get_parameters())
     if with_decoder:
-        ov_detokenizer = pipeline.get_decoder_ov_subgraph(greedy_decoder)
-        return (
-            Model(filtered_outputs, ov_tokenizer.get_parameters()),
-            ov_detokenizer,
-        )
+        return tokenizer_model, pipeline.get_decoder_ov_subgraph()
 
-    return Model(filtered_outputs, ov_tokenizer.get_parameters())
+    return tokenizer_model
 
 
 def is_sentencepiece_model(hf_tokenizer: "PreTrainedTokenizerBase") -> bool:
@@ -309,7 +305,6 @@ def convert_sentencepiece_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
     with_decoder: bool = False,
-    greedy_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
@@ -384,12 +379,8 @@ def convert_sentencepiece_model_tokenizer(
     if not with_decoder:
         return tokenizer_encoder
 
-    if greedy_decoder:
-        decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))  # (batch, sequence, logits)
-        token_ids = get_greedy_decoding_ov_subgraph(decoder_input)[0]  # (batch, sequence)
-    else:
-        decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
-        token_ids = decoder_input
+    decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
+    token_ids = decoder_input
 
     decoder = factory.create(
         "SentencepieceDetokenizer",
