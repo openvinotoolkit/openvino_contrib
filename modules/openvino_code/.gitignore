@@ -26,3 +26,5 @@ venv
 /server/OVCodExtServer.egg-info/
 /server/src/OVCodExtServer.egg-info/
 /server/.ruff_cache/
+
+!media/*.png
