@@ -170,12 +170,7 @@ TEST_F(MemoryManagerTest, InvalidInputTensorID) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-#ifdef NDEBUG
     ASSERT_THROW(memory_manager->inputTensorPointers(*this, allocation), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(memory_manager->inputTensorPointers(*this, allocation), "Assertion");
-#endif
 }
 
 TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
@@ -191,12 +186,7 @@ TEST_F(MemoryManagerTest, InvalidOutputTensorID) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-#ifdef NDEBUG
     ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");
-#endif
 }
 
 TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
@@ -208,10 +198,5 @@ TEST_F(MemoryManagerTest, ConstantsCanNotBeOutputs) {
 
     auto allocation = CUDA::DefaultStream::stream().malloc(immutableTensors_->memoryModel()->deviceMemoryBlockSize() +
                                                            mutableMemoryModel_->deviceMemoryBlockSize());
-#ifdef NDEBUG
     ASSERT_THROW(memory_manager->outputTensorPointers(*this, allocation), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(memory_manager->outputTensorPointers(*this, allocation), "Assertion");
-#endif
 }

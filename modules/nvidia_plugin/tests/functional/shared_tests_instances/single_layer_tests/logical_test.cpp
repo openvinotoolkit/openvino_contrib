@@ -1,16 +1,17 @@
 // Copyright (C) 2021-2023 Intel Corporation
 // SPDX-License-Identifier: Apache-2.0
 //
-#include <cuda_test_constants.hpp>
-#include <single_layer_tests/logical.hpp>
 #include <vector>
 
-using namespace LayerTestsDefinitions;
-using namespace LayerTestsDefinitions::LogicalParams;
-
+#include "cuda_test_constants.hpp"
+#include "single_op_tests/logical.hpp"
 namespace {
 
-std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> inputShapesNot = {
+using namespace ov::test;
+using namespace ov::test::utils;
+using ov::test::LogicalLayerTest;
+
+std::map<ov::Shape, std::vector<ov::Shape>> input_shapes_not = {
     {{256}, {}},
     {{50, 200}, {}},
     {{1, 3, 20}, {}},
@@ -18,28 +19,37 @@ std::map<std::vector<size_t>, std::vector<std::vector<size_t>>> inputShapesNot =
     {{2, 3, 25, 4, 13}, {}},
 };
 
-std::vector<InferenceEngine::Precision> inputsPrecisions = {
-    InferenceEngine::Precision::BOOL,
-};
-
-std::vector<InferenceEngine::Precision> netPrecisions = {
-    InferenceEngine::Precision::BOOL,
+std::vector<ov::element::Type> model_types = {
+    ov::element::boolean,
 };
 
 std::map<std::string, std::string> additional_config = {};
 
+std::vector<std::vector<ov::Shape>> combine_shapes(const std::map<ov::Shape, std::vector<ov::Shape>>& input_shapes_static) {
+    std::vector<std::vector<ov::Shape>> result;
+    for (const auto& input_shape : input_shapes_static) {
+        for (auto& item : input_shape.second) {
+            result.push_back({input_shape.first, item});
+        }
+
+        if (input_shape.second.empty()) {
+            result.push_back({input_shape.first, {}});
+        }
+    }
+    return result;
+}
+
 const auto LogicalTestParamsNot =
-    ::testing::Combine(::testing::ValuesIn(LogicalLayerTest::combineShapes(inputShapesNot)),
-                       ::testing::Values(ngraph::helpers::LogicalTypes::LOGICAL_NOT),
-                       ::testing::Values(ngraph::helpers::InputLayerType::CONSTANT),
-                       ::testing::ValuesIn(netPrecisions),
-                       ::testing::ValuesIn(inputsPrecisions),
-                       ::testing::Values(InferenceEngine::Precision::BOOL),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(InferenceEngine::Layout::ANY),
-                       ::testing::Values(ov::test::utils::DEVICE_NVIDIA),
+    ::testing::Combine(::testing::ValuesIn(static_shapes_to_test_representation(combine_shapes(input_shapes_not))),
+                       ::testing::Values(LogicalTypes::LOGICAL_NOT),
+                       ::testing::Values(InputLayerType::CONSTANT),
+                       ::testing::ValuesIn(model_types),
+                       ::testing::Values(DEVICE_NVIDIA),
                        ::testing::Values(additional_config));
 
-INSTANTIATE_TEST_CASE_P(smoke_LogicalNot, LogicalLayerTest, LogicalTestParamsNot, LogicalLayerTest::getTestCaseName);
+INSTANTIATE_TEST_CASE_P(smoke_LogicalNot,
+                        LogicalLayerTest,
+                        LogicalTestParamsNot,
+                        LogicalLayerTest::getTestCaseName);
 
 }  // namespace

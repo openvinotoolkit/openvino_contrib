@@ -2,38 +2,35 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-#include "single_layer_tests/concat.hpp"
+#include "single_op_tests/concat.hpp"
 
 #include <vector>
 
 #include "common_test_utils/test_constants.hpp"
 #include "cuda_test_constants.hpp"
 
-using namespace LayerTestsDefinitions;
-
 namespace {
 
+using namespace ov::test;
+using namespace ov::test::utils;
+
 std::vector<int> axes = {-3, -2, -1, 0, 1, 2, 3};
-std::vector<std::vector<std::vector<size_t>>> inShapes = {
+std::vector<std::vector<ov::Shape>> shapes_static = {
     {{10, 10, 10, 10}},
     {{10, 10, 10, 10}, {10, 10, 10, 10}},
     {{10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}},
     {{10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}},
     {{10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}, {10, 10, 10, 10}}};
 
-std::vector<InferenceEngine::Precision> netPrecisions = {InferenceEngine::Precision::FP32,
-                                                         InferenceEngine::Precision::FP16};
+std::vector<ov::element::Type> model_precisions = {ov::element::f32,
+                                                   ov::element::f16};
 
 INSTANTIATE_TEST_CASE_P(smoke_NoReshape,
                         ConcatLayerTest,
                         ::testing::Combine(::testing::ValuesIn(axes),
-                                           ::testing::ValuesIn(inShapes),
-                                           ::testing::ValuesIn(netPrecisions),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Precision::UNSPECIFIED),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(InferenceEngine::Layout::ANY),
-                                           ::testing::Values(ov::test::utils::DEVICE_NVIDIA)),
+                                           ::testing::ValuesIn(static_shapes_to_test_representation(shapes_static)),
+                                           ::testing::ValuesIn(model_precisions),
+                                           ::testing::Values(DEVICE_NVIDIA)),
                         ConcatLayerTest::getTestCaseName);
 
 }  // namespace
