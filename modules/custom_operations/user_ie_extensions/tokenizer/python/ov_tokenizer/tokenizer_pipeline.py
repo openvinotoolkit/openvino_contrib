@@ -9,6 +9,14 @@ from itertools import chain, islice
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+from constants import (
+    ATTENTION_MASK_INPUT_NAME,
+    STRING_OUTPUT_NAME,
+    TOKEN_IDS_INPUT_NAME,
+    TOKEN_TYPE_IDS_INPUT_NAME,
+    TOKENIZER_DECODER_NAME,
+    TOKENIZER_ENCODER_NAME,
+)
 from openvino.runtime import Model, Output, PartialShape, Type, op
 from openvino.runtime import opset12 as opset
 from openvino.runtime.exceptions import OVTypeError, UserInputError
@@ -590,7 +598,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
         else:
             max_length = make_constant_node(self.max_length, Type.i32)
 
-        names = ["input_ids", "token_type_ids"][: len(input_nodes) // 3]
+        names = [TOKEN_IDS_INPUT_NAME, TOKEN_TYPE_IDS_INPUT_NAME][: len(input_nodes) // 3]
         for i, name in enumerate(names):
             cur_outputs = factory.create(
                 "RaggedToDense",
@@ -604,7 +612,7 @@ class PaddingStep(PostTokenizationStep, SpecialTokenWithId):
                     0
                 )  # TODO: Change RaggedToDense to generate mask of any type
 
-        mask.tensor.add_names({"attention_mask"})
+        mask.tensor.add_names({ATTENTION_MASK_INPUT_NAME})
         outputs.append(mask)
 
         return outputs
@@ -699,7 +707,7 @@ class TokenizerPipeline:
         for step in self.post_tokenization_steps:
             processing_outputs = step.get_ov_subgraph(processing_outputs)
 
-        return Model(processing_outputs, string_inputs, name="tokenizer_encoder")
+        return Model(processing_outputs, string_inputs, name=TOKENIZER_ENCODER_NAME)
 
     @property
     def normalization_steps(self) -> List[NormalizationStep]:
@@ -727,10 +735,7 @@ class TokenizerPipeline:
         batch_size = opset.gather(shape, as_node(0), as_node(0))
         ragged_begins = opset.range(as_node(0), batch_size, as_node(1), output_type="i32").outputs()
         ragged_ends = opset.range(
-                as_node(1),
-                opset.add(batch_size, as_node(1)),
-                as_node(1),
-                output_type="i32"
+            as_node(1), opset.add(batch_size, as_node(1)), as_node(1), output_type="i32"
         ).outputs()
         return ragged_begins + ragged_ends + input_node
 
@@ -745,6 +750,6 @@ class TokenizerPipeline:
         input_node = op.Parameter(Type.i32, PartialShape(["?", "?"]))
         token_ids = input_node
         outputs = self.create_decoding_pipeline([token_ids])
-        model = Model(outputs, [input_node], name="tokenizer_decoder")
-        model.output().tensor.add_names({"string_output"})
+        model = Model(outputs, [input_node], name=TOKENIZER_DECODER_NAME)
+        model.output().tensor.add_names({STRING_OUTPUT_NAME})
         return model

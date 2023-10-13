@@ -5,6 +5,7 @@
 import logging
 from typing import Dict, Optional, Sequence, Tuple, Union
 
+from constants import GREEDY_DECODER_NAME, LOGITS_OUTPUT_NAME, TOKEN_IDS_OUTPUT_NAME, DecodingType
 from openvino import Model, PartialShape, Type
 from openvino.runtime import op
 from openvino.runtime import opset12 as opset
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def get_greedy_decoding_ov_model() -> Model:
     logits = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
-    logits.set_friendly_name("logits")
+    logits.set_friendly_name(LOGITS_OUTPUT_NAME)
     argmax = opset.topk(
         data=logits,
         k=1,
@@ -28,8 +29,8 @@ def get_greedy_decoding_ov_model() -> Model:
         data=argmax.output(1),
         axes=-1,
     )
-    token_ids.output(0).tensor.add_names({"token_ids"})
-    return Model(token_ids.outputs(), [logits], name="greedy_decoder")
+    token_ids.output(0).tensor.add_names({TOKEN_IDS_OUTPUT_NAME})
+    return Model(token_ids.outputs(), [logits], name=GREEDY_DECODER_NAME)
 
 
 def connect_models(
@@ -87,11 +88,16 @@ def connect_models(
     return connected_model
 
 
-def add_greedy_decoding(text_generation_model: Model, logits_output: str = "logits") -> Model:
+def add_greedy_decoding(text_generation_model: Model, logits_output: str = LOGITS_OUTPUT_NAME) -> Model:
     return connect_models(
         first=text_generation_model,
         second=get_greedy_decoding_ov_model(),
-        name_map={logits_output: "logits"},
+        name_map={logits_output: LOGITS_OUTPUT_NAME},
         keep_second_model_unaligned_inputs=True,
         keep_remaining_first_model_outputs=True,
     )
+
+
+class Generator:
+    def __init__(self, generation_model: Model, decoding_type: DecodingType = DecodingType.greedy) -> None:
+        pass

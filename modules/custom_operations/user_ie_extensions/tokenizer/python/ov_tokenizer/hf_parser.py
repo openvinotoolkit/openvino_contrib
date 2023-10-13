@@ -10,6 +10,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino.runtime.opset12 as opset
+from constants import (
+    ATTENTION_MASK_INPUT_NAME,
+    STRING_OUTPUT_NAME,
+    TOKEN_IDS_INPUT_NAME,
+    TOKEN_TYPE_IDS_INPUT_NAME,
+    TOKENIZER_DECODER_NAME,
+    TOKENIZER_ENCODER_NAME,
+)
 from openvino import save_model
 from openvino.runtime import Model, PartialShape, Type, op
 from openvino.runtime.exceptions import OVTypeError
@@ -272,9 +280,9 @@ def convert_fast_tokenizer(
     ov_tokenizer = pipeline.get_encoder_ov_subgraph()
     output_names = hf_tokenizer.model_input_names
 
-    ov_tokenizer_output_names = ["input_ids", "attention_mask"]
+    ov_tokenizer_output_names = [TOKEN_IDS_INPUT_NAME, ATTENTION_MASK_INPUT_NAME]
     if len(output_names) == 3 and len(ov_tokenizer.outputs) == 3:
-        ov_tokenizer_output_names.insert(1, "token_type_ids")
+        ov_tokenizer_output_names.insert(1, TOKEN_TYPE_IDS_INPUT_NAME)
 
     filtered_outputs = []
     for i, output_name in enumerate(ov_tokenizer_output_names):
@@ -354,7 +362,7 @@ def convert_sentencepiece_model_tokenizer(
         "ScatterNDUpdate",
         [broadcast, indices, values],  # FIXME: pad left side instead of right
     )
-    scatternd_input_ids.output(0).tensor.add_names({"input_ids"})
+    scatternd_input_ids.output(0).tensor.add_names({TOKEN_IDS_INPUT_NAME})
 
     outputs = scatternd_input_ids.outputs()
 
@@ -370,10 +378,10 @@ def convert_sentencepiece_model_tokenizer(
                 ),
             ],
         )
-        attention_mask.output(0).tensor.add_names({"attention_mask"})
+        attention_mask.output(0).tensor.add_names({ATTENTION_MASK_INPUT_NAME})
         outputs.append(attention_mask.output(0))
 
-    tokenizer_encoder = Model(outputs, [input_node], "sp_tokenizer_encoder")
+    tokenizer_encoder = Model(outputs, [input_node], TOKENIZER_ENCODER_NAME)
     tokenizer_encoder.validate_nodes_and_infer_types()
 
     if not with_decoder:
@@ -387,9 +395,8 @@ def convert_sentencepiece_model_tokenizer(
         [sp_model_node, token_ids],
     )
     string_output = factory.create("StringTensorPack", decoder.outputs()).outputs()
-    string_output[0].tensor.add_names({"string_output"})
-    tokenizer_decoder = Model(string_output, [decoder_input], "sp_tokenizer_decoder")
+    string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
+    tokenizer_decoder = Model(string_output, [decoder_input], TOKENIZER_DECODER_NAME)
     tokenizer_decoder.validate_nodes_and_infer_types()
 
-    save_model(tokenizer_decoder, "detokenizer.xml")
     return tokenizer_encoder, tokenizer_decoder
