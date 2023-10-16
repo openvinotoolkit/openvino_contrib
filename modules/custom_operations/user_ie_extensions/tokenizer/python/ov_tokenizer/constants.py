@@ -1,10 +1,3 @@
-from enum import StrEnum, auto
-
-
-class DecodingType(StrEnum):
-    greedy = auto()
-
-
 ATTENTION_MASK_INPUT_NAME = "attention_mask"
 TOKEN_IDS_INPUT_NAME = "input_ids"
 TOKEN_TYPE_IDS_INPUT_NAME = "token_type_ids"

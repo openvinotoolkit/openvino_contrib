@@ -97,7 +97,7 @@ bool StringTensorUnpack::evaluate(ov::TensorVector& outputs, const ov::TensorVec
     if(tensor.get_element_type() == element::string) {
         Shape input_shape = tensor.get_shape();
         const std::string* input_strings = tensor.data<std::string>();
-        unpack_strings(input_strings, input_shape, outputs[0], outputs[1], outputs[2]);
+        unpack_strings_to_tensors(input_strings, input_shape, outputs[0], outputs[1], outputs[2]);
         return true;
     } else {
 #endif

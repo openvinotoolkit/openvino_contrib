@@ -18,7 +18,6 @@ from constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from openvino import save_model
 from openvino.runtime import Model, PartialShape, Type, op
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node

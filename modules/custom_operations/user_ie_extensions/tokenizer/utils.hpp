@@ -48,7 +48,7 @@ void set_ragged_string_output(ov::Node* node, size_t output_index, const ov::Par
 
 void set_ragged_output(ov::Node* node, size_t output_index, const ov::PartialShape& shape, ov::element::Type type);
 
-void unpack_strings (const std::string* strings, const ov::Shape shape, ov::Tensor& begins, ov::Tensor& ends, ov::Tensor& chars);
+void unpack_strings_to_tensors(const std::string* strings, const ov::Shape shape, ov::Tensor& begins, ov::Tensor& ends, ov::Tensor& chars);
 
 void override_parameter (std::shared_ptr<ov::Node> node, ov::element::Type type, const ov::PartialShape& shape);
 
@@ -68,3 +68,8 @@ bool evaluate_normalization_helper (
     std::function<std::string(const std::string&)> normalizer);
 
 std::shared_ptr<ov::Node> string_attribute_to_constant (const ov::frontend::NodeContext& node, const std::string& name);
+
+template <typename BatchOfStrings>
+void pack_strings (const BatchOfStrings& strings, ov::Tensor& destination);
+
+std::vector<std::string> unpack_strings(const ov::Tensor& source);

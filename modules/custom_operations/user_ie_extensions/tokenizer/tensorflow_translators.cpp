@@ -222,7 +222,7 @@ ov::OutputVector translate_const(const ov::frontend::NodeContext& node) {
             auto value_as_any = node.get_attribute_as_any("value");
             const auto& values = value_as_any.as<std::vector<std::string>>();
             ov::Tensor begins(element::i32, {}), ends(element::i32, {}), chars(element::u8, {});
-            unpack_strings(&values[0], {values.size()}, begins, ends, chars);
+            unpack_strings_to_tensors(&values[0], {values.size()}, begins, ends, chars);
             const_node = std::make_shared<StringTensorPack>(OutputVector{
                 std::make_shared<Constant>(begins),
                 std::make_shared<Constant>(ends),

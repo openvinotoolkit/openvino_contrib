@@ -5,32 +5,13 @@
 import logging
 from typing import Dict, Optional, Sequence, Tuple, Union
 
-from constants import GREEDY_DECODER_NAME, LOGITS_OUTPUT_NAME, TOKEN_IDS_OUTPUT_NAME, DecodingType
-from openvino import Model, PartialShape, Type
-from openvino.runtime import op
+from constants import LOGITS_OUTPUT_NAME, TOKEN_IDS_OUTPUT_NAME
+from openvino import Model
+from openvino.preprocess import PrePostProcessor
 from openvino.runtime import opset12 as opset
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_greedy_decoding_ov_model() -> Model:
-    logits = op.Parameter(Type.i32, PartialShape(["?", "?", "?"]))
-    logits.set_friendly_name(LOGITS_OUTPUT_NAME)
-    argmax = opset.topk(
-        data=logits,
-        k=1,
-        axis=-1,
-        mode="max",
-        sort="none",
-        name="ArgMax",
-    )
-    token_ids = opset.squeeze(
-        data=argmax.output(1),
-        axes=-1,
-    )
-    token_ids.output(0).tensor.add_names({TOKEN_IDS_OUTPUT_NAME})
-    return Model(token_ids.outputs(), [logits], name=GREEDY_DECODER_NAME)
 
 
 def connect_models(
@@ -88,16 +69,25 @@ def connect_models(
     return connected_model
 
 
-def add_greedy_decoding(text_generation_model: Model, logits_output: str = LOGITS_OUTPUT_NAME) -> Model:
-    return connect_models(
-        first=text_generation_model,
-        second=get_greedy_decoding_ov_model(),
-        name_map={logits_output: LOGITS_OUTPUT_NAME},
-        keep_second_model_unaligned_inputs=True,
-        keep_remaining_first_model_outputs=True,
+def greedy_decoder(input) -> Model:
+    argmax = opset.topk(
+        data=input,
+        k=1,
+        axis=-1,
+        mode="max",
+        sort="none",
+        name="ArgMax",
     )
+    token_ids = opset.squeeze(
+        data=argmax.output(1),
+        axes=-1,
+    )
+    return token_ids.output(0)
 
 
-class Generator:
-    def __init__(self, generation_model: Model, decoding_type: DecodingType = DecodingType.greedy) -> None:
-        pass
+def add_greedy_decoding(text_generation_model: Model, logits_output: str = LOGITS_OUTPUT_NAME) -> Model:
+    ppp = PrePostProcessor(text_generation_model)
+    ppp.output(logits_output).postprocess().custom(greedy_decoder)
+    model = ppp.build()
+    model.output(logits_output).tensor.set_names({TOKEN_IDS_OUTPUT_NAME})
+    return model
