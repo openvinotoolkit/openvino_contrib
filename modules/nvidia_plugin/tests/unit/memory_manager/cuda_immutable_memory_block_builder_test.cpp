@@ -63,14 +63,8 @@ TEST(ImmutableMemoryBlockBuilder, HandleDuplicateAllocation) {
 
     builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size());
 
-#ifdef NDEBUG
     ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), ov::Exception);
     ASSERT_THROW(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t0_data[0], t0_data.size()), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(duplicate_buffer_id, &t1_data[0], t1_data.size()), "Assertion");
-#endif
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
@@ -81,14 +75,8 @@ TEST(ImmutableMemoryBlockBuilder, HandleZeroAllocationSize) {
     BufferID buffer_id = 1;
     const std::vector<uint8_t> data(16, 0xA5);
 
-#ifdef NDEBUG
     ASSERT_THROW(builder.addAllocation(buffer_id, &data[0], 0), ov::Exception);
     ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 0), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(buffer_id, &data[0], 0), "Assertion");
-    ASSERT_DEATH(builder.addAllocation(buffer_id, nullptr, 0), "Assertion");
-#endif
 }
 
 TEST(ImmutableMemoryBlockBuilder, HandleNullDataPointer) {
@@ -98,10 +86,5 @@ TEST(ImmutableMemoryBlockBuilder, HandleNullDataPointer) {
 
     BufferID buffer_id = 1;
 
-#ifdef NDEBUG
     ASSERT_THROW(builder.addAllocation(buffer_id, nullptr, 128), ov::Exception);
-#else
-    testing::FLAGS_gtest_death_test_style = "threadsafe";
-    ASSERT_DEATH(builder.addAllocation(buffer_id, nullptr, 128), "Assertion");
-#endif
 }
