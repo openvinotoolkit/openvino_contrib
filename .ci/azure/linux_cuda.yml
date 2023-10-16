@@ -7,6 +7,8 @@ trigger:
     include:
     - modules/nvidia_plugin
     - .ci/azure/linux_cuda.yml
+    exclude:
+    - modules/openvino_code
 
 pr:
   branches:
@@ -16,6 +18,8 @@ pr:
   paths:
     include:
     - modules/nvidia_plugin
+    exclude:
+    - modules/openvino_code
 
 resources:
   repositories:
