@@ -9,6 +9,11 @@ from itertools import chain, islice
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+from openvino.runtime import Model, Output, PartialShape, Type, op
+from openvino.runtime import opset12 as opset
+from openvino.runtime.exceptions import OVTypeError, UserInputError
+from openvino.runtime.utils.types import as_node, make_constant_node
+
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
@@ -17,11 +22,6 @@ from .constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from openvino.runtime import Model, Output, PartialShape, Type, op
-from openvino.runtime import opset12 as opset
-from openvino.runtime.exceptions import OVTypeError, UserInputError
-from openvino.runtime.utils.types import as_node, make_constant_node
-
 from .node_factory import factory
 from .str_pack import pack_string, pack_strings
 

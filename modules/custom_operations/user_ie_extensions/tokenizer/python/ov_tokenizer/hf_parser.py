@@ -10,6 +10,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino.runtime.opset12 as opset
+from openvino.runtime import Model, PartialShape, Type, op
+from openvino.runtime.exceptions import OVTypeError
+from openvino.runtime.utils.types import as_node, make_constant_node
+
 from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
@@ -18,10 +22,6 @@ from .constants import (
     TOKENIZER_DECODER_NAME,
     TOKENIZER_ENCODER_NAME,
 )
-from openvino.runtime import Model, PartialShape, Type, op
-from openvino.runtime.exceptions import OVTypeError
-from openvino.runtime.utils.types import as_node, make_constant_node
-
 from .node_factory import factory
 from .tokenizer_pipeline import (
     BPETokenizationStep,
