@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino.runtime.opset12 as opset
-from constants import (
+from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,

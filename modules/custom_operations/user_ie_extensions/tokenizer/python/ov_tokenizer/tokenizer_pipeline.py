@@ -9,7 +9,7 @@ from itertools import chain, islice
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-from constants import (
+from .constants import (
     ATTENTION_MASK_INPUT_NAME,
     STRING_OUTPUT_NAME,
     TOKEN_IDS_INPUT_NAME,
