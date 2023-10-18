@@ -5,10 +5,11 @@
 import logging
 from typing import Dict, Optional, Sequence, Tuple, Union
 
-from constants import LOGITS_OUTPUT_NAME, TOKEN_IDS_OUTPUT_NAME
 from openvino import Model
 from openvino.preprocess import PrePostProcessor
 from openvino.runtime import opset12 as opset
+
+from .constants import LOGITS_OUTPUT_NAME, TOKEN_IDS_OUTPUT_NAME
 
 
 logger = logging.getLogger(__name__)

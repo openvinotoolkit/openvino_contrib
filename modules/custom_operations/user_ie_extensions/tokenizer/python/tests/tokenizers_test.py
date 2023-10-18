@@ -2,18 +2,18 @@
 # Copyright (C) 2018-2023 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
+
 # import os
 # os.environ["OV_TOKENIZER_PREBUILD_EXTENSION_PATH"] = "path/to/libuser_ov_extensions.so"
 
-import pytest
 import numpy as np
+import pytest
 from openvino import Core
 from transformers import AutoTokenizer
+
 from ov_tokenizer import (
     # init_extension,
     convert_tokenizer,
-    connect_models,
     pack_strings,
     unpack_strings,
 )
@@ -30,8 +30,7 @@ eng_test_strings = [
     "A lot\t w!",
     "A lot\t\tof whitespaces!",
     "\n\n\n\t\t   A    lot\t\tof\twhitespaces\n!\n\n\n\t\n\n",
-    "Eng, but with d1gits: 123; 0987654321, stop."
-    "0987654321 - eng, but with d1gits: 123"
+    "Eng, but with d1gits: 123; 0987654321, stop." "0987654321 - eng, but with d1gits: 123",
 ]
 multilingual_test_strings = [
     "Тестовая строка!",
@@ -146,7 +145,7 @@ def sentencepice_model_tokenizers(request, fast_tokenizer):
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
-    ]
+    ],
 )
 def test_hf_wordpiece_tokenizers_outputs(hf_and_ov_wordpiece_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = hf_and_ov_wordpiece_tokenizers
@@ -165,7 +164,7 @@ def test_hf_wordpiece_tokenizers_outputs(hf_and_ov_wordpiece_tokenizers, test_st
         eng_test_strings,
         multilingual_test_strings,
         emoji_test_strings,
-    ]
+    ],
 )
 def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer = hf_and_ov_wordpiece_tokenizers
@@ -184,7 +183,7 @@ def test_hf_wordpiece_tokenizers_multiple_strings(hf_and_ov_wordpiece_tokenizers
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
-    ]
+    ],
 )
 def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = sentencepice_model_tokenizers
@@ -202,7 +201,7 @@ def test_sentencepiece_model_tokenizer(sentencepice_model_tokenizers, test_strin
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
-    ]
+    ],
 )
 def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_string):
     hf_tokenizer, _, ov_detokenizer = sentencepice_model_tokenizers
@@ -220,7 +219,7 @@ def test_sentencepiece_model_detokenizer(sentencepice_model_tokenizers, test_str
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
-    ]
+    ],
 )
 def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
     hf_tokenizer, ov_tokenizer, _ = hf_and_ov_bpe_tokenizers
@@ -242,7 +241,7 @@ def test_hf_bpe_tokenizers_outputs(hf_and_ov_bpe_tokenizers, test_string):
         *eng_test_strings,
         *multilingual_test_strings,
         *emoji_test_strings,
-    ]
+    ],
 )
 def test_bpe_detokenizer(hf_and_ov_bpe_detokenizer, test_string):
     hf_tokenizer, _, ov_detokenizer = hf_and_ov_bpe_detokenizer
