@@ -63,7 +63,7 @@ target_link_libraries(${OBJ_NAME}
                       fmt-header-only
                       openvino::runtime
                       openvino::runtime::dev
-                      ov_core_dev
+                      openvino::core::dev
                       PRIVATE
                       CUDA::cudart
                       CUDA::cublas
