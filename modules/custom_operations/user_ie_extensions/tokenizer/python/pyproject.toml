@@ -4,8 +4,7 @@ version = "0.0.1"
 description = "Convert tokenizers into OpenVINO models"
 requires-python = ">=3.8"
 authors = [
-    { name = "Artur Paniukov", email = "artur.paniukov@intel.com" },
-    { name = "Sergey Lyalin", email = "sergey.lyalin@intel.com" },
+    { name = "OpenVINO Developers", email = "openvino@intel.com" },
 ]
 
 dependencies = [
