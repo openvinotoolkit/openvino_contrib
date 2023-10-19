@@ -651,6 +651,20 @@ class RegexDecodingStep(DecodingStep):
             replace_term=r"\1",
         )
 
+    @classmethod
+    def replace_sp_spaces(cls) -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern="▁",
+            replace_term=" ",
+        )
+
+    @classmethod
+    def replace_sp_newlines(cls) -> "RegexDecodingStep":
+        return cls(
+            regex_search_pattern="<0x0A>",
+            replace_term="\n",
+        )
+
     def get_ov_subgraph(self, input_nodes: List[Output]) -> List[Output]:
         input_nodes.extend(
             (

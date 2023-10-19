@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def convert_tokenizer(
-    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False
+    tokenizer_object: Any, number_of_inputs: int = 1, with_decoder: bool = False, streaming_decoder: bool = False
 ) -> Union[Model, Tuple[Model, Model]]:
     # todo: add support for more then 1 input
     if number_of_inputs > 1:
@@ -32,6 +32,7 @@ def convert_tokenizer(
                     tokenizer_object,
                     add_attention_mask=True,
                     with_decoder=with_decoder,
+                    streaming_decoder=streaming_decoder,
                 )
             elif isinstance(tokenizer_object, PreTrainedTokenizerFast):
                 logger.info("Convert Huggingface Fast tokenizer pipeline.")

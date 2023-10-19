@@ -10,7 +10,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import openvino.runtime.opset12 as opset
-from openvino.runtime import Model, PartialShape, Type, op
+from openvino import Model, PartialShape, Type
+from openvino.runtime import Node, op
 from openvino.runtime.exceptions import OVTypeError
 from openvino.runtime.utils.types import as_node, make_constant_node
 
@@ -273,7 +274,6 @@ def convert_fast_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     number_of_inputs: int = 1,
     with_decoder: bool = False,
-    greedy_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     pipeline = TransformersTokenizerPipelineParser(hf_tokenizer).parse(number_of_inputs=number_of_inputs)
     ov_tokenizer = pipeline.get_encoder_ov_subgraph()
@@ -312,6 +312,7 @@ def convert_sentencepiece_model_tokenizer(
     hf_tokenizer: "PreTrainedTokenizerBase",
     add_attention_mask: bool = True,
     with_decoder: bool = False,
+    streaming_decoder: bool = False,
 ) -> Union[Model, Tuple[Model, Model]]:
     if not is_sentencepiece_model(hf_tokenizer):
         raise OVTypeError("Cannot convert tokenizer that does not have `.model` file.")
@@ -386,16 +387,23 @@ def convert_sentencepiece_model_tokenizer(
     if not with_decoder:
         return tokenizer_encoder
 
-    decoder_input = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
-    token_ids = decoder_input
+    return tokenizer_encoder, get_sp_decoder(sp_model_node, streaming_decoder=streaming_decoder)
+
+
+def get_sp_decoder(sp_model_node: Node, streaming_decoder: bool = False) -> Model:
+    token_ids = op.Parameter(Type.i32, PartialShape(["?", "?"]))  # (batch, sequence)
 
     decoder = factory.create(
-        "SentencepieceDetokenizer",
+        "SentencepieceStreamDetokenizer" if streaming_decoder else "SentencepieceDetokenizer",
         [sp_model_node, token_ids],
-    )
-    string_output = factory.create("StringTensorPack", decoder.outputs()).outputs()
-    string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
-    tokenizer_decoder = Model(string_output, [decoder_input], TOKENIZER_DECODER_NAME)
-    tokenizer_decoder.validate_nodes_and_infer_types()
+    ).outputs()
 
-    return tokenizer_encoder, tokenizer_decoder
+    if streaming_decoder:
+        decoder = RegexDecodingStep.replace_sp_spaces().get_ov_subgraph(decoder)
+        decoder = RegexDecodingStep.replace_sp_newlines().get_ov_subgraph(decoder)
+
+    string_output = factory.create("StringTensorPack", decoder).outputs()
+    string_output[0].tensor.add_names({STRING_OUTPUT_NAME})
+    tokenizer_decoder = Model(string_output, [token_ids], TOKENIZER_DECODER_NAME)
+    tokenizer_decoder.validate_nodes_and_infer_types()
+    return tokenizer_decoder

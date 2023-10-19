@@ -62,4 +62,28 @@ namespace TemplateExtension {
     private:
         std::shared_ptr<sentencepiece::SentencePieceProcessor> m_sp;
     };
+
+
+    class SentencepieceStreamDetokenizer : public ov::op::Op {
+    public:
+        OPENVINO_OP("SentencepieceStreamDetokenizer");
+
+        SentencepieceStreamDetokenizer() = default;
+        SentencepieceStreamDetokenizer(const ov::OutputVector& args);
+        SentencepieceStreamDetokenizer(const ov::OutputVector& args,
+                                 const std::shared_ptr<sentencepiece::SentencePieceProcessor>& sp);
+
+        bool visit_attributes(ov::AttributeVisitor& visitor) override;
+
+        void validate_and_infer_types() override;
+
+        std::shared_ptr<ov::Node> clone_with_new_inputs(const ov::OutputVector& new_args) const override;
+
+        bool evaluate(ov::TensorVector& outputs, const ov::TensorVector& inputs) const override;
+
+        bool has_evaluate() const override;
+
+    private:
+        std::shared_ptr<sentencepiece::SentencePieceProcessor> m_sp;
+    };
 }  // namespace TemplateExtension
